@@ -1,0 +1,48 @@
+"""Enumerations shared between SQLAlchemy models and Pydantic schemas."""
+
+from __future__ import annotations
+
+import enum
+
+
+class UserRole(str, enum.Enum):
+    SUPER_ADMIN = "SUPER_ADMIN"
+    ADMIN = "ADMIN"
+    REVIEWER = "REVIEWER"
+    VIEWER = "VIEWER"
+
+
+class AgentStatus(str, enum.Enum):
+    ACTIVE = "ACTIVE"
+    INACTIVE = "INACTIVE"
+    SUSPENDED = "SUSPENDED"
+
+
+class ActionDecision(str, enum.Enum):
+    """Outcome produced by the decision engine for an agent action."""
+
+    ALLOW = "ALLOW"
+    BLOCK = "BLOCK"
+    PENDING_APPROVAL = "PENDING_APPROVAL"
+
+
+class ActionStatus(str, enum.Enum):
+    """Lifecycle status of a stored agent action."""
+
+    CREATED = "CREATED"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+    EXECUTED = "EXECUTED"
+    BLOCKED = "BLOCKED"
+
+
+class ApprovalDecision(str, enum.Enum):
+    PENDING = "PENDING"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+
+
+class ActorType(str, enum.Enum):
+    USER = "USER"
+    AGENT = "AGENT"
+    SYSTEM = "SYSTEM"

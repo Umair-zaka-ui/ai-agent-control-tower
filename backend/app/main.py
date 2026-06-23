@@ -1,0 +1,41 @@
+"""FastAPI application entry point.
+
+Run locally with:
+    uvicorn app.main:app --reload
+Swagger UI is then served at http://localhost:8000/docs
+"""
+
+from __future__ import annotations
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.api.router import api_router
+from app.core.config import settings
+
+app = FastAPI(
+    title=settings.PROJECT_NAME,
+    version="0.1.0",
+    description=(
+        "Phase 1 MVP backend that tracks, controls, approves, blocks and "
+        "audits actions performed by AI agents."
+    ),
+)
+
+if settings.BACKEND_CORS_ORIGINS:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.BACKEND_CORS_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+
+@app.get("/health", tags=["health"])
+def health_check() -> dict[str, str]:
+    """Lightweight liveness probe."""
+    return {"status": "ok"}
+
+
+app.include_router(api_router, prefix=settings.API_PREFIX)

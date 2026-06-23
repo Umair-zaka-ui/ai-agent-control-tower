@@ -1,0 +1,26 @@
+# ---------------------------------------------------------------------------
+# Local PostgreSQL for the AI Agent Control Tower.
+# Start it with:  docker compose up -d
+# Then point DATABASE_URL in backend/.env at localhost:5432.
+# ---------------------------------------------------------------------------
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: act_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: agent_control_tower
+    ports:
+      - "5432:5432"
+    volumes:
+      - act_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d agent_control_tower"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  act_pgdata:
