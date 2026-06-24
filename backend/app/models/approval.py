@@ -11,7 +11,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
-from app.core.enums import ApprovalDecision
+from app.core.enums import ApprovalDecision, ApprovalPriority
 from app.models.mixins import UUIDPrimaryKeyMixin
 
 if TYPE_CHECKING:
@@ -49,7 +49,15 @@ class Approval(Base, UUIDPrimaryKeyMixin):
         nullable=False,
         default=ApprovalDecision.PENDING,
     )
+    priority: Mapped[ApprovalPriority] = mapped_column(
+        Enum(ApprovalPriority, name="approval_priority"),
+        nullable=False,
+        default=ApprovalPriority.MEDIUM,
+        index=True,
+    )
     review_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # SLA deadline by which this approval should be reviewed.
+    sla_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -57,3 +65,28 @@ class Approval(Base, UUIDPrimaryKeyMixin):
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     agent_action: Mapped["AgentAction"] = relationship(back_populates="approval")
+    comments: Mapped[list["ApprovalComment"]] = relationship(
+        back_populates="approval", cascade="all, delete-orphan", order_by="ApprovalComment.created_at"
+    )
+
+
+class ApprovalComment(Base, UUIDPrimaryKeyMixin):
+    """A threaded comment left by a reviewer on an approval."""
+
+    __tablename__ = "approval_comments"
+
+    approval_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("approvals.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    comment: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    approval: Mapped["Approval"] = relationship(back_populates="comments")

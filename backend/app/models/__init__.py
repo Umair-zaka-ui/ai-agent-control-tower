@@ -6,10 +6,13 @@ what Alembic autogenerate and ``create_all`` rely on.
 
 from app.models.agent import Agent
 from app.models.agent_action import AgentAction
-from app.models.approval import Approval
+from app.models.api_key import AgentApiKey
+from app.models.approval import Approval, ApprovalComment
 from app.models.audit_log import AuditLog
 from app.models.organization import Organization
 from app.models.permission import Permission
+from app.models.policy import Policy
+from app.models.rbac import RbacPermission, Role, RolePermission, UserRole
 from app.models.user import User
 
 __all__ = [
@@ -19,5 +22,12 @@ __all__ = [
     "Permission",
     "AgentAction",
     "Approval",
+    "ApprovalComment",
     "AuditLog",
+    "AgentApiKey",
+    "Policy",
+    "Role",
+    "RbacPermission",
+    "RolePermission",
+    "UserRole",
 ]

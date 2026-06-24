@@ -20,6 +20,12 @@ env/
 .mypy_cache/
 .ruff_cache/
 
+# Coverage artifacts
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
 # IDE
 .idea/
 .vscode/

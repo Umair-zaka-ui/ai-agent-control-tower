@@ -1,6 +1,9 @@
 # AI Agent Control Tower
 
-> Phase 1 MVP — a backend system that tracks, controls, approves, blocks and audits the actions performed by AI agents.
+> A backend control plane that tracks, controls, approves, blocks and audits the actions performed by AI agents.
+>
+> **Phase 1** (MVP): agents, permissions, risk scoring, approvals, audit logs.
+> **Phase 2** (production-oriented): agent API-key auth, a database-driven policy engine, advanced RBAC, email notifications, forensic audit, dashboard APIs, risk engine v2, and Docker. See the [Phase 2 guide](#phase-2--production-oriented-platform) below.
 
 As organizations hand more real-world tasks to autonomous AI agents (submitting claims, updating records, sending emails, moving money), they need a control plane that sits between the agent and the action. The **AI Agent Control Tower** is that control plane: every action an agent attempts is checked against permissions, scored for risk, and either **allowed**, **blocked**, or **routed to a human for approval** — and every decision is written to an immutable audit log.
 
@@ -324,14 +327,140 @@ pytest
 
 ---
 
-## Future roadmap
+## Phase 2 — production-oriented platform
 
-- **Agent authentication via API keys** — let agents call `/agent-actions` directly with their issued key (hash already stored).
-- **Configurable risk & policy engine** — rules stored in the DB, per-resource thresholds, payload-aware scoring.
-- **Real action execution & callbacks** — execute approved actions and capture `output_payload`.
-- **Dashboard frontend** — React/Next.js console for the approval queue, agents, and audit timeline (the APIs are already designed for it).
-- **Notifications** — alert reviewers when an action is pending (email/Slack/webhooks).
-- **Per-organization RBAC hardening** and fine-grained roles.
-- **Rate limiting, anomaly detection, and observability** (metrics/tracing).
-- **Multi-tenant isolation tests** and full API integration test suite.
+Phase 2 builds on the Phase 1 MVP. Run the new migration to add its tables:
+
+```bash
+cd backend
+alembic upgrade head      # applies migration 0002 (Phase 2 schema)
+python -m app.seed        # adds API keys, policies and RBAC to the demo org
 ```
+
+### What's new
+
+| Module | Summary |
+| ------ | ------- |
+| **Agent API keys** | Each agent gets one-or-more `agt_live_…` keys (only the SHA-256 hash is stored). Agents authenticate directly via `Authorization: Bearer agt_live_…`. |
+| **Policy engine** | Database-driven rules (`policies` table). A policy targets a `resource`/`action` and a JSON `conditions` object (e.g. `{"amount_gt": 10000}`) and yields a decision. Matching policies **override** the raw risk thresholds; highest `priority` wins. |
+| **Advanced RBAC** | `roles`, `rbac_permissions`, `role_permissions`, `user_roles`. Routes are guarded by fine-grained permission codes (e.g. `policy.create`, `approval.review`). Backward-compatible with the Phase 1 role enum. |
+| **Approval queue+** | Approvals now carry a `priority` (LOW/MEDIUM/HIGH/CRITICAL derived from risk), an SLA deadline (`sla_due_at`), and a comment thread. |
+| **Notifications** | Email via SMTP (Mailtrap for dev) sent through FastAPI background tasks on approval requested/decided and agent suspension. Disabled by default (`NOTIFICATIONS_ENABLED=false`) — sends are logged instead. |
+| **Audit++** | Audit logs capture `ip_address`, `user_agent`, `request_id`, `trace_id`, plus `before_state`/`after_state` and a risk breakdown. |
+| **Dashboard APIs** | `/dashboard/summary`, `/dashboard/recent-actions`, `/dashboard/high-risk-actions`, `/dashboard/pending-approvals`. |
+| **Risk engine v2** | `risk = clamp(action_score + resource_score + modifiers)` (e.g. PHI access `+20`, large amount `+10`). |
+| **Docker** | `Dockerfile` + `docker-compose.yml` run `api` + `postgres`; the api container migrates on start. |
+
+### New / changed endpoints
+
+```
+# Agent API keys
+POST   /agents/{id}/generate-api-key      issue a key (shown once)
+GET    /agents/{id}/api-keys              list an agent's keys (no hashes)
+POST   /api-keys/{id}/revoke              revoke a key
+
+# Policies
+POST   /policies                          create a policy
+GET    /policies                          list (filter by ?resource= &action=)
+GET    /policies/{id}                     fetch
+PATCH  /policies/{id}                     update
+DELETE /policies/{id}                     delete
+
+# RBAC
+GET    /rbac/permissions                  permission catalog
+GET    /rbac/roles                        roles + their permission codes
+GET    /rbac/me                           caller's effective permissions
+POST   /rbac/users/{user_id}/roles        assign a role to a user
+
+# Approvals (additions)
+GET    /approvals/{id}/comments           comment thread
+POST   /approvals/{id}/comments           add a comment
+
+# Dashboard
+GET    /dashboard/summary
+GET    /dashboard/recent-actions
+GET    /dashboard/high-risk-actions
+GET    /dashboard/pending-approvals
+```
+
+### Authenticating as an agent (Phase 2)
+
+```bash
+# 1. As an admin, issue a key for an agent:
+curl -X POST http://localhost:8000/agents/<AGENT_ID>/generate-api-key \
+  -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" -d '{}'
+# => {"api_key":"agt_live_xxxxxxxx", ...}   (store it now — shown once)
+
+# 2. The agent calls /agent-actions with its own key (no user JWT needed):
+curl -X POST http://localhost:8000/agent-actions \
+  -H "Authorization: Bearer agt_live_xxxxxxxx" -H "Content-Type: application/json" \
+  -d '{"agent_id":"<AGENT_ID>","resource":"CLAIM","action":"SUBMIT_CLAIM","input_payload":{"amount":50000}}'
+# => decision PENDING_APPROVAL, matched_policy "Large Claim Approval"
+```
+
+`/agent-actions` accepts **either** an agent API key **or** a user JWT (keys carry the `agt_live_` prefix). With a key, the acting agent is taken from the key.
+
+### Policy example
+
+```json
+{
+  "name": "Large Claim Approval",
+  "resource": "CLAIM",
+  "action": "SUBMIT_CLAIM",
+  "conditions": { "amount_gt": 10000 },
+  "decision": "PENDING_APPROVAL",
+  "priority": 100
+}
+```
+
+Supported condition operators (keys are `"<field>_<op>"`): `_gt`, `_gte`, `_lt`, `_lte`, `_eq`, `_ne`, `_in`, `_contains`. A bare `"field": value` is an equality check. Empty `conditions` = always matches. All conditions are AND-ed.
+
+### Email notifications (Mailtrap)
+
+Set these in `.env` to enable real sends:
+
+```env
+NOTIFICATIONS_ENABLED=true
+SMTP_HOST=sandbox.smtp.mailtrap.io
+SMTP_PORT=587
+SMTP_USERNAME=<your mailtrap user>
+SMTP_PASSWORD=<your mailtrap pass>
+SMTP_FROM=no-reply@control-tower.local
+```
+
+### Run with Docker
+
+```bash
+docker compose up -d --build      # builds the api image, starts api + postgres
+# api migrates on start; SEED_ON_START=true (compose default) loads demo data
+# Swagger: http://localhost:8000/docs
+```
+
+### Tests & coverage
+
+```bash
+cd backend
+pytest --cov=app --cov-report=term-missing     # ~83% coverage, 33 tests
+```
+
+Unit tests cover the risk, decision and policy engines; integration tests
+(`tests/test_integration.py`) exercise the full Phase 2 flow against PostgreSQL
+(register → agent → API key → permission → policy → action → approval → revoke).
+
+---
+
+## Future roadmap (Phase 3+)
+
+Delivered in Phase 2: agent API-key auth, DB-driven policy engine, advanced RBAC,
+notifications, forensic audit, dashboard APIs, risk engine v2, Docker.
+
+Next:
+
+- **Real action execution & callbacks** — execute approved actions and capture `output_payload`.
+- **Dashboard frontend** — React/Next.js console for the approval queue, agents, policies and audit timeline (the APIs are already designed for it).
+- **Richer notifications** — Slack/webhooks in addition to email; SLA-breach alerts.
+- **Policy authoring UX** — versioning, dry-run/simulation, and a visual rule builder.
+- **Key lifecycle** — automatic rotation, scoped keys, and per-key rate limits.
+- **Observability** — Prometheus metrics, OpenTelemetry tracing (trace ids already captured).
+- **Anomaly detection** — flag unusual agent behaviour from the audit stream.
+- **Multi-tenant isolation tests** and load testing for pilot customers.

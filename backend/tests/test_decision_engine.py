@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import uuid
+
 from app.core.enums import ActionDecision, AgentStatus
 from app.models.agent import Agent
 from app.services.decision_engine import make_decision
 from app.services.permission_engine import PermissionResult
+from app.services.policy_engine import PolicyResult
 
 ALLOWED = PermissionResult(allowed=True, reason="ok")
 DENIED = PermissionResult(allowed=False, reason="no rule")
@@ -45,4 +48,31 @@ def test_boundary_80_needs_approval() -> None:
 
 def test_high_risk_is_blocked() -> None:
     result = make_decision(_agent(), ALLOWED, 81)
+    assert result.decision == ActionDecision.BLOCK
+
+
+def test_matching_policy_overrides_low_risk() -> None:
+    policy = PolicyResult(
+        matched=True,
+        decision=ActionDecision.PENDING_APPROVAL,
+        policy_id=uuid.uuid4(),
+        policy_name="Large Claim Approval",
+        reason="matched",
+    )
+    result = make_decision(_agent(), ALLOWED, 10, policy)
+    assert result.decision == ActionDecision.PENDING_APPROVAL
+    assert result.matched_policy_name == "Large Claim Approval"
+
+
+def test_matching_block_policy_overrides_low_risk() -> None:
+    policy = PolicyResult(
+        matched=True, decision=ActionDecision.BLOCK, policy_name="Block Huge Claim"
+    )
+    result = make_decision(_agent(), ALLOWED, 10, policy)
+    assert result.decision == ActionDecision.BLOCK
+
+
+def test_permission_denied_beats_policy() -> None:
+    policy = PolicyResult(matched=True, decision=ActionDecision.ALLOW, policy_name="x")
+    result = make_decision(_agent(), DENIED, 10, policy)
     assert result.decision == ActionDecision.BLOCK

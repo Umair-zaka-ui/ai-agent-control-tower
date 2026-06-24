@@ -46,3 +46,18 @@ class ActorType(str, enum.Enum):
     USER = "USER"
     AGENT = "AGENT"
     SYSTEM = "SYSTEM"
+
+
+# --------------------------------------------------------------------------- #
+# Phase 2 enums
+# --------------------------------------------------------------------------- #
+class ApiKeyStatus(str, enum.Enum):
+    ACTIVE = "ACTIVE"
+    REVOKED = "REVOKED"
+
+
+class ApprovalPriority(str, enum.Enum):
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
+    CRITICAL = "CRITICAL"

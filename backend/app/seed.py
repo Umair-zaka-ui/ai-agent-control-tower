@@ -1,12 +1,14 @@
-"""Seed the database with demo data.
+"""Seed the database with demo data (Phase 1 + Phase 2).
 
 Run with:  python -m app.seed   (from the ``backend`` directory)
 
 Creates:
   * Organization: "Demo Healthcare Org"
   * Users:  admin@example.com / reviewer@example.com  (password: password123)
-  * Agents: BillingAgent, SchedulingAgent, ClinicalSummaryAgent
+  * Agents: BillingAgent, SchedulingAgent, ClinicalSummaryAgent (+ an API key each)
   * Permission rules for each agent
+  * RBAC roles/permissions (and links users to matching roles)
+  * Example policies (e.g. "Large Claim Approval")
 
 The script is idempotent: re-running it will not create duplicates.
 """
@@ -17,12 +19,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
-from app.core.enums import UserRole
+from app.core.enums import ActionDecision, UserRole
 from app.core.security import generate_api_key, hash_api_key, hash_password
 from app.models.agent import Agent
 from app.models.organization import Organization
 from app.models.permission import Permission
+from app.models.policy import Policy
 from app.models.user import User
+from app.services import api_key_service, rbac_service
 
 DEMO_ORG_NAME = "Demo Healthcare Org"
 DEMO_PASSWORD = "password123"
@@ -32,7 +36,6 @@ DEMO_USERS = [
     {"name": "Demo Reviewer", "email": "reviewer@example.com", "role": UserRole.REVIEWER},
 ]
 
-# agent name -> (agent_type, [(resource, action, allowed), ...])
 DEMO_AGENTS: dict[str, tuple[str, list[tuple[str, str, bool]]]] = {
     "BillingAgent": (
         "billing",
@@ -60,6 +63,26 @@ DEMO_AGENTS: dict[str, tuple[str, list[tuple[str, str, bool]]]] = {
         ],
     ),
 }
+
+# (name, resource, action, conditions, decision, priority)
+DEMO_POLICIES = [
+    (
+        "Large Claim Approval",
+        "CLAIM",
+        "SUBMIT_CLAIM",
+        {"amount_gt": 10000},
+        ActionDecision.PENDING_APPROVAL,
+        100,
+    ),
+    (
+        "Block Huge Claim",
+        "CLAIM",
+        "SUBMIT_CLAIM",
+        {"amount_gt": 100000},
+        ActionDecision.BLOCK,
+        200,
+    ),
+]
 
 
 def _get_or_create_org(db: Session) -> Organization:
@@ -95,30 +118,32 @@ def _seed_users(db: Session, org: Organization) -> None:
             )
         )
         print(f"  + user: {spec['email']} ({spec['role'].value})")
+    db.flush()
 
 
 def _seed_agents(db: Session, org: Organization) -> None:
     for name, (agent_type, perms) in DEMO_AGENTS.items():
         agent = db.execute(
-            select(Agent).where(
-                Agent.organization_id == org.id, Agent.name == name
-            )
+            select(Agent).where(Agent.organization_id == org.id, Agent.name == name)
         ).scalar_one_or_none()
 
         if agent is None:
-            api_key = generate_api_key()
             agent = Agent(
                 organization_id=org.id,
                 name=name,
                 description=f"Demo {name}",
                 agent_type=agent_type,
-                api_key_hash=hash_api_key(api_key),
+                api_key_hash=hash_api_key(generate_api_key()),  # legacy column
             )
             db.add(agent)
             db.flush()
-            print(f"  + agent: {name}  (api_key: {api_key})")
         else:
             print(f"  = agent already exists: {name}")
+
+        # Ensure every demo agent has at least one Phase 2 API key (shown once).
+        if not api_key_service.list_keys(db, agent.id):
+            _, raw_key = api_key_service.issue_api_key(db, agent)
+            print(f"  + agent API key for {name}: {raw_key}")
 
         for resource, action, allowed in perms:
             exists = db.execute(
@@ -139,6 +164,32 @@ def _seed_agents(db: Session, org: Organization) -> None:
                     )
                 )
                 print(f"      + permission: {resource}/{action} -> {allowed}")
+    db.flush()
+
+
+def _seed_policies(db: Session, org: Organization) -> None:
+    for name, resource, action, conditions, decision, priority in DEMO_POLICIES:
+        exists = db.execute(
+            select(Policy).where(Policy.organization_id == org.id, Policy.name == name)
+        ).scalar_one_or_none()
+        if exists is None:
+            db.add(
+                Policy(
+                    organization_id=org.id,
+                    name=name,
+                    description=f"Demo policy: {name}",
+                    resource=resource,
+                    action=action,
+                    conditions=conditions,
+                    decision=decision.value,
+                    priority=priority,
+                    enabled=True,
+                )
+            )
+            print(f"  + policy: {name} ({resource}/{action} -> {decision.value})")
+        else:
+            print(f"  = policy already exists: {name}")
+    db.flush()
 
 
 def seed() -> None:
@@ -148,6 +199,9 @@ def seed() -> None:
         org = _get_or_create_org(db)
         _seed_users(db, org)
         _seed_agents(db, org)
+        _seed_policies(db, org)
+        print("  seeding RBAC roles/permissions...")
+        rbac_service.seed_rbac(db, org)
         db.commit()
         print("Done.")
         print("\nLogin with:")

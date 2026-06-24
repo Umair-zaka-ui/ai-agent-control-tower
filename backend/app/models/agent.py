@@ -14,6 +14,7 @@ from app.core.enums import AgentStatus
 from app.models.mixins import TimestampMixin, UUIDPrimaryKeyMixin
 
 if TYPE_CHECKING:
+    from app.models.api_key import AgentApiKey
     from app.models.organization import Organization
     from app.models.permission import Permission
 
@@ -39,5 +40,8 @@ class Agent(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
     organization: Mapped["Organization"] = relationship(back_populates="agents")
     permissions: Mapped[list["Permission"]] = relationship(
+        back_populates="agent", cascade="all, delete-orphan"
+    )
+    api_keys: Mapped[list["AgentApiKey"]] = relationship(
         back_populates="agent", cascade="all, delete-orphan"
     )

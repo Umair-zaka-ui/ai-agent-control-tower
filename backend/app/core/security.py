@@ -68,6 +68,13 @@ def generate_api_key() -> str:
     return f"act_{secrets.token_urlsafe(32)}"
 
 
+def generate_agent_api_key() -> str:
+    """Generate a Phase 2 agent API key, e.g. ``agt_live_xxxxxxxx``."""
+    from app.core.config import settings
+
+    return f"{settings.API_KEY_PREFIX}{secrets.token_urlsafe(32)}"
+
+
 def hash_api_key(api_key: str) -> str:
     """Hash an API key for storage (SHA-256, never reversible)."""
     return hashlib.sha256(api_key.encode("utf-8")).hexdigest()

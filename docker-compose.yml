@@ -1,7 +1,11 @@
 # ---------------------------------------------------------------------------
-# Local PostgreSQL for the AI Agent Control Tower.
-# Start it with:  docker compose up -d
-# Then point DATABASE_URL in backend/.env at localhost:5432.
+# AI Agent Control Tower - local stack (API + PostgreSQL).
+#
+#   docker compose up -d --build          # build & run api + db
+#   docker compose up -d db               # just the database (for local dev)
+#
+# The api service runs migrations on start; set SEED_ON_START=true to also load
+# demo data on first boot.
 # ---------------------------------------------------------------------------
 services:
   db:
@@ -21,6 +25,23 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+
+  api:
+    build: ./backend
+    container_name: act_api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Inside the compose network the DB host is the service name "db".
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/agent_control_tower
+      JWT_SECRET_KEY: change-me-in-docker-compose
+      ACCESS_TOKEN_EXPIRE_MINUTES: "1440"
+      SEED_ON_START: "true"
+      NOTIFICATIONS_ENABLED: "false"
+    ports:
+      - "8000:8000"
 
 volumes:
   act_pgdata:

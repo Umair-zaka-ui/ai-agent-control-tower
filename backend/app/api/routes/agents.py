@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, require_roles
 from app.core.database import get_db
-from app.core.enums import ActorType, UserRole
+from app.core.enums import ActorType, AgentStatus, UserRole
 from app.core.security import generate_api_key, hash_api_key
 from app.models.agent import Agent
 from app.models.user import User
@@ -20,7 +20,7 @@ from app.schemas.agent import (
     AgentRead,
     AgentStatusUpdate,
 )
-from app.services import audit_service
+from app.services import audit_service, notification_service
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 
@@ -88,6 +88,7 @@ def get_agent(
 def update_agent_status(
     agent_id: uuid.UUID,
     payload: AgentStatusUpdate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)),
 ) -> Agent:
@@ -107,8 +108,26 @@ def update_agent_status(
         entity_id=agent.id,
         metadata={"from": previous.value, "to": agent.status.value},
     )
+
+    agent_name = agent.name
+    notify = payload.status == AgentStatus.SUSPENDED and previous != AgentStatus.SUSPENDED
+    recipients = _admin_emails(db, current_user.organization_id) if notify else []
     db.commit()
+
+    if notify and recipients:
+        background_tasks.add_task(
+            notification_service.notify_agent_suspended, recipients, agent_name=agent_name
+        )
     return agent
+
+
+def _admin_emails(db: Session, organization_id: uuid.UUID) -> list[str]:
+    stmt = select(User.email).where(
+        User.organization_id == organization_id,
+        User.is_active.is_(True),
+        User.role.in_([UserRole.SUPER_ADMIN, UserRole.ADMIN]),
+    )
+    return [e for (e,) in db.execute(stmt).all()]
 
 
 def _get_org_agent(db: Session, agent_id: uuid.UUID, current_user: User) -> Agent:

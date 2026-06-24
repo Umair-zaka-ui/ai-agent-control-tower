@@ -35,6 +35,18 @@ class Settings(BaseSettings):
         "http://localhost:5173",
     ]
 
+    # --- Phase 2: agent API keys ---
+    API_KEY_PREFIX: str = "agt_live_"
+
+    # --- Phase 2: email notifications (SMTP / Mailtrap for development) ---
+    NOTIFICATIONS_ENABLED: bool = False
+    SMTP_HOST: str = "sandbox.smtp.mailtrap.io"
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM: str = "no-reply@control-tower.local"
+    SMTP_USE_TLS: bool = True
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

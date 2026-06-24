@@ -27,6 +27,7 @@ class AgentActionDecisionResponse(BaseModel):
     decision_reason: str
     status: ActionStatus
     approval_id: uuid.UUID | None = None
+    matched_policy: str | None = None
 
 
 class AgentActionRead(BaseModel):
