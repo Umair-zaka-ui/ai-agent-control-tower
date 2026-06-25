@@ -23,8 +23,8 @@ export const approvalService = {
     return data
   },
 
-  async addComment(id: ID, body: string): Promise<ApprovalComment> {
-    const { data } = await apiClient.post<ApprovalComment>(`/approvals/${id}/comments`, { body })
+  async addComment(id: ID, comment: string): Promise<ApprovalComment> {
+    const { data } = await apiClient.post<ApprovalComment>(`/approvals/${id}/comments`, { comment })
     return data
   },
 }

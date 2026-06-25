@@ -10,8 +10,14 @@ auditors and operators can manage AI agents visually instead of via Swagger.
 > **Phase 3 — Part 2** delivers the working **authentication system and app
 > shell**: JWT login (React Hook Form + Zod) against the backend, token storage,
 > an Axios client that attaches the token and redirects to `/login` on 401, an
-> `AuthContext`, protected routes, the sidebar + top navbar, and logout. Feature
-> pages remain placeholders until Phase 3 Part 3.
+> `AuthContext`, protected routes, the sidebar + top navbar, and logout.
+>
+> **Phase 3 — Part 3.1** turns the dashboard into a live **operational control
+> center**: six KPI cards, an agent-activity line chart, a 30-day risk-trend
+> chart, a pending-approval queue with inline approve/reject, recent agent
+> actions, recent audit logs, and a system-health widget — all fed by the
+> backend, auto-refreshing every 60 seconds, with skeleton / error / empty
+> states throughout. Remaining feature pages stay placeholders until later.
 
 ## Tech stack
 
@@ -50,7 +56,32 @@ npm run dev       # start the Vite dev server (HMR)
 npm run build     # type-check (tsc -b) + production build
 npm run preview   # preview the production build
 npm run lint      # oxlint
+npm test          # run the Vitest unit/component suite
 ```
+
+## Dashboard (Part 3.1)
+
+The dashboard (`/dashboard`) is fully data-driven. Each widget is a small
+component backed by a TanStack Query hook that polls every 60s; a manual
+**Refresh** button re-fetches everything without a page reload. Charts
+(Recharts) are lazy-loaded so the shell paints fast.
+
+| Widget | Hook | Backend endpoint |
+| ------ | ---- | ---------------- |
+| KPI cards (6) | `useDashboardSummary` | `GET /dashboard/summary` |
+| Agent Activity chart | `useAgentActivity` | `GET /dashboard/activity?days=7` |
+| Risk Trend chart | `useRiskTrend` | `GET /dashboard/risk-trend?days=30` |
+| Pending Approvals | `usePendingApprovals` / `useApprovalActions` | `GET /dashboard/pending-approvals`, `POST /approvals/{id}/approve\|reject` |
+| Recent Agent Actions | `useRecentActions` | `GET /dashboard/recent-actions` |
+| Recent Audit Logs | `useRecentAuditLogs` | `GET /audit-logs?limit=` |
+| System Health | `useSystemHealth` | `GET /system/health` |
+
+The summary, activity, risk-trend and system-health endpoints were added to the
+FastAPI backend in this part; the rest already existed. When the organization
+has no agents, the dashboard shows a welcome / "Create Agent" onboarding state.
+
+> Screenshots: capture `/dashboard` once you have seeded demo data and drop them
+> in `docs/` — they aren't committed here to keep the repo lean.
 
 ## Project structure
 

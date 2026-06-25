@@ -16,6 +16,7 @@ from app.api.routes import (
     permissions,
     policies,
     rbac,
+    system,
     users,
 )
 
@@ -32,3 +33,4 @@ api_router.include_router(agent_actions.router)
 api_router.include_router(approvals.router)
 api_router.include_router(audit_logs.router)
 api_router.include_router(dashboard.router)
+api_router.include_router(system.router)

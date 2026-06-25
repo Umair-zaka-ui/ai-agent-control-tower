@@ -11,3 +11,6 @@ export const RISK_THRESHOLDS = {
   ALLOW_MAX: 40,
   APPROVAL_MAX: 80,
 } as const
+
+/** Dashboard auto-refresh interval (SRS Part 3.1: every 60 seconds). */
+export const DASHBOARD_REFRESH_MS = 60_000

@@ -1,26 +1,28 @@
 import type { ID, ISODateString } from './common'
 
-export type ApprovalStatus = 'PENDING' | 'APPROVED' | 'REJECTED'
+export type ApprovalDecision = 'PENDING' | 'APPROVED' | 'REJECTED'
 export type ApprovalPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'
 
+/** Approval record (matches the backend ApprovalRead schema). */
 export interface Approval {
   id: ID
+  organization_id: ID
   agent_action_id: ID
-  status: ApprovalStatus
+  requested_by_agent_id: ID
+  reviewed_by_user_id?: ID | null
+  decision: ApprovalDecision
   priority: ApprovalPriority
-  risk_score: number
-  sla_due_at?: ISODateString | null
-  reviewer_id?: ID | null
   review_comment?: string | null
+  sla_due_at?: ISODateString | null
   created_at: ISODateString
-  decided_at?: ISODateString | null
+  reviewed_at?: ISODateString | null
 }
 
 export interface ApprovalComment {
   id: ID
   approval_id: ID
-  author_id: ID
-  body: string
+  user_id?: ID | null
+  comment: string
   created_at: ISODateString
 }
 

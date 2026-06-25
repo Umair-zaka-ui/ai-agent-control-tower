@@ -8,9 +8,14 @@ export const QUERY_KEYS = {
   },
   dashboard: {
     summary: ['dashboard', 'summary'] as const,
+    activity: (days: number) => ['dashboard', 'activity', days] as const,
+    riskTrend: (days: number) => ['dashboard', 'risk-trend', days] as const,
     recentActions: ['dashboard', 'recent-actions'] as const,
-    highRiskActions: ['dashboard', 'high-risk-actions'] as const,
+    recentAuditLogs: ['dashboard', 'recent-audit-logs'] as const,
     pendingApprovals: ['dashboard', 'pending-approvals'] as const,
+  },
+  system: {
+    health: ['system', 'health'] as const,
   },
   agents: {
     all: ['agents'] as const,

@@ -13,6 +13,14 @@ export { Label } from './label'
 export { Separator } from './separator'
 export { Avatar, AvatarImage, AvatarFallback } from './avatar'
 export { Skeleton } from './skeleton'
+export {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from './table'
 export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from './tooltip'
 export {
   DropdownMenu,

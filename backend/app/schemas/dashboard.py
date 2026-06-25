@@ -17,6 +17,31 @@ class DashboardSummary(BaseModel):
     blocked_actions: int
     policies: int
     total_actions: int
+    today_actions: int
+
+
+class ActivityPoint(BaseModel):
+    """A single day in the agent-activity series (last 7 days)."""
+
+    date: str
+    actions: int
+
+
+class RiskTrendPoint(BaseModel):
+    """A single day in the organizational risk series (last 30 days)."""
+
+    date: str
+    risk_score: int
+
+
+class SystemHealth(BaseModel):
+    """Per-service health: each value is 'healthy', 'warning' or 'offline'."""
+
+    api: str
+    database: str
+    policy_engine: str
+    approval_engine: str
+    audit: str
 
 
 class RecentActionItem(BaseModel):

@@ -30,16 +30,29 @@ APIs. Dark, enterprise design language (Azure / Datadog / Stripe / Linear feel).
 - Service layer for every backend resource; typed domain models; data hooks.
 - Coding standards documented; project builds and runs with `npm run dev`.
 
-### Part 2+ — Feature build-out (planned)
+### Part 2 — Authentication & app shell ✅
 
-- Dashboard data wiring (summary KPIs, recent/high-risk actions, approvals).
+- JWT login (React Hook Form + Zod) wired to the backend; token storage.
+- Axios client attaches the token and redirects to `/login` on 401.
+- `AuthContext`, `ProtectedRoute`/`PublicRoute`, sidebar + top navbar, logout.
+
+### Part 3.1 — Live dashboard & data integration ✅
+
+- Six KPI cards, agent-activity + 30-day risk-trend charts (Recharts, lazy),
+  pending-approval queue (inline approve/reject), recent actions, recent audit
+  logs and a system-health widget — all live from the backend.
+- TanStack Query auto-refresh every 60s + manual refresh; skeleton/error/empty
+  states; route-level code splitting for charts.
+- New backend endpoints: `/dashboard/activity`, `/dashboard/risk-trend`,
+  `/system/health`, plus `today_actions` on `/dashboard/summary`.
+- Vitest unit/component tests added.
+
+### Part 3.2+ — Feature build-out (planned)
+
 - Agents management (table, status controls, API-key issuance).
 - Policy authoring (list, condition builder, priorities).
-- Approval queue (review/approve/reject, comments, SLA).
-- Audit timeline (filters, entity drill-down, export).
-- Analytics (risk distributions, decision breakdowns).
-- Users & RBAC management.
-- Role-based navigation gating, route-level code splitting, e2e tests.
+- Approval queue page (comments, SLA), audit timeline, analytics.
+- Users & RBAC management; role-based navigation gating; e2e tests.
 
 ## Future (Phase 4+)
 
