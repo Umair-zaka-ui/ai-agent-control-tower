@@ -4,6 +4,7 @@
 >
 > **Phase 1** (MVP): agents, permissions, risk scoring, approvals, audit logs.
 > **Phase 2** (production-oriented): agent API-key auth, a database-driven policy engine, advanced RBAC, email notifications, forensic audit, dashboard APIs, risk engine v2, and Docker. See the [Phase 2 guide](#phase-2--production-oriented-platform) below.
+> **Phase 3** (enterprise dashboard UI): a React 19 + TypeScript web console (`frontend/`) that consumes the Phase 1/2 APIs. **Part 1 (scaffold + app shell) is in progress** on the `phase-3-dashboard-ui` branch — see [`frontend/README.md`](frontend/README.md) and [`ROADMAP.md`](ROADMAP.md).
 
 As organizations hand more real-world tasks to autonomous AI agents (submitting claims, updating records, sending emails, moving money), they need a control plane that sits between the agent and the action. The **AI Agent Control Tower** is that control plane: every action an agent attempts is checked against permissions, scored for risk, and either **allowed**, **blocked**, or **routed to a human for approval** — and every decision is written to an immutable audit log.
 
@@ -54,6 +55,9 @@ Every decision — and every approval/rejection — writes an `audit_logs` entry
 ai-agent-control-tower/
 ├── docker-compose.yml          # local PostgreSQL
 ├── README.md
+├── ROADMAP.md                  # phase-by-phase roadmap
+├── docs/                       # phase notes (e.g. phase-3-part-1.md)
+├── frontend/                   # Phase 3 — React 19 + TypeScript dashboard
 └── backend/
     ├── alembic.ini
     ├── requirements.txt

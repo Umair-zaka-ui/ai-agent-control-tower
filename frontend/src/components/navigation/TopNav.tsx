@@ -1,0 +1,54 @@
+import { Bell, Menu, Search } from 'lucide-react'
+
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { ThemeToggle } from './ThemeToggle'
+import { UserMenu } from './UserMenu'
+
+interface TopNavProps {
+  /** Opens the mobile sidebar drawer. */
+  onMenuClick: () => void
+}
+
+/**
+ * Top navigation bar (SRS §8): search, notifications, theme toggle and the
+ * user/profile menu. Search + notifications are placeholders wired in a later
+ * Part.
+ */
+export function TopNav({ onMenuClick }: TopNavProps) {
+  return (
+    <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-border bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+      <Button
+        variant="ghost"
+        size="icon"
+        className="lg:hidden"
+        onClick={onMenuClick}
+        aria-label="Open navigation"
+      >
+        <Menu className="h-5 w-5" />
+      </Button>
+
+      {/* Search (placeholder) */}
+      <div className="relative hidden max-w-md flex-1 sm:block">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          type="search"
+          placeholder="Search agents, policies, actions…"
+          className="pl-9"
+          aria-label="Search"
+          disabled
+        />
+      </div>
+
+      <div className="ml-auto flex items-center gap-1">
+        <Button variant="ghost" size="icon" aria-label="Notifications" className="relative">
+          <Bell className="h-5 w-5" />
+          <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-primary" />
+        </Button>
+        <ThemeToggle />
+        <div className="mx-1 h-6 w-px bg-border" />
+        <UserMenu />
+      </div>
+    </header>
+  )
+}
