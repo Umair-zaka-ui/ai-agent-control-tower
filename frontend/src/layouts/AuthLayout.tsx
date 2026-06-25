@@ -14,7 +14,9 @@ export function AuthLayout() {
           <Logo />
           <div className="space-y-1">
             <h1 className="text-xl font-semibold text-foreground">AI Agent Control Tower</h1>
-            <p className="text-sm text-muted-foreground">Enterprise AI governance dashboard</p>
+            <p className="text-sm text-muted-foreground">
+              Govern, audit, and control autonomous AI agents.
+            </p>
           </div>
         </div>
 

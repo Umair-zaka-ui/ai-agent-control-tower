@@ -9,9 +9,9 @@ import { useAuth } from '@/hooks/useAuth'
  * straight to the dashboard.
  */
 export function PublicRoute() {
-  const { isAuthenticated, isInitializing } = useAuth()
+  const { isAuthenticated, isLoading } = useAuth()
 
-  if (isInitializing) {
+  if (isLoading) {
     return <FullPageSpinner />
   }
 

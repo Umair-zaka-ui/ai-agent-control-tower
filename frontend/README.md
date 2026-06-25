@@ -4,10 +4,14 @@ Enterprise AI governance dashboard. A React + TypeScript single-page app that
 consumes the Phase 1 / Phase 2 FastAPI backend so administrators, reviewers,
 auditors and operators can manage AI agents visually instead of via Swagger.
 
-> **Phase 3 — Part 1** delivers the project scaffold, tooling, dark enterprise
-> theme, base app shell (sidebar + top nav), auth scaffold and the
-> service/hook/type layers wired to the backend APIs. Feature pages are
-> placeholders that get built out in later Parts.
+> **Phase 3 — Part 1** delivered the project scaffold, tooling, dark enterprise
+> theme and the service/hook/type layers.
+>
+> **Phase 3 — Part 2** delivers the working **authentication system and app
+> shell**: JWT login (React Hook Form + Zod) against the backend, token storage,
+> an Axios client that attaches the token and redirects to `/login` on 401, an
+> `AuthContext`, protected routes, the sidebar + top navbar, and logout. Feature
+> pages remain placeholders until Phase 3 Part 3.
 
 ## Tech stack
 
@@ -52,11 +56,10 @@ npm run lint      # oxlint
 
 ```
 src/
-├── assets/          # static assets imported by code
 ├── components/
 │   ├── ui/          # shadcn/ui primitives (Button, Card, Input, …)
 │   ├── common/      # shared building blocks (PageHeader, EmptyState, Spinner)
-│   ├── navigation/  # Sidebar, TopNav, UserMenu, ThemeToggle
+│   ├── layout/      # AppSidebar, TopNavbar, ProtectedRoute, PublicRoute, UserMenu
 │   ├── dashboard/   # dashboard sections (StatsCards, StatCard)
 │   └── charts/      # Recharts wrappers (RiskTrendChart)
 ├── config/          # env + TanStack Query client
@@ -64,14 +67,27 @@ src/
 ├── contexts/        # Auth, Theme, Notifications providers
 ├── hooks/           # context + data hooks (useAuth, useAgents, …)
 ├── layouts/         # DashboardLayout, AuthLayout, ErrorLayout
-├── pages/           # route entry points
-├── routes/          # route tree + ProtectedRoute / PublicRoute guards
-├── services/        # Axios client + one service per backend resource
+├── pages/           # route entry points (auth/LoginPage, DashboardPage, …)
+├── routes/          # AppRoutes route tree
+├── services/        # apiClient + one service per backend resource
 ├── types/           # TypeScript domain types
-├── utils/           # cn, formatters, validation, permission helpers
+├── utils/           # tokenStorage, cn, formatters, validation, permissions
 ├── App.tsx          # provider stack + router
 └── main.tsx         # React entry
 ```
+
+## Authentication flow (Part 2)
+
+1. `/login` collects credentials, validated with Zod, and calls
+   `authService.login()` → `POST /auth/login`.
+2. The JWT is saved via `utils/tokenStorage` and `apiClient` attaches it as a
+   `Bearer` token on every request.
+3. On app load, `AuthContext` bootstraps from the stored token by calling
+   `GET /auth/me`; an invalid token is discarded.
+4. `ProtectedRoute` redirects unauthenticated users to `/login`; `PublicRoute`
+   keeps authenticated users out of `/login`.
+5. A `401` from the API clears the token and redirects to `/login`.
+6. Logout clears the token and returns to `/login`.
 
 ## Conventions
 

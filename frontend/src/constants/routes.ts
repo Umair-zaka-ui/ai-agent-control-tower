@@ -6,8 +6,9 @@ export const ROUTES = {
   // Auth
   LOGIN: '/login',
 
-  // Dashboard (app shell)
-  DASHBOARD: '/',
+  // Dashboard (app shell). `/` redirects to `/dashboard`.
+  ROOT: '/',
+  DASHBOARD: '/dashboard',
   AGENTS: '/agents',
   POLICIES: '/policies',
   APPROVALS: '/approvals',

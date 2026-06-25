@@ -4,12 +4,12 @@ import type { NavItem } from '@/constants/navigation'
 import { cn } from '@/utils/cn'
 
 /** A single sidebar link with active-state styling. */
-export function SidebarNavItem({ item }: { item: NavItem }) {
+export function SidebarNavItem({ item, onNavigate }: { item: NavItem; onNavigate?: () => void }) {
   const Icon = item.icon
   return (
     <NavLink
       to={item.path}
-      end={item.path === '/'}
+      onClick={onNavigate}
       className={({ isActive }) =>
         cn(
           'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',

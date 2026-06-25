@@ -1,5 +1,4 @@
-export { httpClient } from './httpClient'
-export { tokenStore } from './authToken'
+export { apiClient } from './apiClient'
 export { authService } from './authService'
 export { agentService } from './agentService'
 export { policyService } from './policyService'

@@ -7,36 +7,38 @@
  * Dark, enterprise theme only. Values are HSL channels so Tailwind can apply
  * opacity via `hsl(var(--token) / <alpha>)`.
  *
- *   Background  #0F172A  ->  222 47% 11%
- *   Cards       #1E293B  ->  217 33% 17%
- *   Primary     #2563EB  ->  221 83% 53%
- *   Success     #16A34A  ->  142 76% 36%
- *   Warning     #EAB308  ->   48 96% 53%
- *   Danger      #DC2626  ->    0 72% 51%
- *   Text        #F8FAFC  ->  210 40% 98%
+ *   Background  slate-950  #020617  ->  222 47% 7%
+ *   Cards       slate-900  #0F172A  ->  222 47% 11%
+ *   Borders     slate-800  #1E293B  ->  215 28% 17%
+ *   Muted text  slate-400  #94A3B8  ->  215 20% 65%
+ *   Primary     blue-600   #2563EB  ->  221 83% 53%
+ *   Success     green-600  #16A34A  ->  142 76% 36%
+ *   Warning     yellow-500 #EAB308  ->   48 96% 53%
+ *   Danger      red-600    #DC2626  ->    0 72% 51%
+ *   Text        slate-100  #F1F5F9  ->  210 40% 98%
  */
 
 @layer base {
   :root {
-    --background: 222 47% 11%;
+    --background: 222 47% 7%;
     --foreground: 210 40% 98%;
 
-    --card: 217 33% 17%;
+    --card: 222 47% 11%;
     --card-foreground: 210 40% 98%;
 
-    --popover: 217 33% 17%;
+    --popover: 222 47% 11%;
     --popover-foreground: 210 40% 98%;
 
     --primary: 221 83% 53%;
     --primary-foreground: 210 40% 98%;
 
-    --secondary: 217 33% 24%;
+    --secondary: 215 28% 22%;
     --secondary-foreground: 210 40% 98%;
 
-    --muted: 217 33% 20%;
+    --muted: 217 33% 16%;
     --muted-foreground: 215 20% 65%;
 
-    --accent: 217 33% 24%;
+    --accent: 215 28% 22%;
     --accent-foreground: 210 40% 98%;
 
     --destructive: 0 72% 51%;
@@ -48,14 +50,14 @@
     --warning: 48 96% 53%;
     --warning-foreground: 222 47% 11%;
 
-    --border: 217 33% 24%;
-    --input: 217 33% 24%;
+    --border: 215 28% 17%;
+    --input: 215 28% 17%;
     --ring: 221 83% 53%;
 
-    --sidebar: 222 47% 9%;
+    --sidebar: 222 47% 5%;
     --sidebar-foreground: 210 40% 98%;
-    --sidebar-border: 217 33% 20%;
-    --sidebar-accent: 217 33% 17%;
+    --sidebar-border: 215 28% 14%;
+    --sidebar-accent: 222 47% 11%;
 
     --radius: 0.5rem;
   }

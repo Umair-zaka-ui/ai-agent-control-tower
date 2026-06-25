@@ -1,4 +1,4 @@
-export { LoginPage } from './LoginPage'
+export { LoginPage } from './auth/LoginPage'
 export { DashboardPage } from './DashboardPage'
 export { AgentsPage } from './AgentsPage'
 export { PoliciesPage } from './PoliciesPage'

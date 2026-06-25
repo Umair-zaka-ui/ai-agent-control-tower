@@ -7,12 +7,12 @@ interface ComingSoonProps {
   title: string
   description: string
   icon: LucideIcon
-  /** What this page will do once built out in a later Part. */
+  /** What this page will do once built out in Phase 3 Part 3. */
   note?: string
 }
 
 /**
- * Standard scaffold for pages whose full UI lands in a later Part. Keeps every
+ * Standard scaffold for pages whose full UI lands in Phase 3 Part 3. Keeps every
  * placeholder page consistent and avoids duplicated markup.
  */
 export function ComingSoon({ title, description, icon, note }: ComingSoonProps) {
@@ -21,7 +21,7 @@ export function ComingSoon({ title, description, icon, note }: ComingSoonProps) 
       <PageHeader title={title} description={description} />
       <EmptyState
         icon={icon}
-        title="Coming in a later Part"
+        title="Coming in Phase 3 Part 3"
         description={note ?? 'This module is scaffolded. Its UI will be wired to the backend next.'}
       />
     </div>

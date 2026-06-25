@@ -6,7 +6,7 @@ export function AgentsPage() {
   return (
     <ComingSoon
       title="Agents"
-      description="Monitor, restart and disable your AI agents."
+      description="Register, monitor, and manage AI agents."
       icon={Bot}
       note="Agent management table, status controls and API-key issuance are wired here next."
     />

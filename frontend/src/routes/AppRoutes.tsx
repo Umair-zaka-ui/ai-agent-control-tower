@@ -1,5 +1,7 @@
-import { Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes } from 'react-router-dom'
 
+import { ProtectedRoute } from '@/components/layout/ProtectedRoute'
+import { PublicRoute } from '@/components/layout/PublicRoute'
 import { AuthLayout } from '@/layouts/AuthLayout'
 import { DashboardLayout } from '@/layouts/DashboardLayout'
 import { ROUTES } from '@/constants/routes'
@@ -16,8 +18,6 @@ import {
   SettingsPage,
   UsersPage,
 } from '@/pages'
-import { ProtectedRoute } from './ProtectedRoute'
-import { PublicRoute } from './PublicRoute'
 
 /** Application route tree (SRS §8 navigation). */
 export function AppRoutes() {
@@ -33,6 +33,8 @@ export function AppRoutes() {
       {/* Authenticated app shell */}
       <Route element={<ProtectedRoute />}>
         <Route element={<DashboardLayout />}>
+          {/* `/` redirects to the dashboard */}
+          <Route index element={<Navigate to={ROUTES.DASHBOARD} replace />} />
           <Route path={ROUTES.DASHBOARD} element={<DashboardPage />} />
           <Route path={ROUTES.AGENTS} element={<AgentsPage />} />
           <Route path={ROUTES.POLICIES} element={<PoliciesPage />} />

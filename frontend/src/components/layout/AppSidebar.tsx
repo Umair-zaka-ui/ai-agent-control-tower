@@ -6,7 +6,7 @@ import { PRIMARY_NAV } from '@/constants/navigation'
 import { cn } from '@/utils/cn'
 import { SidebarNavItem } from './SidebarNavItem'
 
-interface SidebarProps {
+interface AppSidebarProps {
   /** Mobile drawer open state. */
   open: boolean
   onClose: () => void
@@ -14,10 +14,9 @@ interface SidebarProps {
 
 /**
  * Primary navigation sidebar (SRS §8). Fixed on desktop, slide-over drawer on
- * mobile/tablet. Part 1 ships the placeholder shell; role-gating of items lands
- * in a later Part via `NavItem.roles`.
+ * mobile/tablet.
  */
-export function Sidebar({ open, onClose }: SidebarProps) {
+export function AppSidebar({ open, onClose }: AppSidebarProps) {
   return (
     <>
       {/* Mobile backdrop */}
@@ -51,13 +50,13 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
           {PRIMARY_NAV.map((item) => (
-            <SidebarNavItem key={item.path} item={item} />
+            <SidebarNavItem key={item.path} item={item} onNavigate={onClose} />
           ))}
         </nav>
 
         <div className="border-t border-sidebar-border p-4">
           <p className="text-[11px] text-muted-foreground">AI Agent Control Tower</p>
-          <p className="text-[11px] text-muted-foreground/70">Phase 3 · v0.3.0</p>
+          <p className="text-[11px] text-muted-foreground/70">Phase 3 · Part 2 · v0.3.0</p>
         </div>
       </aside>
     </>

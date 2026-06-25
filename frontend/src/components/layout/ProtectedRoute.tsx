@@ -6,14 +6,14 @@ import { useAuth } from '@/hooks/useAuth'
 
 /**
  * Gate for authenticated routes. While auth is bootstrapping from a stored
- * token we show a spinner; unauthenticated users are sent to login with the
- * attempted path preserved for post-login redirect.
+ * token we show a loading screen; unauthenticated users are sent to /login with
+ * the attempted path preserved for post-login redirect.
  */
 export function ProtectedRoute() {
-  const { isAuthenticated, isInitializing } = useAuth()
+  const { isAuthenticated, isLoading } = useAuth()
   const location = useLocation()
 
-  if (isInitializing) {
+  if (isLoading) {
     return <FullPageSpinner />
   }
 
