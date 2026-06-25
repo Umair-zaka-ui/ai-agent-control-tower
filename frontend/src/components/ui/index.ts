@@ -10,6 +10,7 @@ export {
 } from './card'
 export { Input } from './input'
 export { Label } from './label'
+export { Select, type SelectOption } from './select'
 export { Separator } from './separator'
 export { Avatar, AvatarImage, AvatarFallback } from './avatar'
 export { Skeleton } from './skeleton'

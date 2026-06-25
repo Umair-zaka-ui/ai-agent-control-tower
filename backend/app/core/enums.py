@@ -16,6 +16,21 @@ class AgentStatus(str, enum.Enum):
     ACTIVE = "ACTIVE"
     INACTIVE = "INACTIVE"
     SUSPENDED = "SUSPENDED"
+    ARCHIVED = "ARCHIVED"
+    BLOCKED = "BLOCKED"
+
+
+class RiskLevel(str, enum.Enum):
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
+    CRITICAL = "CRITICAL"
+
+
+class AgentHealth(str, enum.Enum):
+    HEALTHY = "HEALTHY"
+    WARNING = "WARNING"
+    OFFLINE = "OFFLINE"
 
 
 class ActionDecision(str, enum.Enum):

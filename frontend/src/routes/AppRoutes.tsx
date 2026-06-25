@@ -6,7 +6,6 @@ import { AuthLayout } from '@/layouts/AuthLayout'
 import { DashboardLayout } from '@/layouts/DashboardLayout'
 import { ROUTES } from '@/constants/routes'
 import {
-  AgentsPage,
   AnalyticsPage,
   ApprovalsPage,
   AuditPage,
@@ -18,6 +17,12 @@ import {
   SettingsPage,
   UsersPage,
 } from '@/pages'
+import {
+  AgentDetailsPage,
+  AgentEditPage,
+  AgentsListPage,
+  CreateAgentPage,
+} from '@/modules/agents'
 
 /** Application route tree (SRS §8 navigation). */
 export function AppRoutes() {
@@ -36,7 +41,10 @@ export function AppRoutes() {
           {/* `/` redirects to the dashboard */}
           <Route index element={<Navigate to={ROUTES.DASHBOARD} replace />} />
           <Route path={ROUTES.DASHBOARD} element={<DashboardPage />} />
-          <Route path={ROUTES.AGENTS} element={<AgentsPage />} />
+          <Route path={ROUTES.AGENTS} element={<AgentsListPage />} />
+          <Route path={`${ROUTES.AGENTS}/new`} element={<CreateAgentPage />} />
+          <Route path={`${ROUTES.AGENTS}/:id`} element={<AgentDetailsPage />} />
+          <Route path={`${ROUTES.AGENTS}/:id/edit`} element={<AgentEditPage />} />
           <Route path={ROUTES.POLICIES} element={<PoliciesPage />} />
           <Route path={ROUTES.APPROVALS} element={<ApprovalsPage />} />
           <Route path={ROUTES.AUDIT} element={<AuditPage />} />

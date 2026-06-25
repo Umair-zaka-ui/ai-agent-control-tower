@@ -4,7 +4,7 @@
 >
 > **Phase 1** (MVP): agents, permissions, risk scoring, approvals, audit logs.
 > **Phase 2** (production-oriented): agent API-key auth, a database-driven policy engine, advanced RBAC, email notifications, forensic audit, dashboard APIs, risk engine v2, and Docker. See the [Phase 2 guide](#phase-2--production-oriented-platform) below.
-> **Phase 3** (enterprise dashboard UI): a React 19 + TypeScript web console (`frontend/`) that consumes the Phase 1/2 APIs. Delivered: **Part 1** (scaffold + dark theme + app-shell), **Part 2** (JWT auth + sidebar/top-nav + route guards), **Part 3.1** (live operational dashboard — KPIs, charts, approval queue, recent actions/audit, system health, 60s auto-refresh). See [`frontend/README.md`](frontend/README.md) and [`ROADMAP.md`](ROADMAP.md).
+> **Phase 3** (enterprise dashboard UI): a React 19 + TypeScript web console (`frontend/`) that consumes the Phase 1/2 APIs. Delivered: **Part 1** (scaffold + dark theme + app-shell), **Part 2** (JWT auth + sidebar/top-nav + route guards), **Part 3.1** (live operational dashboard — KPIs, charts, approval queue, recent actions/audit, system health, 60s auto-refresh), **Part 3.2a** (agent-management module — server-driven table, create wizard, details + stats, edit, lifecycle). See [`frontend/README.md`](frontend/README.md) and [`ROADMAP.md`](ROADMAP.md).
 
 As organizations hand more real-world tasks to autonomous AI agents (submitting claims, updating records, sending emails, moving money), they need a control plane that sits between the agent and the action. The **AI Agent Control Tower** is that control plane: every action an agent attempts is checked against permissions, scored for risk, and either **allowed**, **blocked**, or **routed to a human for approval** — and every decision is written to an immutable audit log.
 
@@ -391,6 +391,14 @@ GET    /dashboard/activity            7-day agent-action counts
 GET    /dashboard/risk-trend          30-day average risk score
 GET    /system/health                 subsystem health for the dashboard
 # /dashboard/summary also returns today_actions
+
+# Agent management (added in Phase 3 Part 3.2a)
+GET    /agents                        paginated list: search/status/type/risk/sort
+PUT    /agents/{id}                   update agent metadata + config
+DELETE /agents/{id}                   delete an agent
+GET    /agents/{id}/stats             per-agent operational statistics
+# agents now carry owner, department, version, capabilities, risk config;
+# statuses add ARCHIVED and BLOCKED
 ```
 
 ### Authenticating as an agent (Phase 2)

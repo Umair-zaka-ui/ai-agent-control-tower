@@ -5,8 +5,8 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Enum, ForeignKey, String, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Boolean, Enum, ForeignKey, Integer, String, Text
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -37,6 +37,20 @@ class Agent(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         nullable=False,
         default=AgentStatus.ACTIVE,
     )
+
+    # --- Phase 3 Part 3.2: enterprise agent metadata ---
+    owner: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    department: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    version: Mapped[str] = mapped_column(String(50), nullable=False, default="1.0.0")
+    capabilities: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
+    default_risk_score: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    max_allowed_risk: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
+    human_approval_required: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    auto_suspend_threshold: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    risk_level: Mapped[str] = mapped_column(String(20), nullable=False, default="LOW")
+    health: Mapped[str] = mapped_column(String(20), nullable=False, default="HEALTHY")
 
     organization: Mapped["Organization"] = relationship(back_populates="agents")
     permissions: Mapped[list["Permission"]] = relationship(

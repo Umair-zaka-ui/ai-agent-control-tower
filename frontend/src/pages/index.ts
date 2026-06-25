@@ -1,6 +1,5 @@
 export { LoginPage } from './auth/LoginPage'
 export { DashboardPage } from './DashboardPage'
-export { AgentsPage } from './AgentsPage'
 export { PoliciesPage } from './PoliciesPage'
 export { ApprovalsPage } from './ApprovalsPage'
 export { AuditPage } from './AuditPage'

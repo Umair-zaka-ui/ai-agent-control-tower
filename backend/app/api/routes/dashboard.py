@@ -104,11 +104,11 @@ def agent_activity(
 
     rows = db.execute(
         select(
-            func.date(AgentAction.created_at).label("day"),
+            func.date(func.timezone("UTC", AgentAction.created_at)).label("day"),
             func.count(AgentAction.id),
         )
         .where(AgentAction.organization_id == org, AgentAction.created_at >= start)
-        .group_by(func.date(AgentAction.created_at))
+        .group_by(func.date(func.timezone("UTC", AgentAction.created_at)))
     ).all()
     counts = {str(day): total for day, total in rows}
 
@@ -137,11 +137,11 @@ def risk_trend(
 
     rows = db.execute(
         select(
-            func.date(AgentAction.created_at).label("day"),
+            func.date(func.timezone("UTC", AgentAction.created_at)).label("day"),
             func.avg(AgentAction.risk_score),
         )
         .where(AgentAction.organization_id == org, AgentAction.created_at >= start)
-        .group_by(func.date(AgentAction.created_at))
+        .group_by(func.date(func.timezone("UTC", AgentAction.created_at)))
     ).all()
     averages = {str(day): float(avg or 0) for day, avg in rows}
 

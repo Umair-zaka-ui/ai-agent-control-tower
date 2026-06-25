@@ -17,7 +17,17 @@ auditors and operators can manage AI agents visually instead of via Swagger.
 > chart, a pending-approval queue with inline approve/reject, recent agent
 > actions, recent audit logs, and a system-health widget — all fed by the
 > backend, auto-refreshing every 60 seconds, with skeleton / error / empty
-> states throughout. Remaining feature pages stay placeholders until later.
+> states throughout.
+>
+> **Phase 3 — Part 3.2a** adds the **Agent Management module** (`src/modules/agents/`):
+> a server-driven agents table (debounced search, status/type/risk filters,
+> sortable columns, pagination, CSV/JSON export, row lifecycle actions), a
+> five-step **Create Agent wizard** (with one-time API-key reveal), an agent
+> **Details** page (Overview + live stats) and an **Edit** form. The backend
+> gained agent metadata fields, two new statuses (ARCHIVED/BLOCKED), and
+> paginated list / update / delete / stats endpoints. (Activity timeline,
+> API-key rotation, permission matrix, policy assignment and bulk actions land
+> in Part 3.2b.)
 
 ## Tech stack
 
@@ -83,6 +93,24 @@ has no agents, the dashboard shows a welcome / "Create Agent" onboarding state.
 > Screenshots: capture `/dashboard` once you have seeded demo data and drop them
 > in `docs/` — they aren't committed here to keep the repo lean.
 
+## Agent Management module (Part 3.2a)
+
+Lives in `src/modules/agents/` and never mixes into dashboard code. All agent
+HTTP is in the module's `agentService`; pages use the module's hooks.
+
+| Page | Route | Backend |
+| ---- | ----- | ------- |
+| Agents list | `/agents` | `GET /agents` (search, status/type/risk filters, sort, pagination) |
+| Create wizard | `/agents/new` | `POST /agents` (returns one-time API key) |
+| Agent details | `/agents/:id` | `GET /agents/:id`, `GET /agents/:id/stats` |
+| Edit agent | `/agents/:id/edit` | `PUT /agents/:id` |
+| Lifecycle (suspend/activate/archive) | — | `PATCH /agents/:id/status` |
+| Delete | — | `DELETE /agents/:id` |
+
+Search debounces at 300ms; the table sorts and paginates server-side; export
+produces CSV/JSON from the loaded rows. The sidebar's **Agents** entry is an
+expandable group (All Agents / Create Agent).
+
 ## Project structure
 
 ```
@@ -98,6 +126,8 @@ src/
 ├── contexts/        # Auth, Theme, Notifications providers
 ├── hooks/           # context + data hooks (useAuth, useAgents, …)
 ├── layouts/         # DashboardLayout, AuthLayout, ErrorLayout
+├── modules/         # self-contained feature modules
+│   └── agents/      #   components / pages / hooks / services / types / utils / tests
 ├── pages/           # route entry points (auth/LoginPage, DashboardPage, …)
 ├── routes/          # AppRoutes route tree
 ├── services/        # apiClient + one service per backend resource

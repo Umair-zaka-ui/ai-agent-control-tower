@@ -13,12 +13,19 @@ import {
 import { ROUTES, type RoutePath } from './routes'
 import { ROLES, type Role } from './roles'
 
+export interface NavChild {
+  label: string
+  path: string
+}
+
 export interface NavItem {
   label: string
   path: RoutePath
   icon: LucideIcon
   /** Roles allowed to see this item. Empty = visible to all authenticated users. */
   roles: Role[]
+  /** Optional sub-items rendered as an expandable group. */
+  children?: NavChild[]
 }
 
 /**
@@ -27,7 +34,16 @@ export interface NavItem {
  */
 export const PRIMARY_NAV: NavItem[] = [
   { label: 'Dashboard', path: ROUTES.DASHBOARD, icon: LayoutDashboard, roles: [] },
-  { label: 'Agents', path: ROUTES.AGENTS, icon: Bot, roles: [] },
+  {
+    label: 'Agents',
+    path: ROUTES.AGENTS,
+    icon: Bot,
+    roles: [],
+    children: [
+      { label: 'All Agents', path: ROUTES.AGENTS },
+      { label: 'Create Agent', path: `${ROUTES.AGENTS}/new` },
+    ],
+  },
   {
     label: 'Policies',
     path: ROUTES.POLICIES,

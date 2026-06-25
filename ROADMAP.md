@@ -47,9 +47,23 @@ APIs. Dark, enterprise design language (Azure / Datadog / Stripe / Linear feel).
   `/system/health`, plus `today_actions` on `/dashboard/summary`.
 - Vitest unit/component tests added.
 
-### Part 3.2+ — Feature build-out (planned)
+### Part 3.2a — Agent management module ✅
 
-- Agents management (table, status controls, API-key issuance).
+- Backend: agent metadata fields (owner, department, version, capabilities,
+  risk config), ARCHIVED/BLOCKED statuses (migration 0003), paginated/searchable
+  list, `PUT`/`DELETE`/`/stats` endpoints. Fixed a Part 3.1 timezone bug.
+- Frontend `src/modules/agents/`: server-driven table (debounced search,
+  filters, sort, pagination, CSV/JSON export, row actions), 5-step Create wizard
+  with one-time API-key reveal, Details (Overview + live stats), Edit form,
+  expandable sidebar group. Vitest tests added.
+
+### Part 3.2b — Agent module, continued (planned)
+
+- Activity timeline, API-key rotation/management, permission matrix, agent↔policy
+  assignment (new join table), bulk actions, the remaining details tabs.
+
+### Part 3.3+ — Remaining modules (planned)
+
 - Policy authoring (list, condition builder, priorities).
 - Approval queue page (comments, SLA), audit timeline, analytics.
 - Users & RBAC management; role-based navigation gating; e2e tests.

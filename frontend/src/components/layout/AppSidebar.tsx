@@ -4,6 +4,7 @@ import { Logo } from '@/components/common/Logo'
 import { Button } from '@/components/ui/button'
 import { PRIMARY_NAV } from '@/constants/navigation'
 import { cn } from '@/utils/cn'
+import { SidebarNavGroup } from './SidebarNavGroup'
 import { SidebarNavItem } from './SidebarNavItem'
 
 interface AppSidebarProps {
@@ -49,9 +50,13 @@ export function AppSidebar({ open, onClose }: AppSidebarProps) {
         </div>
 
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
-          {PRIMARY_NAV.map((item) => (
-            <SidebarNavItem key={item.path} item={item} onNavigate={onClose} />
-          ))}
+          {PRIMARY_NAV.map((item) =>
+            item.children ? (
+              <SidebarNavGroup key={item.path} item={item} onNavigate={onClose} />
+            ) : (
+              <SidebarNavItem key={item.path} item={item} onNavigate={onClose} />
+            ),
+          )}
         </nav>
 
         <div className="border-t border-sidebar-border p-4">
