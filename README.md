@@ -399,6 +399,16 @@ DELETE /agents/{id}                   delete an agent
 GET    /agents/{id}/stats             per-agent operational statistics
 # agents now carry owner, department, version, capabilities, risk config;
 # statuses add ARCHIVED and BLOCKED
+
+# Policy management (added in Phase 3 Part 3.3)
+GET    /policies                      list: search + resource/action/decision/severity/status
+PUT    /policies/{id}                 update a policy (PATCH also accepted)
+PATCH  /policies/{id}/enable          enable a policy
+PATCH  /policies/{id}/disable         disable a policy
+POST   /policies/{id}/test            simulate an action against the policy
+GET    /policies/{id}/audit           policy lifecycle audit events
+GET    /policies/templates            built-in policy templates
+# policies now carry priority, severity, status, trigger_count, last_triggered_at
 ```
 
 ### Authenticating as an agent (Phase 2)
@@ -432,6 +442,40 @@ curl -X POST http://localhost:8000/agent-actions \
 ```
 
 Supported condition operators (keys are `"<field>_<op>"`): `_gt`, `_gte`, `_lt`, `_lte`, `_eq`, `_ne`, `_in`, `_contains`. A bare `"field": value` is an equality check. Empty `conditions` = always matches. All conditions are AND-ed.
+
+### Policy management UI (Phase 3 Part 3.3)
+
+The dashboard ships a full policy-authoring module at `/policies`
+(`frontend/src/modules/policies/`):
+
+- **Policy list** (`/policies`) — enterprise table with 300ms debounced search
+  (name/resource/action/description/decision), status/decision/severity/resource
+  filters, decision/severity/status badges, trigger counts, row actions
+  (View, Edit, Test, Duplicate, Enable/Disable, Delete) and CSV export.
+  Skeleton, empty and error states included.
+- **Create / Edit** (`/policies/new`, `/policies/:id/edit`) — a six-step builder
+  (Basic → Scope → Trigger → Conditions → Decision → Review) with a JSON
+  condition editor and a live plain-English preview; "Save as Draft" or publish.
+- **Details** (`/policies/:id`) — Overview, Conditions (human-readable + raw
+  JSON), Assigned Agents, Trigger History, Audit timeline and a Settings tab
+  with a danger-zone delete.
+- **Test** (`/policies/:id/test`) — simulate an agent action and inspect
+  matched / decision / risk score / triggered conditions / explanation.
+- **Templates** (`/policies/templates`) — gallery of built-in governance
+  templates; "Use Template" pre-seeds the builder.
+
+Role-based UI: ADMIN / SUPER_ADMIN can create, edit, enable/disable and delete;
+REVIEWER can view and test; everyone else is read-only. Deletes require typing
+`DELETE` to confirm. The backend RBAC layer remains the source of truth.
+
+Decision/severity/status badges degrade gracefully — an unrecognized value
+renders a neutral "Unknown" badge rather than breaking the page, so older or
+partially-migrated policy rows never blank the table. Restart the API after
+applying migration `0004` so `/policies` serves the new `severity`/`status`/
+`trigger_count` fields the UI reads.
+
+> Screenshots (policy list, builder and test page) can be captured from a local
+> `npm run dev` session and dropped into `docs/`.
 
 ### Email notifications (Mailtrap)
 

@@ -11,6 +11,17 @@ export {
 export { Input } from './input'
 export { Label } from './label'
 export { Select, type SelectOption } from './select'
+export { Textarea } from './textarea'
+export {
+  Dialog,
+  DialogTrigger,
+  DialogClose,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+  DialogDescription,
+} from './dialog'
 export { Separator } from './separator'
 export { Avatar, AvatarImage, AvatarFallback } from './avatar'
 export { Skeleton } from './skeleton'

@@ -12,7 +12,6 @@ import {
   DashboardPage,
   LoginPage,
   NotFoundPage,
-  PoliciesPage,
   ProfilePage,
   SettingsPage,
   UsersPage,
@@ -23,6 +22,14 @@ import {
   AgentsListPage,
   CreateAgentPage,
 } from '@/modules/agents'
+import {
+  CreatePolicyPage,
+  EditPolicyPage,
+  PoliciesPage,
+  PolicyDetailsPage,
+  PolicyTemplatesPage,
+  TestPolicyPage,
+} from '@/modules/policies'
 
 /** Application route tree (SRS §8 navigation). */
 export function AppRoutes() {
@@ -46,6 +53,11 @@ export function AppRoutes() {
           <Route path={`${ROUTES.AGENTS}/:id`} element={<AgentDetailsPage />} />
           <Route path={`${ROUTES.AGENTS}/:id/edit`} element={<AgentEditPage />} />
           <Route path={ROUTES.POLICIES} element={<PoliciesPage />} />
+          <Route path={`${ROUTES.POLICIES}/new`} element={<CreatePolicyPage />} />
+          <Route path={`${ROUTES.POLICIES}/templates`} element={<PolicyTemplatesPage />} />
+          <Route path={`${ROUTES.POLICIES}/:id`} element={<PolicyDetailsPage />} />
+          <Route path={`${ROUTES.POLICIES}/:id/edit`} element={<EditPolicyPage />} />
+          <Route path={`${ROUTES.POLICIES}/:id/test`} element={<TestPolicyPage />} />
           <Route path={ROUTES.APPROVALS} element={<ApprovalsPage />} />
           <Route path={ROUTES.AUDIT} element={<AuditPage />} />
           <Route path={ROUTES.ANALYTICS} element={<AnalyticsPage />} />

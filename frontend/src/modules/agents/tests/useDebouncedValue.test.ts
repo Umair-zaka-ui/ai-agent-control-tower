@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, renderHook } from '@testing-library/react'
 
-import { useDebouncedValue } from '../utils/useDebouncedValue'
+import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 
 describe('useDebouncedValue', () => {
   afterEach(() => vi.useRealTimers())

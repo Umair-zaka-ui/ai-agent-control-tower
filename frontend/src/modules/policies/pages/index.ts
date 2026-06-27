@@ -1,0 +1,6 @@
+export { PoliciesPage } from './PoliciesPage'
+export { CreatePolicyPage } from './CreatePolicyPage'
+export { PolicyDetailsPage } from './PolicyDetailsPage'
+export { EditPolicyPage } from './EditPolicyPage'
+export { TestPolicyPage } from './TestPolicyPage'
+export { PolicyTemplatesPage } from './PolicyTemplatesPage'

@@ -62,9 +62,21 @@ APIs. Dark, enterprise design language (Azure / Datadog / Stripe / Linear feel).
 - Activity timeline, API-key rotation/management, permission matrix, agent↔policy
   assignment (new join table), bulk actions, the remaining details tabs.
 
-### Part 3.3+ — Remaining modules (planned)
+### Part 3.3 — Policy management module ✅
 
-- Policy authoring (list, condition builder, priorities).
+- Backend: policy lifecycle fields (priority, severity, status, trigger
+  counters), `enable`/`disable`/`test`/`audit` endpoints and built-in policy
+  templates (migration 0004). Org-scoped CRUD with RBAC + audit logging.
+- Frontend `src/modules/policies/`: enterprise policy table (debounced search,
+  status/decision/severity/resource filters, CSV export, row actions), 6-step
+  policy builder with a JSON condition editor + live plain-English preview,
+  Details page (Overview, Conditions, Audit timeline, Settings/danger zone),
+  Edit form, Test/simulation panel and a template gallery. Role-based UI gating
+  (ADMIN/SUPER_ADMIN manage, REVIEWER tests, others view). Vitest tests added.
+
+### Part 3.4+ — Remaining modules (planned)
+
+- Per-agent policy scoping (agent↔policy assignment) and trigger history.
 - Approval queue page (comments, SLA), audit timeline, analytics.
 - Users & RBAC management; role-based navigation gating; e2e tests.
 

@@ -20,7 +20,7 @@ import {
 } from '../components'
 import { useAgents, useDeleteAgent, useUpdateAgentStatus } from '../hooks'
 import type { Agent, AgentSortField, AgentStatus } from '../types'
-import { useDebouncedValue } from '../utils/useDebouncedValue'
+import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 
 export function AgentsListPage() {
   const navigate = useNavigate()

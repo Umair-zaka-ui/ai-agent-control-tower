@@ -1,6 +1,5 @@
 export { apiClient } from './apiClient'
 export { authService } from './authService'
-export { policyService } from './policyService'
 export { approvalService } from './approvalService'
 export { auditService } from './auditService'
 export { dashboardService } from './dashboardService'

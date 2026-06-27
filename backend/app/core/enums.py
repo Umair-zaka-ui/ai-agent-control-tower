@@ -76,3 +76,20 @@ class ApprovalPriority(str, enum.Enum):
     MEDIUM = "MEDIUM"
     HIGH = "HIGH"
     CRITICAL = "CRITICAL"
+
+
+# --------------------------------------------------------------------------- #
+# Phase 3 Part 3.3 enums (policy management)
+# --------------------------------------------------------------------------- #
+class PolicySeverity(str, enum.Enum):
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
+    CRITICAL = "CRITICAL"
+
+
+class PolicyStatus(str, enum.Enum):
+    DRAFT = "DRAFT"
+    ENABLED = "ENABLED"
+    DISABLED = "DISABLED"
+    ARCHIVED = "ARCHIVED"

@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -36,3 +37,14 @@ class Policy(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     # Higher priority policies win when several match (e.g. 100 beats 10).
     priority: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, index=True)
+
+    # --- Phase 3 Part 3.3: policy management metadata ---
+    severity: Mapped[str] = mapped_column(String(20), nullable=False, default="MEDIUM")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="ENABLED")
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    trigger_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_triggered_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
