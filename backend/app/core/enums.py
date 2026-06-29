@@ -55,6 +55,9 @@ class ApprovalDecision(str, enum.Enum):
     PENDING = "PENDING"
     APPROVED = "APPROVED"
     REJECTED = "REJECTED"
+    # Phase 3 Part 3.4: human review workbench lifecycle states.
+    ESCALATED = "ESCALATED"
+    EXPIRED = "EXPIRED"
 
 
 class ActorType(str, enum.Enum):
@@ -93,3 +96,15 @@ class PolicyStatus(str, enum.Enum):
     ENABLED = "ENABLED"
     DISABLED = "DISABLED"
     ARCHIVED = "ARCHIVED"
+
+
+# --------------------------------------------------------------------------- #
+# Phase 3 Part 3.4 enums (approval workbench)
+# --------------------------------------------------------------------------- #
+class EscalationTarget(str, enum.Enum):
+    """Who an approval can be escalated to from the review workbench."""
+
+    REVIEWER = "REVIEWER"
+    MANAGER = "MANAGER"
+    COMPLIANCE_OFFICER = "COMPLIANCE_OFFICER"
+    SECURITY_TEAM = "SECURITY_TEAM"

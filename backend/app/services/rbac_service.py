@@ -34,7 +34,10 @@ PERMISSION_CATALOG: dict[str, str] = {
     "user.create": "Create users",
     "user.view": "View users",
     "rbac.manage": "Manage roles and role assignments",
+    "approval.view": "View the approval queue and review details",
     "approval.review": "Approve or reject pending actions",
+    "approval.escalate": "Escalate approvals to another reviewer or team",
+    "approval.assign": "Assign or reassign approval reviewers",
     "audit.view": "View audit logs",
     "dashboard.view": "View dashboard metrics",
     "agent_action.create": "Submit agent actions",
@@ -42,13 +45,21 @@ PERMISSION_CATALOG: dict[str, str] = {
 }
 
 _ALL = set(PERMISSION_CATALOG)
-_READ_ONLY = {"agent.view", "policy.view", "audit.view", "dashboard.view", "agent_action.view"}
+_READ_ONLY = {
+    "agent.view",
+    "policy.view",
+    "audit.view",
+    "dashboard.view",
+    "agent_action.view",
+    "approval.view",
+}
 
 # Built-in role -> permission codes.
 SYSTEM_ROLE_PERMISSIONS: dict[str, set[str]] = {
     UserRole.SUPER_ADMIN.value: set(_ALL),
     UserRole.ADMIN.value: _ALL - {"rbac.manage"},
-    UserRole.REVIEWER.value: _READ_ONLY | {"approval.review", "agent_action.create"},
+    UserRole.REVIEWER.value: _READ_ONLY
+    | {"approval.review", "approval.escalate", "approval.assign", "agent_action.create"},
     UserRole.VIEWER.value: set(_READ_ONLY),
 }
 

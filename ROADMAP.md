@@ -74,11 +74,25 @@ APIs. Dark, enterprise design language (Azure / Datadog / Stripe / Linear feel).
   Edit form, Test/simulation panel and a template gallery. Role-based UI gating
   (ADMIN/SUPER_ADMIN manage, REVIEWER tests, others view). Vitest tests added.
 
-### Part 3.4+ — Remaining modules (planned)
+### Part 3.4 — Approval queue & human review workbench ✅
+
+- Backend: enriched approval APIs — filterable queue (`GET /approvals`),
+  statistics, full detail (agent/policy/risk/payload/comments), audit-derived
+  timeline, plus `escalate`/`assign` actions, history and escalations boards
+  (migration 0005 adds `assigned_to_user_id`/`escalation_target`/`escalated_at`,
+  the `ESCALATED`/`EXPIRED` decision states and `approval.view`/`escalate`/
+  `assign` RBAC codes). Org-scoped with RBAC + audit logging.
+- Frontend `src/modules/approvals/`: statistics cards, filterable approval queue
+  (debounced search, status/priority/risk filters, bulk approve, CSV export),
+  approval details page, the review workbench (approve/reject/escalate/assign
+  with validated dialogs + comment thread), recharts risk breakdown, decision
+  timeline, history table and an escalations board with live SLA countdowns.
+  Role-based UI gating (`approval.view/review/escalate/assign`). Vitest tests added.
+
+### Part 3.5+ — Remaining modules (planned)
 
 - Per-agent policy scoping (agent↔policy assignment) and trigger history.
-- Approval queue page (comments, SLA), audit timeline, analytics.
-- Users & RBAC management; role-based navigation gating; e2e tests.
+- Users & RBAC management; role-based navigation gating; analytics; e2e tests.
 
 ## Future (Phase 4+)
 

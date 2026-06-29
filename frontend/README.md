@@ -28,6 +28,20 @@ auditors and operators can manage AI agents visually instead of via Swagger.
 > paginated list / update / delete / stats endpoints. (Activity timeline,
 > API-key rotation, permission matrix, policy assignment and bulk actions land
 > in Part 3.2b.)
+>
+> **Phase 3 — Part 3.3** adds the **Policy Management module** (`src/modules/policies/`):
+> an enterprise policy table, a six-step policy builder with a live plain-English
+> preview, Details/Edit/Test pages and a template gallery.
+>
+> **Phase 3 — Part 3.4** adds the **Approval Queue & Human Review Workbench**
+> (`src/modules/approvals/`): statistics cards, a filterable approval queue
+> (debounced search, status/priority/risk filters, bulk approve, CSV export), an
+> approval **Details** page (agent/policy/risk/payload/comments + decision
+> timeline), the **Review Workbench** (`/approvals/:id/review`) with a sticky
+> Approve / Reject / Escalate / Assign decision panel and validated dialogs, a
+> recharts **risk breakdown**, and dedicated **History** and **Escalations**
+> (live SLA countdown) boards. UI actions are gated by the `approval.view`,
+> `approval.review`, `approval.escalate` and `approval.assign` RBAC codes.
 
 ## Tech stack
 

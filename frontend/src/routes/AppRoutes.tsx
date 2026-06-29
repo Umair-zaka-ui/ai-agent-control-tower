@@ -7,7 +7,6 @@ import { DashboardLayout } from '@/layouts/DashboardLayout'
 import { ROUTES } from '@/constants/routes'
 import {
   AnalyticsPage,
-  ApprovalsPage,
   AuditPage,
   DashboardPage,
   LoginPage,
@@ -30,6 +29,13 @@ import {
   PolicyTemplatesPage,
   TestPolicyPage,
 } from '@/modules/policies'
+import {
+  ApprovalDetailsPage,
+  ApprovalHistoryPage,
+  ApprovalsPage,
+  EscalationsPage,
+  ReviewWorkbenchPage,
+} from '@/modules/approvals'
 
 /** Application route tree (SRS §8 navigation). */
 export function AppRoutes() {
@@ -59,6 +65,10 @@ export function AppRoutes() {
           <Route path={`${ROUTES.POLICIES}/:id/edit`} element={<EditPolicyPage />} />
           <Route path={`${ROUTES.POLICIES}/:id/test`} element={<TestPolicyPage />} />
           <Route path={ROUTES.APPROVALS} element={<ApprovalsPage />} />
+          <Route path={`${ROUTES.APPROVALS}/history`} element={<ApprovalHistoryPage />} />
+          <Route path={`${ROUTES.APPROVALS}/escalations`} element={<EscalationsPage />} />
+          <Route path={`${ROUTES.APPROVALS}/:id`} element={<ApprovalDetailsPage />} />
+          <Route path={`${ROUTES.APPROVALS}/:id/review`} element={<ReviewWorkbenchPage />} />
           <Route path={ROUTES.AUDIT} element={<AuditPage />} />
           <Route path={ROUTES.ANALYTICS} element={<AnalyticsPage />} />
           <Route path={ROUTES.USERS} element={<UsersPage />} />
