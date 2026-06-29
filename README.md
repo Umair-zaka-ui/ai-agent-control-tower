@@ -4,7 +4,7 @@
 >
 > **Phase 1** (MVP): agents, permissions, risk scoring, approvals, audit logs.
 > **Phase 2** (production-oriented): agent API-key auth, a database-driven policy engine, advanced RBAC, email notifications, forensic audit, dashboard APIs, risk engine v2, and Docker. See the [Phase 2 guide](#phase-2--production-oriented-platform) below.
-> **Phase 3** (enterprise dashboard UI): a React 19 + TypeScript web console (`frontend/`) that consumes the Phase 1/2 APIs. Delivered: **Part 1** (scaffold + dark theme + app-shell), **Part 2** (JWT auth + sidebar/top-nav + route guards), **Part 3.1** (live operational dashboard — KPIs, charts, approval queue, recent actions/audit, system health, 60s auto-refresh), **Part 3.2a** (agent-management module — server-driven table, create wizard, details + stats, edit, lifecycle). See [`frontend/README.md`](frontend/README.md) and [`ROADMAP.md`](ROADMAP.md).
+> **Phase 3** (enterprise dashboard UI): a React 19 + TypeScript web console (`frontend/`) that consumes the Phase 1/2 APIs. Delivered: **Part 1** (scaffold + dark theme + app-shell), **Part 2** (JWT auth + sidebar/top-nav + route guards), **Part 3.1** (live operational dashboard — KPIs, charts, approval queue, recent actions/audit, system health, 60s auto-refresh), **Part 3.2a** (agent-management module — server-driven table, create wizard, details + stats, edit, lifecycle), **Part 3.3** (policy-management module), **Part 3.4** (approval queue & human review workbench — statistics cards, filterable queue, detail page, review workbench with approve/reject/escalate/assign, risk breakdown, audit timeline, history & escalations boards). See [`frontend/README.md`](frontend/README.md) and [`ROADMAP.md`](ROADMAP.md).
 
 As organizations hand more real-world tasks to autonomous AI agents (submitting claims, updating records, sending emails, moving money), they need a control plane that sits between the agent and the action. The **AI Agent Control Tower** is that control plane: every action an agent attempts is checked against permissions, scored for risk, and either **allowed**, **blocked**, or **routed to a human for approval** — and every decision is written to an immutable audit log.
 
@@ -324,7 +324,7 @@ pytest
 | Agents        | `POST /agents`, `GET /agents`, `GET /agents/{id}`, `PATCH /agents/{id}/status`          |
 | Permissions   | `POST /permissions`, `GET /permissions`, `GET /permissions/agent/{agent_id}`           |
 | Agent actions | `POST /agent-actions`, `GET /agent-actions`, `GET /agent-actions/{id}`                  |
-| Approvals     | `GET /approvals/pending`, `POST /approvals/{id}/approve`, `POST /approvals/{id}/reject` |
+| Approvals     | `GET /approvals`, `GET /approvals/{id}`, `GET /approvals/statistics`, `GET /approvals/history`, `GET /approvals/escalations`, `POST /approvals/{id}/approve\|reject\|escalate\|assign` |
 | Audit logs    | `GET /audit-logs`, `GET /audit-logs/entity/{entity_type}/{entity_id}`                   |
 
 `POST /auth/register` bootstraps a brand-new organization plus its first `SUPER_ADMIN` user and returns a JWT — handy for creating your own tenant outside the demo seed.
@@ -409,6 +409,18 @@ POST   /policies/{id}/test            simulate an action against the policy
 GET    /policies/{id}/audit           policy lifecycle audit events
 GET    /policies/templates            built-in policy templates
 # policies now carry priority, severity, status, trigger_count, last_triggered_at
+
+# Approval queue & review workbench (added in Phase 3 Part 3.4)
+GET    /approvals                      filterable queue: status/priority/risk range/search
+GET    /approvals/statistics          pending / approved today / rejected today / escalated / avg review time
+GET    /approvals/{id}                full detail: agent, policy, risk breakdown, payload, comments
+GET    /approvals/{id}/timeline       audit-derived review timeline
+POST   /approvals/{id}/escalate       escalate to reviewer/manager/compliance/security (reason required)
+POST   /approvals/{id}/assign         assign or reassign the responsible reviewer
+GET    /approvals/history             resolved approvals (approved/rejected/escalated/expired)
+GET    /approvals/escalations         active escalations with SLA countdown
+# approvals now carry assigned_to_user_id, escalation_target, escalated_at;
+# approval_decision adds ESCALATED and EXPIRED; new RBAC codes approval.view/escalate/assign
 ```
 
 ### Authenticating as an agent (Phase 2)
@@ -476,6 +488,47 @@ applying migration `0004` so `/policies` serves the new `severity`/`status`/
 
 > Screenshots (policy list, builder and test page) can be captured from a local
 > `npm run dev` session and dropped into `docs/`.
+
+### Approval queue & review workbench UI (Phase 3 Part 3.4)
+
+The dashboard ships the operational heart of AI governance at `/approvals`
+(`frontend/src/modules/approvals/`) — where humans inspect, approve, reject,
+escalate and audit AI agent decisions:
+
+- **Approval dashboard** (`/approvals`) — five statistics cards (Pending,
+  Approved Today, Rejected Today, Escalated, Avg Review Time), 300ms debounced
+  search (ID/agent/resource/reviewer), status/priority/risk-range filters,
+  colour-coded status/priority/risk badges, row-level Approve/Reject and bulk
+  approve with checkbox selection, plus CSV export. Skeleton, empty and error
+  states included.
+- **Approval details** (`/approvals/:id`) — summary card, agent information,
+  policy explanation (matched rule + conditions), risk assessment with a
+  recharts pie breakdown, a collapsible JSON payload viewer (copy/download),
+  the decision-history timeline and reviewer notes. Export the full payload as
+  JSON.
+- **Review workbench** (`/approvals/:id/review`) — the most important page: a
+  sticky decision panel (Approve, Reject, Escalate, Assign/Reassign) beside the
+  payload, risk analysis, policy explanation and a live comment composer.
+  Approve requires a note; reject requires a ≥20-character reason; escalate
+  routes to Reviewer/Manager/Compliance Officer/Security Team with a reason.
+- **History** (`/approvals/history`) — every resolved decision, searchable and
+  filterable by status, with CSV export.
+- **Escalations** (`/approvals/escalations`) — active escalations as cards with
+  live SLA countdowns (overdue/urgent highlighting) and the responsible reviewer.
+
+Role-based UI: the queue is visible to anyone with `approval.view`; Approve /
+Reject (and commenting) require `approval.review`, Escalate requires
+`approval.escalate`, and Assign requires `approval.assign`. Restricted actions
+are hidden in the UI, and the backend RBAC layer still enforces them. Restart
+the API after applying migration `0005` so `/approvals` serves the new
+`assigned_to_user_id` / `escalation_target` columns and the `ESCALATED` /
+`EXPIRED` decision states the UI reads.
+
+Architecture, data-flow diagrams (Mermaid) and the endpoint→UI map for this
+module live in [`docs/phase-3-part-4.md`](docs/phase-3-part-4.md).
+
+> Screenshots (approval queue, review workbench, details and timeline) can be
+> captured from a local `npm run dev` session and dropped into `docs/`.
 
 ### Email notifications (Mailtrap)
 

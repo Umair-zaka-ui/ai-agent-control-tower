@@ -6,6 +6,7 @@ threaded reviewer comments.
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
@@ -15,6 +16,7 @@ from app.core.enums import (
     ActorType,
     ApprovalDecision,
     ApprovalPriority,
+    EscalationTarget,
 )
 from app.models.agent_action import AgentAction
 from app.models.approval import Approval, ApprovalComment
@@ -126,8 +128,82 @@ def reject_action(db: Session, approval: Approval, reviewer: User, comment: str 
     )
 
 
+def escalate_action(
+    db: Session,
+    approval: Approval,
+    reviewer: User,
+    target: EscalationTarget,
+    reason: str,
+    assignee_id: uuid.UUID | None = None,
+) -> Approval:
+    """Escalate a pending approval to a person or team.
+
+    The approval moves to the ESCALATED state (still awaiting a final decision)
+    and records who it was escalated to and why.
+    """
+    approval.decision = ApprovalDecision.ESCALATED
+    approval.escalation_target = target.value
+    approval.escalated_at = datetime.now(timezone.utc)
+    if assignee_id is not None:
+        approval.assigned_to_user_id = assignee_id
+    # Keep the reason visible in the review_comment field and the thread.
+    db.add(ApprovalComment(approval_id=approval.id, user_id=reviewer.id, comment=reason))
+    db.flush()
+
+    audit_service.log_event(
+        db,
+        organization_id=approval.organization_id,
+        actor_type=ActorType.USER,
+        actor_id=reviewer.id,
+        event_type="APPROVAL_ESCALATED",
+        entity_type="approval",
+        entity_id=approval.id,
+        metadata={
+            "agent_action_id": str(approval.agent_action_id),
+            "target": target.value,
+            "reason": reason,
+            "assigned_to_user_id": str(assignee_id) if assignee_id else None,
+        },
+    )
+    return approval
+
+
+def assign_reviewer(
+    db: Session, approval: Approval, actor: User, assignee_id: uuid.UUID
+) -> Approval:
+    """Assign (or reassign) the reviewer responsible for an approval."""
+    approval.assigned_to_user_id = assignee_id
+    db.flush()
+
+    audit_service.log_event(
+        db,
+        organization_id=approval.organization_id,
+        actor_type=ActorType.USER,
+        actor_id=actor.id,
+        event_type="APPROVAL_ASSIGNED",
+        entity_type="approval",
+        entity_id=approval.id,
+        metadata={
+            "agent_action_id": str(approval.agent_action_id),
+            "assigned_to_user_id": str(assignee_id),
+        },
+    )
+    return approval
+
+
 def add_comment(db: Session, approval: Approval, user: User, comment: str) -> ApprovalComment:
     record = ApprovalComment(approval_id=approval.id, user_id=user.id, comment=comment)
     db.add(record)
     db.flush()
+
+    audit_service.log_event(
+        db,
+        organization_id=approval.organization_id,
+        actor_type=ActorType.USER,
+        actor_id=user.id,
+        event_type="APPROVAL_COMMENTED",
+        entity_type="approval",
+        entity_id=approval.id,
+        metadata={"agent_action_id": str(approval.agent_action_id)},
+    )
     return record

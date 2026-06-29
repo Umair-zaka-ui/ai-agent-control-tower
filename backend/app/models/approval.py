@@ -44,6 +44,13 @@ class Approval(Base, UUIDPrimaryKeyMixin):
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
     )
+    # Phase 3 Part 3.4: the reviewer this approval is currently assigned to.
+    assigned_to_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     decision: Mapped[ApprovalDecision] = mapped_column(
         Enum(ApprovalDecision, name="approval_decision"),
         nullable=False,
@@ -58,6 +65,10 @@ class Approval(Base, UUIDPrimaryKeyMixin):
     review_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
     # SLA deadline by which this approval should be reviewed.
     sla_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Phase 3 Part 3.4: escalation target (e.g. MANAGER, COMPLIANCE_OFFICER) and
+    # when the approval was escalated, for the escalations workbench.
+    escalation_target: Mapped[str | None] = mapped_column(Text, nullable=True)
+    escalated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
