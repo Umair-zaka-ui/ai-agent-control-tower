@@ -4,7 +4,7 @@
 >
 > **Phase 1** (MVP): agents, permissions, risk scoring, approvals, audit logs.
 > **Phase 2** (production-oriented): agent API-key auth, a database-driven policy engine, advanced RBAC, email notifications, forensic audit, dashboard APIs, risk engine v2, and Docker. See the [Phase 2 guide](#phase-2--production-oriented-platform) below.
-> **Phase 3** (enterprise dashboard UI): a React 19 + TypeScript web console (`frontend/`) that consumes the Phase 1/2 APIs. Delivered: **Part 1** (scaffold + dark theme + app-shell), **Part 2** (JWT auth + sidebar/top-nav + route guards), **Part 3.1** (live operational dashboard — KPIs, charts, approval queue, recent actions/audit, system health, 60s auto-refresh), **Part 3.2a** (agent-management module — server-driven table, create wizard, details + stats, edit, lifecycle), **Part 3.3** (policy-management module), **Part 3.4** (approval queue & human review workbench — statistics cards, filterable queue, detail page, review workbench with approve/reject/escalate/assign, risk breakdown, audit timeline, history & escalations boards). See [`frontend/README.md`](frontend/README.md) and [`ROADMAP.md`](ROADMAP.md).
+> **Phase 3** (enterprise dashboard UI): a React 19 + TypeScript web console (`frontend/`) that consumes the Phase 1/2 APIs. Delivered: **Part 1** (scaffold + dark theme + app-shell), **Part 2** (JWT auth + sidebar/top-nav + route guards), **Part 3.1** (live operational dashboard — KPIs, charts, approval queue, recent actions/audit, system health, 60s auto-refresh), **Part 3.2a** (agent-management module — server-driven table, create wizard, details + stats, edit, lifecycle), **Part 3.3** (policy-management module), **Part 3.4** (approval queue & human review workbench — statistics cards, filterable queue, detail page, review workbench with approve/reject/escalate/assign, risk breakdown, audit timeline, history & escalations boards), **Part 3.5** (enterprise Audit & Compliance Center — audit dashboard with statistics + activity timeline + recent events, a filterable/searchable/paginated events explorer, forensic event detail with request/response viewers and a related-events flow, plus RBAC-gated security & compliance dashboards and a multi-format export center). See [`frontend/README.md`](frontend/README.md) and [`ROADMAP.md`](ROADMAP.md).
 
 As organizations hand more real-world tasks to autonomous AI agents (submitting claims, updating records, sending emails, moving money), they need a control plane that sits between the agent and the action. The **AI Agent Control Tower** is that control plane: every action an agent attempts is checked against permissions, scored for risk, and either **allowed**, **blocked**, or **routed to a human for approval** — and every decision is written to an immutable audit log.
 
@@ -326,6 +326,7 @@ pytest
 | Agent actions | `POST /agent-actions`, `GET /agent-actions`, `GET /agent-actions/{id}`                  |
 | Approvals     | `GET /approvals`, `GET /approvals/{id}`, `GET /approvals/statistics`, `GET /approvals/history`, `GET /approvals/escalations`, `POST /approvals/{id}/approve\|reject\|escalate\|assign` |
 | Audit logs    | `GET /audit-logs`, `GET /audit-logs/entity/{entity_type}/{entity_id}`                   |
+| Audit center  | `GET /audit`, `GET /audit/{id}`, `GET /audit/statistics`, `GET /audit/timeline`, `GET /audit/events`, `GET /audit/security`, `GET /audit/compliance`, `GET /audit/export` (Part 3.5; `audit.view` for the table/detail, `audit.export` for security/compliance/export and raw payloads) |
 
 `POST /auth/register` bootstraps a brand-new organization plus its first `SUPER_ADMIN` user and returns a JWT — handy for creating your own tenant outside the demo seed.
 
@@ -529,6 +530,47 @@ module live in [`docs/phase-3-part-4.md`](docs/phase-3-part-4.md).
 
 > Screenshots (approval queue, review workbench, details and timeline) can be
 > captured from a local `npm run dev` session and dropped into `docs/`.
+
+### Audit & Compliance Center UI (Phase 3 Part 3.5)
+
+The audit module at `/audit` (`frontend/src/modules/audit/`) gives every
+significant platform event complete traceability — who/what/when/why and what
+happened — over the immutable `audit_logs` trail. Severity, category, decision
+and human status are *derived* on the backend (`audit_view`); no new columns are
+stored.
+
+- **Audit dashboard** (`/audit`) — six statistics cards (Total Events, Security
+  Events, Policy Evaluations, Approval Events, Authentication, Config Changes),
+  an activity timeline (clickable, newest first), a Recent Events list, and —
+  for `audit.export` holders — security and compliance snapshots.
+- **Events explorer** (`/audit/events`) — the full enriched table (Timestamp,
+  Event ID, Actor, Event Type, Resource, Decision, Severity, Status) with 300ms
+  debounced search, filters (event type/category/actor/severity/decision/date
+  range) and server-side pagination. Skeleton, empty and error states included.
+- **Event detail** (`/audit/:id`) — forensic summary (actor, request/correlation/
+  session ids, IP, policy, risk, reason), a Request viewer and a Response &
+  Decision viewer (collapsible JSON with copy/download), and a Related Events
+  flow tracing the shared correlation id (request → policy → approval →
+  execution). Raw payloads and JSON export are gated on `audit.export`.
+- **Security dashboard** (`/audit/security`) — failed logins, blocked agents,
+  disabled API keys, permission violations, suspicious activity and critical
+  alerts, plus a recent security-events table. Requires `audit.export`.
+- **Compliance dashboard** (`/audit/compliance`) — informational HIPAA / SOC 2 /
+  ISO 27001 readiness with policy, approval and audit-completeness coverage bars.
+  Requires `audit.export`.
+- **Export center** (`/audit/export`) — apply filters, preview the selection,
+  then export the full matching set as CSV or JSON (PDF is a placeholder).
+  Requires `audit.export`.
+
+Role-based UI: the dashboard, events table and event detail are visible to
+anyone with `audit.view` (all built-in roles); the export center, security and
+compliance dashboards, and raw request/response payloads require `audit.export`
+(SUPER_ADMIN / ADMIN). Restricted surfaces render an access-denied state and the
+backend RBAC layer still enforces every call.
+
+> Screenshots (audit dashboard, event detail, security and compliance
+> dashboards) can be captured from a local `npm run dev` session and dropped
+> into `docs/`.
 
 ### Email notifications (Mailtrap)
 

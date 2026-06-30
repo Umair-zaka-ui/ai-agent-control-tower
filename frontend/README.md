@@ -42,6 +42,18 @@ auditors and operators can manage AI agents visually instead of via Swagger.
 > recharts **risk breakdown**, and dedicated **History** and **Escalations**
 > (live SLA countdown) boards. UI actions are gated by the `approval.view`,
 > `approval.review`, `approval.escalate` and `approval.assign` RBAC codes.
+>
+> **Phase 3 — Part 3.5** adds the **Audit & Compliance Center**
+> (`src/modules/audit/`): an audit **dashboard** (`/audit`) with six statistics
+> cards, an activity timeline and recent events; an **events explorer**
+> (`/audit/events`) with debounced search, event-type/category/actor/severity/
+> decision/date filters and server-side pagination; a forensic **event detail**
+> (`/audit/:id`) with request/response JSON viewers and a related-events flow;
+> and RBAC-gated **security** (`/audit/security`) and **compliance**
+> (`/audit/compliance`) dashboards plus an **export center** (`/audit/export`,
+> CSV/JSON). The dashboard/table/detail need `audit.view`; security, compliance,
+> export and raw payloads need `audit.export`. See
+> [`docs/phase-3-part-5.md`](../docs/phase-3-part-5.md).
 
 ## Tech stack
 

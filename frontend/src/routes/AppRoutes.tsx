@@ -7,7 +7,6 @@ import { DashboardLayout } from '@/layouts/DashboardLayout'
 import { ROUTES } from '@/constants/routes'
 import {
   AnalyticsPage,
-  AuditPage,
   DashboardPage,
   LoginPage,
   NotFoundPage,
@@ -36,6 +35,14 @@ import {
   EscalationsPage,
   ReviewWorkbenchPage,
 } from '@/modules/approvals'
+import {
+  AuditCompliancePage,
+  AuditDashboardPage,
+  AuditEventDetailPage,
+  AuditEventsPage,
+  AuditExportPage,
+  AuditSecurityPage,
+} from '@/modules/audit'
 
 /** Application route tree (SRS §8 navigation). */
 export function AppRoutes() {
@@ -69,7 +76,12 @@ export function AppRoutes() {
           <Route path={`${ROUTES.APPROVALS}/escalations`} element={<EscalationsPage />} />
           <Route path={`${ROUTES.APPROVALS}/:id`} element={<ApprovalDetailsPage />} />
           <Route path={`${ROUTES.APPROVALS}/:id/review`} element={<ReviewWorkbenchPage />} />
-          <Route path={ROUTES.AUDIT} element={<AuditPage />} />
+          <Route path={ROUTES.AUDIT} element={<AuditDashboardPage />} />
+          <Route path={`${ROUTES.AUDIT}/events`} element={<AuditEventsPage />} />
+          <Route path={`${ROUTES.AUDIT}/security`} element={<AuditSecurityPage />} />
+          <Route path={`${ROUTES.AUDIT}/compliance`} element={<AuditCompliancePage />} />
+          <Route path={`${ROUTES.AUDIT}/export`} element={<AuditExportPage />} />
+          <Route path={`${ROUTES.AUDIT}/:id`} element={<AuditEventDetailPage />} />
           <Route path={ROUTES.ANALYTICS} element={<AnalyticsPage />} />
           <Route path={ROUTES.USERS} element={<UsersPage />} />
           <Route path={ROUTES.SETTINGS} element={<SettingsPage />} />

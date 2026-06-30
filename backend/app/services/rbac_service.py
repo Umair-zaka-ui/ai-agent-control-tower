@@ -39,6 +39,7 @@ PERMISSION_CATALOG: dict[str, str] = {
     "approval.escalate": "Escalate approvals to another reviewer or team",
     "approval.assign": "Assign or reassign approval reviewers",
     "audit.view": "View audit logs",
+    "audit.export": "Export audit logs; view security & compliance dashboards and raw payloads",
     "dashboard.view": "View dashboard metrics",
     "agent_action.create": "Submit agent actions",
     "agent_action.view": "View agent actions",

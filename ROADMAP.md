@@ -89,7 +89,23 @@ APIs. Dark, enterprise design language (Azure / Datadog / Stripe / Linear feel).
   timeline, history table and an escalations board with live SLA countdowns.
   Role-based UI gating (`approval.view/review/escalate/assign`). Vitest tests added.
 
-### Part 3.5+ — Remaining modules (planned)
+### Part 3.5 — Enterprise Audit & Compliance Center ✅
+
+- Backend: read-only, RBAC-gated audit views over the immutable `audit_logs`
+  trail — enriched filterable table (`GET /audit`), statistics, recent-activity
+  timeline, event-type catalog, per-event forensic detail (with related-event
+  flow), a security dashboard, an informational compliance summary and an export
+  feed. Severity/category/decision/status/actor are derived at read time
+  (`audit_view`); no new columns. Adds the `audit.export` RBAC code and writes
+  `AUTH_LOGIN`/`AUTH_LOGIN_FAILED` events on login.
+- Frontend `src/modules/audit/`: audit dashboard (statistics cards, activity
+  timeline, recent events), events explorer (debounced search + filters +
+  server-side pagination), forensic event detail (request/response viewers +
+  related-events graph), security & compliance dashboards, and an export center
+  (CSV/JSON). Role-based UI gating (`audit.view` vs `audit.export`). Vitest tests
+  added. See [`docs/phase-3-part-5.md`](docs/phase-3-part-5.md).
+
+### Part 3.6+ — Remaining modules (planned)
 
 - Per-agent policy scoping (agent↔policy assignment) and trigger history.
 - Users & RBAC management; role-based navigation gating; analytics; e2e tests.
