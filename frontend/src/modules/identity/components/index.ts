@@ -1,0 +1,1 @@
+export { IdentityStatusBadge } from './IdentityStatusBadge'

@@ -53,6 +53,7 @@ import {
   ReportsCenterPage,
   RiskAnalyticsPage,
 } from '@/modules/analytics'
+import { IdentityPage } from '@/modules/identity'
 
 /** Application route tree (SRS §8 navigation). */
 export function AppRoutes() {
@@ -92,6 +93,7 @@ export function AppRoutes() {
           <Route path={`${ROUTES.AUDIT}/compliance`} element={<AuditCompliancePage />} />
           <Route path={`${ROUTES.AUDIT}/export`} element={<AuditExportPage />} />
           <Route path={`${ROUTES.AUDIT}/:id`} element={<AuditEventDetailPage />} />
+          <Route path={ROUTES.IDENTITY} element={<IdentityPage />} />
           <Route path={ROUTES.ANALYTICS} element={<AnalyticsOverviewPage />} />
           <Route path={`${ROUTES.ANALYTICS}/executive`} element={<ExecutiveDashboardPage />} />
           <Route path={`${ROUTES.ANALYTICS}/operations`} element={<OperationsDashboardPage />} />
