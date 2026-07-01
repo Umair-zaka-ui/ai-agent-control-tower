@@ -125,8 +125,26 @@ APIs. Dark, enterprise design language (Azure / Datadog / Stripe / Linear feel).
 - Per-agent policy scoping (agent↔policy assignment) and trigger history.
 - Users & RBAC management; role-based navigation gating; e2e tests.
 
+## Phase 4 — Enterprise Identity Platform
+
+### Part 4.1 — Identity Foundation ✅
+
+- Isolated `backend/app/identity` package (api → services → repositories →
+  database). Reuses existing users/organizations/roles and adds the new identity
+  entities: departments, teams, service_accounts, external_clients,
+  agent_identities, sessions, refresh_tokens, device_sessions, security_events
+  (migration `0006`), plus a nullable `users.department_id`.
+- Domain models + lifecycle (Created→…→Deleted with validated transitions),
+  repository layer (User/Role/Permission/Organization/Department/Session),
+  `IdentityService`, security/permissions/roles/sessions/tokens/audit engines.
+- Versioned `/api/v1/identity` API with a standard error envelope
+  (`{success,error{code,message},request_id}`) and identity audit integration.
+- Minimal frontend `src/modules/identity/` (directory at `/identity`) + unit +
+  integration test scaffolding. Backend 76/76 and frontend 73/73 green. See
+  [`docs/phase-4-part-1.md`](docs/phase-4-part-1.md).
+
 ## Future (Phase 4+)
 
-Real action execution & callbacks, Slack/webhook notifications, policy
-versioning & simulation, API-key rotation, observability (Prometheus /
-OpenTelemetry), anomaly detection, multi-tenant isolation & load testing.
+Full auth migration onto the identity platform, MFA, OAuth/SSO, refresh-token
+flows, device trust, Slack/webhook notifications, observability (Prometheus /
+OpenTelemetry), anomaly detection, and load testing.
