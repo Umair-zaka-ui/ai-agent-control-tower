@@ -5,6 +5,7 @@ import {
   CheckSquare,
   ScrollText,
   BarChart3,
+  Fingerprint,
   Users,
   Settings,
   type LucideIcon,
@@ -58,6 +59,12 @@ export const PRIMARY_NAV: NavItem[] = [
   },
   { label: 'Audit', path: ROUTES.AUDIT, icon: ScrollText, roles: [] },
   { label: 'Analytics', path: ROUTES.ANALYTICS, icon: BarChart3, roles: [] },
+  {
+    label: 'Identity',
+    path: ROUTES.IDENTITY,
+    icon: Fingerprint,
+    roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.AUDITOR],
+  },
   {
     label: 'Users',
     path: ROUTES.USERS,

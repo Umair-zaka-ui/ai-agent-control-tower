@@ -14,6 +14,7 @@ export const ROUTES = {
   APPROVALS: '/approvals',
   AUDIT: '/audit',
   ANALYTICS: '/analytics',
+  IDENTITY: '/identity',
   USERS: '/users',
   SETTINGS: '/settings',
   PROFILE: '/profile',
