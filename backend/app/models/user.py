@@ -26,6 +26,14 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         nullable=False,
         index=True,
     )
+    # Phase 4 Part 4.1: optional placement in the org → department hierarchy.
+    # Nullable so existing users and creation paths are unaffected.
+    department_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("departments.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     email: Mapped[str] = mapped_column(String(320), nullable=False, unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)

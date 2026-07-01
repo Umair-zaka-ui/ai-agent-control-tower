@@ -14,8 +14,9 @@ from sqlalchemy import engine_from_config, pool
 from app.core.config import settings
 from app.core.database import Base
 
-# Importing the models package registers every table on ``Base.metadata``.
+# Importing the models packages registers every table on ``Base.metadata``.
 import app.models  # noqa: F401
+import app.identity.models  # noqa: F401  (Phase 4 identity tables)
 
 config = context.config
 
