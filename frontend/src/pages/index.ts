@@ -1,7 +1,5 @@
 export { LoginPage } from './auth/LoginPage'
 export { DashboardPage } from './DashboardPage'
-export { AuditPage } from './AuditPage'
-export { AnalyticsPage } from './AnalyticsPage'
 export { UsersPage } from './UsersPage'
 export { SettingsPage } from './SettingsPage'
 export { ProfilePage } from './ProfilePage'

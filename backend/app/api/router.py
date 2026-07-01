@@ -7,8 +7,10 @@ from fastapi import APIRouter
 from app.api.routes import (
     agent_actions,
     agents,
+    analytics,
     api_keys,
     approvals,
+    audit,
     audit_logs,
     auth,
     dashboard,
@@ -31,6 +33,8 @@ api_router.include_router(policies.router)
 api_router.include_router(rbac.router)
 api_router.include_router(agent_actions.router)
 api_router.include_router(approvals.router)
+api_router.include_router(audit.router)
 api_router.include_router(audit_logs.router)
 api_router.include_router(dashboard.router)
+api_router.include_router(analytics.router)
 api_router.include_router(system.router)

@@ -42,6 +42,29 @@ auditors and operators can manage AI agents visually instead of via Swagger.
 > recharts **risk breakdown**, and dedicated **History** and **Escalations**
 > (live SLA countdown) boards. UI actions are gated by the `approval.view`,
 > `approval.review`, `approval.escalate` and `approval.assign` RBAC codes.
+>
+> **Phase 3 — Part 3.5** adds the **Audit & Compliance Center**
+> (`src/modules/audit/`): an audit **dashboard** (`/audit`) with six statistics
+> cards, an activity timeline and recent events; an **events explorer**
+> (`/audit/events`) with debounced search, event-type/category/actor/severity/
+> decision/date filters and server-side pagination; a forensic **event detail**
+> (`/audit/:id`) with request/response JSON viewers and a related-events flow;
+> and RBAC-gated **security** (`/audit/security`) and **compliance**
+> (`/audit/compliance`) dashboards plus an **export center** (`/audit/export`,
+> CSV/JSON). The dashboard/table/detail need `audit.view`; security, compliance,
+> export and raw payloads need `audit.export`. See
+> [`docs/phase-3-part-5.md`](../docs/phase-3-part-5.md).
+>
+> **Phase 3 — Part 3.6** adds the **Analytics & AI Operations Center**
+> (`src/modules/analytics/`): an **overview** (`/analytics`) with ten animated
+> executive KPI cards, fleet health, an activity chart (daily→yearly), a
+> risk-distribution donut and rule-based insights; role-gated **executive**
+> (`/analytics/executive`) and **operations** (`/analytics/operations`, live 10s
+> feed) dashboards; plus **risk** (heatmap), **performance** (agent ranking),
+> **agents**, **policies**, **costs** (estimated) and a **reports** center with
+> CSV/JSON export. Auto-refresh per SRS (15s/10s/30s/60s). Gated by
+> `analytics.view` / `analytics.executive` / `analytics.operations`. See
+> [`docs/phase-3-part-6.md`](../docs/phase-3-part-6.md).
 
 ## Tech stack
 

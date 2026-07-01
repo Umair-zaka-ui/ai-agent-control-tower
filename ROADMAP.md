@@ -89,10 +89,41 @@ APIs. Dark, enterprise design language (Azure / Datadog / Stripe / Linear feel).
   timeline, history table and an escalations board with live SLA countdowns.
   Role-based UI gating (`approval.view/review/escalate/assign`). Vitest tests added.
 
-### Part 3.5+ — Remaining modules (planned)
+### Part 3.5 — Enterprise Audit & Compliance Center ✅
+
+- Backend: read-only, RBAC-gated audit views over the immutable `audit_logs`
+  trail — enriched filterable table (`GET /audit`), statistics, recent-activity
+  timeline, event-type catalog, per-event forensic detail (with related-event
+  flow), a security dashboard, an informational compliance summary and an export
+  feed. Severity/category/decision/status/actor are derived at read time
+  (`audit_view`); no new columns. Adds the `audit.export` RBAC code and writes
+  `AUTH_LOGIN`/`AUTH_LOGIN_FAILED` events on login.
+- Frontend `src/modules/audit/`: audit dashboard (statistics cards, activity
+  timeline, recent events), events explorer (debounced search + filters +
+  server-side pagination), forensic event detail (request/response viewers +
+  related-events graph), security & compliance dashboards, and an export center
+  (CSV/JSON). Role-based UI gating (`audit.view` vs `audit.export`). Vitest tests
+  added. See [`docs/phase-3-part-5.md`](docs/phase-3-part-5.md).
+
+### Part 3.6 — Enterprise Analytics & AI Operations Center ✅
+
+- Backend: read-only, RBAC-gated `/analytics/*` endpoints (overview, KPIs,
+  activity, fleet-health, risk, performance, policies, review, cost, insights,
+  reports) aggregating agents/agent_actions/approvals/policies/audit_logs. Real
+  signals are computed; latency/cost figures are deterministic estimates
+  (flagged). Adds `analytics.view` / `analytics.executive` / `analytics.operations`
+  RBAC codes.
+- Frontend `src/modules/analytics/`: executive overview (animated KPI grid, fleet
+  health, activity chart, risk donut, insights), role-gated executive & operations
+  (live feed) dashboards, risk (heatmap), performance (agent ranking), agents,
+  policies, cost (estimated) dashboards, and a reports center with CSV/JSON export.
+  Auto-refresh per SRS; role-based UI gating. Vitest tests added. See
+  [`docs/phase-3-part-6.md`](docs/phase-3-part-6.md).
+
+### Part 3.7+ — Remaining modules (planned)
 
 - Per-agent policy scoping (agent↔policy assignment) and trigger history.
-- Users & RBAC management; role-based navigation gating; analytics; e2e tests.
+- Users & RBAC management; role-based navigation gating; e2e tests.
 
 ## Future (Phase 4+)
 
