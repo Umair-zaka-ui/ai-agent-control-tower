@@ -12,6 +12,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.router import api_router
 from app.core.config import settings
+from app.identity.api import identity_router
+from app.identity.errors import register_identity_exception_handlers
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -39,3 +41,7 @@ def health_check() -> dict[str, str]:
 
 
 app.include_router(api_router, prefix=settings.API_PREFIX)
+
+# Phase 4: Enterprise Identity Platform — versioned, isolated under /api/v1/identity.
+register_identity_exception_handlers(app)
+app.include_router(identity_router)
