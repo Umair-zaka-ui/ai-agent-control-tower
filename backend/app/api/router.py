@@ -7,6 +7,7 @@ from fastapi import APIRouter
 from app.api.routes import (
     agent_actions,
     agents,
+    analytics,
     api_keys,
     approvals,
     audit,
@@ -35,4 +36,5 @@ api_router.include_router(approvals.router)
 api_router.include_router(audit.router)
 api_router.include_router(audit_logs.router)
 api_router.include_router(dashboard.router)
+api_router.include_router(analytics.router)
 api_router.include_router(system.router)

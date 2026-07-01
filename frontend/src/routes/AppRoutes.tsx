@@ -6,7 +6,6 @@ import { AuthLayout } from '@/layouts/AuthLayout'
 import { DashboardLayout } from '@/layouts/DashboardLayout'
 import { ROUTES } from '@/constants/routes'
 import {
-  AnalyticsPage,
   DashboardPage,
   LoginPage,
   NotFoundPage,
@@ -43,6 +42,17 @@ import {
   AuditExportPage,
   AuditSecurityPage,
 } from '@/modules/audit'
+import {
+  AgentsAnalyticsPage,
+  AnalyticsOverviewPage,
+  CostDashboardPage,
+  ExecutiveDashboardPage,
+  OperationsDashboardPage,
+  PerformanceDashboardPage,
+  PolicyAnalyticsPage,
+  ReportsCenterPage,
+  RiskAnalyticsPage,
+} from '@/modules/analytics'
 
 /** Application route tree (SRS §8 navigation). */
 export function AppRoutes() {
@@ -82,7 +92,15 @@ export function AppRoutes() {
           <Route path={`${ROUTES.AUDIT}/compliance`} element={<AuditCompliancePage />} />
           <Route path={`${ROUTES.AUDIT}/export`} element={<AuditExportPage />} />
           <Route path={`${ROUTES.AUDIT}/:id`} element={<AuditEventDetailPage />} />
-          <Route path={ROUTES.ANALYTICS} element={<AnalyticsPage />} />
+          <Route path={ROUTES.ANALYTICS} element={<AnalyticsOverviewPage />} />
+          <Route path={`${ROUTES.ANALYTICS}/executive`} element={<ExecutiveDashboardPage />} />
+          <Route path={`${ROUTES.ANALYTICS}/operations`} element={<OperationsDashboardPage />} />
+          <Route path={`${ROUTES.ANALYTICS}/risk`} element={<RiskAnalyticsPage />} />
+          <Route path={`${ROUTES.ANALYTICS}/performance`} element={<PerformanceDashboardPage />} />
+          <Route path={`${ROUTES.ANALYTICS}/agents`} element={<AgentsAnalyticsPage />} />
+          <Route path={`${ROUTES.ANALYTICS}/policies`} element={<PolicyAnalyticsPage />} />
+          <Route path={`${ROUTES.ANALYTICS}/costs`} element={<CostDashboardPage />} />
+          <Route path={`${ROUTES.ANALYTICS}/reports`} element={<ReportsCenterPage />} />
           <Route path={ROUTES.USERS} element={<UsersPage />} />
           <Route path={ROUTES.SETTINGS} element={<SettingsPage />} />
           <Route path={ROUTES.PROFILE} element={<ProfilePage />} />

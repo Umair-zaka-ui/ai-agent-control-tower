@@ -61,7 +61,7 @@ export function AppSidebar({ open, onClose }: AppSidebarProps) {
 
         <div className="border-t border-sidebar-border p-4">
           <p className="text-[11px] text-muted-foreground">AI Agent Control Tower</p>
-          <p className="text-[11px] text-muted-foreground/70">Phase 3 · Part 3.5 · v0.3.0</p>
+          <p className="text-[11px] text-muted-foreground/70">Phase 3 · Part 3.6 · v0.3.0</p>
         </div>
       </aside>
     </>

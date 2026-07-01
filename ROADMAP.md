@@ -105,10 +105,25 @@ APIs. Dark, enterprise design language (Azure / Datadog / Stripe / Linear feel).
   (CSV/JSON). Role-based UI gating (`audit.view` vs `audit.export`). Vitest tests
   added. See [`docs/phase-3-part-5.md`](docs/phase-3-part-5.md).
 
-### Part 3.6+ — Remaining modules (planned)
+### Part 3.6 — Enterprise Analytics & AI Operations Center ✅
+
+- Backend: read-only, RBAC-gated `/analytics/*` endpoints (overview, KPIs,
+  activity, fleet-health, risk, performance, policies, review, cost, insights,
+  reports) aggregating agents/agent_actions/approvals/policies/audit_logs. Real
+  signals are computed; latency/cost figures are deterministic estimates
+  (flagged). Adds `analytics.view` / `analytics.executive` / `analytics.operations`
+  RBAC codes.
+- Frontend `src/modules/analytics/`: executive overview (animated KPI grid, fleet
+  health, activity chart, risk donut, insights), role-gated executive & operations
+  (live feed) dashboards, risk (heatmap), performance (agent ranking), agents,
+  policies, cost (estimated) dashboards, and a reports center with CSV/JSON export.
+  Auto-refresh per SRS; role-based UI gating. Vitest tests added. See
+  [`docs/phase-3-part-6.md`](docs/phase-3-part-6.md).
+
+### Part 3.7+ — Remaining modules (planned)
 
 - Per-agent policy scoping (agent↔policy assignment) and trigger history.
-- Users & RBAC management; role-based navigation gating; analytics; e2e tests.
+- Users & RBAC management; role-based navigation gating; e2e tests.
 
 ## Future (Phase 4+)
 

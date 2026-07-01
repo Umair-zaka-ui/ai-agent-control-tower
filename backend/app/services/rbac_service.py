@@ -43,6 +43,9 @@ PERMISSION_CATALOG: dict[str, str] = {
     "dashboard.view": "View dashboard metrics",
     "agent_action.create": "Submit agent actions",
     "agent_action.view": "View agent actions",
+    "analytics.view": "View analytics dashboards (risk, performance, policy, cost, reports)",
+    "analytics.executive": "View the executive analytics dashboard",
+    "analytics.operations": "View the operations analytics dashboard",
 }
 
 _ALL = set(PERMISSION_CATALOG)
@@ -60,7 +63,15 @@ SYSTEM_ROLE_PERMISSIONS: dict[str, set[str]] = {
     UserRole.SUPER_ADMIN.value: set(_ALL),
     UserRole.ADMIN.value: _ALL - {"rbac.manage"},
     UserRole.REVIEWER.value: _READ_ONLY
-    | {"approval.review", "approval.escalate", "approval.assign", "agent_action.create"},
+    | {
+        "approval.review",
+        "approval.escalate",
+        "approval.assign",
+        "agent_action.create",
+        # Reviewers see general analytics + operations, but not executive.
+        "analytics.view",
+        "analytics.operations",
+    },
     UserRole.VIEWER.value: set(_READ_ONLY),
 }
 
