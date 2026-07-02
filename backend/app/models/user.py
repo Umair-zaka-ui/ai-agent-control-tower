@@ -43,5 +43,8 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         default=UserRole.VIEWER,
     )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Phase 4 Part 4.1a: canonical identity lifecycle (IdentityStatus). Kept in
+    # sync with ``is_active`` (ACTIVE ⇔ is_active) so authentication is unchanged.
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="ACTIVE")
 
     organization: Mapped["Organization"] = relationship(back_populates="users")
