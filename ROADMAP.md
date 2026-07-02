@@ -152,6 +152,20 @@ APIs. Dark, enterprise design language (Azure / Datadog / Stripe / Linear feel).
   end-to-end (repositories + service + versioned API; client secrets shown once).
   Meets the Part 4.1 Definition of Done without caveats. Backend 80/80 green.
 
+### Part 4.2.1 — Authentication architecture & trust model ✅
+
+- Isolated `app/identity/auth` layer: the `IdentityContext` and the seven core
+  services (Authentication/Token/RefreshToken/Credential/Session/SecurityEvent/
+  IdentityContextResolver). Real login → refresh-with-rotation → reuse-detection
+  → logout on the Part 4.1 session/refresh-token/security-event tables; short-
+  lived (15 min) access tokens with the full claim set; an authentication
+  middleware dependency (`authenticate`, JWT resolved; machine-key dispatch
+  stubbed for 4.2.2).
+- Auth enums (identity types, auth methods, security events), the §25 error
+  codes, threat model, and a token-table migration plan (no schema change this
+  part — additive tables land in 4.2.2/4.2.3). Design docs under
+  [`docs/identity/`](docs/identity/). Backend 91/91 green.
+
 ## Future (Phase 4+)
 
 Full auth migration onto the identity platform, MFA, OAuth/SSO, refresh-token

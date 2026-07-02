@@ -1,0 +1,54 @@
+# Token Strategy (Phase 4 Part 4.2.1)
+
+Two token categories (SRS §6).
+
+## Access token
+
+- **Purpose:** authorize short-lived API requests.
+- **Lifetime:** 15 minutes (`settings.AUTH_ACCESS_TOKEN_TTL_SECONDS`).
+- **Signing:** JWT (HS256) with the platform secret.
+- **Validation:** signature + `exp` + `iss` + `aud` + `token_type == access`
+  (+ revocation once the table lands).
+
+Claims (`TokenService.create_access_token`, SRS §7):
+
+```json
+{
+  "sub": "user_123", "identity_id": "user_123", "identity_type": "HUMAN_USER",
+  "organization_id": "org_456", "roles": ["ROLE_ADMIN"],
+  "permissions": ["agent.view", "policy.create", "approval.review"],
+  "scopes": [], "session_id": "sess_789", "auth_method": "PASSWORD",
+  "token_type": "access", "iss": "ai-agent-control-tower",
+  "aud": "ai-agent-control-tower-api", "iat": 1710000000, "exp": 1710000900,
+  "jti": "tok_abc"
+}
+```
+
+Machine tokens carry `scopes` and `credential_id` instead of user roles.
+
+## Refresh token
+
+- **Purpose:** obtain a new access token without re-login.
+- **Lifetime:** 7–30 days (`settings.AUTH_REFRESH_TOKEN_TTL_SECONDS`, default 7d).
+- **Storage:** database, **hashed only** (`refresh_tokens.token_hash`); the
+  plaintext (`rt_…`) is returned once.
+- **Rotation:** every use issues a new token and revokes the old
+  (`revoked_at` + `rotated_to_id`).
+- **Reuse detection:** presenting an already-rotated token is treated as theft →
+  the session family is revoked and re-login is required
+  (`RefreshTokenService.is_reuse` + `revoke_session_family`).
+
+Planned columns (Part 4.2.2, see [migration-plan.md](migration-plan.md)):
+`family_id`, `rotated_from_id`, `reuse_detected_at` for first-class token
+families independent of the session.
+
+## Credential storage rules (SRS §11)
+
+| Credential | Storage |
+| ---------- | ------- |
+| Passwords | bcrypt today; argon2id targeted (`hash_user_password`) |
+| API keys | hash only + display prefix + `last_used_at` + `expires_at` + `status` |
+| Refresh tokens | hash only + family + rotation chain + `revoked_at` + `expires_at` |
+| Client secrets | hash only |
+
+**No secret is ever stored or logged in plaintext.**
