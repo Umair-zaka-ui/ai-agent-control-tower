@@ -13,7 +13,7 @@ from app.identity.api.deps import (
     require_permission,
 )
 from app.identity.errors import ErrorCode, IdentityError
-from app.identity.schemas.identity import UserCreate, UserRead
+from app.identity.schemas.identity import LifecycleTransition, UserCreate, UserRead
 from app.identity.services.identity_service import IdentityService
 from app.models.user import User
 
@@ -76,6 +76,21 @@ def suspend_user(
 ) -> User:
     _assert_same_org(service, user_id, current_user)
     return service.set_user_active(user_id, active=False, actor_id=current_user.id, request_id=request_id)
+
+
+@router.post("/{user_id}/status", response_model=UserRead)
+def transition_user(
+    user_id: uuid.UUID,
+    payload: LifecycleTransition,
+    service: IdentityService = Depends(get_identity_service),
+    current_user: User = Depends(require_permission("user.create")),
+    request_id: str | None = Depends(get_request_id),
+) -> User:
+    """Move a human identity to any valid lifecycle state (SRS §8)."""
+    _assert_same_org(service, user_id, current_user)
+    return service.transition_user(
+        user_id, payload.target_status, actor_id=current_user.id, request_id=request_id
+    )
 
 
 def _assert_same_org(service: IdentityService, user_id: uuid.UUID, current_user: User) -> None:
