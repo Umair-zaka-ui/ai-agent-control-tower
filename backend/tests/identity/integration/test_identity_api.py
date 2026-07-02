@@ -123,3 +123,94 @@ def test_rbac_viewer_cannot_create_users(client: TestClient) -> None:
 def test_unauthenticated_is_rejected(client: TestClient) -> None:
     # The platform's bearer scheme rejects missing credentials with 403.
     assert client.get(f"{BASE}/users").status_code in (401, 403)
+
+
+# --------------------------------------------------------------------------- #
+# Part 4.1a: unified lifecycle + machine identities
+# --------------------------------------------------------------------------- #
+def _agent_id(client: TestClient, admin: dict[str, str]) -> str:
+    return client.post(
+        "/agents", headers=admin, json={"name": "AuditBot", "agent_type": "billing"}
+    ).json()["id"]
+
+
+def test_user_lifecycle_status_endpoint(client: TestClient) -> None:
+    token, org_id = _register(client)
+    admin = _auth(token)
+    email = f"m_{uuid.uuid4().hex[:8]}@example.com"
+    user = client.post(
+        f"{BASE}/users",
+        headers=admin,
+        json={"email": email, "display_name": "M", "password": "Str0ngPass", "organization_id": str(org_id)},
+    ).json()
+    assert user["status"] == "ACTIVE"
+    uid = user["id"]
+
+    # ACTIVE → SUSPENDED → ARCHIVED via the generic lifecycle endpoint.
+    r = client.post(f"{BASE}/users/{uid}/status", headers=admin, json={"target_status": "SUSPENDED"})
+    assert r.status_code == 200 and r.json()["status"] == "SUSPENDED"
+    assert r.json()["is_active"] is False  # kept in sync
+
+    r = client.post(f"{BASE}/users/{uid}/status", headers=admin, json={"target_status": "ARCHIVED"})
+    assert r.json()["status"] == "ARCHIVED"
+
+    # Illegal jump ARCHIVED → SUSPENDED is rejected with the envelope.
+    bad = client.post(f"{BASE}/users/{uid}/status", headers=admin, json={"target_status": "SUSPENDED"})
+    assert bad.status_code == 409
+    assert bad.json()["error"]["code"] == "INVALID_LIFECYCLE_TRANSITION"
+
+
+def test_organization_lifecycle(client: TestClient) -> None:
+    token, org_id = _register(client)
+    admin = _auth(token)
+    assert client.get(f"{BASE}/organizations", headers=admin).json()[0]["status"] == "ACTIVE"
+    r = client.post(f"{BASE}/organizations/{org_id}/status", headers=admin, json={"target_status": "SUSPENDED"})
+    assert r.status_code == 200 and r.json()["status"] == "SUSPENDED"
+
+
+def test_agent_identity_crud_and_lifecycle(client: TestClient) -> None:
+    token, _ = _register(client)
+    admin = _auth(token)
+    agent_id = _agent_id(client, admin)
+
+    created = client.post(f"{BASE}/agent-identities", headers=admin, json={"agent_id": agent_id})
+    assert created.status_code == 201, created.text
+    ident = created.json()
+    assert ident["status"] == "ACTIVE" and ident["client_id"].startswith("cid_")
+
+    listed = client.get(f"{BASE}/agent-identities", headers=admin, params={"agent_id": agent_id}).json()
+    assert any(i["id"] == ident["id"] for i in listed)
+
+    r = client.post(f"{BASE}/agent-identities/{ident['id']}/status", headers=admin, json={"target_status": "SUSPENDED"})
+    assert r.json()["status"] == "SUSPENDED"
+
+
+def test_service_account_and_external_client(client: TestClient) -> None:
+    token, org_id = _register(client)
+    admin = _auth(token)
+
+    # Service account — secret returned once.
+    sa = client.post(
+        f"{BASE}/service-accounts",
+        headers=admin,
+        json={"organization_id": str(org_id), "name": "etl-bot", "permissions": ["analytics.view"]},
+    )
+    assert sa.status_code == 201, sa.text
+    assert sa.json()["client_secret"].startswith("sk_")
+    sa_id = sa.json()["id"]
+    assert any(a["id"] == sa_id for a in client.get(f"{BASE}/service-accounts", headers=admin).json())
+    # List view must never expose the secret.
+    assert "client_secret" not in client.get(f"{BASE}/service-accounts", headers=admin).json()[0]
+    assert client.post(
+        f"{BASE}/service-accounts/{sa_id}/status", headers=admin, json={"target_status": "DISABLED"}
+    ).json()["status"] == "DISABLED"
+
+    # External client — secret returned once.
+    ec = client.post(
+        f"{BASE}/external-clients",
+        headers=admin,
+        json={"organization_id": str(org_id), "client_name": "Power BI", "allowed_scopes": ["analytics.view"]},
+    )
+    assert ec.status_code == 201, ec.text
+    assert ec.json()["client_secret"].startswith("sk_") and ec.json()["client_id"].startswith("cid_")
+    assert any(c["client_name"] == "Power BI" for c in client.get(f"{BASE}/external-clients", headers=admin).json())

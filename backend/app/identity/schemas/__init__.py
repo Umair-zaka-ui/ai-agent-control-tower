@@ -1,13 +1,20 @@
 """Identity Pydantic schemas."""
 
 from app.identity.schemas.identity import (
+    AgentIdentityCreate,
+    AgentIdentityRead,
     DepartmentCreate,
     DepartmentRead,
     ErrorBody,
     ErrorEnvelope,
+    ExternalClientCreate,
+    ExternalClientCreated,
+    ExternalClientRead,
     LifecycleTransition,
     OrganizationRead,
     RoleRead,
+    ServiceAccountCreate,
+    ServiceAccountCreated,
     ServiceAccountRead,
     SessionRead,
     TeamRead,
@@ -27,5 +34,12 @@ __all__ = [
     "TeamRead",
     "RoleRead",
     "ServiceAccountRead",
+    "ServiceAccountCreate",
+    "ServiceAccountCreated",
+    "ExternalClientRead",
+    "ExternalClientCreate",
+    "ExternalClientCreated",
+    "AgentIdentityRead",
+    "AgentIdentityCreate",
     "SessionRead",
 ]

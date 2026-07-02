@@ -161,9 +161,49 @@ Targets: authentication < 150 ms, permission lookup < 50 ms, user lookup
 < 100 ms. All identity reads are single-table, indexed lookups; permission
 evaluation reuses the existing role→permission resolution.
 
+## Part 4.1a — unified lifecycle across every identity
+
+Part 4.1a closes the Definition of Done so it holds without caveats: **every**
+identity type — human, AI agent, service account, organization and external
+client — now shares the *same* canonical lifecycle and is operable through the
+same architecture.
+
+- Migration `0007_identity_lifecycle` adds a `status` (`IdentityStatus`) column
+  to `users` and `organizations` (default `ACTIVE`). The three machine identities
+  already carried `status`.
+- `IdentityService.transition_status` works uniformly across all five; for humans
+  it keeps `is_active` in sync (ACTIVE ⇔ active) so authentication is unchanged.
+  Illegal transitions raise `INVALID_LIFECYCLE_TRANSITION`.
+- The AI agent identity, service account and external client aggregates are now
+  operable end-to-end (repositories + service + API), not just tables. Client
+  secrets are returned exactly once on creation.
+
+### New / updated endpoints
+
+| Method | Path | Purpose |
+| ------ | ---- | ------- |
+| POST | `/api/v1/identity/users/{id}/status` | human lifecycle transition |
+| POST | `/api/v1/identity/organizations/{id}/status` | organization lifecycle |
+| GET/POST | `/api/v1/identity/agent-identities` | list / create agent identities |
+| GET/POST | `/api/v1/identity/agent-identities/{id}[/status]` | get / lifecycle |
+| GET/POST | `/api/v1/identity/service-accounts` | list / create (secret once) |
+| GET/POST | `/api/v1/identity/service-accounts/{id}[/status]` | get / lifecycle |
+| GET/POST | `/api/v1/identity/external-clients` | list / create (secret once) |
+| GET/POST | `/api/v1/identity/external-clients/{id}[/status]` | get / lifecycle |
+
+### Definition of Done
+
+> Every human, AI agent, service account, organization and external application
+> has a formal identity model with a consistent lifecycle and architecture.
+
+Met: all five identity types have a formal model, share the single
+`IdentityStatus` lifecycle (validated transitions, audited), and are created and
+managed through the same controller → service → repository → database
+architecture under `/api/v1/identity`.
+
 ## Migrations
 
 ```bash
 cd backend
-alembic upgrade head    # applies 0006_identity_foundation
+alembic upgrade head    # applies 0006_identity_foundation, 0007_identity_lifecycle
 ```

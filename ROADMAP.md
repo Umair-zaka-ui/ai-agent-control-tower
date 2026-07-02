@@ -140,8 +140,17 @@ APIs. Dark, enterprise design language (Azure / Datadog / Stripe / Linear feel).
 - Versioned `/api/v1/identity` API with a standard error envelope
   (`{success,error{code,message},request_id}`) and identity audit integration.
 - Minimal frontend `src/modules/identity/` (directory at `/identity`) + unit +
-  integration test scaffolding. Backend 76/76 and frontend 73/73 green. See
-  [`docs/phase-4-part-1.md`](docs/phase-4-part-1.md).
+  integration test scaffolding. See [`docs/phase-4-part-1.md`](docs/phase-4-part-1.md).
+
+### Part 4.1a — Unified identity lifecycle ✅
+
+- Migration `0007` adds `status` (`IdentityStatus`) to `users` and
+  `organizations`, so **every** identity — human, AI agent, service account,
+  organization, external client — shares one canonical lifecycle with validated,
+  audited transitions (`transition_status`; humans keep `is_active` in sync).
+- Agent identities, service accounts and external clients are now operable
+  end-to-end (repositories + service + versioned API; client secrets shown once).
+  Meets the Part 4.1 Definition of Done without caveats. Backend 80/80 green.
 
 ## Future (Phase 4+)
 

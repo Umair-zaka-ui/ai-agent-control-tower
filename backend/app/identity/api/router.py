@@ -4,7 +4,16 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.identity.api.routes import departments, organizations, roles, sessions, users
+from app.identity.api.routes import (
+    agent_identities,
+    departments,
+    external_clients,
+    organizations,
+    roles,
+    service_accounts,
+    sessions,
+    users,
+)
 
 # All identity endpoints live under /api/v1/identity/*
 identity_router = APIRouter(prefix="/api/v1/identity")
@@ -13,3 +22,6 @@ identity_router.include_router(organizations.router)
 identity_router.include_router(departments.router)
 identity_router.include_router(roles.router)
 identity_router.include_router(sessions.router)
+identity_router.include_router(agent_identities.router)
+identity_router.include_router(service_accounts.router)
+identity_router.include_router(external_clients.router)

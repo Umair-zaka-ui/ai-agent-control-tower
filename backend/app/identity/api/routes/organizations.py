@@ -6,9 +6,14 @@ import uuid
 
 from fastapi import APIRouter, Depends
 
-from app.identity.api.deps import get_current_user, get_identity_service, require_permission
+from app.identity.api.deps import (
+    get_current_user,
+    get_identity_service,
+    get_request_id,
+    require_permission,
+)
 from app.identity.errors import ErrorCode, IdentityError
-from app.identity.schemas.identity import OrganizationRead
+from app.identity.schemas.identity import LifecycleTransition, OrganizationRead
 from app.identity.services.identity_service import IdentityService
 from app.models.organization import Organization
 from app.models.user import User
@@ -38,3 +43,19 @@ def get_organization(
     if org is None:
         raise IdentityError(ErrorCode.ORGANIZATION_NOT_FOUND, "Organization does not exist.")
     return org
+
+
+@router.post("/{organization_id}/status", response_model=OrganizationRead)
+def transition_organization(
+    organization_id: uuid.UUID,
+    payload: LifecycleTransition,
+    service: IdentityService = Depends(get_identity_service),
+    current_user: User = Depends(require_permission("user.create")),
+    request_id: str | None = Depends(get_request_id),
+) -> Organization:
+    """Move the organization identity to a new lifecycle state (SRS §8)."""
+    if organization_id != current_user.organization_id:
+        raise IdentityError(ErrorCode.ORGANIZATION_NOT_FOUND, "Organization does not exist.")
+    return service.transition_organization(
+        organization_id, payload.target_status, actor_id=current_user.id, request_id=request_id
+    )

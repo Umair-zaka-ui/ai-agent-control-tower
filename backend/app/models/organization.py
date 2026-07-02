@@ -19,6 +19,8 @@ class Organization(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "organizations"
 
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Phase 4 Part 4.1a: canonical identity lifecycle (IdentityStatus).
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="ACTIVE")
 
     users: Mapped[list["User"]] = relationship(
         back_populates="organization", cascade="all, delete-orphan"
