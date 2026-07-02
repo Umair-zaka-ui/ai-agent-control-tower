@@ -1,6 +1,11 @@
 """Identity repository layer — all database access lives here (SRS §9, §16)."""
 
 from app.identity.repositories.department_repository import DepartmentRepository
+from app.identity.repositories.identity_repositories import (
+    AgentIdentityRepository,
+    ExternalClientRepository,
+    ServiceAccountRepository,
+)
 from app.identity.repositories.organization_repository import OrganizationRepository
 from app.identity.repositories.permission_repository import PermissionRepository
 from app.identity.repositories.role_repository import RoleRepository
@@ -14,4 +19,7 @@ __all__ = [
     "OrganizationRepository",
     "DepartmentRepository",
     "SessionRepository",
+    "AgentIdentityRepository",
+    "ServiceAccountRepository",
+    "ExternalClientRepository",
 ]

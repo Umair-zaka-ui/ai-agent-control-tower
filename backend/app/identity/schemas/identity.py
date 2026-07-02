@@ -47,6 +47,7 @@ class UserRead(BaseModel):
     department_id: uuid.UUID | None = None
     role: str
     is_active: bool
+    status: str
     created_at: datetime
     updated_at: datetime
 
@@ -68,6 +69,7 @@ class OrganizationRead(BaseModel):
 
     id: uuid.UUID
     name: str
+    status: str
     created_at: datetime
 
 
@@ -135,3 +137,63 @@ class SessionRead(BaseModel):
     expires_at: datetime
     last_seen_at: datetime | None = None
     revoked_at: datetime | None = None
+
+
+# --------------------------------------------------------------------------- #
+# Machine identities: agent identity, service account, external client
+# --------------------------------------------------------------------------- #
+class AgentIdentityCreate(BaseModel):
+    agent_id: uuid.UUID
+    credential_type: str = "API_KEY"
+
+
+class AgentIdentityRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    agent_id: uuid.UUID
+    client_id: str
+    credential_type: str
+    status: str
+    last_used_at: datetime | None = None
+    expires_at: datetime | None = None
+    created_at: datetime
+
+
+class ServiceAccountCreate(BaseModel):
+    organization_id: uuid.UUID
+    name: str = Field(min_length=1, max_length=255)
+    permissions: list[str] = Field(default_factory=list)
+    owner_id: uuid.UUID | None = None
+
+
+class ServiceAccountCreated(ServiceAccountRead):
+    """Returned once on creation — includes the plaintext client secret."""
+
+    client_secret: str
+
+
+class ExternalClientCreate(BaseModel):
+    organization_id: uuid.UUID
+    client_name: str = Field(min_length=1, max_length=255)
+    redirect_uri: str | None = None
+    allowed_scopes: list[str] = Field(default_factory=list)
+
+
+class ExternalClientRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    organization_id: uuid.UUID
+    client_name: str
+    client_id: str
+    redirect_uri: str | None = None
+    allowed_scopes: list[str] = Field(default_factory=list)
+    status: str
+    created_at: datetime
+
+
+class ExternalClientCreated(ExternalClientRead):
+    """Returned once on creation — includes the plaintext client secret."""
+
+    client_secret: str
