@@ -26,7 +26,14 @@ class Settings(BaseSettings):
     # JWT / Auth
     JWT_SECRET_KEY: str = "change-me-in-production"
     JWT_ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 1 day
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 1 day (legacy login)
+
+    # --- Phase 4.2.1: authentication architecture (token strategy §6/§7) ---
+    JWT_ISSUER: str = "ai-agent-control-tower"
+    JWT_AUDIENCE: str = "ai-agent-control-tower-api"
+    # Short-lived access tokens (SRS §6: 15 minutes) and longer refresh tokens.
+    AUTH_ACCESS_TOKEN_TTL_SECONDS: int = 15 * 60
+    AUTH_REFRESH_TOKEN_TTL_SECONDS: int = 7 * 24 * 60 * 60
 
     # CORS. ``NoDecode`` stops pydantic-settings from trying to JSON-parse the
     # env value so our validator can accept a simple comma separated string.
