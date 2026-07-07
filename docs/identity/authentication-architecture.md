@@ -72,8 +72,37 @@ IdentityContext(
     identity_id, identity_type, auth_method, organization_id,
     roles, permissions, scopes, session_id, credential_id,
     ip_address, user_agent, request_id,
+    assurance_level, amr, mfa_pending,   # authentication assurance / MFA (§24)
 )
 ```
+
+`assurance_level` (`AAL0`/`AAL1`/`AAL2`), `amr` (auth-method references, e.g.
+`["pwd","otp"]`) and `mfa_pending` are carried on the context **and** in the
+access-token claims, so authorization and enterprise policies can require
+step-up authentication without a redesign.
+
+## MFA & step-up authentication (SRS §24)
+
+The seam is complete and typed now; concrete factor verification + enrollment
+storage land in a later subpart.
+
+- **Assurance levels** — `AuthAssuranceLevel`: `AAL0` (primary factor verified,
+  second factor pending), `AAL1` (single factor), `AAL2` (multi-factor).
+- **Login is step-up-aware** — `AuthenticationService.login` calls the policy
+  hook `_mfa_required(user)`. When it returns `True`, login stops **before**
+  issuing a session/refresh token and returns a short-lived, `mfa_pending`
+  challenge token (`AAL0`, TTL `AUTH_MFA_CHALLENGE_TTL_SECONDS`) plus
+  `LoginResult.mfa_required=True`, recording `MFA_CHALLENGE_ISSUED`.
+- **Completion** — `complete_mfa(challenge_token, method, code)` verifies the
+  factor via `_verify_second_factor` (`MfaMethod`: TOTP/WebAuthn/SMS/email/
+  recovery), then issues the real session + refresh token at `AAL2`
+  (`amr=["pwd","totp"]`), recording `MFA_SUCCEEDED`; failure records `MFA_FAILED`
+  and returns `MFA_REQUIRED`.
+- **Enforcement** — `require_scope` rejects any `mfa_pending` (challenge) token;
+  `require_assurance(AAL2)` gates sensitive routes on a satisfied second factor.
+- **Today** — `_mfa_required` and `_verify_second_factor` return `False`, so
+  login stays single-factor and behaviour is unchanged; enabling MFA is purely
+  additive (flip the two hooks + add the enrollment table).
 
 ## Middleware (SRS §17)
 
@@ -87,9 +116,10 @@ gates a route on a scope/permission.
 
 ## Flows
 
-**Login (§19):** validate password → create session → issue access + refresh
-token → record `AUTH_LOGIN_SUCCESS`. Failures record `AUTH_LOGIN_FAILED` and
-return a generic error (email existence is never revealed).
+**Login (§19):** validate password → *(if `_mfa_required` → issue MFA challenge,
+stop; see MFA & step-up)* → create session → issue access + refresh token →
+record `AUTH_LOGIN_SUCCESS`. Failures record `AUTH_LOGIN_FAILED` and return a
+generic error (email existence is never revealed).
 
 **Refresh (§20):** validate refresh token → rotate (revoke old, issue new) →
 new access token → record `TOKEN_REFRESHED`. Replaying an already-rotated token

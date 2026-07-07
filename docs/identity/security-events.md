@@ -21,6 +21,11 @@ their own stream and are *not* doubled into the business audit log.
 | `SUSPICIOUS_LOGIN` | anomaly heuristics (future) |
 | `SESSION_EXPIRED` | a session passed its expiry |
 | `SESSION_REVOKED` | a session was revoked |
+| `MFA_CHALLENGE_ISSUED` | login required a second factor; challenge issued (§24) |
+| `MFA_SUCCEEDED` | second factor verified, session elevated to AAL2 |
+| `MFA_FAILED` | second-factor verification failed |
+| `MFA_ENROLLED` | an identity enrolled a second factor (Part 4.2.x) |
+| `MFA_DISABLED` | a second factor was removed (Part 4.2.x) |
 
 ## Event fields (`security_events`)
 

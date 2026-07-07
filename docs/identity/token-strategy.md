@@ -18,6 +18,7 @@ Claims (`TokenService.create_access_token`, SRS §7):
   "organization_id": "org_456", "roles": ["ROLE_ADMIN"],
   "permissions": ["agent.view", "policy.create", "approval.review"],
   "scopes": [], "session_id": "sess_789", "auth_method": "PASSWORD",
+  "assurance_level": "AAL1", "amr": ["pwd"], "mfa_pending": false,
   "token_type": "access", "iss": "ai-agent-control-tower",
   "aud": "ai-agent-control-tower-api", "iat": 1710000000, "exp": 1710000900,
   "jti": "tok_abc"
@@ -25,6 +26,18 @@ Claims (`TokenService.create_access_token`, SRS §7):
 ```
 
 Machine tokens carry `scopes` and `credential_id` instead of user roles.
+`assurance_level` / `amr` / `mfa_pending` carry the authentication assurance
+(SRS §24) so authorization can require step-up MFA; old tokens without these
+claims default to `AAL1` / `[]` / `false` on resolution.
+
+## MFA challenge token
+
+When login requires a second factor, a distinct short-lived access token is
+issued at assurance `AAL0` with `mfa_pending: true` (TTL
+`AUTH_MFA_CHALLENGE_TTL_SECONDS`, default 5 min). It proves only the primary
+factor: `require_scope` / `require_assurance` reject it, and it is exchanged at
+the MFA-verify step for a full `AAL2` token + refresh token. See
+[authentication-architecture.md](authentication-architecture.md) (MFA & step-up).
 
 ## Refresh token
 

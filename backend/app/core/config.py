@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     # Short-lived access tokens (SRS §6: 15 minutes) and longer refresh tokens.
     AUTH_ACCESS_TOKEN_TTL_SECONDS: int = 15 * 60
     AUTH_REFRESH_TOKEN_TTL_SECONDS: int = 7 * 24 * 60 * 60
+    # MFA step-up challenge token: proves the primary factor only, very short
+    # lived. Concrete factor verification lands in a later subpart (SRS §24).
+    AUTH_MFA_CHALLENGE_TTL_SECONDS: int = 5 * 60
 
     # CORS. ``NoDecode`` stops pydantic-settings from trying to JSON-parse the
     # env value so our validator can accept a simple comma separated string.

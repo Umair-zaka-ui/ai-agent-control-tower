@@ -58,5 +58,20 @@ Even a well-formed token is checked for all of:
 | Expired token reuse | expiry validated every request | ✅ |
 | Disabled identity using old token | identity status checked on every request | ✅ |
 | Compromised service account | status/expiry checks + revocation | ✅ model; enforce 4.2.2 |
+| Single-factor account takeover | assurance levels (AAL) + step-up MFA seam; `require_assurance(AAL2)` gates sensitive routes | ✅ seam; verifier 4.2.x |
+| Challenge-token misuse | `mfa_pending` tokens rejected by `require_scope` / `require_assurance` | ✅ |
 
 Legend: ✅ implemented in 4.2.1 · ⏳ designed, table/enforcement in 4.2.2/4.2.3.
+
+## Authentication assurance (SRS §24)
+
+Every context/token carries an Authenticator Assurance Level:
+
+| Level | Meaning | Issued by |
+| ----- | ------- | --------- |
+| `AAL0` | primary factor verified, MFA still pending | login when `_mfa_required` (challenge token) |
+| `AAL1` | single factor (password / API key / secret) | standard login |
+| `AAL2` | multi-factor satisfied | `complete_mfa` after second factor |
+
+An `AAL0` (`mfa_pending`) token can only be exchanged at the MFA-verify step; it
+never satisfies `require_scope` or `require_assurance`.
