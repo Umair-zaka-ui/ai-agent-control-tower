@@ -7,7 +7,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.identity.auth.context import IdentityContext
-from app.identity.auth.enums import AuthIdentityType, AuthMethod
+from app.identity.auth.enums import AuthAssuranceLevel, AuthIdentityType, AuthMethod
 from app.identity.roles.engine import RoleEngine
 from app.models.user import User
 from app.services import rbac_service
@@ -23,6 +23,9 @@ class IdentityContextResolver:
         *,
         auth_method: AuthMethod,
         session_id: str | None = None,
+        assurance_level: str = AuthAssuranceLevel.AAL1.value,
+        amr: list[str] | None = None,
+        mfa_pending: bool = False,
         ip_address: str | None = None,
         user_agent: str | None = None,
         request_id: str | None = None,
@@ -37,6 +40,9 @@ class IdentityContextResolver:
             roles=roles,
             permissions=permissions,
             session_id=session_id,
+            assurance_level=assurance_level,
+            amr=list(amr or []),
+            mfa_pending=mfa_pending,
             ip_address=ip_address,
             user_agent=user_agent,
             request_id=request_id,
@@ -61,6 +67,11 @@ class IdentityContextResolver:
             scopes=list(claims.get("scopes", [])),
             session_id=claims.get("session_id"),
             credential_id=claims.get("credential_id"),
+            # Backward compatible: tokens minted before the assurance seam default
+            # to single-factor and no MFA-pending state.
+            assurance_level=str(claims.get("assurance_level", AuthAssuranceLevel.AAL1.value)),
+            amr=list(claims.get("amr", [])),
+            mfa_pending=bool(claims.get("mfa_pending", False)),
             ip_address=ip_address,
             user_agent=user_agent,
             request_id=request_id,

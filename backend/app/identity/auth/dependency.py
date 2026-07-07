@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.identity.auth.context import IdentityContext
+from app.identity.auth.enums import AuthAssuranceLevel
 from app.identity.auth.resolver import IdentityContextResolver
 from app.identity.auth.token_service import TokenService
 from app.identity.errors import ErrorCode, IdentityError
@@ -67,8 +68,32 @@ def require_scope(scope: str):
     """Dependency factory: require a scope on the resolved context (SRS §4)."""
 
     def _checker(context: IdentityContext = Depends(authenticate)) -> IdentityContext:
+        # An MFA-pending (challenge) token must never satisfy a protected route;
+        # it may only be exchanged at the MFA-verify endpoint (SRS §24).
+        if context.needs_mfa_challenge():
+            raise IdentityError(ErrorCode.MFA_REQUIRED, "Multi-factor authentication required.")
         if not context.has_scope(scope) and not context.has_permission(scope):
             raise IdentityError(ErrorCode.INSUFFICIENT_SCOPE, f"Missing required scope: {scope}")
+        return context
+
+    return _checker
+
+
+def require_assurance(minimum: str = AuthAssuranceLevel.AAL2.value):
+    """Dependency factory: require a minimum assurance level (step-up, SRS §24).
+
+    Gate sensitive routes (billing, key issuance, policy changes) behind
+    multi-factor authentication. A challenge token is rejected outright; a
+    single-factor token is rejected when AAL2 is demanded.
+    """
+
+    def _checker(context: IdentityContext = Depends(authenticate)) -> IdentityContext:
+        if context.needs_mfa_challenge():
+            raise IdentityError(ErrorCode.MFA_REQUIRED, "Multi-factor authentication required.")
+        if minimum == AuthAssuranceLevel.AAL2.value and not context.mfa_satisfied():
+            raise IdentityError(
+                ErrorCode.MFA_REQUIRED, "Step-up authentication (MFA) required for this resource."
+            )
         return context
 
     return _checker

@@ -33,6 +33,33 @@ class AuthMethod(str, enum.Enum):
     SYSTEM_INTERNAL = "SYSTEM_INTERNAL"
 
 
+class AuthAssuranceLevel(str, enum.Enum):
+    """Authenticator Assurance Level (NIST SP 800-63B, SRS §24).
+
+    Carried on every ``IdentityContext`` and access token so the authorization
+    layer and future enterprise policies can require step-up authentication
+    without redesigning the auth flow.
+    """
+
+    AAL0 = "AAL0"  # partial: primary factor verified, second factor still pending
+    AAL1 = "AAL1"  # single factor (password / API key / client secret)
+    AAL2 = "AAL2"  # multi-factor (primary + OTP / WebAuthn / recovery code)
+
+
+class MfaMethod(str, enum.Enum):
+    """Second-factor methods (SRS §24).
+
+    Enrollment, secret storage and verification land in a later subpart; the
+    enum exists now so the assurance seam is complete and typed.
+    """
+
+    TOTP = "TOTP"
+    WEBAUTHN = "WEBAUTHN"
+    SMS = "SMS"
+    EMAIL = "EMAIL"
+    RECOVERY_CODE = "RECOVERY_CODE"
+
+
 class AuthEventType(str, enum.Enum):
     """Security events every authentication action emits (SRS §13)."""
 
@@ -49,3 +76,9 @@ class AuthEventType(str, enum.Enum):
     SUSPICIOUS_LOGIN = "SUSPICIOUS_LOGIN"
     SESSION_EXPIRED = "SESSION_EXPIRED"
     SESSION_REVOKED = "SESSION_REVOKED"
+    # MFA / step-up authentication (SRS §24).
+    MFA_CHALLENGE_ISSUED = "MFA_CHALLENGE_ISSUED"
+    MFA_SUCCEEDED = "MFA_SUCCEEDED"
+    MFA_FAILED = "MFA_FAILED"
+    MFA_ENROLLED = "MFA_ENROLLED"
+    MFA_DISABLED = "MFA_DISABLED"

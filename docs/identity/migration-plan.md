@@ -29,7 +29,19 @@ identity `status` lifecycle. This plan sequences the remaining tables.
 Column additions to `refresh_tokens`: `family_id`, `rotated_from_id`,
 `reuse_detected_at` (first-class token families independent of the session).
 Column additions to `sessions`: `refresh_token_family_id`, `device_name`,
-`status` (ACTIVE/EXPIRED/REVOKED/SUSPICIOUS).
+`status` (ACTIVE/EXPIRED/REVOKED/SUSPICIOUS), `assurance_level`
+(AAL1/AAL2 — so a rotated token preserves the session's MFA assurance).
+
+## Planned — MFA / step-up (`0010_auth_mfa`, SRS §24)
+
+The assurance seam (`assurance_level`, `amr`, `mfa_pending`, challenge tokens,
+`require_assurance`) ships in 4.2.1 as code + claims. These tables activate it:
+
+| Table | Purpose |
+| ----- | ------- |
+| `mfa_enrollments` | per-identity factors (`method`, hashed TOTP secret / WebAuthn credential, `status`, `confirmed_at`) — drives `_mfa_required` / `_verify_second_factor` |
+| `mfa_recovery_codes` | single-use recovery codes, hash only |
+| `mfa_policies` | org-level policy: require MFA (all / role-scoped), grace period |
 
 ## Planned — Part 4.2.3 (`0009_auth_endpoints` + SSO)
 

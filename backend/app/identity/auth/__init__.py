@@ -17,8 +17,19 @@ from app.identity.auth.authentication_service import (
 )
 from app.identity.auth.context import IdentityContext
 from app.identity.auth.credential_service import CredentialService
-from app.identity.auth.dependency import authenticate, extract_credential, require_scope
-from app.identity.auth.enums import AuthEventType, AuthIdentityType, AuthMethod
+from app.identity.auth.dependency import (
+    authenticate,
+    extract_credential,
+    require_assurance,
+    require_scope,
+)
+from app.identity.auth.enums import (
+    AuthAssuranceLevel,
+    AuthEventType,
+    AuthIdentityType,
+    AuthMethod,
+    MfaMethod,
+)
 from app.identity.auth.refresh_token_service import RefreshTokenService
 from app.identity.auth.resolver import IdentityContextResolver
 from app.identity.auth.security_event_service import SecurityEventService
@@ -30,6 +41,8 @@ __all__ = [
     "AuthMethod",
     "AuthEventType",
     "AuthIdentityType",
+    "AuthAssuranceLevel",
+    "MfaMethod",
     "AuthenticationService",
     "LoginResult",
     "RefreshResult",
@@ -42,4 +55,5 @@ __all__ = [
     "authenticate",
     "extract_credential",
     "require_scope",
+    "require_assurance",
 ]

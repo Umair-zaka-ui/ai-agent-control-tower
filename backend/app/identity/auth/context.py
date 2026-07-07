@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from app.identity.auth.enums import AuthAssuranceLevel
+
 
 @dataclass
 class IdentityContext:
@@ -24,6 +26,15 @@ class IdentityContext:
     ip_address: str | None = None
     user_agent: str | None = None
     request_id: str | None = None
+    # --- Authentication assurance / MFA (SRS §24) --------------------- #
+    # assurance_level: AuthAssuranceLevel value. amr: OIDC "authentication
+    # methods references", e.g. ["pwd"] or ["pwd", "otp"]. mfa_pending marks the
+    # interstitial state where the primary factor is verified but a required
+    # second factor has not yet been satisfied — such a context must not pass
+    # authorization checks.
+    assurance_level: str = AuthAssuranceLevel.AAL1.value
+    amr: list[str] = field(default_factory=list)
+    mfa_pending: bool = False
 
     # ------------------------------------------------------------------ #
     # Convenience predicates used by the authorization layer
@@ -39,3 +50,12 @@ class IdentityContext:
 
     def has_role(self, role: str) -> bool:
         return role in self.roles
+
+    # --- Assurance predicates (SRS §24) ------------------------------- #
+    def mfa_satisfied(self) -> bool:
+        """True once a second factor has been verified (AAL2)."""
+        return self.assurance_level == AuthAssuranceLevel.AAL2.value
+
+    def needs_mfa_challenge(self) -> bool:
+        """True while the primary factor is verified but MFA is still required."""
+        return self.mfa_pending

@@ -10,7 +10,9 @@ from sqlalchemy import select
 
 from app.core.database import SessionLocal
 from app.identity.auth.authentication_service import AuthenticationService
-from app.identity.auth.enums import AuthEventType
+from app.identity.auth.dependency import require_scope
+from app.identity.auth.enums import AuthAssuranceLevel, AuthEventType, MfaMethod
+from app.identity.auth.resolver import IdentityContextResolver
 from app.identity.auth.token_service import TokenService
 from app.identity.errors import ErrorCode, IdentityError
 from app.identity.models.enums import IdentityStatus
@@ -110,6 +112,81 @@ def test_refresh_rotation_and_reuse_detection(client: TestClient) -> None:
 
         assert db.execute(
             select(SecurityEvent).where(SecurityEvent.event_type == AuthEventType.REFRESH_TOKEN_REUSED.value)
+        ).scalars().first() is not None
+    finally:
+        db.close()
+
+
+def test_mfa_challenge_stops_login_before_session(client: TestClient, monkeypatch) -> None:
+    email, password = _register(client)
+    db = SessionLocal()
+    try:
+        auth = AuthenticationService(db)
+        # Force this identity to require a second factor.
+        monkeypatch.setattr(AuthenticationService, "_mfa_required", lambda self, user: True)
+        result = auth.login(email, password, ip_address="1.2.3.4")
+
+        # No session / refresh token yet — only a pending challenge.
+        assert result.mfa_required is True
+        assert result.refresh_token == "" and result.session_id is None
+        assert result.mfa_challenge_token
+
+        claims = TokenService().validate_access_token(result.mfa_challenge_token)
+        assert claims["mfa_pending"] is True
+        assert claims["assurance_level"] == AuthAssuranceLevel.AAL0.value
+
+        # A challenge token must not pass a protected route.
+        ctx = IdentityContextResolver.from_claims(claims)
+        with pytest.raises(IdentityError) as exc:
+            require_scope("agent.view")(context=ctx)
+        assert exc.value.code == ErrorCode.MFA_REQUIRED
+
+        assert db.execute(
+            select(SecurityEvent).where(SecurityEvent.event_type == AuthEventType.MFA_CHALLENGE_ISSUED.value)
+        ).scalars().first() is not None
+    finally:
+        db.close()
+
+
+def test_complete_mfa_elevates_to_aal2(client: TestClient, monkeypatch) -> None:
+    email, password = _register(client)
+    db = SessionLocal()
+    try:
+        auth = AuthenticationService(db)
+        monkeypatch.setattr(AuthenticationService, "_mfa_required", lambda self, user: True)
+        monkeypatch.setattr(
+            AuthenticationService, "_verify_second_factor", lambda self, user, method, code: True
+        )
+        challenge = auth.login(email, password).mfa_challenge_token
+
+        result = auth.complete_mfa(challenge, MfaMethod.TOTP, "123456")
+        # Now fully authenticated: real session + refresh token at AAL2.
+        assert result.mfa_required is False
+        assert result.refresh_token.startswith("rt_") and result.session_id is not None
+        claims = TokenService().validate_access_token(result.access_token)
+        assert claims["assurance_level"] == AuthAssuranceLevel.AAL2.value
+        assert claims["mfa_pending"] is False
+        assert "totp" in claims["amr"]
+        assert db.execute(
+            select(SecurityEvent).where(SecurityEvent.event_type == AuthEventType.MFA_SUCCEEDED.value)
+        ).scalars().first() is not None
+    finally:
+        db.close()
+
+
+def test_complete_mfa_failure_records_event(client: TestClient, monkeypatch) -> None:
+    email, password = _register(client)
+    db = SessionLocal()
+    try:
+        auth = AuthenticationService(db)
+        monkeypatch.setattr(AuthenticationService, "_mfa_required", lambda self, user: True)
+        # _verify_second_factor defaults to False → verification fails.
+        challenge = auth.login(email, password).mfa_challenge_token
+        with pytest.raises(IdentityError) as exc:
+            auth.complete_mfa(challenge, MfaMethod.TOTP, "000000")
+        assert exc.value.code == ErrorCode.MFA_REQUIRED
+        assert db.execute(
+            select(SecurityEvent).where(SecurityEvent.event_type == AuthEventType.MFA_FAILED.value)
         ).scalars().first() is not None
     finally:
         db.close()
