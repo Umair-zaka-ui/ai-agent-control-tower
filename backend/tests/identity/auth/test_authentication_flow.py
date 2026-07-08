@@ -32,9 +32,9 @@ def _register(client: TestClient) -> tuple[str, uuid.UUID]:
     email = f"owner_{uuid.uuid4().hex[:10]}@example.com"
     client.post(
         "/auth/register",
-        json={"organization_name": "Auth Org", "name": "Owner", "email": email, "password": "password123"},
+        json={"organization_name": "Auth Org", "name": "Owner", "email": email, "password": "T3st!Passw0rd#Ok"},
     )
-    return email, "password123"  # type: ignore[return-value]
+    return email, "T3st!Passw0rd#Ok"  # type: ignore[return-value]
 
 
 def test_login_success_issues_tokens_and_event(client: TestClient) -> None:
@@ -78,11 +78,11 @@ def test_disabled_identity_blocked(client: TestClient) -> None:
         member_email = f"m_{uuid.uuid4().hex[:8]}@example.com"
         owner = db.execute(select(User).where(User.email == email)).scalar_one()
         member = service.create_user(
-            UserCreate(email=member_email, display_name="M", password="Str0ngPass", organization_id=owner.organization_id)
+            UserCreate(email=member_email, display_name="M", password="Str0ngPass!x2", organization_id=owner.organization_id)
         )
         service.transition_user(member.id, IdentityStatus.SUSPENDED)
         with pytest.raises(IdentityError) as exc:
-            AuthenticationService(db).login(member_email, "Str0ngPass")
+            AuthenticationService(db).login(member_email, "Str0ngPass!x2")
         assert exc.value.code in (ErrorCode.IDENTITY_SUSPENDED, ErrorCode.IDENTITY_DISABLED)
     finally:
         db.close()

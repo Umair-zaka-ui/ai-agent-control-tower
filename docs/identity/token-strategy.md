@@ -48,8 +48,15 @@ the MFA-verify step for a full `AAL2` token + refresh token. See
 - **Rotation:** every use issues a new token and revokes the old
   (`revoked_at` + `rotated_to_id`).
 - **Reuse detection:** presenting an already-rotated token is treated as theft →
-  the session family is revoked and re-login is required
-  (`RefreshTokenService.is_reuse` + `revoke_session_family`).
+  the token family **and the session itself** are revoked, and re-login is
+  required (`RefreshTokenService.is_reuse` + `revoke_session_family` +
+  `SessionService.revoke`).
+- **Known gap — revocation is not immediate for access tokens.** `authenticate`
+  validates the JWT signature and does not load the session, so an access token
+  minted before a logout / session revocation / reuse-detection stays valid until
+  it expires (≤ 15 min). Revoking the session stops *new* tokens, not the one
+  already issued. Closing this needs a session check or a token denylist on the
+  hot path — a deliberate later decision, not an oversight.
 
 Planned columns (Part 4.2.2, see [migration-plan.md](migration-plan.md)):
 `family_id`, `rotated_from_id`, `reuse_detected_at` for first-class token
@@ -59,7 +66,7 @@ families independent of the session.
 
 | Credential | Storage |
 | ---------- | ------- |
-| Passwords | bcrypt today; argon2id targeted (`hash_user_password`) |
+| Passwords | **argon2id** (Part 4.2.2.1); legacy bcrypt hashes verify and auto-upgrade on next login |
 | API keys | hash only + display prefix + `last_used_at` + `expires_at` + `status` |
 | Refresh tokens | hash only + family + rotation chain + `revoked_at` + `expires_at` |
 | Client secrets | hash only |

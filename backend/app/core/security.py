@@ -13,20 +13,29 @@ from passlib.context import CryptContext
 
 from app.core.config import settings
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# argon2id is the primary scheme (SRS §11); bcrypt is retained so hashes minted
+# before Part 4.2.2.1 still verify. ``deprecated="auto"`` lets us transparently
+# re-hash a legacy bcrypt password to argon2id on next successful login.
+pwd_context = CryptContext(schemes=["argon2", "bcrypt"], deprecated="auto")
 
 
 # --------------------------------------------------------------------------- #
 # Passwords
 # --------------------------------------------------------------------------- #
 def hash_password(password: str) -> str:
-    """Return a bcrypt hash for the given plaintext password."""
+    """Return an argon2id hash for the given plaintext password."""
     return pwd_context.hash(password)
 
 
 def verify_password(plain_password: str, password_hash: str) -> bool:
-    """Verify a plaintext password against its stored bcrypt hash."""
+    """Verify a plaintext password against its stored hash (argon2id or bcrypt)."""
     return pwd_context.verify(plain_password, password_hash)
+
+
+def needs_rehash(password_hash: str) -> bool:
+    """True when a stored hash uses a deprecated scheme (e.g. legacy bcrypt) and
+    should be upgraded to argon2id after the next successful verification."""
+    return pwd_context.needs_update(password_hash)
 
 
 # --------------------------------------------------------------------------- #

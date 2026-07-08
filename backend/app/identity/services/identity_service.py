@@ -93,7 +93,9 @@ class IdentityService:
         except ValueError as exc:
             raise IdentityError(ErrorCode.VALIDATION_ERROR, f"Unknown role '{data.role}'.") from exc
         try:
-            password_hash = hash_user_password(data.password)
+            password_hash = hash_user_password(
+                data.password, email=data.email, username=data.display_name
+            )
         except PasswordPolicyError as exc:
             raise IdentityError(ErrorCode.VALIDATION_ERROR, str(exc)) from exc
 

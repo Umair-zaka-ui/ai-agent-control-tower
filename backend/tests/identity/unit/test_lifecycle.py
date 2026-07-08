@@ -25,7 +25,7 @@ def test_invalid_lifecycle_transitions() -> None:
 
 
 def test_password_policy() -> None:
-    validate_password("Str0ngPass")  # ok: mixed case + digit + length
+    validate_password("Str0ngPass!x2")  # ok: mixed case + digit + length
     with pytest.raises(PasswordPolicyError):
         validate_password("short1A")  # too short
     with pytest.raises(PasswordPolicyError):

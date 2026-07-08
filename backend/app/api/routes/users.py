@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, require_roles
 from app.core.database import get_db
 from app.core.enums import ActorType, UserRole
-from app.core.security import hash_password
+from app.identity.security.passwords import hash_user_password
 from app.models.user import User
 from app.schemas.user import UserCreate, UserRead
 from app.services import audit_service
@@ -38,7 +38,9 @@ def create_user(
         organization_id=current_user.organization_id,
         name=payload.name,
         email=payload.email,
-        password_hash=hash_password(payload.password),
+        password_hash=hash_user_password(
+            payload.password, email=payload.email, username=payload.name
+        ),
         role=payload.role,
         is_active=True,
     )

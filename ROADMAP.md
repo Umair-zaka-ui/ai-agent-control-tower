@@ -165,6 +165,22 @@ APIs. Dark, enterprise design language (Azure / Datadog / Stripe / Linear feel).
   codes, threat model, and a token-table migration plan (no schema change this
   part — additive tables land in 4.2.2/4.2.3). Design docs under
   [`docs/identity/`](docs/identity/). Backend 91/91 green.
+- MFA/step-up assurance seam: `AuthAssuranceLevel` (AAL0/1/2), `amr` and
+  `mfa_pending` on the context + token claims, `require_assurance` gate, and a
+  challenge/`complete_mfa` path (verifier stubbed) so MFA is additive.
+
+### Part 4.2.2.1 — Enterprise human authentication ✅
+
+- `/api/v1/auth/*` endpoints on the 4.2.1 services: `login`, `refresh` (rotating),
+  `logout`, `me`, `sessions` list + revoke, plus the `mfa/verify` seam.
+- **argon2id** password hashing (legacy bcrypt verifies + auto-upgrades on login),
+  the full password-complexity policy (`PasswordService`), and **account lockout**
+  (5 failures / 15 min) driven by a new `login_history` table (migration `0008`).
+- New error codes (`ACCOUNT_LOCKED`, …) + the `AUTH_LOGIN_LOCKED` event.
+- Frontend: refresh-token storage, **silent refresh** (5 min pre-expiry), an axios
+  401→refresh→retry interceptor and a `SessionExpiredModal`. Docs:
+  [`docs/identity/human-authentication.md`](docs/identity/human-authentication.md).
+  Backend 112/112 green; frontend typecheck + lint clean.
 
 ## Future (Phase 4+)
 

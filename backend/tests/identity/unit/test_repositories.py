@@ -30,7 +30,7 @@ def _register_org(client: TestClient) -> uuid.UUID:
     email = f"owner_{uuid.uuid4().hex[:10]}@example.com"
     token = client.post(
         "/auth/register",
-        json={"organization_name": "Identity Org", "name": "Owner", "email": email, "password": "password123"},
+        json={"organization_name": "Identity Org", "name": "Owner", "email": email, "password": "T3st!Passw0rd#Ok"},
     ).json()["access_token"]
     me = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"}).json()
     return uuid.UUID(me["organization_id"])
@@ -45,7 +45,7 @@ def test_user_repository_and_service(client: TestClient) -> None:
             UserCreate(
                 email=f"u_{uuid.uuid4().hex[:8]}@example.com",
                 display_name="Ada Lovelace",
-                password="Str0ngPass",
+                password="Str0ngPass!x2",
                 organization_id=org_id,
                 role="REVIEWER",
             )
@@ -63,7 +63,7 @@ def test_user_repository_and_service(client: TestClient) -> None:
                 UserCreate(
                     email=created.email,
                     display_name="Dup",
-                    password="Str0ngPass",
+                    password="Str0ngPass!x2",
                     organization_id=org_id,
                 )
             )
@@ -116,9 +116,9 @@ def test_authenticate(client: TestClient) -> None:
         service = IdentityService(db)
         email = f"auth_{uuid.uuid4().hex[:8]}@example.com"
         service.create_user(
-            UserCreate(email=email, display_name="Auth User", password="Str0ngPass", organization_id=org_id)
+            UserCreate(email=email, display_name="Auth User", password="Str0ngPass!x2", organization_id=org_id)
         )
-        assert service.authenticate(email, "Str0ngPass").email == email
+        assert service.authenticate(email, "Str0ngPass!x2").email == email
         with pytest.raises(IdentityError):
             service.authenticate(email, "wrong-password")
     finally:
