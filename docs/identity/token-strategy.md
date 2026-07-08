@@ -51,12 +51,15 @@ the MFA-verify step for a full `AAL2` token + refresh token. See
   the token family **and the session itself** are revoked, and re-login is
   required (`RefreshTokenService.is_reuse` + `revoke_session_family` +
   `SessionService.revoke`).
-- **Known gap — revocation is not immediate for access tokens.** `authenticate`
-  validates the JWT signature and does not load the session, so an access token
-  minted before a logout / session revocation / reuse-detection stays valid until
-  it expires (≤ 15 min). Revoking the session stops *new* tokens, not the one
-  already issued. Closing this needs a session check or a token denylist on the
-  hot path — a deliberate later decision, not an oversight.
+- **Revocation is immediate (Part 4.2.2.2).** `authenticate` loads the caller's
+  `auth_sessions` row on every authenticated request, so logout, admin
+  force-logout, device block, idle timeout, absolute timeout and token-reuse
+  termination all take effect on the very next request. See
+  [session-lifecycle.md](./session-lifecycle.md) and
+  [ADR-0007](../architecture/adr/0007-stateful-session-validation.md).
+- **The legacy `/auth/login` surface is the exception.** Its 24-hour JWT carries no
+  `session_id`, so there is no session to check. It is now the platform's only
+  non-revocable credential.
 
 Planned columns (Part 4.2.2, see [migration-plan.md](migration-plan.md)):
 `family_id`, `rotated_from_id`, `reuse_detected_at` for first-class token

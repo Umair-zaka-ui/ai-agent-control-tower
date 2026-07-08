@@ -11,8 +11,8 @@ sequenceDiagram
     participant SPA as Dashboard SPA
     participant R as auth/routes.py
     participant A as AuthenticationService
-    participant RT as RefreshTokenService
-    participant S as SessionService
+    participant RT as RefreshRotationService
+    participant S as SessionLifecycleService
     participant T as TokenService
     participant DB as PostgreSQL
 
@@ -23,7 +23,7 @@ sequenceDiagram
     A->>RT: find(plaintext)
     RT->>DB: SELECT … WHERE token_hash = sha256(plaintext)
     DB-->>RT: record | None
-    Note over A: None → 401 INVALID_CREDENTIALS
+    Note over A: None → 401 INVALID_REFRESH_TOKEN
 
     A->>RT: is_reuse(record)?
     Note over RT: revoked_at IS NOT NULL<br/>AND rotated_to_id IS NOT NULL
@@ -31,13 +31,13 @@ sequenceDiagram
 
     A->>RT: is_valid(record)?  (not expired, not revoked)
     A->>DB: SELECT session
-    A->>S: is_active(session)?
+    A->>S: assert_usable(session)  (idle + absolute)
     A->>A: _assert_identity_active(user)
 
     A->>RT: rotate(record)
     RT->>DB: UPDATE old SET revoked_at, rotated_to_id
     RT->>DB: INSERT new refresh_token
-    A->>S: touch(session) → last_seen_at
+    A->>S: touch(session) → slides idle deadline
     A->>T: create_access_token(ctx)
     A->>DB: COMMIT + TOKEN_REFRESHED event
     A-->>SPA: 200 {access_token, refresh_token}
@@ -56,8 +56,8 @@ sequenceDiagram
     actor Thief
     participant SPA as Legitimate SPA
     participant A as AuthenticationService
-    participant RT as RefreshTokenService
-    participant S as SessionService
+    participant RT as RefreshRotationService
+    participant S as SessionSecurityService
     participant EV as SecurityEventService
     participant DB as PostgreSQL
 
@@ -76,11 +76,11 @@ sequenceDiagram
 
     rect rgb(60,20,20)
     Note over A,DB: Theft response
-    A->>RT: revoke_session_family(session_id)
-    RT->>DB: UPDATE refresh_tokens SET revoked_at WHERE session_id = …
-    A->>S: revoke(session)
-    S->>DB: UPDATE sessions SET revoked_at
-    A->>EV: REFRESH_TOKEN_REUSED
+    A->>RT: revoke_family(family_id)
+    RT->>DB: UPDATE refresh_tokens SET revoked_at WHERE family_id = …
+    A->>S: flag_token_reuse(session)
+    S->>DB: UPDATE auth_sessions SET status=SUSPICIOUS,<br/>revoked_reason=TOKEN_REUSE, security_score-=80
+    A->>EV: TOKEN_REUSE_DETECTED + REFRESH_TOKEN_REUSED
     A->>DB: COMMIT
     end
 
@@ -93,38 +93,47 @@ client next refreshes*. At that moment the replay is detected and the session
 dies for everyone. The victim is logged out — that is the correct, deliberate
 trade: an interrupted session beats a silently hijacked one.
 
-## Known gap: access tokens survive revocation ⚠️
+## Revocation is immediate (closed in Part 4.2.2.2)
 
-Revoking the session stops **new** tokens. It does not invalidate the access
-token already in the thief's hands.
+> Until Part 4.2.2.2 this section documented a **known gap**: `authenticate`
+> validated the JWT signature without loading the session, so a revoked session's
+> access token kept working for up to 15 minutes. That gap is closed.
+
+`authenticate` now loads `auth_sessions` by primary key and revalidates it on every
+authenticated request ([ADR-0007](../adr/0007-stateful-session-validation.md)).
 
 ```mermaid
 sequenceDiagram
     participant Thief
     participant D as dependency.authenticate
+    participant L as SessionLifecycleService
     participant DB as PostgreSQL
 
     Note over Thief: holds access token AT₁ (≤15 min TTL)<br/>session was just revoked
     Thief->>D: GET /api/v1/auth/me  (Bearer AT₁)
     D->>D: validate JWT signature + exp
-    Note right of D: does NOT load the session
-    D-->>Thief: 200 OK ❌
+    D->>DB: SELECT auth_sessions WHERE id = session_id
+    D->>L: assert_usable(session)
+    L-->>D: raise SESSION_REVOKED
+    D-->>Thief: 401 ✅
 ```
 
-`authenticate` validates the signature and expiry, and never touches the
-`sessions` table. So after logout, session revocation, or reuse detection, an
-already-issued access token keeps working until it expires:
+One primary-key lookup answers every question at once: revoked? absolutely expired?
+idle? suspicious? Each raises a **distinct** error code, because a client must tell
+"you were logged out" apart from "you idled out" apart from "we think your token was
+stolen" — the three demand different UX.
 
-| Surface | Worst-case window after revocation |
-| ------- | ---------------------------------- |
-| `/api/v1/auth` | **15 minutes** |
-| Legacy `/auth/login` | **24 hours** (no session, no refresh, not revocable at all) |
+| Surface | Worst case after revocation |
+| ------- | --------------------------- |
+| `/api/v1/auth` | **immediate** — next request is refused |
+| Legacy `/auth/login` | **24 hours** — no `session_id` claim, so no session to check |
 
-This is the classic stateless-JWT trade-off, taken knowingly. Closing it costs a
-session lookup (or denylist hit) on every authenticated request. Pinned by
-`test_access_token_outlives_session_revocation_documented_gap` so it cannot
-regress silently, and recorded in
-[ADR-0003](../adr/0003-stateless-jwt-with-rotating-refresh-tokens.md).
+The legacy surface is now the platform's only non-revocable credential, and the
+strongest argument for completing
+[ADR-0005](../adr/0005-additive-identity-layer-alongside-legacy-auth.md).
+
+Pinned by `test_access_token_dies_with_the_session` — the inverse of the assertion
+that used to guard the gap.
 
 ## Client-side behaviour
 

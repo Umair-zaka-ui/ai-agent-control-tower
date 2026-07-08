@@ -1,8 +1,20 @@
 # ADR-0003 — Stateless JWT access tokens with rotating refresh tokens
 
-- **Status:** Accepted *(retroactively recorded 2026-07-08; decision made in Phase 4 Part 4.2.1)*
+- **Status:** **Partially superseded by [ADR-0007](./0007-stateful-session-validation.md)** *(retroactively recorded 2026-07-08; decision made in Phase 4 Part 4.2.1)*
 - **Deciders:** Platform engineering
 - **Supersedes:** —
+
+> **Superseded in part (2026-07-08).** The token *shapes* decided here — a 15-minute
+> JWT access token plus a 7-day opaque, single-use, rotating refresh token with
+> reuse detection — remain in force and are unchanged.
+>
+> What is superseded is the **stateless hot path**: as of Part 4.2.2.2 the session
+> behind an access token is loaded and revalidated on every authenticated request,
+> so the "revocation is not immediate" cost accepted below no longer applies to the
+> `/api/v1/auth` surface. See [ADR-0007](./0007-stateful-session-validation.md).
+>
+> This document is left intact rather than edited: the reasoning that led to the
+> original trade-off is the point of keeping it.
 
 ## Context
 

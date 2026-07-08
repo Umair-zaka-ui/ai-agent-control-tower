@@ -72,8 +72,13 @@ is a cross-tenant data breach with no second line of defence.
 | Weak passwords | ≥12 chars, 4 classes, blocklist, no email/username substring — enforced at every password-setting route | ✅ tested |
 | Password cracking after DB theft | argon2id; legacy bcrypt transparently upgraded on next login | ✅ |
 | Forged JWT | HS256 signature check | ⚠️ **`JWT_SECRET_KEY` defaults to `"change-me-in-production"` and the app boots with it.** Anyone who reads this public repo can mint tokens against a default-configured deployment. |
-| Stolen refresh token | Rotation on every use + reuse detection → token family **and session** revoked | ✅ tested |
-| Stolen access token | Nothing. Not revocable. | ❌ 15 min (v1) / 24 h (legacy) |
+| Stolen refresh token | Rotation on every use + reuse detection → token family revoked, session marked `SUSPICIOUS` | ✅ tested |
+| Stolen access token (session-bearing) | Session revalidated on **every** request, on both the `/api/v1/auth` and legacy dependencies; revocation is immediate platform-wide | ✅ tested ([ADR-0007](../adr/0007-stateful-session-validation.md)) |
+| Refresh token or MFA-challenge token replayed as a bearer token | Rejected by `decode_access_token` (`token_type` / `mfa_pending`) | ✅ tested |
+| Token minted for another audience/issuer | `aud`/`iss` validated when present | ✅ tested |
+| Stolen access token (legacy `/auth/login`) | Nothing — no `session_id` claim, so no session to check | ❌ **24 h**, now the only non-revocable credential |
+| Stolen access token used after idle/absolute timeout | Timeouts enforced per request (30 min / 12 h) | ✅ tested |
+| Attacker signs in from a blocked device | Login refused with `DEVICE_BLOCKED` (403); blocking also revokes live sessions | ✅ tested |
 | Agent API-key theft | Hashed at rest; rotatable via `agent_api_keys`; no per-key rate limit | ⚠️ |
 | Forged `request_id` / `trace_id` | None — read straight from client headers | ❌ correlation only, never attribution |
 
@@ -103,9 +108,13 @@ is a cross-tenant data breach with no second line of defence.
 | Threat | Mitigation | Status |
 | ------ | ---------- | ------ |
 | "The agent never did that" | Every decision — allow *and* block — writes an `audit_logs` row with `before_state`/`after_state`, risk breakdown, and matched policy | ✅ |
+| "Who ended my session?" | `security_events` is readable: per-org stream, per-identity timeline, per-session history — with the acting administrator on every force-logout | ✅ tested |
+| Security events recorded but unreadable | Read path + indexes (`0011`); an audit event nobody can read is not an audit trail | ✅ tested |
 | "That decision was arbitrary" | Decision is a pure function of stored inputs → replayable | ✅ [ADR-0006](../adr/0006-deterministic-governance-pipeline.md) |
 | "I never logged in" | `login_history` records every attempt incl. failures, IP, UA | ✅ |
-| "Someone else used my session" | `sessions` + `security_events`; but audit `actor_id` has **no FK** and IP/UA are spoofable | ⚠️ |
+| "Someone else used my session" | `auth_sessions` records device, IP, browser, security score; user *and admin* can list and revoke sessions. Audit `actor_id` has **no FK** and IP/UA/device fingerprint are spoofable | ⚠️ |
+| Session timeout leaves no audit trail | `SESSION_TIMEOUT` + `SESSION_EXPIRED` recorded on every idle/absolute expiry | ✅ tested |
+| Admin force-logout with no accountability | Every admin revocation records `actor_id` + `actor_email` alongside the subject | ✅ tested |
 | Clock manipulation | All timestamps server-side, `datetime.now(timezone.utc)` | ✅ |
 
 ## I — Information Disclosure
@@ -121,6 +130,8 @@ is a cross-tenant data breach with no second line of defence.
 | Credentials on the wire | **No TLS** in the shipped stack | ❌ gap 1 |
 | Stack traces to clients | `IdentityError` → structured envelope; `PasswordPolicyError` → 422 | ✅ |
 | Cross-tenant read | Service-layer filter | ⚠️ see B4 |
+| Low-privilege user reading the org security stream | Gated on `session.view` (admins only), **not** `audit.view` — which every built-in role including `VIEWER` holds | ✅ tested |
+| A user reading another user's security events | `/api/v1/auth/security-events` is scoped to `actor_id = me` and accepts no `actor_id` parameter | ✅ tested |
 
 > The `localStorage` decision is worth stating precisely for buyers: an XSS on the
 > dashboard origin yields a 7-day refresh token, not just a 15-minute access
@@ -137,6 +148,9 @@ is a cross-tenant data breach with no second line of defence.
 | Agent action flood | No per-key rate limit | ❌ gap 3 |
 | `login_history` / `audit_logs` growth | No retention policy or partitioning | ❌ |
 | DB connection exhaustion | SQLAlchemy pool defaults | ⚠️ |
+| **Session-lookup amplification** | Every authenticated request now costs one indexed PK read; a valid-looking JWT forces it. No rate limiting exists. | ❌ **new in 4.2.2.2** — see [ADR-0007](../adr/0007-stateful-session-validation.md) |
+| Session-row write contention | `last_activity_at` writes throttled to 1/60 s per session | ✅ |
+| Session table growth | No retention policy; sessions are never hard-deleted (they are the audit record) | ❌ |
 | Lockout as a weapon (attacker locks a victim out) | Inherent to any lockout scheme | ❌ accepted; window is 15 min |
 
 ## E — Elevation of Privilege
@@ -147,8 +161,11 @@ is a cross-tenant data breach with no second line of defence.
 | MFA challenge token used as a session | `mfa_pending` claim rejected by both `require_scope` and `require_assurance` | ✅ tested |
 | Bypassing step-up on sensitive routes | `require_assurance(AAL2)` rejects single-factor tokens | ✅ (no factor enrolled yet) |
 | Horizontal escalation (other tenant) | `organization_id` filter | ⚠️ B4 |
+| Admin revoking a session in another organization | Target resolved through the actor's org via the session's *owner*, not its denormalised `organization_id`; 404 either way | ✅ tested |
+| Non-admin force-logging-out a colleague | `session.revoke` permission, granted only to SUPER_ADMIN/ADMIN | ✅ tested |
 | Vertical escalation via RBAC | `require_scope` checks scope *and* permission | ✅ |
-| Legacy 24 h token outliving a demotion | Legacy JWT carries no session and is not revocable | ❌ |
+| Legacy 24 h token outliving a demotion | Legacy JWT carries no session and is not revocable | ❌ P2: retire the legacy surface |
+| Session outliving an account suspension | Suspending/disabling an identity revokes every live session (`ACCOUNT_DISABLED`) | ✅ tested |
 | Privileged bootstrap | `/auth/register` creates a `SUPER_ADMIN` **and is unauthenticated** | ⚠️ by design (self-serve signup); each registration creates its own isolated org |
 
 ---
@@ -200,9 +217,11 @@ Ordered by (impact × ease), not by STRIDE letter:
 | **P0** | TLS + reverse proxy with rate limiting | Days |
 | **P0** | `SEED_ON_START=false`; remove secrets from compose; unpublish `:5432` | Hours |
 | **P1** | Wire `max_allowed_risk` / `human_approval_required` into `decision_engine` — today they silently do nothing | Days |
+| **P1** | Rate limiting is now *also* a DoS control for the per-request session lookup | Days |
 | **P1** | DB-level append-only enforcement on `audit_logs` | Days |
 | **P1** | Per-IP and per-API-key rate limiting | Days |
-| **P2** | Retire the legacy 24 h non-revocable token surface | Weeks |
+| **P2** | Retire the legacy 24 h non-revocable token surface — now the **only** non-revocable credential | Weeks |
+| **P3** | Retention / archival for `auth_sessions` (never hard-deleted) | Weeks |
 | **P2** | Postgres RLS as defence-in-depth for `organization_id` | Weeks |
 | **P2** | Request body size caps; `input_payload` bound | Days |
 | **P3** | Dummy argon2id verify on unknown-email to close the timing channel | Hours |

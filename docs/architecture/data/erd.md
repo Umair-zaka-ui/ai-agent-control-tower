@@ -1,7 +1,7 @@
 # Entity Relationship Diagrams
 
 > **24 tables**, generated from `Base.metadata` and verified against
-> `backend/migrations/versions/0001…0008`. Split by bounded context because a
+> `backend/migrations/versions/0001…0009`. Split by bounded context because a
 > single 24-table diagram is a poster, not a document.
 
 Verify the table count still matches:
@@ -27,7 +27,7 @@ cd backend && python -c "import app.main; from app.core.database import Base; pr
 ## 1. Identity & Access
 
 The Phase 4 identity platform. `users` predates it; everything else here was
-added by migrations `0006`–`0008`.
+added by migrations `0006`–`0009`.
 
 ```mermaid
 erDiagram
@@ -47,11 +47,12 @@ erDiagram
     roles ||--o{ role_permissions : "has"
     rbac_permissions ||--o{ role_permissions : "granted via"
 
-    users ||--o{ sessions : "opens"
-    users ||--o{ device_sessions : "uses"
+    users ||--o{ auth_sessions : "opens"
+    users ||--o{ auth_devices : "uses"
     users ||--o{ login_history : "attempts"
     users ||--o{ service_accounts : "owns"
-    sessions ||--o{ refresh_tokens : "family"
+    auth_sessions ||--o{ refresh_tokens : "one family"
+    auth_devices ||--o{ auth_sessions : "hosts"
 
     organizations {
         uuid id PK
@@ -68,22 +69,36 @@ erDiagram
         boolean is_active
         varchar status "IdentityStatus"
     }
-    sessions {
+    auth_sessions {
         uuid id PK
         uuid user_id FK
+        uuid organization_id FK
+        uuid device_id FK
+        varchar status "SessionStatus"
         varchar ip_address
-        varchar user_agent
-        datetime expires_at
-        datetime last_seen_at
+        varchar country
+        varchar city
+        varchar browser
+        varchar operating_system
+        varchar login_method
+        datetime last_activity_at
+        datetime idle_expires_at "30 min sliding"
+        datetime absolute_expires_at "12 h ceiling"
         datetime revoked_at "null = active"
+        varchar revoked_reason "SessionRevocationReason"
+        int security_score "100 = healthy"
+        boolean is_trusted
+        uuid refresh_token_family_id "one family per session"
     }
     refresh_tokens {
         uuid id PK
         uuid session_id FK
+        uuid family_id "denormalised: no join on reuse sweep"
         varchar token_hash UK "SHA-256, never plaintext"
         datetime expires_at
         datetime revoked_at
         uuid rotated_to_id "rotation chain"
+        datetime reuse_detected_at "the replayed token"
     }
     login_history {
         uuid id PK
@@ -105,11 +120,17 @@ erDiagram
         varchar correlation_id
         jsonb meta
     }
-    device_sessions {
+    auth_devices {
         uuid id PK
         uuid user_id FK
-        varchar device_fingerprint
-        boolean trusted
+        varchar fingerprint "advisory, forgeable"
+        varchar device_name
+        varchar device_type
+        varchar browser
+        varchar operating_system
+        varchar status "UNKNOWN / TRUSTED / BLOCKED"
+        varchar last_ip
+        datetime last_seen_at
     }
     roles {
         uuid id PK
@@ -161,10 +182,16 @@ erDiagram
 
 - **`refresh_tokens.rotated_to_id` + `revoked_at` encode reuse detection.** A
   token that is *revoked and already rotated* has been replayed → theft signal →
-  the family **and the session** are revoked.
-- **`sessions` is the family boundary.** First-class token families
-  (`family_id`, `reuse_detected_at`) are planned — see
-  [migration plan](../../identity/migration-plan.md).
+  the family is revoked and the session becomes `SUSPICIOUS`. Requiring *both*
+  conditions is what stops an ordinary logout from being reported as theft.
+- **`family_id` is first-class and denormalised** onto `refresh_tokens`, so a reuse
+  sweep never needs a join and a family survives its session row forensically.
+- **`auth_sessions` carries two deadlines.** `idle_expires_at` slides forward on
+  activity; `absolute_expires_at` never moves. Both are enforced on every request
+  — see [session lifecycle](../../identity/session-lifecycle.md).
+- **`auth_devices.fingerprint` is advisory.** It is derived from client-supplied
+  headers, so it can be forged; it recognises a device for UX and risk scoring and
+  is never an authentication factor. `BLOCKED` can only deny, never grant.
 - **`login_history.user_id` is nullable on purpose.** A failed login for an
   unknown email must still be recorded without leaking that the email is unknown.
 - `users.role` (legacy enum) and `user_roles` (RBAC) both exist. The enum is the

@@ -21,10 +21,11 @@ rejected*.
 | --- | ----- | ------ |
 | [0001](./0001-record-architecture-decisions.md) | Record architecture decisions | Accepted |
 | [0002](./0002-postgresql-as-sole-datastore.md) | PostgreSQL as the sole datastore | Accepted |
-| [0003](./0003-stateless-jwt-with-rotating-refresh-tokens.md) | Stateless JWT access tokens with rotating refresh tokens | Accepted |
+| [0003](./0003-stateless-jwt-with-rotating-refresh-tokens.md) | Stateless JWT access tokens with rotating refresh tokens | Partially superseded by 0007 |
 | [0004](./0004-single-source-password-policy.md) | One password policy, defined once, argon2id | Accepted |
 | [0005](./0005-additive-identity-layer-alongside-legacy-auth.md) | Build the identity layer additively beside legacy auth | Accepted |
 | [0006](./0006-deterministic-governance-pipeline.md) | Keep the governance decision path deterministic (no LLM) | Accepted |
+| [0007](./0007-stateful-session-validation.md) | Validate the session on every authenticated request | Accepted |
 
 ## Status values
 

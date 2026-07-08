@@ -156,12 +156,11 @@ no filesystem writes. Every piece of state is in PostgreSQL. Once migrations mov
 out of the entrypoint (gap 8), horizontal scaling is a load-balancer config, not
 a rewrite.
 
-The one caveat is the [access-token revocation gap](../sequences/02-token-refresh-and-reuse.md#known-gap-access-tokens-survive-revocation):
-statelessness is exactly *why* a revoked session's access token still works. If
-that gap is ever closed with a denylist, the denylist becomes shared state and
-the "no external dependencies" property in
-[ADR-0002](../adr/0002-postgresql-as-sole-datastore.md) will need revisiting —
-a Postgres table would work at current scale.
+Since Part 4.2.2.2 the API loads the caller's session from PostgreSQL on every
+authenticated request ([ADR-0007](../adr/0007-stateful-session-validation.md)), so
+"stateless" now means *no in-process state* — any replica can serve any request —
+rather than *no database read*. Horizontal scaling is unaffected, but PostgreSQL is
+now on the critical path for authentication, not just for data.
 
 ## Local development
 
