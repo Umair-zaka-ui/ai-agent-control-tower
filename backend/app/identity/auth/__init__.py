@@ -30,6 +30,8 @@ from app.identity.auth.enums import (
     AuthMethod,
     MfaMethod,
 )
+from app.identity.auth.login_history_service import LoginHistoryService
+from app.identity.auth.password_service import PasswordPolicyError, PasswordService
 from app.identity.auth.refresh_token_service import RefreshTokenService
 from app.identity.auth.resolver import IdentityContextResolver
 from app.identity.auth.security_event_service import SecurityEventService
@@ -51,6 +53,9 @@ __all__ = [
     "CredentialService",
     "SessionService",
     "SecurityEventService",
+    "LoginHistoryService",
+    "PasswordService",
+    "PasswordPolicyError",
     "IdentityContextResolver",
     "authenticate",
     "extract_credential",

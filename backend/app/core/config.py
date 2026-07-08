@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     # MFA step-up challenge token: proves the primary factor only, very short
     # lived. Concrete factor verification lands in a later subpart (SRS §24).
     AUTH_MFA_CHALLENGE_TTL_SECONDS: int = 5 * 60
+    # Account lockout (SRS 4.2.2.1 §10): N failures within the window locks the
+    # account for the remainder of the window.
+    AUTH_LOCKOUT_THRESHOLD: int = 5
+    AUTH_LOCKOUT_WINDOW_SECONDS: int = 15 * 60
 
     # CORS. ``NoDecode`` stops pydantic-settings from trying to JSON-parse the
     # env value so our validator can accept a simple comma separated string.

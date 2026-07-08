@@ -26,7 +26,7 @@ def _register(client: TestClient) -> tuple[str, str]:
             "organization_name": "Audit Org",
             "name": "Owner",
             "email": email,
-            "password": "password123",
+            "password": "T3st!Passw0rd#Ok",
         },
     )
     assert r.status_code == 201, r.text
@@ -167,10 +167,10 @@ def test_rbac_export_split(client: TestClient) -> None:
     r = client.post(
         "/users",
         headers=admin,
-        json={"name": "Vic Viewer", "email": viewer_email, "password": "password123", "role": "VIEWER"},
+        json={"name": "Vic Viewer", "email": viewer_email, "password": "T3st!Passw0rd#Ok", "role": "VIEWER"},
     )
     assert r.status_code == 201, r.text
-    vtoken = client.post("/auth/login", json={"email": viewer_email, "password": "password123"}).json()["access_token"]
+    vtoken = client.post("/auth/login", json={"email": viewer_email, "password": "T3st!Passw0rd#Ok"}).json()["access_token"]
     viewer = _auth(vtoken)
 
     # Viewer can see the table + statistics...

@@ -1,10 +1,11 @@
 # Authentication Architecture (Phase 4 Part 4.2.1)
 
-Status: **design + scaffolding**. This part establishes the architecture, the
-`IdentityContext`, the core services and the middleware dependency. Token-table
-persistence and the `/api/v1/auth/*` endpoints are implemented in Parts 4.2.2 /
-4.2.3 (see [migration-plan.md](migration-plan.md)). The existing password login
-keeps working unchanged — this is the foundation it migrates onto.
+Status: **design + scaffolding** (4.2.1). The `/api/v1/auth/*` human-login
+endpoints, argon2id hashing, account lockout and login history are now
+implemented in Part 4.2.2.1 — see [human-authentication.md](human-authentication.md).
+This part establishes the architecture, the `IdentityContext`, the core services
+and the middleware dependency. The existing password login keeps working
+unchanged — this is the foundation it migrates onto.
 
 ## Core principle (SRS §2)
 
@@ -123,8 +124,8 @@ generic error (email existence is never revealed).
 
 **Refresh (§20):** validate refresh token → rotate (revoke old, issue new) →
 new access token → record `TOKEN_REFRESHED`. Replaying an already-rotated token
-triggers reuse detection: the whole session family is revoked, the event
-`REFRESH_TOKEN_REUSED` is recorded, and re-login is required.
+triggers reuse detection: the whole token family **and the session** are revoked,
+the event `REFRESH_TOKEN_REUSED` is recorded, and re-login is required.
 
 **Logout (§21):** revoke session → revoke refresh-token family → record
 `AUTH_LOGOUT`.

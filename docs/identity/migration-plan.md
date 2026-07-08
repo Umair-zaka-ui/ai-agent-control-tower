@@ -15,6 +15,16 @@ identity `status` lifecycle. This plan sequences the remaining tables.
 | `security_events` | `SecurityEventService` |
 | `users.status` / `organizations.status` | identity status checks |
 
+## Shipped — Part 4.2.2.1 (`0008_auth_login_history`)
+
+| Table | Used by |
+| ----- | ------- |
+| `login_history` | `LoginHistoryService` — per-attempt audit + the account-lockout window (SRS §10, §13). Supersedes the placeholder `login_attempts`. |
+
+Password hashing moved to **argon2id** in this part (no schema change — the
+existing `users.password_hash` column stores the new hash; legacy bcrypt hashes
+verify and auto-upgrade on next login).
+
 ## Planned — Part 4.2.2 (`0008_auth_credentials`)
 
 | Table | Purpose |

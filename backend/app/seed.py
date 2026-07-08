@@ -20,7 +20,8 @@ from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
 from app.core.enums import ActionDecision, UserRole
-from app.core.security import generate_api_key, hash_api_key, hash_password
+from app.core.security import generate_api_key, hash_api_key
+from app.identity.security.passwords import hash_user_password
 from app.models.agent import Agent
 from app.models.organization import Organization
 from app.models.permission import Permission
@@ -29,7 +30,7 @@ from app.models.user import User
 from app.services import api_key_service, rbac_service
 
 DEMO_ORG_NAME = "Demo Healthcare Org"
-DEMO_PASSWORD = "password123"
+DEMO_PASSWORD = "DemoPass!2026"
 
 DEMO_USERS = [
     {"name": "Demo Admin", "email": "admin@example.com", "role": UserRole.ADMIN},
@@ -112,7 +113,7 @@ def _seed_users(db: Session, org: Organization) -> None:
                 organization_id=org.id,
                 name=spec["name"],
                 email=spec["email"],
-                password_hash=hash_password(DEMO_PASSWORD),
+                password_hash=hash_user_password(DEMO_PASSWORD),
                 role=spec["role"],
                 is_active=True,
             )

@@ -15,6 +15,7 @@ from app.identity.models.enums import (
     SecurityEventType,
 )
 from app.identity.models.external_client import ExternalClient
+from app.identity.models.login_history import LoginHistory
 from app.identity.models.security_event import SecurityEvent
 from app.identity.models.service_account import ServiceAccount
 from app.identity.models.session import DeviceSession, RefreshToken, UserSession
@@ -29,6 +30,7 @@ __all__ = [
     "RefreshToken",
     "DeviceSession",
     "SecurityEvent",
+    "LoginHistory",
     "IdentityStatus",
     "IdentityType",
     "CredentialType",

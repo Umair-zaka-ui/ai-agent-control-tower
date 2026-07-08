@@ -21,7 +21,7 @@ def _register(client: TestClient) -> tuple[str, uuid.UUID]:
     email = f"owner_{uuid.uuid4().hex[:10]}@example.com"
     token = client.post(
         "/auth/register",
-        json={"organization_name": "Identity API Org", "name": "Owner", "email": email, "password": "password123"},
+        json={"organization_name": "Identity API Org", "name": "Owner", "email": email, "password": "T3st!Passw0rd#Ok"},
     ).json()["access_token"]
     me = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"}).json()
     return token, uuid.UUID(me["organization_id"])
@@ -43,7 +43,7 @@ def test_versioned_user_endpoints(client: TestClient) -> None:
         json={
             "email": email,
             "display_name": "New Member",
-            "password": "Str0ngPass",
+            "password": "Str0ngPass!x2",
             "organization_id": str(org_id),
             "role": "VIEWER",
         },
@@ -104,16 +104,16 @@ def test_rbac_viewer_cannot_create_users(client: TestClient) -> None:
     client.post(
         "/users",
         headers=admin,
-        json={"name": "Vic", "email": viewer_email, "password": "password123", "role": "VIEWER"},
+        json={"name": "Vic", "email": viewer_email, "password": "T3st!Passw0rd#Ok", "role": "VIEWER"},
     )
-    vtoken = client.post("/auth/login", json={"email": viewer_email, "password": "password123"}).json()["access_token"]
+    vtoken = client.post("/auth/login", json={"email": viewer_email, "password": "T3st!Passw0rd#Ok"}).json()["access_token"]
     r = client.post(
         f"{BASE}/users",
         headers=_auth(vtoken),
         json={
             "email": f"x_{uuid.uuid4().hex[:8]}@example.com",
             "display_name": "X",
-            "password": "Str0ngPass",
+            "password": "Str0ngPass!x2",
             "organization_id": str(org_id),
         },
     )
@@ -141,7 +141,7 @@ def test_user_lifecycle_status_endpoint(client: TestClient) -> None:
     user = client.post(
         f"{BASE}/users",
         headers=admin,
-        json={"email": email, "display_name": "M", "password": "Str0ngPass", "organization_id": str(org_id)},
+        json={"email": email, "display_name": "M", "password": "Str0ngPass!x2", "organization_id": str(org_id)},
     ).json()
     assert user["status"] == "ACTIVE"
     uid = user["id"]

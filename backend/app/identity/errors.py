@@ -13,6 +13,8 @@ from __future__ import annotations
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
+from app.identity.security.passwords import PasswordPolicyError
+
 
 class ErrorCode:
     """Stable, machine-readable identity error codes."""
@@ -44,6 +46,12 @@ class ErrorCode:
     API_KEY_EXPIRED = "API_KEY_EXPIRED"
     MFA_REQUIRED = "MFA_REQUIRED"
     INSUFFICIENT_SCOPE = "INSUFFICIENT_SCOPE"
+    # Human authentication (SRS 4.2.2.1 §21).
+    ACCOUNT_LOCKED = "ACCOUNT_LOCKED"
+    ACCOUNT_DISABLED = "ACCOUNT_DISABLED"
+    PASSWORD_EXPIRED = "PASSWORD_EXPIRED"
+    TOKEN_INVALID = "TOKEN_INVALID"
+    REFRESH_FAILED = "REFRESH_FAILED"
 
 
 # Map error codes → HTTP status.
@@ -75,6 +83,12 @@ _STATUS: dict[str, int] = {
     ErrorCode.API_KEY_EXPIRED: status.HTTP_401_UNAUTHORIZED,
     ErrorCode.MFA_REQUIRED: status.HTTP_401_UNAUTHORIZED,
     ErrorCode.INSUFFICIENT_SCOPE: status.HTTP_403_FORBIDDEN,
+    # Human authentication (SRS 4.2.2.1 §21).
+    ErrorCode.ACCOUNT_LOCKED: status.HTTP_423_LOCKED,
+    ErrorCode.ACCOUNT_DISABLED: status.HTTP_403_FORBIDDEN,
+    ErrorCode.PASSWORD_EXPIRED: status.HTTP_401_UNAUTHORIZED,
+    ErrorCode.TOKEN_INVALID: status.HTTP_401_UNAUTHORIZED,
+    ErrorCode.REFRESH_FAILED: status.HTTP_401_UNAUTHORIZED,
 }
 
 
@@ -108,4 +122,18 @@ def register_identity_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=exc.http_status,
             content=error_body(exc.code, exc.message, _request_id(request)),
+        )
+
+    @app.exception_handler(PasswordPolicyError)
+    async def _handle_password_policy_error(
+        request: Request, exc: PasswordPolicyError
+    ) -> JSONResponse:
+        """A password-policy rejection is a client validation error, never a 500.
+
+        Routes that set a password (legacy ``/auth/register``, ``/users``) call
+        ``hash_user_password`` directly and let this handler shape the response.
+        """
+        return JSONResponse(
+            status_code=422,
+            content=error_body(ErrorCode.VALIDATION_ERROR, str(exc), _request_id(request)),
         )

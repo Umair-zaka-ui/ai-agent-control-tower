@@ -6,7 +6,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.enums import ActorType, UserRole
-from app.core.security import hash_password, verify_password
+from app.core.security import verify_password
+from app.identity.security.passwords import hash_user_password
 from app.models.organization import Organization
 from app.models.user import User
 from app.services import audit_service, rbac_service
@@ -35,7 +36,7 @@ def register_organization(
         organization_id=organization.id,
         name=name,
         email=email,
-        password_hash=hash_password(password),
+        password_hash=hash_user_password(password, email=email, username=name),
         role=UserRole.SUPER_ADMIN,
         is_active=True,
     )

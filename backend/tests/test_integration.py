@@ -27,7 +27,7 @@ def _register(client: TestClient) -> str:
             "organization_name": "Test Org",
             "name": "Owner",
             "email": email,
-            "password": "password123",
+            "password": "T3st!Passw0rd#Ok",
         },
     )
     assert r.status_code == 201, r.text

@@ -10,6 +10,7 @@ their own stream and are *not* doubled into the business audit log.
 | ----- | ---- |
 | `AUTH_LOGIN_SUCCESS` | password login succeeds |
 | `AUTH_LOGIN_FAILED` | bad credentials or inactive identity |
+| `AUTH_LOGIN_LOCKED` | account locked after too many failures (SRS 4.2.2.1 §10) |
 | `AUTH_LOGOUT` | user logs out |
 | `TOKEN_REFRESHED` | refresh token rotated, new access issued |
 | `REFRESH_TOKEN_REUSED` | already-rotated refresh token replayed (theft signal) |

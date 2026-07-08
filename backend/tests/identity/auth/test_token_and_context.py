@@ -109,8 +109,8 @@ def test_resolver_from_claims_defaults_for_legacy_tokens() -> None:
 
 
 def test_credential_service() -> None:
-    h = hash_password("Str0ngPass")
-    assert CredentialService.verify_password("Str0ngPass", h)
+    h = hash_password("Str0ngPass!x2")
+    assert CredentialService.verify_password("Str0ngPass!x2", h)
     assert not CredentialService.verify_password("wrong", h)
     assert CredentialService.is_active("ACTIVE")
     assert not CredentialService.is_active("SUSPENDED")

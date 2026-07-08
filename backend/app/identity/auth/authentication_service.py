@@ -11,9 +11,11 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.security import hash_password, needs_rehash
 from app.identity.auth.context import IdentityContext
 from app.identity.auth.credential_service import CredentialService
 from app.identity.auth.enums import (
@@ -23,6 +25,7 @@ from app.identity.auth.enums import (
     AuthMethod,
     MfaMethod,
 )
+from app.identity.auth.login_history_service import LoginHistoryService
 from app.identity.auth.refresh_token_service import RefreshTokenService
 from app.identity.auth.resolver import IdentityContextResolver
 from app.identity.auth.security_event_service import SecurityEventService
@@ -64,9 +67,10 @@ class AuthenticationService:
         self.refresh_tokens = RefreshTokenService(db)
         self.events = SecurityEventService(db)
         self.resolver = IdentityContextResolver(db)
+        self.login_history = LoginHistoryService(db)
 
     # ------------------------------------------------------------------ #
-    # Human login (SRS §19)
+    # Human login (SRS §10, §19)
     # ------------------------------------------------------------------ #
     def login(
         self,
@@ -77,22 +81,28 @@ class AuthenticationService:
         user_agent: str | None = None,
         request_id: str | None = None,
     ) -> LoginResult:
+        # 1. Account lockout gate (SRS §10) — checked before touching credentials.
+        if self.login_history.is_locked(email):
+            self._record_locked(email, ip_address, user_agent, request_id)
+            self.db.commit()
+            raise IdentityError(
+                ErrorCode.ACCOUNT_LOCKED,
+                "Account temporarily locked due to repeated failed logins. Try again later.",
+            )
+
+        # 2. Credential verification (generic failure — never reveals existence).
         user = auth_service.authenticate_user(self.db, email, password)
         if user is None:
-            # Do not reveal whether the email exists (SRS §19).
-            self.events.record(
-                AuthEventType.AUTH_LOGIN_FAILED,
-                auth_method=AuthMethod.PASSWORD,
-                identity_type=AuthIdentityType.HUMAN_USER.value,
-                ip_address=ip_address,
-                user_agent=user_agent,
-                request_id=request_id,
-                metadata={"email": email, "reason": "invalid_credentials"},
-            )
+            self._record_failed_login(email, "invalid_credentials", ip_address, user_agent, request_id)
             self.db.commit()
             raise IdentityError(ErrorCode.INVALID_CREDENTIALS, "Invalid email or password.")
 
         self._assert_identity_active(user, ip_address, user_agent, request_id)
+
+        # 3. Transparently upgrade a legacy bcrypt hash to argon2id (SRS §11).
+        if needs_rehash(user.password_hash):
+            user.password_hash = hash_password(password)
+            self.db.flush()
 
         # Step-up seam: if a second factor is required, stop before issuing a
         # session/refresh token and hand back a challenge instead (SRS §24).
@@ -112,6 +122,10 @@ class AuthenticationService:
             request_id=request_id,
         )
         access = self.tokens.create_access_token(context)
+        self.login_history.record(
+            email=email, success=True, user_id=user.id,
+            ip_address=ip_address, user_agent=user_agent,
+        )
         self.events.record(
             AuthEventType.AUTH_LOGIN_SUCCESS,
             auth_method=AuthMethod.PASSWORD,
@@ -125,6 +139,52 @@ class AuthenticationService:
         )
         self.db.commit()
         return LoginResult(access, issued.token, session.id, context)
+
+    # ------------------------------------------------------------------ #
+    # Login-history / lockout helpers (SRS §10, §13)
+    # ------------------------------------------------------------------ #
+    def _user_id_for_email(self, email: str) -> uuid.UUID | None:
+        user = self.db.execute(select(User).where(User.email == email)).scalar_one_or_none()
+        return user.id if user else None
+
+    def _record_failed_login(
+        self, email: str, reason: str, ip: str | None, ua: str | None, request_id: str | None
+    ) -> None:
+        """Record a failed attempt, emit AUTH_LOGIN_FAILED, and lock if the
+        threshold is now crossed (SRS §10)."""
+        user_id = self._user_id_for_email(email)
+        self.login_history.record(
+            email=email, success=False, user_id=user_id, failure_reason=reason,
+            ip_address=ip, user_agent=ua,
+        )
+        self.events.record(
+            AuthEventType.AUTH_LOGIN_FAILED,
+            auth_method=AuthMethod.PASSWORD,
+            identity_type=AuthIdentityType.HUMAN_USER.value,
+            identity_id=user_id,
+            ip_address=ip,
+            user_agent=ua,
+            request_id=request_id,
+            metadata={"email": email, "reason": reason},
+        )
+        # This failure may itself trip the lockout threshold.
+        if self.login_history.is_locked(email):
+            self._record_locked(email, ip, ua, request_id, user_id=user_id)
+
+    def _record_locked(
+        self, email: str, ip: str | None, ua: str | None, request_id: str | None,
+        *, user_id: uuid.UUID | None = None,
+    ) -> None:
+        self.events.record(
+            AuthEventType.AUTH_LOGIN_LOCKED,
+            auth_method=AuthMethod.PASSWORD,
+            identity_type=AuthIdentityType.HUMAN_USER.value,
+            identity_id=user_id if user_id is not None else self._user_id_for_email(email),
+            ip_address=ip,
+            user_agent=ua,
+            request_id=request_id,
+            metadata={"email": email, "reason": "account_locked"},
+        )
 
     # ------------------------------------------------------------------ #
     # Refresh with rotation + reuse detection (SRS §20)
@@ -143,10 +203,12 @@ class AuthenticationService:
 
         if self.refresh_tokens.is_reuse(record):
             # Stale, already-rotated token replayed → possible theft (SRS §20).
+            # Kill the whole session, not just the token family: the presenter of
+            # a rotated token may be an attacker holding a stolen access token.
             self.refresh_tokens.revoke_session_family(record.session_id)
             session = self.db.get(UserSession, record.session_id)
-            if session is not None:
-                session.revoked_at = session.revoked_at
+            if session is not None and self.sessions.is_active(session):
+                self.sessions.revoke(session)
             self.events.record(
                 AuthEventType.REFRESH_TOKEN_REUSED,
                 auth_method=AuthMethod.REFRESH_TOKEN,

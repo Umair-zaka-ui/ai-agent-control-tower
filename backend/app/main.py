@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.router import api_router
 from app.core.config import settings
 from app.identity.api import identity_router
+from app.identity.auth.routes import router as auth_v1_router
 from app.identity.errors import register_identity_exception_handlers
 
 app = FastAPI(
@@ -45,3 +46,6 @@ app.include_router(api_router, prefix=settings.API_PREFIX)
 # Phase 4: Enterprise Identity Platform — versioned, isolated under /api/v1/identity.
 register_identity_exception_handlers(app)
 app.include_router(identity_router)
+
+# Phase 4 Part 4.2.2.1: human authentication endpoints under /api/v1/auth.
+app.include_router(auth_v1_router)

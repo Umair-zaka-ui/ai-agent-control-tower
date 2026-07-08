@@ -6,7 +6,7 @@
 > **Phase 2** (production-oriented): agent API-key auth, a database-driven policy engine, advanced RBAC, email notifications, forensic audit, dashboard APIs, risk engine v2, and Docker. See the [Phase 2 guide](#phase-2--production-oriented-platform) below.
 > **Phase 3** (enterprise dashboard UI): a React 19 + TypeScript web console (`frontend/`) that consumes the Phase 1/2 APIs. Delivered: **Part 1** (scaffold + dark theme + app-shell), **Part 2** (JWT auth + sidebar/top-nav + route guards), **Part 3.1** (live operational dashboard — KPIs, charts, approval queue, recent actions/audit, system health, 60s auto-refresh), **Part 3.2a** (agent-management module — server-driven table, create wizard, details + stats, edit, lifecycle), **Part 3.3** (policy-management module), **Part 3.4** (approval queue & human review workbench — statistics cards, filterable queue, detail page, review workbench with approve/reject/escalate/assign, risk breakdown, audit timeline, history & escalations boards), **Part 3.5** (enterprise Audit & Compliance Center — audit dashboard with statistics + activity timeline + recent events, a filterable/searchable/paginated events explorer, forensic event detail with request/response viewers and a related-events flow, plus RBAC-gated security & compliance dashboards and a multi-format export center), **Part 3.6** (enterprise Analytics & AI Operations Center — executive KPI grid with live trends, AI fleet health, an activity overview chart, a risk analytics dashboard with heatmap, a performance dashboard with agent ranking, policy & human-review analytics, an estimated cost dashboard, a reports center with export, rule-based AI insights, and role-gated executive/operations dashboards with auto-refresh). See [`frontend/README.md`](frontend/README.md) and [`ROADMAP.md`](ROADMAP.md).
 >
-> **Phase 4** (enterprise identity): **Part 4.1** (Enterprise Identity Platform foundation — an isolated `app/identity` package giving every human, AI agent, service account, organization and external application a formal identity model with a consistent lifecycle. Adds the org → department → team hierarchy, sessions/refresh-tokens/device-sessions and security events, a repository + service architecture, a versioned `/api/v1/identity` API with a standard error envelope, and identity audit integration; see [`docs/phase-4-part-1.md`](docs/phase-4-part-1.md)), **Part 4.2.1** (authentication architecture & trust model — an `app/identity/auth` layer with the `IdentityContext`, seven core auth services (authentication/token/refresh-token/credential/session/security-event/resolver) with real login → rotation → reuse-detection → logout, an authentication middleware dependency, auth enums/error codes/security-event types, a threat model and a token-table migration plan; see [`docs/identity/`](docs/identity/)).
+> **Phase 4** (enterprise identity): **Part 4.1** (Enterprise Identity Platform foundation — an isolated `app/identity` package giving every human, AI agent, service account, organization and external application a formal identity model with a consistent lifecycle. Adds the org → department → team hierarchy, sessions/refresh-tokens/device-sessions and security events, a repository + service architecture, a versioned `/api/v1/identity` API with a standard error envelope, and identity audit integration; see [`docs/phase-4-part-1.md`](docs/phase-4-part-1.md)), **Part 4.2.1** (authentication architecture & trust model — an `app/identity/auth` layer with the `IdentityContext`, seven core auth services (authentication/token/refresh-token/credential/session/security-event/resolver) with real login → rotation → reuse-detection → logout, an authentication middleware dependency, auth enums/error codes/security-event types, a threat model and a token-table migration plan; see [`docs/identity/`](docs/identity/)), and **Part 4.2.2.1** (enterprise human authentication — the `/api/v1/auth/*` endpoints (login/refresh/logout/me/sessions) on those services, **argon2id** password hashing with legacy-bcrypt auto-upgrade, a full password-complexity policy, **account lockout** (5 failures/15 min) backed by a new `login_history` table, and a frontend with silent token refresh + a 401→refresh→retry interceptor + session-expired modal; see [`docs/identity/human-authentication.md`](docs/identity/human-authentication.md)).
 
 As organizations hand more real-world tasks to autonomous AI agents (submitting claims, updating records, sending emails, moving money), they need a control plane that sits between the agent and the action. The **AI Agent Control Tower** is that control plane: every action an agent attempts is checked against permissions, scored for risk, and either **allowed**, **blocked**, or **routed to a human for approval** — and every decision is written to an immutable audit log.
 
@@ -185,7 +185,7 @@ After running `python -m app.seed`:
 
 **Organization:** `Demo Healthcare Org`
 
-**Users** (password `password123`):
+**Users** (password `DemoPass!2026`):
 
 | Email                  | Role       |
 | ---------------------- | ---------- |
@@ -220,7 +220,7 @@ You can do all of this interactively in Swagger (`/docs`) — click **Authorize*
 ```bash
 curl -X POST http://localhost:8000/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"admin@example.com","password":"password123"}'
+  -d '{"email":"admin@example.com","password":"DemoPass!2026"}'
 # => {"access_token":"<TOKEN>","token_type":"bearer"}
 ```
 
@@ -321,6 +321,7 @@ pytest
 | Area          | Endpoints                                                                              |
 | ------------- | -------------------------------------------------------------------------------------- |
 | Auth          | `POST /auth/register`, `POST /auth/login`, `GET /auth/me`                               |
+| Auth (v1)     | `POST /api/v1/auth/{login,refresh,logout,mfa/verify}`, `GET /api/v1/auth/{me,sessions}`, `DELETE /api/v1/auth/sessions/{id}` — Phase 4 Part 4.2.2.1: argon2id, rotating refresh tokens, account lockout, login history, silent refresh. See [`docs/identity/human-authentication.md`](docs/identity/human-authentication.md). |
 | Organizations | `POST /organizations`, `GET /organizations/{id}`                                       |
 | Users         | `POST /users`, `GET /users`, `GET /users/{id}`                                          |
 | Agents        | `POST /agents`, `GET /agents`, `GET /agents/{id}`, `PATCH /agents/{id}/status`          |

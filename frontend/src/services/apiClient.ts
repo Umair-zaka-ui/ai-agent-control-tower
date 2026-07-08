@@ -1,25 +1,33 @@
 import axios, { AxiosError, type AxiosInstance, type InternalAxiosRequestConfig } from 'axios'
 
 import { env } from '@/config/env'
-import { ROUTES } from '@/constants/routes'
 import type { ApiError } from '@/types'
-import { getAccessToken, removeAccessToken } from '@/utils/tokenStorage'
+import { clearAuthStorage, getAccessToken } from '@/utils/tokenStorage'
+import { refreshAccessToken } from './tokenRefresh'
 
 /**
  * Single configured Axios instance for the whole app. Every API service is
  * built on top of this — pages and components must never import axios directly.
  *
  * - Base URL comes from `VITE_API_BASE_URL` (never hardcoded).
- * - The JWT is attached automatically when present; requests without a token
- *   still proceed (public endpoints work).
- * - A 401 response clears the token and redirects to /login (except when the
- *   failing call is the login request itself, which surfaces an inline error).
+ * - The JWT is attached automatically when present.
+ * - On a 401 (except for the auth endpoints themselves) the client attempts a
+ *   one-shot refresh-token exchange and transparently retries the original
+ *   request (SRS §19). If the refresh fails, it clears auth and broadcasts
+ *   `act:session-expired` so the app can surface the session-expired modal.
  */
 export const apiClient: AxiosInstance = axios.create({
   baseURL: env.apiBaseUrl,
   headers: { 'Content-Type': 'application/json' },
   timeout: 30_000,
 })
+
+/** Event broadcast when the session can no longer be refreshed (SRS §20). */
+export const SESSION_EXPIRED_EVENT = 'act:session-expired'
+
+interface RetriableConfig extends InternalAxiosRequestConfig {
+  _retried?: boolean
+}
 
 apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   const token = getAccessToken()
@@ -29,32 +37,51 @@ apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   return config
 })
 
-function isLoginRequest(config: AxiosError['config']): boolean {
-  return Boolean(config?.url && config.url.includes('/auth/login'))
+/** Auth endpoints must not trigger the refresh-and-retry loop. */
+function isAuthEndpoint(url: string | undefined): boolean {
+  if (!url) return false
+  return (
+    url.includes('/auth/login') ||
+    url.includes('/auth/refresh') ||
+    url.includes('/auth/logout') ||
+    url.includes('/auth/mfa')
+  )
+}
+
+function toApiError(error: AxiosError): ApiError {
+  const status = error.response?.status ?? 0
+  const data = error.response?.data as
+    | { detail?: unknown; message?: unknown; error?: { message?: unknown } }
+    | undefined
+  const message =
+    (typeof data?.detail === 'string' && data.detail) ||
+    (typeof data?.message === 'string' && data.message) ||
+    (typeof data?.error?.message === 'string' && data.error.message) ||
+    error.message ||
+    'Unexpected error'
+  return { status, message, detail: data?.detail }
 }
 
 apiClient.interceptors.response.use(
   (response) => response,
-  (error: AxiosError) => {
+  async (error: AxiosError) => {
     const status = error.response?.status ?? 0
+    const config = error.config as RetriableConfig | undefined
 
-    if (status === 401 && !isLoginRequest(error.config)) {
-      removeAccessToken()
-      // Hard redirect so all in-memory auth state is discarded. Guarded to
-      // avoid a redirect loop when we're already on the login page.
-      if (window.location.pathname !== ROUTES.LOGIN) {
-        window.location.assign(ROUTES.LOGIN)
+    // Reactive refresh: on a first 401 from a protected endpoint, try to mint a
+    // new access token and replay the request exactly once.
+    if (status === 401 && config && !config._retried && !isAuthEndpoint(config.url)) {
+      config._retried = true
+      const newToken = await refreshAccessToken()
+      if (newToken) {
+        config.headers.set('Authorization', `Bearer ${newToken}`)
+        return apiClient(config)
       }
+      // Refresh failed — the session is over.
+      clearAuthStorage()
+      window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT))
     }
 
-    const data = error.response?.data as { detail?: unknown; message?: unknown } | undefined
-    const message =
-      (typeof data?.detail === 'string' && data.detail) ||
-      (typeof data?.message === 'string' && data.message) ||
-      error.message ||
-      'Unexpected error'
-
-    const apiError: ApiError = { status, message, detail: data?.detail }
-    return Promise.reject(apiError)
+    return Promise.reject(toApiError(error))
   },
 )

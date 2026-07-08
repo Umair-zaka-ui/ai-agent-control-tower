@@ -55,7 +55,7 @@ class UserRead(BaseModel):
 class UserCreate(BaseModel):
     email: EmailStr
     display_name: str = Field(min_length=1, max_length=255)
-    password: str = Field(min_length=8, max_length=128)
+    password: str = Field(min_length=12, max_length=128)
     organization_id: uuid.UUID
     department_id: uuid.UUID | None = None
     role: str = "VIEWER"
