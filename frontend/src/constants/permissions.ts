@@ -12,6 +12,10 @@ export const PERMISSIONS = {
   SESSION_REVOKE: 'session.revoke',
   /** List organization members (needed for the admin user picker). */
   USER_VIEW: 'user.view',
+  /** View pending invitations (4.2.2.3.1 §15). */
+  INVITATION_VIEW: 'invitation.view',
+  /** Create, resend and cancel invitations. */
+  INVITATION_MANAGE: 'invitation.manage',
 } as const
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS]

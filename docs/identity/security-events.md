@@ -25,6 +25,18 @@ their own stream and are *not* doubled into the business audit log.
 | `DEVICE_BLOCKED` | device blocked, or a blocked device attempted login |
 | `TOKEN_ROTATED` | refresh token rotated to a successor |
 | `TOKEN_REUSE_DETECTED` | forensic anchor on the replayed token |
+| `INVITATION_CREATED` | an administrator invited an address (4.2.2.3.1 §13) |
+| `INVITATION_SENT` | the invitation email was dispatched (or not: see `delivered`) |
+| `INVITATION_RESENT` | the token was rotated and re-sent |
+| `INVITATION_ACCEPTED` | the invitee registered |
+| `INVITATION_EXPIRED` | the 7-day clock ran out |
+| `INVITATION_CANCELLED` | an administrator revoked the invitation |
+| `USER_REGISTERED` | an account was created (invitation or self-service) |
+| `EMAIL_VERIFICATION_SENT` | a verification link was dispatched |
+| `EMAIL_VERIFIED` | the address was proven |
+| `ACCOUNT_ACTIVATED` | the account may now sign in |
+| `ACCOUNT_PENDING_APPROVAL` | verified, awaiting an administrator (self-service) |
+| `REGISTRATION_BLOCKED` | self-registration attempted where it is disabled |
 | `TOKEN_REVOKED` | an access/refresh token was revoked |
 | `API_KEY_USED` | an agent/service key authenticated (Part 4.2.2) |
 | `API_KEY_REVOKED` | a key was revoked |

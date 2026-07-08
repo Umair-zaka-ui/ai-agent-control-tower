@@ -12,6 +12,13 @@ export type JsonObject = Record<string, unknown>
 export interface ApiError {
   status: number
   message: string
+  /**
+   * Machine-readable code from the identity error envelope
+   * (`{ error: { code, message } }`). Absent on legacy `{ detail }` routes and on
+   * network failures. Branch on this, never on the human-readable message: prose gets
+   * reworded, codes are a contract.
+   */
+  code?: string
   detail?: unknown
 }
 

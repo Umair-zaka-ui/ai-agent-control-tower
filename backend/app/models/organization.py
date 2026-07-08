@@ -21,6 +21,11 @@ class Organization(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     # Phase 4 Part 4.1a: canonical identity lifecycle (IdentityStatus).
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="ACTIVE")
+    # How humans may join this organization (4.2.2.3.1 §3). Enterprise default is
+    # INVITE_ONLY: unrestricted public registration is the exception, not the rule.
+    registration_mode: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="INVITE_ONLY", server_default="INVITE_ONLY"
+    )
 
     users: Mapped[list["User"]] = relationship(
         back_populates="organization", cascade="all, delete-orphan"

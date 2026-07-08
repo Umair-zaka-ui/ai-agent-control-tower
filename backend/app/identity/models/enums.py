@@ -16,12 +16,40 @@ class IdentityType(str, enum.Enum):
 
 
 class IdentityStatus(str, enum.Enum):
-    """Canonical identity lifecycle (SRS §8).
+    """Canonical identity lifecycle (SRS §8; onboarding states from 4.2.2.3.1 §4).
 
-    Created → Pending Verification → Active → Suspended → Disabled → Archived →
-    Deleted. Every transition emits an audit event.
+    Onboarding path:
+
+        INVITED → REGISTERED → EMAIL_PENDING → EMAIL_VERIFIED → ACTIVE
+
+    Then the operational path: ACTIVE → SUSPENDED → DISABLED → ARCHIVED → DELETED.
+    Every transition emits an audit event.
+
+    Each onboarding state is *persisted and observable*, not decorative:
+
+    - ``INVITED``        an invitation exists; no ``users`` row yet. Carried by the
+                         ``invitations`` row, not by a user.
+    - ``REGISTERED``     the account exists and the password is set, but the
+                         verification email has not been dispatched. A user sits
+                         here if SMTP fails — which is exactly when you need to
+                         know, and what ``resend-verification`` retries from.
+    - ``EMAIL_PENDING``  the verification email is out; the user cannot sign in.
+    - ``EMAIL_VERIFIED`` the address is proven. Terminal for *self-registration*
+                         until an administrator approves. In invitation mode the
+                         admin already approved by inviting, so activation follows
+                         immediately in the same transaction (both audited).
+    - ``ACTIVE``         may authenticate.
+
+    ``CREATED`` / ``PENDING_VERIFICATION`` predate this part and are retained for
+    identities created directly by ``IdentityService``.
     """
 
+    # Onboarding (4.2.2.3.1 §4)
+    INVITED = "INVITED"
+    REGISTERED = "REGISTERED"
+    EMAIL_PENDING = "EMAIL_PENDING"
+    EMAIL_VERIFIED = "EMAIL_VERIFIED"
+    # Pre-existing
     CREATED = "CREATED"
     PENDING_VERIFICATION = "PENDING_VERIFICATION"
     ACTIVE = "ACTIVE"
@@ -30,10 +58,34 @@ class IdentityStatus(str, enum.Enum):
     ARCHIVED = "ARCHIVED"
     DELETED = "DELETED"
 
+    def can_authenticate(self) -> bool:
+        """Only an ACTIVE identity may sign in. Everything else has a *reason*,
+        and the login path must be able to say which."""
+        return self is IdentityStatus.ACTIVE
+
+    def is_onboarding(self) -> bool:
+        return self in _ONBOARDING_STATES
+
+
+_ONBOARDING_STATES = frozenset(
+    {
+        IdentityStatus.INVITED,
+        IdentityStatus.REGISTERED,
+        IdentityStatus.EMAIL_PENDING,
+        IdentityStatus.EMAIL_VERIFIED,
+    }
+)
+
 
 # Allowed forward/again transitions between lifecycle states. Kept permissive
 # but explicit so the service layer can reject nonsensical jumps.
 IDENTITY_TRANSITIONS: dict[IdentityStatus, set[IdentityStatus]] = {
+    # Onboarding is a one-way street: you cannot un-verify an email, and a
+    # disabled invitee must be re-invited rather than resurrected mid-flow.
+    IdentityStatus.INVITED: {IdentityStatus.REGISTERED, IdentityStatus.DISABLED},
+    IdentityStatus.REGISTERED: {IdentityStatus.EMAIL_PENDING, IdentityStatus.DISABLED},
+    IdentityStatus.EMAIL_PENDING: {IdentityStatus.EMAIL_VERIFIED, IdentityStatus.DISABLED},
+    IdentityStatus.EMAIL_VERIFIED: {IdentityStatus.ACTIVE, IdentityStatus.DISABLED},
     IdentityStatus.CREATED: {IdentityStatus.PENDING_VERIFICATION, IdentityStatus.ACTIVE},
     IdentityStatus.PENDING_VERIFICATION: {IdentityStatus.ACTIVE, IdentityStatus.DISABLED},
     IdentityStatus.ACTIVE: {IdentityStatus.SUSPENDED, IdentityStatus.DISABLED, IdentityStatus.ARCHIVED},
@@ -42,6 +94,37 @@ IDENTITY_TRANSITIONS: dict[IdentityStatus, set[IdentityStatus]] = {
     IdentityStatus.ARCHIVED: {IdentityStatus.DELETED, IdentityStatus.ACTIVE},
     IdentityStatus.DELETED: set(),
 }
+
+
+class InvitationStatus(str, enum.Enum):
+    """Lifecycle of an invitation (4.2.2.3.1 §5).
+
+    ``EXPIRED`` is a *derived* fact the clock decides; ``ACCEPTED``/``CANCELLED``
+    are *recorded* facts someone caused. Recorded facts win — a cancelled
+    invitation does not become "expired" merely because time passed.
+    """
+
+    PENDING = "PENDING"
+    ACCEPTED = "ACCEPTED"
+    EXPIRED = "EXPIRED"
+    CANCELLED = "CANCELLED"
+
+    def is_terminal(self) -> bool:
+        return self is not InvitationStatus.PENDING
+
+
+class RegistrationMode(str, enum.Enum):
+    """How an organization allows humans to join (4.2.2.3.1 §3).
+
+    ``INVITE_ONLY`` is the default and the enterprise posture: unrestricted public
+    registration is the exception, not the rule. ``SELF_SERVICE`` still requires
+    email verification *and* administrator approval before activation, so enabling
+    it never means "anyone can walk in".
+    """
+
+    INVITE_ONLY = "INVITE_ONLY"
+    ADMIN_ONLY = "ADMIN_ONLY"
+    SELF_SERVICE = "SELF_SERVICE"
 
 
 def can_transition(current: IdentityStatus, target: IdentityStatus) -> bool:

@@ -61,6 +61,31 @@ class Settings(BaseSettings):
     SESSION_SCORE_NEW_COUNTRY_PENALTY: int = 20
     SESSION_SCORE_TOKEN_REUSE_PENALTY: int = 80
 
+    # --- Phase 4.2.2.3.1: registration, invitations & rate limiting ---------
+    # Public URL the invitation / verification links point at.
+    APP_BASE_URL: str = "http://localhost:5173"
+    INVITATION_TTL_SECONDS: int = 7 * 24 * 60 * 60        # 7 days  (§9)
+    EMAIL_VERIFICATION_TTL_SECONDS: int = 24 * 60 * 60    # 24 hours (§12)
+    # Rate limiting for public endpoints (§19): 5 requests / minute / IP.
+    RATE_LIMIT_ENABLED: bool = True
+    RATE_LIMIT_DEFAULT_REQUESTS: int = 5
+    RATE_LIMIT_DEFAULT_WINDOW_SECONDS: int = 60
+    # Honour X-Forwarded-For only behind a proxy you control. Trusting it
+    # unconditionally lets any caller spoof their rate-limit bucket via a header.
+    TRUST_PROXY_HEADERS: bool = False
+    # Rows of globally-stale rate-limit history reaped per request. Bounded work, so a
+    # caller rotating IP addresses cannot leave the table growing for ever.
+    RATE_LIMIT_SWEEP_BATCH: int = 50
+
+    # Where suppressed emails are written when NOTIFICATIONS_ENABLED=false.
+    #
+    # An onboarding email carries the ONLY copy of a single-use token -- the database
+    # stores nothing but its SHA-256. Logging the subject and discarding the body meant
+    # every invitation created in dev was permanently unacceptable. The outbox makes the
+    # link recoverable. It contains plaintext tokens, so it is written *only* when mail
+    # sending is off, and is git-ignored.
+    EMAIL_DEV_OUTBOX_PATH: str = "var/dev-outbox.log"
+
     # CORS. ``NoDecode`` stops pydantic-settings from trying to JSON-parse the
     # env value so our validator can accept a simple comma separated string.
     BACKEND_CORS_ORIGINS: Annotated[list[str], NoDecode] = [

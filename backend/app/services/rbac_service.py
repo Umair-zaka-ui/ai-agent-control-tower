@@ -38,6 +38,10 @@ PERMISSION_CATALOG: dict[str, str] = {
     # ending someone's session, and the two are granted to different roles.
     "session.view": "View any user's sessions and devices in the organization",
     "session.revoke": "Force-logout another user's sessions (admin force-logout)",
+    # Enterprise onboarding (4.2.2.3.1 §15). Viewing who has been invited is a
+    # lesser power than being able to invite -- an invitation is an offer of access.
+    "invitation.view": "View pending invitations in the organization",
+    "invitation.manage": "Create, resend and cancel invitations",
     "rbac.manage": "Manage roles and role assignments",
     "approval.view": "View the approval queue and review details",
     "approval.review": "Approve or reject pending actions",

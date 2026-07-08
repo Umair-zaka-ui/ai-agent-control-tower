@@ -156,3 +156,75 @@ export interface MeResponse {
 export interface EffectivePermissions {
   permissions: string[]
 }
+
+// --------------------------------------------------------------------------- //
+// Registration, invitations & email verification (Part 4.2.2.3.1)
+// --------------------------------------------------------------------------- //
+
+export type InvitationStatus = 'PENDING' | 'ACCEPTED' | 'EXPIRED' | 'CANCELLED'
+
+export type RegistrationMode = 'INVITE_ONLY' | 'ADMIN_ONLY' | 'SELF_SERVICE'
+
+/** Admin view of an invitation. Carries no token — not even a prefix. */
+export interface Invitation {
+  id: ID
+  organization_id: ID
+  email: string
+  role_id: ID | null
+  department_id: ID | null
+  team_id: ID | null
+  invited_by: ID | null
+  status: InvitationStatus
+  expires_at: ISODateString
+  accepted_at: ISODateString | null
+  cancelled_at: ISODateString | null
+  resent_count: number
+  last_sent_at: ISODateString | null
+  created_at: ISODateString
+  is_expired: boolean
+}
+
+/** Public preview shown on the accept-invitation page (SRS §17). */
+export interface InvitationPreview {
+  email: string
+  organization_name: string
+  role_name: string | null
+  department_name: string | null
+  invited_by_name: string | null
+  expires_at: ISODateString
+}
+
+/** Whether invitation emails actually leave the building (SRS §6). */
+export interface EmailDeliveryStatus {
+  enabled: boolean
+  /** Where suppressed messages are written when delivery is off. */
+  outbox_path: string | null
+}
+
+export interface InvitationCreateRequest {
+  email: string
+  role_id?: ID | null
+  department_id?: ID | null
+  team_id?: ID | null
+}
+
+export interface RegisterFromInvitationRequest {
+  token: string
+  first_name: string
+  last_name: string
+  password: string
+  confirm_password: string
+  phone?: string | null
+  timezone?: string | null
+  language?: string | null
+  job_title?: string | null
+}
+
+/** Registration deliberately returns no tokens: you must verify your email first. */
+export interface RegistrationResponse {
+  email: string
+  status: string
+  email_sent: boolean
+  requires_approval: boolean
+  message: string
+}

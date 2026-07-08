@@ -659,17 +659,37 @@ class AuthenticationService:
     # ------------------------------------------------------------------ #
     # Internal
     # ------------------------------------------------------------------ #
+    # Why an identity cannot sign in. An onboarding user must not be told
+    # "this identity is not permitted to authenticate" — they need to know their
+    # email is unverified, or that an administrator has not approved them yet.
+    # Both are actionable; "disabled" is not.
+    _INACTIVE_REASONS: dict[str, str] = {
+        IdentityStatus.SUSPENDED.value: ErrorCode.IDENTITY_SUSPENDED,
+        IdentityStatus.INVITED.value: ErrorCode.EMAIL_NOT_VERIFIED,
+        IdentityStatus.REGISTERED.value: ErrorCode.EMAIL_NOT_VERIFIED,
+        IdentityStatus.EMAIL_PENDING.value: ErrorCode.EMAIL_NOT_VERIFIED,
+        IdentityStatus.EMAIL_VERIFIED.value: ErrorCode.ACCOUNT_PENDING_APPROVAL,
+        IdentityStatus.PENDING_VERIFICATION.value: ErrorCode.EMAIL_NOT_VERIFIED,
+    }
+
+    _INACTIVE_MESSAGES: dict[str, str] = {
+        ErrorCode.EMAIL_NOT_VERIFIED: (
+            "Confirm your email address before signing in. Check your inbox, or request a new link."
+        ),
+        ErrorCode.ACCOUNT_PENDING_APPROVAL: (
+            "Your email is confirmed. An administrator must approve your account before you can sign in."
+        ),
+        ErrorCode.IDENTITY_SUSPENDED: "This identity is not permitted to authenticate.",
+        ErrorCode.IDENTITY_DISABLED: "This identity is not permitted to authenticate.",
+    }
+
     def _assert_identity_active(
         self, user: User, ip: str | None, ua: str | None, request_id: str | None
     ) -> None:
         active = user.is_active and user.status == IdentityStatus.ACTIVE.value
         if active:
             return
-        code = (
-            ErrorCode.IDENTITY_SUSPENDED
-            if user.status == IdentityStatus.SUSPENDED.value
-            else ErrorCode.IDENTITY_DISABLED
-        )
+        code = self._INACTIVE_REASONS.get(user.status, ErrorCode.IDENTITY_DISABLED)
         self.events.record(
             AuthEventType.AUTH_LOGIN_FAILED,
             auth_method=AuthMethod.PASSWORD,
@@ -682,4 +702,7 @@ class AuthenticationService:
             metadata={"reason": "identity_not_active", "status": user.status},
         )
         self.db.commit()
-        raise IdentityError(code, "This identity is not permitted to authenticate.")
+        raise IdentityError(
+            code,
+            self._INACTIVE_MESSAGES.get(code, "This identity is not permitted to authenticate."),
+        )

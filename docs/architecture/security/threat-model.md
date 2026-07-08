@@ -68,7 +68,12 @@ is a cross-tenant data breach with no second line of defence.
 | Threat | Mitigation | Status |
 | ------ | ---------- | ------ |
 | Password guessing | Account lockout: 5 failures / 15 min window, checked *before* credential verification | ✅ tested |
-| Credential stuffing across many accounts | Per-account lockout only; **no rate limit per IP** | ❌ gap 3 |
+| Credential stuffing across many accounts | Per-account lockout only; login is **still not** IP-rate-limited | ❌ gap 3 |
+| Abuse of the public onboarding endpoints | 5 req/min/IP on register, verify-email, resend-verification and invitation preview (Postgres-backed, fixed window) | ✅ tested |
+| Account enumeration via `resend-verification` | Identical response for unknown / pending / already-verified addresses | ✅ tested |
+| Invitation link forged or guessed | 32 bytes of CSPRNG, SHA-256 at rest, single use, 7-day expiry, rotated on resend | ✅ tested |
+| Invitation link leaks tenant internals | Opaque token, not a JWT; the preview returns names, never ids | ✅ tested |
+| Anyone with a link registers an arbitrary address | The email comes from the invitation row; the request body has no email field | ✅ tested |
 | Weak passwords | ≥12 chars, 4 classes, blocklist, no email/username substring — enforced at every password-setting route | ✅ tested |
 | Password cracking after DB theft | argon2id; legacy bcrypt transparently upgraded on next login | ✅ |
 | Forged JWT | HS256 signature check | ⚠️ **`JWT_SECRET_KEY` defaults to `"change-me-in-production"` and the app boots with it.** Anyone who reads this public repo can mint tokens against a default-configured deployment. |
@@ -217,7 +222,7 @@ Ordered by (impact × ease), not by STRIDE letter:
 | **P0** | TLS + reverse proxy with rate limiting | Days |
 | **P0** | `SEED_ON_START=false`; remove secrets from compose; unpublish `:5432` | Hours |
 | **P1** | Wire `max_allowed_risk` / `human_approval_required` into `decision_engine` — today they silently do nothing | Days |
-| **P1** | Rate limiting is now *also* a DoS control for the per-request session lookup | Days |
+| **P1** | Rate limiting on **login** and the authenticated surface (4.2.2.3.1 covered only the public onboarding endpoints); also a DoS control for the per-request session lookup | Days |
 | **P1** | DB-level append-only enforcement on `audit_logs` | Days |
 | **P1** | Per-IP and per-API-key rate limiting | Days |
 | **P2** | Retire the legacy 24 h non-revocable token surface — now the **only** non-revocable credential | Weeks |

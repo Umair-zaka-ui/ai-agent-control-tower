@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/hooks/useAuth'
 import type { AuthDevice, AuthSession } from '@/types'
+import { InvitationsPanel } from '@/modules/identity/components/InvitationsPanel'
 import { AdminSessionsPanel } from './components/AdminSessionsPanel'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { SecurityEventList } from './components/SecurityEventList'
@@ -183,6 +184,9 @@ export function SecuritySessionsPage() {
           />
         </CardContent>
       </Card>
+
+      {/* Admin: who may join (4.2.2.3.1 §15). Renders only with invitation.view. */}
+      <InvitationsPanel />
 
       {/* Admin: team sessions (SRS §17, §32). Renders only with session.view. */}
       <AdminSessionsPanel />

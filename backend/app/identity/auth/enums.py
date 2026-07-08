@@ -106,3 +106,21 @@ class AuthEventType(str, enum.Enum):
     DEVICE_BLOCKED = "DEVICE_BLOCKED"
     TOKEN_ROTATED = "TOKEN_ROTATED"
     TOKEN_REUSE_DETECTED = "TOKEN_REUSE_DETECTED"
+    # Registration, invitations & email verification (4.2.2.3.1 §13).
+    INVITATION_CREATED = "INVITATION_CREATED"
+    INVITATION_SENT = "INVITATION_SENT"
+    INVITATION_ACCEPTED = "INVITATION_ACCEPTED"
+    INVITATION_EXPIRED = "INVITATION_EXPIRED"
+    INVITATION_CANCELLED = "INVITATION_CANCELLED"
+    INVITATION_RESENT = "INVITATION_RESENT"
+    USER_REGISTERED = "USER_REGISTERED"
+    EMAIL_VERIFICATION_SENT = "EMAIL_VERIFICATION_SENT"
+    EMAIL_VERIFIED = "EMAIL_VERIFIED"
+    ACCOUNT_ACTIVATED = "ACCOUNT_ACTIVATED"
+    ACCOUNT_PENDING_APPROVAL = "ACCOUNT_PENDING_APPROVAL"
+    REGISTRATION_BLOCKED = "REGISTRATION_BLOCKED"
+    # NOTE: there is deliberately no RATE_LIMIT_EXCEEDED *audit event*. Writing one
+    # security-event row per throttled request would turn a flood into self-inflicted
+    # write amplification -- the attacker chooses how many rows we insert. The
+    # `rate_limit_hits` table already records every attempt, and `ErrorCode
+    # .RATE_LIMIT_EXCEEDED` still tells the caller what happened.
