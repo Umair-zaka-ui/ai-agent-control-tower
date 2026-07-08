@@ -60,13 +60,50 @@ def create_access_token(
 
 
 def decode_access_token(token: str) -> dict[str, Any] | None:
-    """Decode and validate a JWT. Returns the claims dict or ``None``."""
+    """Decode and validate a JWT. Returns the claims dict or ``None``.
+
+    Accepts **both** token shapes the platform issues:
+
+    - the legacy ``/auth/login`` token: ``{sub, exp}``
+    - the Part 4.2.1+ ``/api/v1/auth`` token: adds ``iss``, ``aud``, ``token_type``,
+      ``session_id``, ``mfa_pending``, …
+
+    The SPA signs in on the new surface and then calls the legacy endpoints with
+    that token. Before this accepted ``aud``, python-jose raised ``Invalid audience``
+    and *every* dashboard request 401'd for real users.
+
+    ``verify_aud`` is disabled in the decoder and the claim is checked here instead,
+    because jose raises for a *missing* audience when one is expected — which would
+    reject the legacy token. Absent claims are permitted; **present ones must match**.
+    Never blanket-disable the check: a token minted for a different audience must not
+    authenticate here.
+    """
     try:
-        return jwt.decode(
-            token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM]
+        claims = jwt.decode(
+            token,
+            settings.JWT_SECRET_KEY,
+            algorithms=[settings.JWT_ALGORITHM],
+            options={"verify_aud": False},
         )
     except JWTError:
         return None
+
+    audience = claims.get("aud")
+    if audience is not None and audience != settings.JWT_AUDIENCE:
+        return None
+    issuer = claims.get("iss")
+    if issuer is not None and issuer != settings.JWT_ISSUER:
+        return None
+
+    # Only an *access* token authenticates a request. A refresh token is opaque and
+    # never reaches here; an MFA challenge carries ``mfa_pending`` and proves only
+    # the primary factor. Legacy tokens carry neither claim and are accepted.
+    if claims.get("token_type") not in (None, "access"):
+        return None
+    if claims.get("mfa_pending"):
+        return None
+
+    return claims
 
 
 # --------------------------------------------------------------------------- #

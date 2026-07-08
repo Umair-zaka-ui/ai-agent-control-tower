@@ -56,7 +56,56 @@ def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="User account is inactive."
         )
+
+    # If the token carries a session (i.e. it was minted by /api/v1/auth), the
+    # session is the source of truth here too. Accepting such a token without
+    # checking its session would make logout, admin force-logout and timeout
+    # "immediate" on /api/v1/auth/* and meaningless on every business endpoint —
+    # a hole far worse than the interop bug this branch fixes. See ADR-0007.
+    _assert_session_usable(db, payload.get("session_id"))
     return user
+
+
+def _assert_session_usable(db: Session, session_id: str | None) -> None:
+    """Revalidate the session behind a session-bearing JWT (Part 4.2.2.2).
+
+    Legacy tokens carry no ``session_id`` and skip this — they remain
+    non-revocable, which is a property of the legacy *login route*, not of this
+    dependency, and disappears when that route is retired.
+
+    Imported locally: ``app.api.deps`` is imported by the identity API, and a
+    module-scope import of the identity auth package would create a cycle.
+    """
+    if not session_id:
+        return
+
+    from app.identity.auth.session_lifecycle_service import SessionLifecycleService
+    from app.identity.errors import IdentityError
+    from app.identity.models.session import UserSession
+
+    try:
+        parsed = uuid.UUID(str(session_id))
+    except (ValueError, TypeError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Could not validate credentials."
+        ) from None
+
+    session = db.get(UserSession, parsed)
+    if session is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Session does not exist."
+        )
+
+    lifecycle = SessionLifecycleService(db)
+    try:
+        lifecycle.assert_usable(session)
+    except IdentityError as exc:
+        # Legacy routes speak HTTPException; translate rather than leak the
+        # identity error envelope into a surface that does not use it.
+        raise HTTPException(status_code=exc.http_status, detail=exc.message) from exc
+
+    if lifecycle.touch(session):
+        db.commit()
 
 
 # --------------------------------------------------------------------------- #
