@@ -13,6 +13,8 @@ from app.identity.models.enums import (
     DeviceStatus,
     IdentityStatus,
     IdentityType,
+    InvitationStatus,
+    RegistrationMode,
     SecurityEventType,
     SessionRevocationReason,
     SessionSecurityBand,
@@ -20,6 +22,12 @@ from app.identity.models.enums import (
 )
 from app.identity.models.external_client import ExternalClient
 from app.identity.models.login_history import LoginHistory
+from app.identity.models.registration import (
+    EmailVerification,
+    Invitation,
+    RateLimitHit,
+    UserProfile,
+)
 from app.identity.models.security_event import SecurityEvent
 from app.identity.models.service_account import ServiceAccount
 from app.identity.models.session import RefreshToken, UserDevice, UserSession
@@ -43,4 +51,10 @@ __all__ = [
     "SessionRevocationReason",
     "SessionSecurityBand",
     "DeviceStatus",
+    "Invitation",
+    "EmailVerification",
+    "UserProfile",
+    "RateLimitHit",
+    "InvitationStatus",
+    "RegistrationMode",
 ]

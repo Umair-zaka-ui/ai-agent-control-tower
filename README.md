@@ -185,6 +185,17 @@ After running `python -m app.seed`:
 
 **Organization:** `Demo Healthcare Org`
 
+### Onboarding (Phase 4.2.2.3.1)
+
+Organizations are **invitation only** by default. An administrator invites by email
+(Settings → Security → Invitations); the invitee sets a password, confirms their email
+address, and only then can sign in. Invitation links last 7 days, verification links 24
+hours, and both are single-use and stored hashed. Public onboarding endpoints are rate
+limited to 5 requests/minute/IP.
+
+See [registration](docs/identity/registration.md), [invitations](docs/identity/invitations.md)
+and [email verification](docs/identity/email-verification.md).
+
 **Users** (password `DemoPass!2026`):
 
 | Email                  | Role       |

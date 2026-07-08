@@ -61,6 +61,19 @@ class ErrorCode:
     TOKEN_REUSE = "TOKEN_REUSE"
     TOO_MANY_SESSIONS = "TOO_MANY_SESSIONS"
     INVALID_REFRESH_TOKEN = "INVALID_REFRESH_TOKEN"
+    # Registration & invitations (4.2.2.3.1 §18).
+    INVITATION_NOT_FOUND = "INVITATION_NOT_FOUND"
+    INVITATION_EXPIRED = "INVITATION_EXPIRED"
+    INVITATION_ALREADY_USED = "INVITATION_ALREADY_USED"
+    INVITATION_CANCELLED = "INVITATION_CANCELLED"
+    EMAIL_ALREADY_VERIFIED = "EMAIL_ALREADY_VERIFIED"
+    INVALID_VERIFICATION_TOKEN = "INVALID_VERIFICATION_TOKEN"
+    VERIFICATION_TOKEN_EXPIRED = "VERIFICATION_TOKEN_EXPIRED"
+    REGISTRATION_DISABLED = "REGISTRATION_DISABLED"
+    USER_ALREADY_EXISTS = "USER_ALREADY_EXISTS"
+    EMAIL_NOT_VERIFIED = "EMAIL_NOT_VERIFIED"
+    ACCOUNT_PENDING_APPROVAL = "ACCOUNT_PENDING_APPROVAL"
+    RATE_LIMIT_EXCEEDED = "RATE_LIMIT_EXCEEDED"
 
 
 # Map error codes → HTTP status.
@@ -109,15 +122,37 @@ _STATUS: dict[str, int] = {
     ErrorCode.TOKEN_REUSE: status.HTTP_401_UNAUTHORIZED,
     ErrorCode.TOO_MANY_SESSIONS: status.HTTP_409_CONFLICT,
     ErrorCode.INVALID_REFRESH_TOKEN: status.HTTP_401_UNAUTHORIZED,
+    # Registration & invitations (4.2.2.3.1 §18).
+    ErrorCode.INVITATION_NOT_FOUND: status.HTTP_404_NOT_FOUND,
+    # 410 Gone, not 404: the link *was* valid. The user needs to be told to ask for
+    # a new one, not that they mistyped a URL.
+    ErrorCode.INVITATION_EXPIRED: status.HTTP_410_GONE,
+    ErrorCode.INVITATION_ALREADY_USED: status.HTTP_410_GONE,
+    ErrorCode.INVITATION_CANCELLED: status.HTTP_410_GONE,
+    ErrorCode.EMAIL_ALREADY_VERIFIED: status.HTTP_409_CONFLICT,
+    ErrorCode.INVALID_VERIFICATION_TOKEN: status.HTTP_400_BAD_REQUEST,
+    ErrorCode.VERIFICATION_TOKEN_EXPIRED: status.HTTP_410_GONE,
+    ErrorCode.REGISTRATION_DISABLED: status.HTTP_403_FORBIDDEN,
+    ErrorCode.USER_ALREADY_EXISTS: status.HTTP_409_CONFLICT,
+    # The credential was correct; the account is simply not usable yet. 403, not
+    # 401 — re-entering the password cannot help.
+    ErrorCode.EMAIL_NOT_VERIFIED: status.HTTP_403_FORBIDDEN,
+    ErrorCode.ACCOUNT_PENDING_APPROVAL: status.HTTP_403_FORBIDDEN,
+    ErrorCode.RATE_LIMIT_EXCEEDED: status.HTTP_429_TOO_MANY_REQUESTS,
 }
 
 
 class IdentityError(Exception):
-    """Raised by identity services/repositories; rendered as the error envelope."""
+    """Raised by identity services/repositories; rendered as the error envelope.
 
-    def __init__(self, code: str, message: str) -> None:
+    ``headers`` carries response headers the *error itself* demands — currently only
+    ``Retry-After`` on a 429, which a client cannot behave correctly without.
+    """
+
+    def __init__(self, code: str, message: str, *, headers: dict[str, str] | None = None) -> None:
         self.code = code
         self.message = message
+        self.headers = headers or {}
         self.http_status = _STATUS.get(code, status.HTTP_400_BAD_REQUEST)
         super().__init__(message)
 
@@ -142,6 +177,7 @@ def register_identity_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=exc.http_status,
             content=error_body(exc.code, exc.message, _request_id(request)),
+            headers=exc.headers or None,
         )
 
     @app.exception_handler(PasswordPolicyError)

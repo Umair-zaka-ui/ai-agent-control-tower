@@ -22,3 +22,7 @@ env/
 # IDE
 .idea/
 .vscode/
+
+# Development email outbox. Holds plaintext invitation / verification tokens; written
+# only when NOTIFICATIONS_ENABLED=false. Never commit it.
+var/

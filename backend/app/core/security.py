@@ -27,14 +27,40 @@ def hash_password(password: str) -> str:
     return pwd_context.hash(password)
 
 
+# An identity that authenticates elsewhere -- SSO, SCIM, or an account whose password
+# has been deliberately removed -- still needs a value in the NOT NULL `password_hash`
+# column. This sentinel can never be produced by a hash function (no `$` prefix), so no
+# password can ever verify against it.
+#
+# `passlib` raises `UnknownHashError` on any non-hash, which would turn a wrong-password
+# attempt against such an account into a 500. The guards below make it fail *closed*.
+UNUSABLE_PASSWORD = "!no-password-login"
+
+
+def is_unusable_password(password_hash: str) -> bool:
+    """True when the stored value is a sentinel, not a hash. Such an identity has no
+    password credential and must authenticate by some other means."""
+    return not password_hash or password_hash.startswith("!")
+
+
 def verify_password(plain_password: str, password_hash: str) -> bool:
-    """Verify a plaintext password against its stored hash (argon2id or bcrypt)."""
+    """Verify a plaintext password against its stored hash (argon2id or bcrypt).
+
+    Returns ``False`` -- never raises -- for an identity with no password credential.
+    """
+    if is_unusable_password(password_hash):
+        return False
     return pwd_context.verify(plain_password, password_hash)
 
 
 def needs_rehash(password_hash: str) -> bool:
     """True when a stored hash uses a deprecated scheme (e.g. legacy bcrypt) and
-    should be upgraded to argon2id after the next successful verification."""
+    should be upgraded to argon2id after the next successful verification.
+
+    A sentinel is not a hash and must never be "upgraded" into one.
+    """
+    if is_unusable_password(password_hash):
+        return False
     return pwd_context.needs_update(password_hash)
 
 

@@ -44,6 +44,13 @@ import {
 } from '@/modules/audit'
 import { SecuritySessionsPage } from '@/modules/security'
 import {
+  AcceptInvitationPage,
+  InvitationExpiredPage,
+  RegisterPage,
+  RegistrationSuccessPage,
+  VerifyEmailPage,
+} from '@/modules/identity/pages'
+import {
   AgentsAnalyticsPage,
   AnalyticsOverviewPage,
   CostDashboardPage,
@@ -65,6 +72,19 @@ export function AppRoutes() {
         <Route element={<AuthLayout />}>
           <Route path={ROUTES.LOGIN} element={<LoginPage />} />
         </Route>
+      </Route>
+
+      {/*
+        Onboarding (Part 4.2.2.3.1 §16). Deliberately *outside* PublicRoute: that guard
+        redirects authenticated users to the dashboard, which would silently swallow a
+        verification link clicked by someone already signed in on that browser.
+      */}
+      <Route element={<AuthLayout />}>
+        <Route path={ROUTES.REGISTER} element={<RegisterPage />} />
+        <Route path={ROUTES.ACCEPT_INVITATION} element={<AcceptInvitationPage />} />
+        <Route path={ROUTES.VERIFY_EMAIL} element={<VerifyEmailPage />} />
+        <Route path={ROUTES.INVITATION_EXPIRED} element={<InvitationExpiredPage />} />
+        <Route path={ROUTES.REGISTRATION_SUCCESS} element={<RegistrationSuccessPage />} />
       </Route>
 
       {/* Authenticated app shell */}

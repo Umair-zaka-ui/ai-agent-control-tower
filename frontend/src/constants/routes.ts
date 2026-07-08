@@ -6,6 +6,15 @@ export const ROUTES = {
   // Auth
   LOGIN: '/login',
 
+  // Onboarding (Part 4.2.2.3.1 §16). Public: the user has no account yet.
+  // The token paths must match the links the backend emails:
+  // `identity/email/service.py::invitation_url` / `verification_url`.
+  REGISTER: '/register',
+  ACCEPT_INVITATION: '/invite/:token',
+  VERIFY_EMAIL: '/verify-email/:token',
+  INVITATION_EXPIRED: '/invitation-expired',
+  REGISTRATION_SUCCESS: '/registration-success',
+
   // Dashboard (app shell). `/` redirects to `/dashboard`.
   ROOT: '/',
   DASHBOARD: '/dashboard',

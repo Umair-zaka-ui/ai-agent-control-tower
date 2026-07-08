@@ -225,6 +225,39 @@ access-token revocation gap that ADR-0003 knowingly accepted; see
   [security-events](docs/identity/security-events.md).
   Backend 187/187 green; frontend 123/123 green; typecheck + build clean.
 
+### Part 4.2.2.3.1 — Enterprise registration & invitations ✅
+
+Authentication is only half of identity. This part answers the other half: how a human
+becomes a trusted identity. The enterprise default is **invitation only** — every
+existing organization was migrated to `INVITE_ONLY`, because an upgrade must never
+silently open public registration.
+
+- Full lifecycle `INVITED → REGISTERED → EMAIL_PENDING → EMAIL_VERIFIED → ACTIVE`, each
+  state persisted and observable. `REGISTERED` is where a user sits when SMTP fails —
+  the state an operator needs to see, and what `resend-verification` retries from.
+- `invitations`, `email_verifications`, `user_profiles`, `rate_limit_hits`
+  (migration `0012`, downgrade round-tripped). One live invitation per (org, email),
+  enforced by a **partial** unique index on PENDING rows.
+- Tokens: 32 bytes of CSPRNG, SHA-256 at rest, single use, expiring (7 d / 24 h).
+  Resend **rotates** — otherwise "single use" quietly becomes "N uses".
+- Five services: Registration, Invitation, EmailVerification, UserProvisioning,
+  RegistrationAudit. `UserProvisioningService` is the seam SSO and SCIM will use.
+- **Rate limiting** (the platform's first): 5 req/min/IP on every public endpoint,
+  Postgres-backed because ADR-0002 forbids a second datastore. Fixed window, and the
+  docs say so.
+- Enumeration-safe: `resend-verification` answers identically for unknown, pending and
+  already-verified addresses.
+- The login gate now says *why*: `EMAIL_NOT_VERIFIED` and `ACCOUNT_PENDING_APPROVAL`
+  instead of a useless "this identity is not permitted to authenticate".
+- Frontend: accept-invitation, verify-email, register, invitation-expired and
+  registration-success pages, plus an admin **Invitations** panel — reachable, not just
+  built. Password-strength meter mirrors the server policy without becoming a second gate.
+- `notification_service.send_email` now reports delivery instead of swallowing failures,
+  which is what makes `REGISTERED` vs `EMAIL_PENDING` mean anything.
+- Docs: [registration](docs/identity/registration.md), [invitations](docs/identity/invitations.md),
+  [email-verification](docs/identity/email-verification.md).
+  Backend 230/230 green; frontend 174/174 green.
+
 ## Future (Phase 4+)
 
 Retiring the legacy `/auth/login` surface (now the platform's only non-revocable

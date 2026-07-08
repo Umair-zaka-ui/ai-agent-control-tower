@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.router import api_router
 from app.core.config import settings
 from app.identity.api import identity_router
+from app.identity.api.routes.registration import router as registration_router
 from app.identity.auth.routes import router as auth_v1_router
 from app.identity.errors import register_identity_exception_handlers
 
@@ -49,3 +50,6 @@ app.include_router(identity_router)
 
 # Phase 4 Part 4.2.2.1: human authentication endpoints under /api/v1/auth.
 app.include_router(auth_v1_router)
+
+# Phase 4 Part 4.2.2.3.1: public registration & email verification under /api/v1/auth.
+app.include_router(registration_router)

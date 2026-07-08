@@ -48,10 +48,21 @@ function isAuthEndpoint(url: string | undefined): boolean {
   )
 }
 
-function toApiError(error: AxiosError): ApiError {
+/**
+ * Normalise every backend error shape into one `ApiError`.
+ *
+ * The identity surface answers with `{ success, error: { code, message }, request_id }`.
+ * The `code` is the machine-readable half and must survive: pages branch on it to tell
+ * an expired invitation from a cancelled one, or an already-verified email from an
+ * invalid token (SRS 4.2.2.3.1 §18). Legacy routes answer with a plain `{ detail }` and
+ * carry no code; a network failure carries neither.
+ *
+ * Exported for testing against the *real* wire format rather than a mock of it.
+ */
+export function toApiError(error: AxiosError): ApiError {
   const status = error.response?.status ?? 0
   const data = error.response?.data as
-    | { detail?: unknown; message?: unknown; error?: { message?: unknown } }
+    | { detail?: unknown; message?: unknown; error?: { code?: unknown; message?: unknown } }
     | undefined
   const message =
     (typeof data?.detail === 'string' && data.detail) ||
@@ -59,7 +70,9 @@ function toApiError(error: AxiosError): ApiError {
     (typeof data?.error?.message === 'string' && data.error.message) ||
     error.message ||
     'Unexpected error'
-  return { status, message, detail: data?.detail }
+  // Only trust a string. A non-string `code` is a malformed body, not a contract.
+  const code = typeof data?.error?.code === 'string' ? data.error.code : undefined
+  return { status, message, code, detail: data?.detail }
 }
 
 apiClient.interceptors.response.use(
