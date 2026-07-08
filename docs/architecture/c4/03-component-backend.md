@@ -33,7 +33,7 @@ flowchart TB
         dep["dependency.authenticate<br/>extract → validate → resolve"]
         ctx["IdentityContext<br/>roles · permissions · scopes<br/>assurance_level · amr"]
         authsvc["AuthenticationService<br/>login · refresh · logout · MFA seam"]
-        tok["TokenService<br/>RefreshTokenService<br/>SessionService"]
+        tok["TokenService<br/>RefreshRotationService<br/>SessionLifecycleService"]
         pw["PasswordService → security/passwords<br/><i>single policy source</i>"]
         lh["LoginHistoryService<br/><i>lockout</i>"]
         sec["SecurityEventService"]
@@ -98,12 +98,14 @@ flowchart TB
 
 | Component | File | Responsibility |
 | --------- | ---- | -------------- |
-| `authenticate` | `dependency.py` | The single authn entry point. Extracts JWT or API key, validates, resolves `IdentityContext` |
+| `authenticate` | `dependency.py` | The single authn entry point. Extracts JWT or API key, validates, **revalidates the session**, resolves `IdentityContext` |
 | `IdentityContext` | `context.py` | The only thing services see. Carries roles, permissions, `assurance_level`, `amr`, `session_id` |
 | `AuthenticationService` | `authentication_service.py` | Orchestrates login / refresh / logout / MFA step-up |
 | `TokenService` | `token_service.py` | Mint + validate access JWTs |
-| `RefreshTokenService` | `refresh_token_service.py` | Issue / rotate / detect reuse / revoke family |
-| `SessionService` | `session_service.py` | Session lifecycle |
+| `RefreshRotationService` | `refresh_rotation_service.py` | Issue / rotate / detect reuse / revoke family |
+| `SessionLifecycleService` | `session_lifecycle_service.py` | Create / touch / expire / revoke; enforces idle + absolute timeouts |
+| `SessionSecurityService` | `session_security_service.py` | Security score, suspicious-behaviour flags |
+| `DeviceService` | `device_service.py` | Register / recognise / trust / block devices |
 | `PasswordService` | `password_service.py` | Facade over `identity/security/passwords.py` — the one policy definition |
 | `LoginHistoryService` | `login_history_service.py` | Records every attempt; drives lockout |
 | `SecurityEventService` | `security_event_service.py` | Emits `security_events` rows |

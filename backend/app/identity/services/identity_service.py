@@ -24,6 +24,8 @@ from app.identity.models.enums import (
     IdentityStatus,
     IdentityType,
     SecurityEventType,
+    SessionRevocationReason,
+    SessionStatus,
     can_transition,
 )
 from app.identity.models.external_client import ExternalClient
@@ -145,6 +147,11 @@ class IdentityService:
             },
         )
         self.db.commit()
+        # Suspending must end live sessions, exactly as ``transition_user`` does.
+        # This is the endpoint an administrator actually calls (POST /users/{id}/suspend),
+        # so leaving it out would make the guarantee depend on which door was used.
+        if not active:
+            self._revoke_all_sessions(user_id, request_id=request_id)
         self.db.refresh(user)
         return user
 
@@ -218,7 +225,7 @@ class IdentityService:
         request_id: str | None = None,
     ) -> User:
         user = self.get_user(user_id)
-        return self.transition_status(
+        entity = self.transition_status(
             user,
             target,
             organization_id=user.organization_id,
@@ -226,6 +233,58 @@ class IdentityService:
             target_type="user",
             request_id=request_id,
         )
+        # Suspending or disabling an identity must end its sessions *now*.
+        # Otherwise the login path refuses the user while their existing access
+        # token keeps working until the session's absolute ceiling (12 h) — which
+        # is exactly the "employee leaves the company" case force-logout exists
+        # for (SRS 4.2.2.2 §17, §20).
+        if target != IdentityStatus.ACTIVE:
+            self._revoke_all_sessions(user_id, request_id=request_id)
+        return entity
+
+    def _revoke_all_sessions(
+        self, user_id: uuid.UUID, *, request_id: str | None = None
+    ) -> list[uuid.UUID]:
+        """Revoke every active session for a user with ACCOUNT_DISABLED.
+
+        Imports are local: ``identity.auth`` sits above ``identity.services`` in the
+        import graph, and pulling it in at module scope would create a cycle.
+        """
+        from app.identity.auth.enums import AuthEventType, AuthMethod
+        from app.identity.auth.refresh_rotation_service import RefreshRotationService
+        from app.identity.auth.security_event_service import SecurityEventService
+        from app.identity.auth.session_lifecycle_service import SessionLifecycleService
+
+        lifecycle = SessionLifecycleService(self.db)
+        refresh_tokens = RefreshRotationService(self.db)
+        events = SecurityEventService(self.db)
+
+        revoked: list[uuid.UUID] = []
+        for session in lifecycle.list_active(user_id):
+            # TERMINATED, not REVOKED: the identity behind these sessions is no
+            # longer permitted to authenticate at all. A revoked session is one the
+            # user could replace by signing in again; a terminated one is final.
+            lifecycle.revoke(
+                session,
+                SessionRevocationReason.ACCOUNT_DISABLED,
+                status=SessionStatus.TERMINATED,
+            )
+            refresh_tokens.revoke_family(session.refresh_token_family_id)
+            events.record(
+                AuthEventType.SESSION_REVOKED,
+                auth_method=AuthMethod.SYSTEM_INTERNAL,
+                identity_type="HUMAN_USER",
+                organization_id=session.organization_id,
+                identity_id=session.user_id,
+                request_id=request_id,
+                metadata={
+                    "session_id": str(session.id),
+                    "reason": SessionRevocationReason.ACCOUNT_DISABLED.value,
+                },
+            )
+            revoked.append(session.id)
+        self.db.commit()
+        return revoked
 
     def transition_organization(
         self,

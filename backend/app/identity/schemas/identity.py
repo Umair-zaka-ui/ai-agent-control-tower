@@ -127,16 +127,28 @@ class ServiceAccountRead(BaseModel):
 
 
 class SessionRead(BaseModel):
+    """Admin-facing session projection (identity API).
+
+    ``expires_at`` was split into an idle and an absolute deadline in Part
+    4.2.2.2 (SRS §12); the richer, user-facing shape lives in
+    ``identity.auth.schemas.SessionRead``.
+    """
+
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
     user_id: uuid.UUID
+    status: str
     ip_address: str | None = None
     user_agent: str | None = None
+    device_name: str | None = None
     created_at: datetime
-    expires_at: datetime
+    idle_expires_at: datetime
+    absolute_expires_at: datetime
     last_seen_at: datetime | None = None
     revoked_at: datetime | None = None
+    revoked_reason: str | None = None
+    security_score: int = 100
 
 
 # --------------------------------------------------------------------------- #

@@ -20,7 +20,7 @@ export interface AuthContextValue {
   isAuthenticated: boolean
   /** True while bootstrapping auth from a persisted token on first load. */
   isLoading: boolean
-  login: (email: string, password: string) => Promise<void>
+  login: (email: string, password: string, rememberMe?: boolean) => Promise<void>
   logout: () => void
   refreshUser: () => Promise<void>
 }
@@ -133,8 +133,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [refreshUser, scheduleSilentRefresh, clearRefreshTimer])
 
   const login = useCallback(
-    async (email: string, password: string) => {
-      const res = await authService.login({ email, password })
+    async (email: string, password: string, rememberMe = false) => {
+      // remember_me extends the session's ABSOLUTE ceiling (12 h -> 7 d) only; the
+      // 30-minute idle timeout still applies. See docs/identity/session-lifecycle.md.
+      const res = await authService.login({ email, password, remember_me: rememberMe })
       if (res.mfa_required) {
         // Second-factor flow is delivered in a later subpart; no MFA UI yet.
         throw new Error('Multi-factor authentication is required for this account.')

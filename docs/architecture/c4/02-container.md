@@ -81,14 +81,15 @@ thing to understand about the current architecture, and the reason for
 | --- | --- | --- |
 | Access token | JWT, **24h** (`ACCESS_TOKEN_EXPIRE_MINUTES=1440`) | JWT, **15 min** |
 | Refresh token | None | Opaque `rt_…`, 7d, rotating, hashed at rest |
-| Session record | None | `sessions` row, revocable |
+| Session record | None | `auth_sessions` row, revocable |
 | Lockout | No | Yes — 5 failures / 15 min |
 | Login history | No | Yes |
 | Security events | No (audit log only) | Yes |
 
-A token minted by the legacy route cannot be revoked and lives for a day. Until
-the legacy surface migrates, **that is the platform's true worst-case session
-lifetime**, regardless of what the new surface does.
+A token minted by the legacy route cannot be revoked and lives for a day. Since
+Part 4.2.2.2 the `/api/v1/auth` surface revalidates its session on every request, so
+revocation there is immediate — which makes the legacy route **the platform's only
+non-revocable credential**, and its true worst-case session lifetime.
 
 ## Cross-cutting middleware
 

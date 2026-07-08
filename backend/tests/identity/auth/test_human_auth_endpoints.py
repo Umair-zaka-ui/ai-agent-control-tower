@@ -168,7 +168,8 @@ def test_logout_revokes_session(client: TestClient) -> None:
     tokens = _login(client, email)
     headers = {"Authorization": f"Bearer {tokens['access_token']}"}
     out = client.post("/api/v1/auth/logout", headers=headers)
-    assert out.status_code == 204
+    assert out.status_code == 200
+    assert len(out.json()["revoked_session_ids"]) == 1
     # Refresh after logout fails (family revoked).
     reuse = client.post("/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
     assert reuse.status_code == 401
@@ -183,14 +184,20 @@ def test_list_and_revoke_sessions(client: TestClient) -> None:
     assert listed.status_code == 200
     sessions = listed.json()
     assert len(sessions) >= 1
-    sid = sessions[0]["id"]
+    assert sessions[0]["is_current"] is True
 
-    revoked = client.delete(f"/api/v1/auth/sessions/{sid}", headers=headers)
-    assert revoked.status_code == 204
-
-    # Revoking a random (non-owned) session id is a generic 404.
+    # Revoking a random (non-owned) session id is a generic 404 — checked first,
+    # because revoking our own current session now kills this access token too.
     other = client.delete(f"/api/v1/auth/sessions/{uuid.uuid4()}", headers=headers)
     assert other.status_code == 404
+
+    revoked = client.delete(f"/api/v1/auth/sessions/{sessions[0]['id']}", headers=headers)
+    assert revoked.status_code == 204
+
+    # Part 4.2.2.2: revocation is immediate. The access token is now dead.
+    after = client.get("/api/v1/auth/sessions", headers=headers)
+    assert after.status_code == 401
+    assert after.json()["error"]["code"] == "SESSION_REVOKED"
 
 
 # --------------------------------------------------------------------------- #
@@ -297,28 +304,38 @@ def test_refresh_reuse_revokes_the_session(client: TestClient) -> None:
     try:
         session = db.get(UserSession, uuid.UUID(session_id))
         assert session.revoked_at is not None, "session survived a refresh-token reuse"
+        # Part 4.2.2.2: reuse marks the session SUSPICIOUS, not merely REVOKED,
+        # so the incident review can tell theft apart from a routine logout.
+        assert session.status == "SUSPICIOUS"
+        assert session.revoked_reason == "TOKEN_REUSE"
+        assert session.security_score <= 49, "reuse must land in the HIGH_RISK band"
     finally:
         db.close()
 
-    # ...and the revoked session no longer appears as active.
+    # ...and the access token minted for that session is dead immediately.
     listed = client.get(
         "/api/v1/auth/sessions", headers={"Authorization": f"Bearer {tokens['access_token']}"}
     )
-    assert session_id not in [s["id"] for s in listed.json()]
+    assert listed.status_code == 401
+    assert listed.json()["error"]["code"] == "SESSION_SUSPICIOUS"
 
 
-def test_access_token_outlives_session_revocation_documented_gap(client: TestClient) -> None:
-    """Pins a KNOWN GAP (see docs/identity/token-strategy.md).
+def test_access_token_dies_with_the_session(client: TestClient) -> None:
+    """Part 4.2.2.2 CLOSES the gap this test used to pin (see ADR-0007).
 
-    `authenticate` validates the JWT signature without loading the session, so an
-    access token minted before logout stays valid until it expires (≤15 min).
-    If this test ever fails, revocation became immediate — delete the test and
-    the "Known gap" note in token-strategy.md.
+    Until 4.2.2.2, ``authenticate`` validated the JWT signature without loading
+    the session, so an access token minted before logout stayed valid for up to
+    15 minutes. The session is now revalidated on every request, so logout is
+    immediate. This is the inverse of the old assertion, deliberately kept as a
+    test rather than deleted: it is the load-bearing property of the whole part.
     """
     email = _register(client)
     tokens = _login(client, email)
     headers = {"Authorization": f"Bearer {tokens['access_token']}"}
 
-    assert client.post("/api/v1/auth/logout", headers=headers).status_code == 204
-    # The session is gone, but the already-issued access token still authenticates.
     assert client.get("/api/v1/auth/me", headers=headers).status_code == 200
+    assert client.post("/api/v1/auth/logout", headers=headers).status_code == 200
+
+    dead = client.get("/api/v1/auth/me", headers=headers)
+    assert dead.status_code == 401, "access token outlived its revoked session"
+    assert dead.json()["error"]["code"] == "SESSION_REVOKED"

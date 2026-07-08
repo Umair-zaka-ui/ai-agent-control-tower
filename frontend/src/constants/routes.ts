@@ -17,6 +17,8 @@ export const ROUTES = {
   IDENTITY: '/identity',
   USERS: '/users',
   SETTINGS: '/settings',
+  /** Settings → Security → Sessions (SRS 4.2.2.2 §24). */
+  SETTINGS_SECURITY: '/settings/security',
   PROFILE: '/profile',
 
   // Misc

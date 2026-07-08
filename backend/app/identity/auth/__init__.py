@@ -14,6 +14,7 @@ from app.identity.auth.authentication_service import (
     AuthenticationService,
     LoginResult,
     RefreshResult,
+    RequestClient,
 )
 from app.identity.auth.context import IdentityContext
 from app.identity.auth.credential_service import CredentialService
@@ -28,14 +29,20 @@ from app.identity.auth.enums import (
     AuthEventType,
     AuthIdentityType,
     AuthMethod,
+    DeviceStatus,
     MfaMethod,
+    SessionRevocationReason,
+    SessionSecurityBand,
+    SessionStatus,
 )
+from app.identity.auth.device_service import DeviceService
 from app.identity.auth.login_history_service import LoginHistoryService
 from app.identity.auth.password_service import PasswordPolicyError, PasswordService
-from app.identity.auth.refresh_token_service import RefreshTokenService
+from app.identity.auth.refresh_rotation_service import RefreshRotationService
 from app.identity.auth.resolver import IdentityContextResolver
 from app.identity.auth.security_event_service import SecurityEventService
-from app.identity.auth.session_service import SessionService
+from app.identity.auth.session_lifecycle_service import SessionLifecycleService
+from app.identity.auth.session_security_service import SessionSecurityService
 from app.identity.auth.token_service import TokenService
 
 __all__ = [
@@ -45,13 +52,20 @@ __all__ = [
     "AuthIdentityType",
     "AuthAssuranceLevel",
     "MfaMethod",
+    "SessionStatus",
+    "SessionRevocationReason",
+    "SessionSecurityBand",
+    "DeviceStatus",
     "AuthenticationService",
     "LoginResult",
     "RefreshResult",
+    "RequestClient",
     "TokenService",
-    "RefreshTokenService",
+    "RefreshRotationService",
     "CredentialService",
-    "SessionService",
+    "SessionLifecycleService",
+    "SessionSecurityService",
+    "DeviceService",
     "SecurityEventService",
     "LoginHistoryService",
     "PasswordService",

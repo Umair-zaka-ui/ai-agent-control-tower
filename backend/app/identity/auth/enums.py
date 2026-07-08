@@ -60,6 +60,18 @@ class MfaMethod(str, enum.Enum):
     RECOVERY_CODE = "RECOVERY_CODE"
 
 
+# Session/device enums live in ``app.identity.models.enums`` because
+# ``models/session.py`` needs them and a model importing this package would
+# create a cycle (auth/__init__ -> authentication_service -> models). They are
+# re-exported here so auth-layer callers have one import site.
+from app.identity.models.enums import (  # noqa: E402
+    DeviceStatus,
+    SessionRevocationReason,
+    SessionSecurityBand,
+    SessionStatus,
+)
+
+
 class AuthEventType(str, enum.Enum):
     """Security events every authentication action emits (SRS §13)."""
 
@@ -83,3 +95,14 @@ class AuthEventType(str, enum.Enum):
     MFA_FAILED = "MFA_FAILED"
     MFA_ENROLLED = "MFA_ENROLLED"
     MFA_DISABLED = "MFA_DISABLED"
+    # Session lifecycle & devices (SRS 4.2.2.2 §26).
+    SESSION_CREATED = "SESSION_CREATED"
+    SESSION_UPDATED = "SESSION_UPDATED"
+    SESSION_TIMEOUT = "SESSION_TIMEOUT"
+    SESSION_SUSPICIOUS = "SESSION_SUSPICIOUS"
+    SESSION_LIMIT_EXCEEDED = "SESSION_LIMIT_EXCEEDED"
+    DEVICE_REGISTERED = "DEVICE_REGISTERED"
+    DEVICE_TRUSTED = "DEVICE_TRUSTED"
+    DEVICE_BLOCKED = "DEVICE_BLOCKED"
+    TOKEN_ROTATED = "TOKEN_ROTATED"
+    TOKEN_REUSE_DETECTED = "TOKEN_REUSE_DETECTED"

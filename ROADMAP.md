@@ -182,8 +182,51 @@ APIs. Dark, enterprise design language (Azure / Datadog / Stripe / Linear feel).
   [`docs/identity/human-authentication.md`](docs/identity/human-authentication.md).
   Backend 112/112 green; frontend typecheck + lint clean.
 
+### Part 4.2.2.2 — Login, logout & session lifecycle ✅
+
+The session — not the JWT — is now the source of truth. `authenticate` loads and
+revalidates `auth_sessions` on **every** authenticated request, so logout, admin
+force-logout, device block, idle timeout (30 min), absolute timeout (12 h) and
+refresh-token-reuse termination all take effect immediately. This closes the
+access-token revocation gap that ADR-0003 knowingly accepted; see
+[ADR-0007](docs/architecture/adr/0007-stateful-session-validation.md).
+
+- `auth_sessions` (states, dual deadlines, device, geo, security score) and
+  `auth_devices` (fingerprint, trust posture); refresh-token **families** with
+  `family_id` + `reuse_detected_at`. Migration `0009`, downgrade round-tripped.
+- Four services: `SessionLifecycleService`, `SessionSecurityService`,
+  `DeviceService`, `RefreshRotationService`.
+- Concurrent sessions (max 5, oldest evicted), "remember me" (extends the
+  *absolute* ceiling only), sliding idle window with a throttled activity write.
+- Suspending or disabling an identity now revokes its live sessions
+  (`ACCOUNT_DISABLED`) — previously they survived to the 12-hour ceiling.
+- Endpoints: session list/detail/revoke, logout-all, device list/trust/block.
+- **Administrative** session management (`session.view` / `session.revoke`,
+  migration `0010`): an admin can list, inspect and force-logout any session in
+  their organization, or sign a user out of every device — with the acting
+  administrator recorded on the audit event. Cross-tenant access returns 404.
+- All twelve SRS §26 audit events are emitted (timeouts, `SESSION_SUSPICIOUS` and
+  the `IDLE`→`ACTIVE` transition were previously defined but never fired); a test
+  greps the sources so an event type cannot become dead code again.
+- Frontend: Settings → Security → Sessions & Devices, with confirm-before-revoke.
+- **Auditable**: `security_events` gained a read path (per-org stream, per-identity
+  timeline, per-session history) plus the indexes to serve it (migration `0011`). It was
+  a write-only table — an audit event nobody can read is not an audit trail. Gated on
+  `session.view`, *not* `audit.view`, which every role including `VIEWER` holds.
+- Session/device audit UI: a user sees their own security activity; an admin sees any
+  member's, and one session's full history ("who revoked it, when, and why?").
+- Fixed a platform-wide defect found while verifying: the SPA's `/api/v1/auth` token was
+  rejected by the legacy decoder (`Invalid audience`), so **every dashboard request 401'd**
+  for real users. Both auth dependencies now accept it *and* revalidate its session, so
+  revocation is immediate platform-wide rather than only on `/api/v1/auth`.
+- Docs: [session-lifecycle](docs/identity/session-lifecycle.md),
+  [token-rotation](docs/identity/token-rotation.md),
+  [device-management](docs/identity/device-management.md),
+  [security-events](docs/identity/security-events.md).
+  Backend 187/187 green; frontend 123/123 green; typecheck + build clean.
+
 ## Future (Phase 4+)
 
-Full auth migration onto the identity platform, MFA, OAuth/SSO, refresh-token
-flows, device trust, Slack/webhook notifications, observability (Prometheus /
-OpenTelemetry), anomaly detection, and load testing.
+Retiring the legacy `/auth/login` surface (now the platform's only non-revocable
+credential), MFA, OAuth/SSO, enterprise IdPs, Slack/webhook notifications,
+observability (Prometheus / OpenTelemetry), anomaly detection, and load testing.

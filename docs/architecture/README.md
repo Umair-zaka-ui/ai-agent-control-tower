@@ -68,6 +68,9 @@ This repository links to them rather than restating them:
 
 - [Authentication architecture](../identity/authentication-architecture.md)
 - [Trust model](../identity/trust-model.md) — identity-scoped trust zones
-- [Token strategy](../identity/token-strategy.md) — incl. the access-token revocation gap
+- [Token strategy](../identity/token-strategy.md)
 - [Human authentication](../identity/human-authentication.md)
+- [Session lifecycle](../identity/session-lifecycle.md) — states, timeouts, revocation
+- [Token rotation](../identity/token-rotation.md) — families and reuse detection
+- [Device management](../identity/device-management.md) — fingerprinting and trust
 - [Security events](../identity/security-events.md)

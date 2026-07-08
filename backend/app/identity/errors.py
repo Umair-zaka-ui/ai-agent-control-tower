@@ -52,6 +52,15 @@ class ErrorCode:
     PASSWORD_EXPIRED = "PASSWORD_EXPIRED"
     TOKEN_INVALID = "TOKEN_INVALID"
     REFRESH_FAILED = "REFRESH_FAILED"
+    # Session lifecycle (SRS 4.2.2.2 §27).
+    SESSION_EXPIRED = "SESSION_EXPIRED"
+    SESSION_IDLE_TIMEOUT = "SESSION_IDLE_TIMEOUT"
+    SESSION_SUSPICIOUS = "SESSION_SUSPICIOUS"
+    DEVICE_BLOCKED = "DEVICE_BLOCKED"
+    DEVICE_NOT_FOUND = "DEVICE_NOT_FOUND"
+    TOKEN_REUSE = "TOKEN_REUSE"
+    TOO_MANY_SESSIONS = "TOO_MANY_SESSIONS"
+    INVALID_REFRESH_TOKEN = "INVALID_REFRESH_TOKEN"
 
 
 # Map error codes → HTTP status.
@@ -89,6 +98,17 @@ _STATUS: dict[str, int] = {
     ErrorCode.PASSWORD_EXPIRED: status.HTTP_401_UNAUTHORIZED,
     ErrorCode.TOKEN_INVALID: status.HTTP_401_UNAUTHORIZED,
     ErrorCode.REFRESH_FAILED: status.HTTP_401_UNAUTHORIZED,
+    # Session lifecycle (SRS 4.2.2.2 §27).
+    ErrorCode.SESSION_EXPIRED: status.HTTP_401_UNAUTHORIZED,
+    ErrorCode.SESSION_IDLE_TIMEOUT: status.HTTP_401_UNAUTHORIZED,
+    ErrorCode.SESSION_SUSPICIOUS: status.HTTP_401_UNAUTHORIZED,
+    # A blocked device is an authorization decision about the *device*, not the
+    # credential — the password was correct. 403, not 401.
+    ErrorCode.DEVICE_BLOCKED: status.HTTP_403_FORBIDDEN,
+    ErrorCode.DEVICE_NOT_FOUND: status.HTTP_404_NOT_FOUND,
+    ErrorCode.TOKEN_REUSE: status.HTTP_401_UNAUTHORIZED,
+    ErrorCode.TOO_MANY_SESSIONS: status.HTTP_409_CONFLICT,
+    ErrorCode.INVALID_REFRESH_TOKEN: status.HTTP_401_UNAUTHORIZED,
 }
 
 

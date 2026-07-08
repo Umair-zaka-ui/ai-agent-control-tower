@@ -33,6 +33,11 @@ PERMISSION_CATALOG: dict[str, str] = {
     "permission.manage": "Manage agent permissions",
     "user.create": "Create users",
     "user.view": "View users",
+    # Administrative session management (SRS 4.2.2.2 §17, §32). Kept separate from
+    # user.view: reading who is signed in where is a lesser power than forcibly
+    # ending someone's session, and the two are granted to different roles.
+    "session.view": "View any user's sessions and devices in the organization",
+    "session.revoke": "Force-logout another user's sessions (admin force-logout)",
     "rbac.manage": "Manage roles and role assignments",
     "approval.view": "View the approval queue and review details",
     "approval.review": "Approve or reject pending actions",
