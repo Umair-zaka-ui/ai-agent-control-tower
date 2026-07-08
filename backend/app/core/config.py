@@ -42,6 +42,25 @@ class Settings(BaseSettings):
     AUTH_LOCKOUT_THRESHOLD: int = 5
     AUTH_LOCKOUT_WINDOW_SECONDS: int = 15 * 60
 
+    # --- Phase 4.2.2.2: session lifecycle (SRS §11, §12) ------------------
+    # Idle timeout: no request for this long → session becomes IDLE, then
+    # unusable. Absolute timeout: hard ceiling regardless of activity.
+    SESSION_IDLE_TIMEOUT_SECONDS: int = 30 * 60  # 30 minutes
+    SESSION_ABSOLUTE_TIMEOUT_SECONDS: int = 12 * 60 * 60  # 12 hours
+    # "Remember me" extends the ABSOLUTE ceiling only; idle timeout still applies.
+    SESSION_REMEMBER_ME_SECONDS: int = 7 * 24 * 60 * 60  # 7 days
+    # Warn the client this long before idle expiry so it can prompt the user.
+    SESSION_IDLE_WARNING_SECONDS: int = 5 * 60
+    # Max concurrent active sessions per user; oldest is revoked past the limit.
+    SESSION_MAX_CONCURRENT: int = 5
+    # ``last_activity_at`` is only written when this much time has elapsed since
+    # the last write, so a burst of requests does not cause a write per request.
+    SESSION_ACTIVITY_WRITE_INTERVAL_SECONDS: int = 60
+    # Security scoring (SRS §15).
+    SESSION_SCORE_NEW_DEVICE_PENALTY: int = 20
+    SESSION_SCORE_NEW_COUNTRY_PENALTY: int = 20
+    SESSION_SCORE_TOKEN_REUSE_PENALTY: int = 80
+
     # CORS. ``NoDecode`` stops pydantic-settings from trying to JSON-parse the
     # env value so our validator can accept a simple comma separated string.
     BACKEND_CORS_ORIGINS: Annotated[list[str], NoDecode] = [

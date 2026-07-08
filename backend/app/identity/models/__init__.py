@@ -10,15 +10,19 @@ from app.identity.models.agent_identity import AgentIdentity
 from app.identity.models.department import Department, Team
 from app.identity.models.enums import (
     CredentialType,
+    DeviceStatus,
     IdentityStatus,
     IdentityType,
     SecurityEventType,
+    SessionRevocationReason,
+    SessionSecurityBand,
+    SessionStatus,
 )
 from app.identity.models.external_client import ExternalClient
 from app.identity.models.login_history import LoginHistory
 from app.identity.models.security_event import SecurityEvent
 from app.identity.models.service_account import ServiceAccount
-from app.identity.models.session import DeviceSession, RefreshToken, UserSession
+from app.identity.models.session import RefreshToken, UserDevice, UserSession
 
 __all__ = [
     "Department",
@@ -28,11 +32,15 @@ __all__ = [
     "AgentIdentity",
     "UserSession",
     "RefreshToken",
-    "DeviceSession",
+    "UserDevice",
     "SecurityEvent",
     "LoginHistory",
     "IdentityStatus",
     "IdentityType",
     "CredentialType",
     "SecurityEventType",
+    "SessionStatus",
+    "SessionRevocationReason",
+    "SessionSecurityBand",
+    "DeviceStatus",
 ]
