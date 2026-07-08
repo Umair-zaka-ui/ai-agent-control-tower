@@ -8,6 +8,7 @@ import {
   Fingerprint,
   Users,
   Settings,
+  ShieldAlert,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -72,4 +73,9 @@ export const PRIMARY_NAV: NavItem[] = [
     roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN],
   },
   { label: 'Settings', path: ROUTES.SETTINGS, icon: Settings, roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN] },
+  // Session & device management is *self-service*: every authenticated user must be
+  // able to see where they are signed in and sign other devices out. Deliberately
+  // ungated — nesting it under the ADMIN-only Settings item made it unreachable for
+  // the users who need it most.
+  { label: 'Security', path: ROUTES.SETTINGS_SECURITY, icon: ShieldAlert, roles: [] },
 ]

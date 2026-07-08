@@ -42,6 +42,7 @@ import {
   AuditExportPage,
   AuditSecurityPage,
 } from '@/modules/audit'
+import { SecuritySessionsPage } from '@/modules/security'
 import {
   AgentsAnalyticsPage,
   AnalyticsOverviewPage,
@@ -105,6 +106,7 @@ export function AppRoutes() {
           <Route path={`${ROUTES.ANALYTICS}/reports`} element={<ReportsCenterPage />} />
           <Route path={ROUTES.USERS} element={<UsersPage />} />
           <Route path={ROUTES.SETTINGS} element={<SettingsPage />} />
+          <Route path={ROUTES.SETTINGS_SECURITY} element={<SecuritySessionsPage />} />
           <Route path={ROUTES.PROFILE} element={<ProfilePage />} />
         </Route>
       </Route>
