@@ -124,8 +124,16 @@ describe('expiresIn (idle countdown, SRS §12)', () => {
   })
 
   it('renders minutes, hours and days', () => {
-    expect(expiresIn(new Date(Date.now() + 25 * 60_000).toISOString())).toBe('25m')
-    expect(expiresIn(new Date(Date.now() + 3 * 3_600_000).toISOString())).toBe('3h')
-    expect(expiresIn(new Date(Date.now() + 7 * 86_400_000).toISOString())).toBe('7d')
+    // Freeze the clock: `expiresIn` calls `Date.now()` internally, so without this the
+    // few ms elapsed since building each date floor 25m down to 24m under load.
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'))
+    try {
+      expect(expiresIn(new Date(Date.now() + 25 * 60_000).toISOString())).toBe('25m')
+      expect(expiresIn(new Date(Date.now() + 3 * 3_600_000).toISOString())).toBe('3h')
+      expect(expiresIn(new Date(Date.now() + 7 * 86_400_000).toISOString())).toBe('7d')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

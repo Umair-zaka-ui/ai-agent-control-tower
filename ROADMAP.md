@@ -329,15 +329,21 @@ HTTP-layer gaps, and record the release contract honestly.
   envelope (§15); `SecurityHeadersMiddleware` applies `X-Content-Type-Options`,
   `X-Frame-Options`, `Referrer-Policy`, a deny-by-default `Content-Security-Policy`,
   `Permissions-Policy` and opt-in HSTS to every response, errors included (§16, §23).
-- **Contract verified**: every §4 capability is implemented. The honest path deviations
-  (invitations/password/admin routes live under `/identity` & `/security`) and the
-  deliberate **bare-success / enveloped-error** response decision (§5) are documented,
-  not silently skipped — and no unreachable `logout-all` / `device-delete` stubs were
-  added just to match the sketch.
-- New `app/core/middleware.py`; `SECURITY_*` + `REQUEST_ID_HEADER` settings; 5 new tests
-  (`test_http_hardening.py`). Backend **346/346** green; frontend tsc + build clean.
-- Docs: [http-conventions](docs/api/http-conventions.md) — the consolidated endpoint map,
-  response format, error codes, correlation and security-header contract.
+- **Standard response envelope (§5)**: `ResponseEnvelopeMiddleware` wraps every 2xx JSON
+  response under `/api` as `{success, data, meta:{request_id, timestamp}}` (errors already
+  carry a matching envelope); the SPA unwraps it centrally so no service code changed.
+  `/health`, `/openapi.json` and file exports are left untouched.
+- **Full-stack deployment (§24)**: `frontend/Dockerfile` (Vite build → nginx serving the
+  SPA and reverse-proxying `/api`) + `web` service in `docker-compose.yml` (web + api + db,
+  same-origin), with a release checklist in [deployment](docs/deployment.md).
+- **Contract verified**: every §4 capability is implemented; the only remaining deviation
+  is stable path placement (invitation/password/admin routes under `/identity` &
+  `/security`). No unreachable `logout-all` / `device-delete` stubs.
+- New `app/core/middleware.py`; `SECURITY_*` + `REQUEST_ID_HEADER` +
+  `RESPONSE_ENVELOPE_ENABLED` settings; 11 new tests. Backend **352/352** green; frontend
+  tsc + build clean; web Docker image builds.
+- Docs: [http-conventions](docs/api/http-conventions.md), [testing](docs/testing/strategy.md),
+  [deployment](docs/deployment.md), `CHANGELOG.md`.
 
 ## Future (Phase 4+)
 

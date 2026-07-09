@@ -10,6 +10,8 @@ error format is unchanged.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
@@ -219,10 +221,20 @@ class IdentityError(Exception):
 
 
 def error_body(code: str, message: str, request_id: str | None) -> dict[str, object]:
+    """The standard error envelope (SRS §5).
+
+    ``meta`` mirrors the success envelope so both carry ``request_id`` + ``timestamp``.
+    ``request_id`` is also kept at the top level for backward compatibility with the
+    clients and tests that read it there.
+    """
     return {
         "success": False,
         "error": {"code": code, "message": message},
         "request_id": request_id,
+        "meta": {
+            "request_id": request_id,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        },
     }
 
 

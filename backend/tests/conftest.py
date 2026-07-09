@@ -24,6 +24,16 @@ def _hermetic_notifications(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_response_envelope(monkeypatch):
+    """The success envelope (§5) wraps bodies as ``{success, data, meta}``. The unit
+    and API tests assert the *inner* resource contract directly (``resp.json()["id"]``),
+    so it is off by default — exactly as rate limiting and notifications are. The
+    envelope itself is verified in ``test_response_envelope.py``, which re-enables it
+    (running after this fixture, so it wins)."""
+    monkeypatch.setattr(settings, "RESPONSE_ENVELOPE_ENABLED", False)
+
+
+@pytest.fixture(autouse=True)
 def _no_rate_limit(monkeypatch):
     """Rate limiting is per-IP, but every test shares one client IP ("testclient"),
     so a live limiter would conflate unrelated tests and, once login became rate

@@ -157,6 +157,12 @@ class Settings(BaseSettings):
     # caller does not send one, the middleware generates a UUID4 so every log line,
     # audit event and error body can be tied together.
     REQUEST_ID_HEADER: str = "X-Request-ID"
+    # Standard success envelope (§5): wrap 2xx JSON responses under /api as
+    # ``{"success": true, "data": <payload>, "meta": {request_id, timestamp}}``.
+    # Errors are always enveloped by the identity handler regardless of this flag.
+    # Off in the test suite (see conftest) so unit/API tests assert the inner
+    # resource contract directly; on everywhere else. The SPA unwraps it centrally.
+    RESPONSE_ENVELOPE_ENABLED: bool = True
 
     # --- Phase 2: agent API keys ---
     API_KEY_PREFIX: str = "agt_live_"
