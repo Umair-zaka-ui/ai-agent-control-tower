@@ -30,6 +30,7 @@ from app.identity.auth.authentication_service import AuthenticationService, Requ
 from app.identity.auth.context import IdentityContext
 from app.identity.auth.dependency import authenticate
 from app.identity.auth.enums import AuthEventType, AuthMethod, MfaMethod
+from app.identity.protection.rate_limit import adaptive_login_rate_limit
 from app.identity.auth.schemas import (
     DeviceRead,
     SecurityEventRead,
@@ -103,7 +104,11 @@ def _require_own_session(
 # --------------------------------------------------------------------------- #
 # Login / MFA / refresh
 # --------------------------------------------------------------------------- #
-@router.post("/login", response_model=LoginResponse)
+@router.post(
+    "/login",
+    response_model=LoginResponse,
+    dependencies=[Depends(adaptive_login_rate_limit)],
+)
 def login(
     payload: LoginRequestDTO,
     request: Request,

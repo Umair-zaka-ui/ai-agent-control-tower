@@ -219,6 +219,23 @@ recovery endpoints are rate limited (5/min/IP). Admins get a **recovery-events d
 (Settings → Security → Recovery events). See [password reset](docs/identity/password-reset.md),
 [recovery](docs/identity/recovery.md) and [email verification & change](docs/identity/email-verification.md).
 
+### Account protection & risk-based auth (Phase 4.2.2.3.4)
+
+Authentication is no longer binary. Every login is scored (0–100) from signals — new
+device/country, impossible travel, failed-attempt count, suspicious agent, blocked IP —
+and the score plus admin **protection rules** decide allow / challenge / MFA / lock /
+block. **Progressive lockout** (15m → 30m → 1h → 24h → security review) backs a stateful
+`account_locks` table; **brute-force & credential-stuffing** patterns are detected per
+account/IP/target-set; **blocked IPs** are refused at the door; a **CAPTCHA** seam and
+**adaptive rate limits** are in place. Failed logins stay generic (no enumeration, no
+signal leak). A security console (Settings → Security → Account protection) shows the
+dashboard, login attempts, risk events, locks (with audited unlock), blocked IPs and
+rules. See [account protection](docs/security/account-protection.md),
+[risk-based auth](docs/security/risk-based-authentication.md),
+[brute-force protection](docs/security/brute-force-protection.md),
+[account lockout](docs/security/account-lockout.md) and
+[protection rules](docs/security/identity-protection-rules.md).
+
 **Users** (password `DemoPass!2026`):
 
 | Email                  | Role       |

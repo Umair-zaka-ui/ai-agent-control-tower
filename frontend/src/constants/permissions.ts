@@ -22,6 +22,8 @@ export const PERMISSIONS = {
   CREDENTIAL_DASHBOARD: 'credential.dashboard',
   /** View password-reset & recovery events (4.2.2.3.3 §18). */
   RECOVERY_VIEW: 'recovery.view',
+  /** View/manage account protection: locks, blocked IPs, rules (4.2.2.3.4 §20). */
+  SECURITY_PROTECTION: 'security.protection',
 } as const
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS]

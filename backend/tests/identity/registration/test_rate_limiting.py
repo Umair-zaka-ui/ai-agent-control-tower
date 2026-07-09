@@ -26,6 +26,15 @@ def client() -> TestClient:
 
 
 @pytest.fixture(autouse=True)
+def _rate_limiting_on(monkeypatch):
+    """This file *is* the rate-limit test, so it opts back in (the global test default
+    is off — see tests/conftest.py). Runs after the conftest fixture, so it wins."""
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "RATE_LIMIT_ENABLED", True)
+
+
+@pytest.fixture(autouse=True)
 def _clean_buckets():
     """TestClient always presents the same client IP, so buckets leak between tests."""
     db = SessionLocal()

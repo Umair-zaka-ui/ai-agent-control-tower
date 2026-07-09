@@ -42,6 +42,13 @@ export const ROUTES = {
   CHANGE_EMAIL: '/settings/security/email',
   /** Admin recovery-events dashboard (4.2.2.3.3 §18). */
   SECURITY_RECOVERY: '/settings/security/recovery',
+  /** Account protection console (4.2.2.3.4 §22). */
+  SECURITY_PROTECTION: '/settings/security/protection',
+  SECURITY_LOGIN_ATTEMPTS: '/settings/security/login-attempts',
+  SECURITY_RISK_EVENTS: '/settings/security/risk-events',
+  SECURITY_ACCOUNT_LOCKS: '/settings/security/account-locks',
+  SECURITY_PROTECTION_RULES: '/settings/security/protection-rules',
+  SECURITY_BLOCKED_IPS: '/settings/security/blocked-ips',
   /**
    * Forced password change (4.2.2.3.2 §11, §13). Outside the dashboard shell and
    * NOT behind the change guard, so it is the one place the user can go while a

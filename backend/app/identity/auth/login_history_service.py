@@ -43,6 +43,10 @@ class LoginHistoryService:
         user_agent: str | None = None,
         country: str | None = None,
         city: str | None = None,
+        organization_id: uuid.UUID | None = None,
+        device_fingerprint: str | None = None,
+        risk_score: int | None = None,
+        decision: str | None = None,
     ) -> LoginHistory:
         entry = LoginHistory(
             user_id=user_id,
@@ -53,6 +57,10 @@ class LoginHistoryService:
             user_agent=user_agent,
             country=country,
             city=city,
+            organization_id=organization_id,
+            device_fingerprint=device_fingerprint,
+            risk_score=risk_score,
+            decision=decision,
         )
         return self.repo.add(entry)
 

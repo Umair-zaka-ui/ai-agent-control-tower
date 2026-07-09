@@ -77,6 +77,28 @@ class Settings(BaseSettings):
     # caller rotating IP addresses cannot leave the table growing for ever.
     RATE_LIMIT_SWEEP_BATCH: int = 50
 
+    # --- Phase 4.2.2.3.4: account protection & risk-based authentication ------
+    ACCOUNT_PROTECTION_ENABLED: bool = True
+    # Progressive lockout durations, in seconds, by consecutive lock count (§8):
+    # 15m, 30m, 1h, 24h. A 5th lock escalates to SECURITY_REVIEW_REQUIRED.
+    PROTECTION_LOCKOUT_DURATIONS: tuple[int, ...] = (900, 1800, 3600, 86400)
+    PROTECTION_FAILED_THRESHOLD: int = 5           # failures within the window → lock
+    PROTECTION_LOCKOUT_WINDOW_SECONDS: int = 15 * 60
+    # Brute-force / credential-stuffing thresholds (§9), within the window.
+    PROTECTION_BRUTEFORCE_IP_THRESHOLD: int = 20   # failures from one IP
+    PROTECTION_STUFFING_DISTINCT_ACCOUNTS: int = 5 # distinct accounts one IP failed
+    # Impossible-travel window (§13): different country within this time → risk.
+    PROTECTION_IMPOSSIBLE_TRAVEL_SECONDS: int = 2 * 60 * 60
+    # Risk-score thresholds → decision (§14). Kept as settings so a deployment can
+    # tune posture without a code change.
+    PROTECTION_RISK_CHALLENGE_AT: int = 51         # HIGH  → challenge
+    PROTECTION_RISK_LOCK_AT: int = 76              # CRITICAL → lock / MFA
+    PROTECTION_RISK_BLOCK_AT: int = 91             # SEVERE → block + review
+    # CAPTCHA triggers (§28). Placeholder abstraction; no live provider yet.
+    PROTECTION_CAPTCHA_ENABLED: bool = False
+    PROTECTION_CAPTCHA_FAILED_ATTEMPTS: int = 3
+    PROTECTION_CAPTCHA_RISK_AT: int = 50
+
     # --- Phase 4.2.2.3.3: password reset, account recovery & email change -----
     # Password-reset tokens are short-lived (§8): 30 minutes.
     PASSWORD_RESET_TTL_SECONDS: int = 30 * 60

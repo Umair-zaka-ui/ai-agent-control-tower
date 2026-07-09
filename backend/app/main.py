@@ -19,6 +19,7 @@ from app.identity.credentials.routes import router as credentials_router
 from app.identity.credentials.routes import security_router as credentials_security_router
 from app.identity.recovery.routes import router as recovery_router
 from app.identity.recovery.routes import security_router as recovery_security_router
+from app.identity.protection.routes import router as protection_router
 from app.identity.errors import register_identity_exception_handlers
 
 app = FastAPI(
@@ -67,3 +68,7 @@ app.include_router(credentials_security_router)
 # /api/v1/auth, and the recovery-events dashboard under /api/v1/security.
 app.include_router(recovery_router)
 app.include_router(recovery_security_router)
+
+# Phase 4 Part 4.2.2.3.4: account protection & risk-based auth admin console under
+# /api/v1/security (locks, blocked IPs, protection rules, login attempts, risk events).
+app.include_router(protection_router)
