@@ -1,11 +1,14 @@
 # ---------------------------------------------------------------------------
-# AI Agent Control Tower - local stack (API + PostgreSQL).
+# AI Agent Control Tower - full local stack (SPA + API + PostgreSQL).
 #
-#   docker compose up -d --build          # build & run api + db
+#   docker compose up -d --build          # build & run web + api + db
 #   docker compose up -d db               # just the database (for local dev)
 #
+# Open the app at http://localhost:8080 (the web container serves the SPA and
+# reverse-proxies /api to the api service — same origin, no CORS).
+#
 # The api service runs migrations on start; set SEED_ON_START=true to also load
-# demo data on first boot.
+# demo data on first boot. See docs/deployment.md for the production checklist.
 # ---------------------------------------------------------------------------
 services:
   db:
@@ -40,8 +43,27 @@ services:
       ACCESS_TOKEN_EXPIRE_MINUTES: "1440"
       SEED_ON_START: "true"
       NOTIFICATIONS_ENABLED: "false"
+      # Behind the web reverse-proxy: trust X-Forwarded-For so rate limiting and
+      # risk scoring see the real client IP, not the proxy's (SRS 4.2.2.3.1 §19).
+      TRUST_PROXY_HEADERS: "true"
+      # Standard §5 envelope + security headers stay on (defaults; explicit here).
+      RESPONSE_ENVELOPE_ENABLED: "true"
+      SECURITY_HEADERS_ENABLED: "true"
     ports:
       - "8000:8000"
+
+  web:
+    build:
+      context: ./frontend
+      args:
+        # Empty = same-origin; the SPA calls /api/... and nginx proxies to api.
+        VITE_API_BASE_URL: ""
+    container_name: act_web
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "8080:80"
 
 volumes:
   act_pgdata:

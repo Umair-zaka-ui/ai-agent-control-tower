@@ -40,29 +40,41 @@ either would be unreachable code, which this codebase forbids.
 
 ## 2. Response format (SRS §5)
 
-**Errors** follow the SRS §5 envelope exactly:
+Both success and error responses follow the §5 envelope, with matching `meta`.
+
+**Success** (any 2xx JSON under `/api`):
+
+```json
+{ "success": true,
+  "data": { "...": "the resource or list" },
+  "meta": { "request_id": "6f1c…", "timestamp": "2026-07-10T04:31:00+00:00" } }
+```
+
+**Error**:
 
 ```json
 { "success": false,
   "error": { "code": "ACCOUNT_LOCKED", "message": "Authentication failed." },
-  "request_id": "6f1c…" }
+  "request_id": "6f1c…",
+  "meta": { "request_id": "6f1c…", "timestamp": "2026-07-10T04:31:00+00:00" } }
 ```
 
-rendered centrally by `app/identity/errors.py` for every `IdentityError`.
+How it works, without disturbing the rest of the stack:
 
-**Success** responses return the resource **bare** (the model / list), not wrapped in
-`{success, data, meta}`. This is a deliberate, documented deviation from the §5 success
-sketch:
+- **Success** wrapping is done once, at the edge, by `ResponseEnvelopeMiddleware`
+  (`app/core/middleware.py`) — only 2xx `application/json` responses under `/api`, never
+  double-wrapping, leaving `/health`, `/openapi.json` and file/CSV exports untouched.
+  Controlled by `RESPONSE_ENVELOPE_ENABLED` (on by default). The backend **test suite**
+  runs with it off so unit/API tests assert the inner resource contract directly; the
+  envelope itself is verified in `tests/test_response_envelope.py`.
+- **Errors** are rendered centrally by `app/identity/errors.py` for every `IdentityError`.
+  `request_id` is also kept at the top level for backward compatibility.
+- The **frontend** unwraps the envelope in one place (`services/envelope.ts`, used by the
+  axios response interceptor and the bare refresh client), so every service consumes the
+  inner payload and is oblivious to the wrapping.
 
-- The success contract is already stable, versioned under `/api/v1`, covered by 346
-  backend + 211 frontend tests, and consumed by every frontend service. Re-wrapping it
-  would be a breaking change to a shipped, working system for zero functional gain.
-- The correlation id the envelope's `meta` exists to carry is delivered instead on the
-  `X-Request-ID` **response header** (below) — available on _every_ response, success or
-  error, without changing any body shape.
-
-If a wrapped success envelope is ever required (e.g. for an external partner API), it
-should be introduced as a new `/api/v2` surface, not retrofitted onto v1.
+Both envelopes carry the same correlation id, which is also on the `X-Request-ID`
+response header (§4 below).
 
 ## 3. Error codes & status (SRS §14)
 

@@ -3,6 +3,7 @@ import axios, { AxiosError, type AxiosInstance, type InternalAxiosRequestConfig 
 import { env } from '@/config/env'
 import type { ApiError } from '@/types'
 import { clearAuthStorage, getAccessToken } from '@/utils/tokenStorage'
+import { unwrapEnvelope } from './envelope'
 import { refreshAccessToken } from './tokenRefresh'
 
 /**
@@ -76,7 +77,12 @@ export function toApiError(error: AxiosError): ApiError {
 }
 
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Unwrap the standard success envelope (SRS §5) so every service sees the
+    // inner payload. Non-enveloped bodies pass through unchanged.
+    response.data = unwrapEnvelope(response.data)
+    return response
+  },
   async (error: AxiosError) => {
     const status = error.response?.status ?? 0
     const config = error.config as RetriableConfig | undefined

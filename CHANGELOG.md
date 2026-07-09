@@ -17,15 +17,24 @@ policy → recovery → account protection, closed out by an integration & relea
   - `SecurityHeadersMiddleware` — `X-Content-Type-Options: nosniff`, `X-Frame-Options:
     DENY`, `Referrer-Policy`, deny-by-default `Content-Security-Policy`,
     `Permissions-Policy`, and opt-in HSTS on every response, errors included (§16, §23).
-- **Added** `SECURITY_*` and `REQUEST_ID_HEADER` settings; `docs/api/http-conventions.md`
-  (consolidated endpoint map, response format, error codes, correlation & headers);
-  `docs/testing/strategy.md`; this changelog.
-- **Verified** the §4 API contract end-to-end against the shipped surface. Documented the
-  deliberate deviations rather than retrofitting them: **bare success bodies** with an
-  **enveloped error** contract (§5), and admin/invitation/password routes living under
-  `/identity` & `/security`. No unreachable `logout-all`/`device-delete` stubs added.
-- **Tests**: backend **346 passing** (+5 hardening tests); measured **92%** line coverage
-  on `app.identity` + `app.core`. Frontend tsc + production build clean.
+- **Added** the standard §5 **response envelope**: `ResponseEnvelopeMiddleware` wraps
+  every 2xx JSON response under `/api` as `{success, data, meta:{request_id, timestamp}}`
+  (leaving `/health`, `/openapi.json` and file exports untouched); errors gain a matching
+  `meta`. The SPA unwraps it centrally (`services/envelope.ts`, used by the axios
+  interceptor and the bare refresh client), so no service code changed. Toggle:
+  `RESPONSE_ENVELOPE_ENABLED`.
+- **Added** a full-stack deployment: `frontend/Dockerfile` (Vite build → nginx serving the
+  SPA and reverse-proxying `/api`), `frontend/nginx.conf`, a `web` service in
+  `docker-compose.yml` (web + api + db, same-origin, no CORS), and `docs/deployment.md`
+  with the §24 release checklist (provided vs operator-supplied).
+- **Added** `SECURITY_*`, `REQUEST_ID_HEADER`, `RESPONSE_ENVELOPE_ENABLED` settings;
+  `docs/api/http-conventions.md`, `docs/testing/strategy.md`, this changelog.
+- **Verified** the §4 API contract end-to-end. Remaining honest deviation:
+  admin/invitation/password routes live under `/identity` & `/security` (stable paths);
+  no unreachable `logout-all`/`device-delete` stubs added.
+- **Tests**: backend **352 passing** (+11 hardening/envelope tests); measured **92%** line
+  coverage on `app.identity` + `app.core`. Frontend tsc + production build clean; web
+  Docker image builds.
 
 ### Part 4.2.2.3.4 — Account protection & risk-based authentication
 
