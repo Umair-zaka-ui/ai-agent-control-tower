@@ -1,5 +1,6 @@
 export { apiClient } from './apiClient'
 export { authService } from './authService'
+export { credentialService, adminCredentialService } from './credentialService'
 export { approvalService } from './approvalService'
 export { auditService } from './auditService'
 export { dashboardService } from './dashboardService'

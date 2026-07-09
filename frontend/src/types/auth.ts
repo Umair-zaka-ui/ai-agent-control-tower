@@ -34,6 +34,82 @@ export interface AuthTokenResponse {
   is_new_device?: boolean
   idle_timeout_seconds?: number | null
   idle_warning_seconds?: number | null
+  /**
+   * Part 4.2.2.3.2 §11/§13: the user must change their password before any feature
+   * (expired, or an admin-issued temporary password). The SPA routes to the forced
+   * change flow when true.
+   */
+  password_change_required?: boolean
+}
+
+// --- Credential management (Part 4.2.2.3.2) -------------------------------- //
+export interface ChangePasswordPayload {
+  current_password: string
+  new_password: string
+  revoke_other_sessions?: boolean | null
+}
+
+export interface PasswordPolicy {
+  min_length: number
+  max_length: number
+  require_uppercase: boolean
+  require_lowercase: boolean
+  require_number: boolean
+  require_special: boolean
+  allow_spaces: boolean
+  forbid_common: boolean
+  forbid_sequences: boolean
+  forbid_repeats: boolean
+  forbid_identity: boolean
+  history_depth: number
+  max_age_days: number
+  min_age_hours: number
+  expiry_warning_days: number[]
+  temp_password_ttl_hours: number
+}
+
+export interface PasswordExpiration {
+  expires_at: string | null
+  changed_at: string | null
+  days_until_expiry: number | null
+  is_expired: boolean
+  in_warning_window: boolean
+  must_change: boolean
+  change_required: boolean
+}
+
+export interface PasswordStrengthResult {
+  level: string
+  score: number
+  meets_policy: boolean
+  entropy_bits: number
+  feedback: string | null
+}
+
+export interface AdminResetResult {
+  user_id: ID
+  temporary_password: string
+  expires_at: string
+  must_change_password: boolean
+  message: string
+}
+
+export interface PasswordDashboardUser {
+  user_id: ID
+  name: string
+  email: string
+  expires_at: string | null
+  days_until_expiry: number | null
+  is_expired: boolean
+  must_change: boolean
+}
+
+export interface PasswordDashboard {
+  expired: PasswordDashboardUser[]
+  expiring_soon: PasswordDashboardUser[]
+  temporary: PasswordDashboardUser[]
+  must_change: PasswordDashboardUser[]
+  total_users: number
 }
 
 /** Lifecycle state of a session (SRS 4.2.2.2 §4). */

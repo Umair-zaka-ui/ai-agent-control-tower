@@ -71,6 +71,10 @@ class LoginResult:
     security_score: int = 100
     is_new_device: bool = False
     revoked_sessions: list[uuid.UUID] = field(default_factory=list)
+    # Credential posture (Part 4.2.2.3.2 §11, §13): the SPA must route the user to
+    # the change-password flow before any feature when this is set — an expired or
+    # temporary/admin-reset password grants a session but no access to the app.
+    password_change_required: bool = False
 
 
 @dataclass
@@ -135,9 +139,22 @@ class AuthenticationService:
         # 3. Transparently upgrade a legacy bcrypt hash to argon2id (SRS §11).
         #    Deliberately skips policy validation: the password is already correct,
         #    and a user whose password predates the policy must still be able in.
+        #    A silent upgrade *is* a credential rotation, so it is audited as one
+        #    (Part 4.2.2.3.2 §18) — otherwise the event would be dead.
         if needs_rehash(user.password_hash):
             user.password_hash = hash_password(password)
             self.db.flush()
+            self.events.record(
+                AuthEventType.PASSWORD_ROTATED,
+                auth_method=AuthMethod.PASSWORD,
+                identity_type=AuthIdentityType.HUMAN_USER.value,
+                organization_id=user.organization_id,
+                identity_id=user.id,
+                ip_address=ip,
+                user_agent=ua,
+                request_id=rid,
+                metadata={"reason": "hash_upgrade"},
+            )
 
         # 4. Device registration + block check (SRS §13, §14).
         device, is_new_device = self.devices.register_or_touch(
@@ -279,6 +296,27 @@ class AuthenticationService:
                 request_id=rid,
                 metadata={"signals": assessment.signals, "security_score": assessment.score},
             )
+        # Credential posture (Part 4.2.2.3.2 §11, §13). An expired or temporary
+        # password does not block *login* — it blocks *access*, which the SPA
+        # enforces by routing to the change-password flow. Emitting PASSWORD_EXPIRED
+        # here (not at the change) is what makes an expiry visible in the audit
+        # stream the moment it bites.
+        from app.identity.credentials.policy_service import PasswordPolicyService
+
+        change_required = PasswordPolicyService.change_required(user)
+        if PasswordPolicyService.is_expired(user):
+            self.events.record(
+                AuthEventType.PASSWORD_EXPIRED,
+                auth_method=AuthMethod.PASSWORD,
+                identity_type=AuthIdentityType.HUMAN_USER.value,
+                organization_id=user.organization_id,
+                identity_id=user.id,
+                ip_address=ip,
+                user_agent=ua,
+                request_id=rid,
+                metadata={"session_id": str(session.id)},
+            )
+
         self.db.commit()
         return LoginResult(
             access,
@@ -288,6 +326,7 @@ class AuthenticationService:
             security_score=assessment.score,
             is_new_device=is_new_device,
             revoked_sessions=[s.id for s in evicted],
+            password_change_required=change_required,
         )
 
     # ------------------------------------------------------------------ #

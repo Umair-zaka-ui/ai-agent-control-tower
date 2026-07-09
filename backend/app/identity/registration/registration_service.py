@@ -117,6 +117,7 @@ class RegistrationService:
             context=context,
             metadata={"mode": "INVITATION", "invitation_id": str(invitation.id)},
         )
+        self._record_password_created(user, context=context, mode="INVITATION")
 
         sent = self._start_verification(user, context=context)
         self.db.commit()
@@ -181,6 +182,7 @@ class RegistrationService:
             context=context,
             metadata={"mode": "SELF_SERVICE"},
         )
+        self._record_password_created(user, context=context, mode="SELF_SERVICE")
         sent = self._start_verification(user, context=context)
         self.db.commit()
         return RegistrationResult(user, sent, IdentityStatus(user.status), requires_approval=True)
@@ -290,6 +292,27 @@ class RegistrationService:
             user, timezone=kwargs.get("timezone"), language=kwargs.get("language")
         )
         return user
+
+    def _record_password_created(
+        self, user: User, *, context: RequestContext | None, mode: str
+    ) -> None:
+        """A real credential was set at registration (Part 4.2.2.3.2 §18).
+
+        SSO/SCIM identities have no password (the UNUSABLE sentinel), so no
+        credential event is due for them.
+        """
+        from app.core.security import is_unusable_password
+
+        if is_unusable_password(user.password_hash):
+            return
+        self.audit.record(
+            AuthEventType.PASSWORD_CREATED,
+            organization_id=user.organization_id,
+            target_email=user.email,
+            actor_id=user.id,
+            context=context,
+            metadata={"mode": mode},
+        )
 
     def _start_verification(self, user: User, *, context: RequestContext | None) -> bool:
         """Issue + send the verification token, then advance REGISTERED → EMAIL_PENDING.

@@ -1,9 +1,12 @@
 import { useState } from 'react'
-import { LogOut, ShieldAlert } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { KeyRound, LayoutDashboard, LogOut, ShieldAlert } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { PERMISSIONS } from '@/constants/permissions'
+import { ROUTES } from '@/constants/routes'
 import { useAuth } from '@/hooks/useAuth'
 import type { AuthDevice, AuthSession } from '@/types'
 import { InvitationsPanel } from '@/modules/identity/components/InvitationsPanel'
@@ -47,7 +50,8 @@ function ListSkeleton() {
  * not merely a local token drop.
  */
 export function SecuritySessionsPage() {
-  const { logout } = useAuth()
+  const { logout, permissions } = useAuth()
+  const canViewPasswordDashboard = permissions.includes(PERMISSIONS.CREDENTIAL_DASHBOARD)
   const sessions = useSessions()
   const devices = useDevices()
   const revokeSession = useRevokeSession()
@@ -97,6 +101,32 @@ export function SecuritySessionsPage() {
           Review where you are signed in and which devices you trust.
         </p>
       </div>
+
+      {/* Password (4.2.2.3.2) -------------------------------------------- */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Password</CardTitle>
+          <CardDescription>
+            Change your password, or manage the organization's credential posture.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-3">
+          <Button asChild variant="outline" size="sm">
+            <Link to={ROUTES.CHANGE_PASSWORD}>
+              <KeyRound className="h-4 w-4" aria-hidden="true" />
+              Change password
+            </Link>
+          </Button>
+          {canViewPasswordDashboard && (
+            <Button asChild variant="outline" size="sm">
+              <Link to={ROUTES.SECURITY_PASSWORDS}>
+                <LayoutDashboard className="h-4 w-4" aria-hidden="true" />
+                Password dashboard
+              </Link>
+            </Button>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Sessions -------------------------------------------------------- */}
       <Card>

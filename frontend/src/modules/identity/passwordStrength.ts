@@ -53,12 +53,40 @@ const COMMON = new Set([
 
 const SPECIALS = /[!@#$%^&*()\-_=+[\]{};:,.<>?/|\\`~"']/
 
+// Mirrors the backend sequence/repeat rules (`identity/security/passwords.py`).
+const SEQUENCES = ['abcdefghijklmnopqrstuvwxyz', '0123456789', 'qwertyuiop', 'asdfghjkl', 'zxcvbnm']
+
 function isCommon(password: string): boolean {
   const lowered = password.toLowerCase()
   if (COMMON.has(lowered)) return true
-  // `Password123!` normalises to `password123` — light obfuscation must not pass.
+  // `Password123!` normalises to `password123` (exact); `password123!AA` normalises
+  // to `password123aa` which *begins with* the weak stem — appending does not save it.
   const alnum = lowered.replace(/[^a-z0-9]/g, '')
-  return COMMON.has(alnum)
+  if (COMMON.has(alnum)) return true
+  return [...COMMON].some((common) => alnum.startsWith(common))
+}
+
+function hasSequence(password: string, length = 4): boolean {
+  const lowered = password.toLowerCase()
+  return SEQUENCES.some((seq) => {
+    const runs = [seq, [...seq].reverse().join('')]
+    return runs.some((source) => {
+      for (let i = 0; i + length <= source.length; i += 1) {
+        if (lowered.includes(source.slice(i, i + length))) return true
+      }
+      return false
+    })
+  })
+}
+
+function hasRepeat(password: string, run = 4): boolean {
+  const lowered = password.toLowerCase()
+  let count = 1
+  for (let i = 1; i < lowered.length; i += 1) {
+    count = lowered[i] === lowered[i - 1] ? count + 1 : 1
+    if (count >= run) return true
+  }
+  return false
 }
 
 /** Does the password contain the email local-part or the user's name? */
@@ -85,6 +113,11 @@ export function evaluatePassword(password: string, identity: string[] = []): Pas
       id: 'uncommon',
       label: 'Not a common password',
       satisfied: password.length > 0 && !isCommon(password),
+    },
+    {
+      id: 'nosequence',
+      label: 'No keyboard or number sequences (e.g. 1234, qwer)',
+      satisfied: password.length > 0 && !hasSequence(password) && !hasRepeat(password),
     },
     {
       id: 'identity',

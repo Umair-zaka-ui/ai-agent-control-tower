@@ -16,6 +16,10 @@ export const PERMISSIONS = {
   INVITATION_VIEW: 'invitation.view',
   /** Create, resend and cancel invitations. */
   INVITATION_MANAGE: 'invitation.manage',
+  /** Reset another user's password / issue temporary credentials (4.2.2.3.2 §16). */
+  CREDENTIAL_RESET: 'credential.reset',
+  /** View the org password/credential dashboard (4.2.2.3.2 §17). */
+  CREDENTIAL_DASHBOARD: 'credential.dashboard',
 } as const
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS]

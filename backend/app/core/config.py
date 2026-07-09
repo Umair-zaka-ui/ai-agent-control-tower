@@ -77,6 +77,21 @@ class Settings(BaseSettings):
     # caller rotating IP addresses cannot leave the table growing for ever.
     RATE_LIMIT_SWEEP_BATCH: int = 50
 
+    # --- Phase 4.2.2.3.2: enterprise password policy & credential management ---
+    # Password history: reject reuse of the last N hashes (SRS §6, §10).
+    PASSWORD_HISTORY_DEPTH: int = 10
+    # Expiration (SRS §6, §11). 0 disables expiry.
+    PASSWORD_MAX_AGE_DAYS: int = 90
+    # Minimum age: a password cannot be changed again within this window, so a user
+    # cannot cycle through history to return to a favourite password (SRS §6).
+    PASSWORD_MIN_AGE_HOURS: int = 24
+    # Days-before-expiry at which the client should start warning the user (§11).
+    PASSWORD_EXPIRY_WARNING_DAYS: tuple[int, ...] = (14, 7, 3, 1)
+    # Temporary (admin-issued) passwords expire this soon and force a change (§12).
+    TEMP_PASSWORD_TTL_HOURS: int = 24
+    # Changing a password revokes the user's other sessions by default (SRS §15).
+    PASSWORD_CHANGE_REVOKES_SESSIONS: bool = True
+
     # Where suppressed emails are written when NOTIFICATIONS_ENABLED=false.
     #
     # An onboarding email carries the ONLY copy of a single-use token -- the database

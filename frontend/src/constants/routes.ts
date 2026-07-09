@@ -28,6 +28,16 @@ export const ROUTES = {
   SETTINGS: '/settings',
   /** Settings → Security → Sessions (SRS 4.2.2.2 §24). */
   SETTINGS_SECURITY: '/settings/security',
+  /** Change your own password (4.2.2.3.2 §23). */
+  CHANGE_PASSWORD: '/settings/security/password',
+  /** Admin password dashboard (4.2.2.3.2 §17, §23). */
+  SECURITY_PASSWORDS: '/settings/security/passwords',
+  /**
+   * Forced password change (4.2.2.3.2 §11, §13). Outside the dashboard shell and
+   * NOT behind the change guard, so it is the one place the user can go while a
+   * change is outstanding.
+   */
+  FORCE_PASSWORD_CHANGE: '/account/password-change',
   PROFILE: '/profile',
 
   // Misc

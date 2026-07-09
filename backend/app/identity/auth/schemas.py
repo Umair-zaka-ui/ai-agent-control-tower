@@ -56,6 +56,9 @@ class LoginResponse(TokenResponse):
     # Idle-warning budget so the client can prompt before expiry (SRS §5).
     idle_timeout_seconds: int | None = None
     idle_warning_seconds: int | None = None
+    # Part 4.2.2.3.2 §11/§13: the SPA must send the user to change their password
+    # before any feature when true (expired, or an admin-issued temporary password).
+    password_change_required: bool = False
 
 
 class MfaVerifyRequestDTO(BaseModel):

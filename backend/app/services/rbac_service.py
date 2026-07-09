@@ -42,6 +42,11 @@ PERMISSION_CATALOG: dict[str, str] = {
     # lesser power than being able to invite -- an invitation is an offer of access.
     "invitation.view": "View pending invitations in the organization",
     "invitation.manage": "Create, resend and cancel invitations",
+    # Credential management (4.2.2.3.2 §16, §17). Resetting another user's password
+    # is a higher power than reading the org's credential posture, so they are two
+    # permissions even though both currently sit on the same admin roles.
+    "credential.reset": "Reset another user's password and issue temporary credentials",
+    "credential.dashboard": "View the organization password/credential dashboard",
     "rbac.manage": "Manage roles and role assignments",
     "approval.view": "View the approval queue and review details",
     "approval.review": "Approve or reject pending actions",

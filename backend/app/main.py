@@ -15,6 +15,8 @@ from app.core.config import settings
 from app.identity.api import identity_router
 from app.identity.api.routes.registration import router as registration_router
 from app.identity.auth.routes import router as auth_v1_router
+from app.identity.credentials.routes import router as credentials_router
+from app.identity.credentials.routes import security_router as credentials_security_router
 from app.identity.errors import register_identity_exception_handlers
 
 app = FastAPI(
@@ -53,3 +55,8 @@ app.include_router(auth_v1_router)
 
 # Phase 4 Part 4.2.2.3.1: public registration & email verification under /api/v1/auth.
 app.include_router(registration_router)
+
+# Phase 4 Part 4.2.2.3.2: credential management (change/reset/validate/policy/expiry)
+# and the org-wide password dashboard under /api/v1/security.
+app.include_router(credentials_router)
+app.include_router(credentials_security_router)

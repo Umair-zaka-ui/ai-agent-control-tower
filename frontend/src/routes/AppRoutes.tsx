@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute'
+import { PasswordChangeGuard } from '@/components/layout/PasswordChangeGuard'
 import { PublicRoute } from '@/components/layout/PublicRoute'
 import { AuthLayout } from '@/layouts/AuthLayout'
 import { DashboardLayout } from '@/layouts/DashboardLayout'
@@ -45,9 +46,12 @@ import {
 import { SecuritySessionsPage } from '@/modules/security'
 import {
   AcceptInvitationPage,
+  ChangePasswordPage,
+  ForcedPasswordChangePage,
   InvitationExpiredPage,
   RegisterPage,
   RegistrationSuccessPage,
+  SecurityPasswordDashboard,
   VerifyEmailPage,
 } from '@/modules/identity/pages'
 import {
@@ -89,6 +93,15 @@ export function AppRoutes() {
 
       {/* Authenticated app shell */}
       <Route element={<ProtectedRoute />}>
+        {/*
+          Forced password change (4.2.2.3.2 §11, §13). Inside ProtectedRoute but
+          OUTSIDE the change guard, so it is reachable while a change is pending.
+        */}
+        <Route element={<AuthLayout />}>
+          <Route path={ROUTES.FORCE_PASSWORD_CHANGE} element={<ForcedPasswordChangePage />} />
+        </Route>
+
+        <Route element={<PasswordChangeGuard />}>
         <Route element={<DashboardLayout />}>
           {/* `/` redirects to the dashboard */}
           <Route index element={<Navigate to={ROUTES.DASHBOARD} replace />} />
@@ -127,7 +140,10 @@ export function AppRoutes() {
           <Route path={ROUTES.USERS} element={<UsersPage />} />
           <Route path={ROUTES.SETTINGS} element={<SettingsPage />} />
           <Route path={ROUTES.SETTINGS_SECURITY} element={<SecuritySessionsPage />} />
+          <Route path={ROUTES.CHANGE_PASSWORD} element={<ChangePasswordPage />} />
+          <Route path={ROUTES.SECURITY_PASSWORDS} element={<SecurityPasswordDashboard />} />
           <Route path={ROUTES.PROFILE} element={<ProfilePage />} />
+        </Route>
         </Route>
       </Route>
 

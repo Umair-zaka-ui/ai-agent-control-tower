@@ -3,7 +3,7 @@ import { createContext, useCallback, useEffect, useMemo, useRef, useState, type 
 import { SessionExpiredModal } from '@/components/auth/SessionExpiredModal'
 import { ROUTES } from '@/constants/routes'
 import { SILENT_REFRESH_LEAD_MS } from '@/constants/app'
-import { authService } from '@/services'
+import { authService, credentialService } from '@/services'
 import { SESSION_EXPIRED_EVENT } from '@/services/apiClient'
 import type { User } from '@/types'
 import {
@@ -20,9 +20,17 @@ export interface AuthContextValue {
   isAuthenticated: boolean
   /** True while bootstrapping auth from a persisted token on first load. */
   isLoading: boolean
+  /**
+   * The signed-in user must change their password before any feature (4.2.2.3.2
+   * §11/§13): an expired password, or an admin-issued temporary one. Guards route
+   * to the forced-change page while this is true; `acknowledgePasswordChange`
+   * clears it once the server has confirmed the change.
+   */
+  passwordChangeRequired: boolean
   login: (email: string, password: string, rememberMe?: boolean) => Promise<void>
   logout: () => void
   refreshUser: () => Promise<void>
+  acknowledgePasswordChange: () => void
 }
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -34,6 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(() => getAccessToken())
   const [isLoading, setIsLoading] = useState<boolean>(true)
   const [sessionExpired, setSessionExpired] = useState<boolean>(false)
+  const [passwordChangeRequired, setPasswordChangeRequired] = useState<boolean>(false)
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   /** Load the current identity + permissions from GET /api/v1/auth/me. */
@@ -42,6 +51,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(me.user)
     setPermissions(me.permissions ?? [])
   }, [])
+
+  /**
+   * Re-derive whether a forced password change is outstanding from the server, so
+   * the requirement survives a page reload (the login flag alone would not).
+   * Best-effort: a failure must never block bootstrap, so it defaults to false.
+   */
+  const syncPasswordChangeRequired = useCallback(async () => {
+    try {
+      const status = await credentialService.getExpiration()
+      setPasswordChangeRequired(status.change_required)
+    } catch {
+      setPasswordChangeRequired(false)
+    }
+  }, [])
+
+  const acknowledgePasswordChange = useCallback(() => setPasswordChangeRequired(false), [])
 
   const clearRefreshTimer = useCallback(() => {
     if (refreshTimer.current) {
@@ -98,7 +123,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       try {
         await refreshUser()
-        if (!cancelled) scheduleSilentRefresh()
+        if (!cancelled) {
+          scheduleSilentRefresh()
+          void syncPasswordChangeRequired()
+        }
       } catch {
         // Access token invalid — try a one-shot refresh before giving up.
         const newToken = await authService.refresh()
@@ -107,6 +135,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             await refreshUser()
             setToken(newToken)
             scheduleSilentRefresh()
+            void syncPasswordChangeRequired()
           } catch {
             clearAuthStorage()
             if (!cancelled) {
@@ -144,6 +173,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAuthTokens(res.access_token, res.refresh_token, res.expires_in)
       setToken(res.access_token)
       setSessionExpired(false)
+      setPasswordChangeRequired(Boolean(res.password_change_required))
       await refreshUser()
       scheduleSilentRefresh()
     },
@@ -157,6 +187,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setPermissions([])
     setToken(null)
     setSessionExpired(false)
+    setPasswordChangeRequired(false)
   }, [clearRefreshTimer])
 
   const value = useMemo<AuthContextValue>(
@@ -166,11 +197,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       permissions,
       isAuthenticated: user !== null,
       isLoading,
+      passwordChangeRequired,
       login,
       logout,
       refreshUser,
+      acknowledgePasswordChange,
     }),
-    [user, token, permissions, isLoading, login, logout, refreshUser],
+    [
+      user,
+      token,
+      permissions,
+      isLoading,
+      passwordChangeRequired,
+      login,
+      logout,
+      refreshUser,
+      acknowledgePasswordChange,
+    ],
   )
 
   return (
