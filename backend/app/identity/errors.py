@@ -74,6 +74,15 @@ class ErrorCode:
     EMAIL_NOT_VERIFIED = "EMAIL_NOT_VERIFIED"
     ACCOUNT_PENDING_APPROVAL = "ACCOUNT_PENDING_APPROVAL"
     RATE_LIMIT_EXCEEDED = "RATE_LIMIT_EXCEEDED"
+    # Credential management (4.2.2.3.2 §26). PASSWORD_EXPIRED already exists above.
+    PASSWORD_TOO_WEAK = "PASSWORD_TOO_WEAK"
+    PASSWORD_REUSED = "PASSWORD_REUSED"
+    PASSWORD_HISTORY_VIOLATION = "PASSWORD_HISTORY_VIOLATION"
+    INVALID_CURRENT_PASSWORD = "INVALID_CURRENT_PASSWORD"
+    TEMP_PASSWORD_EXPIRED = "TEMP_PASSWORD_EXPIRED"
+    PASSWORD_POLICY_FAILED = "PASSWORD_POLICY_FAILED"
+    FIRST_LOGIN_CHANGE_REQUIRED = "FIRST_LOGIN_CHANGE_REQUIRED"
+    PASSWORD_MIN_AGE = "PASSWORD_MIN_AGE"
 
 
 # Map error codes → HTTP status.
@@ -139,6 +148,16 @@ _STATUS: dict[str, int] = {
     ErrorCode.EMAIL_NOT_VERIFIED: status.HTTP_403_FORBIDDEN,
     ErrorCode.ACCOUNT_PENDING_APPROVAL: status.HTTP_403_FORBIDDEN,
     ErrorCode.RATE_LIMIT_EXCEEDED: status.HTTP_429_TOO_MANY_REQUESTS,
+    # Credential management (4.2.2.3.2 §26). Policy failures are client input
+    # errors (422); a wrong current password is an auth failure (401).
+    ErrorCode.PASSWORD_TOO_WEAK: status.HTTP_422_UNPROCESSABLE_ENTITY,
+    ErrorCode.PASSWORD_REUSED: status.HTTP_422_UNPROCESSABLE_ENTITY,
+    ErrorCode.PASSWORD_HISTORY_VIOLATION: status.HTTP_422_UNPROCESSABLE_ENTITY,
+    ErrorCode.INVALID_CURRENT_PASSWORD: status.HTTP_401_UNAUTHORIZED,
+    ErrorCode.TEMP_PASSWORD_EXPIRED: status.HTTP_401_UNAUTHORIZED,
+    ErrorCode.PASSWORD_POLICY_FAILED: status.HTTP_422_UNPROCESSABLE_ENTITY,
+    ErrorCode.FIRST_LOGIN_CHANGE_REQUIRED: status.HTTP_403_FORBIDDEN,
+    ErrorCode.PASSWORD_MIN_AGE: status.HTTP_409_CONFLICT,
 }
 
 
@@ -188,8 +207,12 @@ def register_identity_exception_handlers(app: FastAPI) -> None:
 
         Routes that set a password (legacy ``/auth/register``, ``/users``) call
         ``hash_user_password`` directly and let this handler shape the response.
+
+        The exception carries a specific ``code`` (``PASSWORD_TOO_WEAK`` /
+        ``PASSWORD_POLICY_FAILED``) so the client can react precisely (SRS §26).
         """
+        code = getattr(exc, "code", None) or ErrorCode.PASSWORD_POLICY_FAILED
         return JSONResponse(
             status_code=422,
-            content=error_body(ErrorCode.VALIDATION_ERROR, str(exc), _request_id(request)),
+            content=error_body(code, str(exc), _request_id(request)),
         )

@@ -119,6 +119,16 @@ class AuthEventType(str, enum.Enum):
     ACCOUNT_ACTIVATED = "ACCOUNT_ACTIVATED"
     ACCOUNT_PENDING_APPROVAL = "ACCOUNT_PENDING_APPROVAL"
     REGISTRATION_BLOCKED = "REGISTRATION_BLOCKED"
+    # Credential management (4.2.2.3.2 §18).
+    PASSWORD_CREATED = "PASSWORD_CREATED"
+    PASSWORD_CHANGED = "PASSWORD_CHANGED"
+    PASSWORD_RESET = "PASSWORD_RESET"
+    PASSWORD_EXPIRED = "PASSWORD_EXPIRED"
+    PASSWORD_ROTATED = "PASSWORD_ROTATED"
+    PASSWORD_REUSED_ATTEMPT = "PASSWORD_REUSED_ATTEMPT"
+    TEMP_PASSWORD_CREATED = "TEMP_PASSWORD_CREATED"
+    FIRST_LOGIN_PASSWORD_CHANGED = "FIRST_LOGIN_PASSWORD_CHANGED"
+    PASSWORD_POLICY_VIOLATION = "PASSWORD_POLICY_VIOLATION"
     # NOTE: there is deliberately no RATE_LIMIT_EXCEEDED *audit event*. Writing one
     # security-event row per throttled request would turn a flood into self-inflicted
     # write amplification -- the attacker chooses how many rows we insert. The

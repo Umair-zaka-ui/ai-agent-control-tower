@@ -77,6 +77,34 @@ describe('identity-substring rule', () => {
   })
 })
 
+describe('sequence & repeat rules (4.2.2.3.2 §7)', () => {
+  it('flags a numeric sequence', () => {
+    expect(satisfied('MyPass1234!wxyz', 'nosequence')).toBe(false)
+  })
+
+  it('flags a keyboard sequence', () => {
+    expect(satisfied('Zxcvbn9!qwerAB', 'nosequence')).toBe(false)
+  })
+
+  it('flags a 4x character repeat', () => {
+    expect(satisfied('Aaaa!bbccddEE1', 'nosequence')).toBe(false)
+  })
+
+  it('passes a password with no run or sequence', () => {
+    expect(satisfied('Zt9$mQ2!vLp7Xw', 'nosequence')).toBe(true)
+  })
+
+  it('rejects a decorated common password by prefix (password123!AA)', () => {
+    expect(satisfied('password123!AA', 'uncommon')).toBe(false)
+    expect(evaluatePassword('password123!AA').meetsPolicy).toBe(false)
+  })
+
+  it('does not flag a strong password that merely embeds a stem mid-string', () => {
+    // Mirrors the backend: matching is prefix-only, so `passw0rd` in the middle is fine.
+    expect(satisfied('T3st!Passw0rd#Ok', 'uncommon')).toBe(true)
+  })
+})
+
 describe('score', () => {
   it('increases monotonically with strength', () => {
     const weak = evaluatePassword('abc')

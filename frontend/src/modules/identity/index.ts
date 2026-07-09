@@ -3,6 +3,7 @@
 export * from './types'
 export { InvitationsPanel } from './components/InvitationsPanel'
 export { PasswordStrengthMeter } from './components/PasswordStrengthMeter'
+export { ChangePasswordForm } from './components/ChangePasswordForm'
 export { evaluatePassword, MIN_PASSWORD_LENGTH, STRENGTH_LABEL } from './passwordStrength'
 export type { PasswordRule, PasswordStrength, StrengthLevel } from './passwordStrength'
 export {
@@ -12,4 +13,9 @@ export {
   RegisterPage,
   RegistrationSuccessPage,
   VerifyEmailPage,
+  ChangePasswordPage,
+  ForcedPasswordChangePage,
+  FirstLoginPasswordPage,
+  PasswordExpiredPage,
+  SecurityPasswordDashboard,
 } from './pages'

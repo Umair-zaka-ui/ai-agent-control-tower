@@ -131,6 +131,7 @@ def login(
         is_new_device=result.is_new_device,
         idle_timeout_seconds=settings.SESSION_IDLE_TIMEOUT_SECONDS,
         idle_warning_seconds=settings.SESSION_IDLE_WARNING_SECONDS,
+        password_change_required=result.password_change_required,
     )
 
 

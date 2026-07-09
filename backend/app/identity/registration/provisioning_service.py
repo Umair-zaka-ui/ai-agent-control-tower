@@ -23,6 +23,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
+from app.core import security as core_security
 from app.core.enums import UserRole as LegacyUserRole
 from app.core.security import UNUSABLE_PASSWORD
 from app.identity.models.enums import IdentityStatus
@@ -81,6 +82,18 @@ class UserProvisioningService:
         )
         self.db.add(user)
         self.db.flush()
+
+        # Stamp the credential lifecycle (Part 4.2.2.3.2 §11) for a real password so
+        # a freshly onboarded account is subject to expiry like any other. An SSO/
+        # SCIM identity has no password (UNUSABLE sentinel) and never expires.
+        if not core_security.is_unusable_password(user.password_hash):
+            from datetime import datetime, timezone as _tz
+
+            from app.identity.credentials.policy_service import PasswordPolicyService
+
+            now = datetime.now(_tz.utc)
+            user.password_changed_at = now
+            user.password_expires_at = PasswordPolicyService.expires_at_from(now)
 
         self.profiles.add(
             UserProfile(

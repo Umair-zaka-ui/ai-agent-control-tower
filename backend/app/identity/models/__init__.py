@@ -7,6 +7,7 @@ identity foundation is additive, not a replacement.
 """
 
 from app.identity.models.agent_identity import AgentIdentity
+from app.identity.models.credential import PasswordHistory
 from app.identity.models.department import Department, Team
 from app.identity.models.enums import (
     CredentialType,
@@ -57,4 +58,5 @@ __all__ = [
     "RateLimitHit",
     "InvitationStatus",
     "RegistrationMode",
+    "PasswordHistory",
 ]

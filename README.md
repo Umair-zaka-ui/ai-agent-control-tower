@@ -196,6 +196,19 @@ limited to 5 requests/minute/IP.
 See [registration](docs/identity/registration.md), [invitations](docs/identity/invitations.md)
 and [email verification](docs/identity/email-verification.md).
 
+### Credential management (Phase 4.2.2.3.2)
+
+Enterprise password lifecycle on top of the argon2id hashing from 4.2.2.1: a single-source
+policy (length, character classes, common-password blocklist, keyboard/number sequences,
+repeats, and your own name/email/org), **password history** (no reuse of the last 10),
+**90-day expiration** with in-app warnings, **administrative reset** issuing a one-time
+temporary password, and a **mandatory first-login change** the app cannot be skipped past.
+Self-service change is at Settings → Security → Change password; admins get a
+**password dashboard** (expired / expiring / temporary users). Every credential event is
+audited. See [password policy](docs/identity/password-policy.md),
+[credential management](docs/identity/credential-management.md) and
+[password history](docs/identity/password-history.md).
+
 **Users** (password `DemoPass!2026`):
 
 | Email                  | Role       |
@@ -634,16 +647,41 @@ Architecture, data-flow diagram and the endpoint→UI map live in
 
 ### Email notifications (Mailtrap)
 
-Set these in `.env` to enable real sends:
+Onboarding emails (invitations, verification links) carry the **only** copy of a
+single-use token — the database stores just its SHA-256. So delivery matters:
+
+- **Off (default, `NOTIFICATIONS_ENABLED=false`)** — nothing is sent. The full
+  message, link included, is appended to a git-ignored dev outbox
+  (`EMAIL_DEV_OUTBOX_PATH`, default `var/dev-outbox.log`) so the link stays
+  recoverable, and the Invitations panel shows a "delivery disabled" warning.
+- **On (`NOTIFICATIONS_ENABLED=true`)** — mail goes to SMTP; the outbox is no
+  longer written (a plaintext token must never hit disk in a sending deploy).
+
+**To send through Mailtrap Sandbox** (safe testing — captures mail, does **not**
+deliver to real inboxes):
+
+1. mailtrap.io → **Email Testing → Sandboxes → your sandbox → SMTP Settings**
+2. Set the code dropdown to **Nodemailer** to reveal the per-inbox credentials
+   (a random username/password — *not* your Mailtrap account login).
+3. Put them in `.env`:
 
 ```env
 NOTIFICATIONS_ENABLED=true
 SMTP_HOST=sandbox.smtp.mailtrap.io
 SMTP_PORT=587
-SMTP_USERNAME=<your mailtrap user>
-SMTP_PASSWORD=<your mailtrap pass>
+SMTP_USERNAME=<random sandbox username>
+SMTP_PASSWORD=<random sandbox password>
+SMTP_USE_TLS=true
 SMTP_FROM=no-reply@control-tower.local
 ```
+
+Restart the backend, then create/resend an invitation — it appears in the Mailtrap
+sandbox inbox. Free plan throttles to a few emails/second (`550 Too many emails
+per second`); `EmailResult` reports that as a failure rather than a false success.
+
+> **Real delivery to actual inboxes** (e.g. real Gmail) is a *different* Mailtrap
+> product — **Email API/SMTP** live sending (`live.smtp.mailtrap.io`, its own
+> credentials, requires domain verification). Sandbox alone never leaves Mailtrap.
 
 ### Run with Docker
 
