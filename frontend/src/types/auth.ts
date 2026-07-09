@@ -138,6 +138,98 @@ export interface RecoveryEvent {
   metadata: Record<string, unknown> | null
 }
 
+// --- Account protection (Part 4.2.2.3.4) ----------------------------------- //
+export interface ProtectionSummary {
+  failed_logins_today: number
+  locked_accounts: number
+  high_risk_attempts: number
+  blocked_ips: number
+  active_rules: number
+  risk_events_recent: number
+}
+
+export interface LoginAttempt {
+  id: ID
+  email: string
+  success: boolean
+  failure_reason: string | null
+  ip_address: string | null
+  country: string | null
+  city: string | null
+  user_agent: string | null
+  device_fingerprint: string | null
+  risk_score: number | null
+  decision: string | null
+  created_at: ISODateString
+}
+
+export interface RiskEvent {
+  id: ID
+  user_id: ID | null
+  event_type: string
+  risk_score: number
+  risk_level: string
+  signals: Record<string, unknown>
+  decision: string
+  ip_address: string | null
+  user_agent: string | null
+  created_at: ISODateString
+}
+
+export interface AccountLock {
+  id: ID
+  user_id: ID
+  organization_id: ID
+  reason: string
+  status: string
+  locked_at: ISODateString
+  expires_at: ISODateString | null
+  unlocked_at: ISODateString | null
+  unlocked_by: ID | null
+  meta: Record<string, unknown>
+  created_at: ISODateString
+  user_email: string | null
+  risk_score: number | null
+}
+
+export interface BlockedIp {
+  id: ID
+  organization_id: ID | null
+  ip_address: string
+  reason: string | null
+  expires_at: ISODateString | null
+  created_by: ID | null
+  created_at: ISODateString
+}
+
+export interface ProtectionRuleCondition {
+  field: string
+  op: string
+  value?: unknown
+}
+
+export interface ProtectionRule {
+  id: ID
+  organization_id: ID
+  name: string
+  description: string | null
+  conditions: ProtectionRuleCondition[]
+  decision: string
+  enabled: boolean
+  priority: number
+  created_at: ISODateString
+  updated_at: ISODateString
+}
+
+export interface ProtectionRuleWrite {
+  name: string
+  description?: string | null
+  conditions: ProtectionRuleCondition[]
+  decision: string
+  enabled?: boolean
+  priority?: number
+}
+
 /** Lifecycle state of a session (SRS 4.2.2.2 §4). */
 export type SessionStatus =
   | 'CREATED'

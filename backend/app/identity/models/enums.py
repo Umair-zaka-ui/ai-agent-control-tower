@@ -57,6 +57,13 @@ class IdentityStatus(str, enum.Enum):
     DISABLED = "DISABLED"
     ARCHIVED = "ARCHIVED"
     DELETED = "DELETED"
+    # Account protection (4.2.2.3.4 §5). LOCKED is normally *transient* and lives in
+    # the ``account_locks`` table (it has an expiry and escalates); these durable
+    # members exist so the status model can express a required next step.
+    LOCKED = "LOCKED"
+    PASSWORD_RESET_REQUIRED = "PASSWORD_RESET_REQUIRED"
+    MFA_REQUIRED = "MFA_REQUIRED"
+    SECURITY_REVIEW_REQUIRED = "SECURITY_REVIEW_REQUIRED"
 
     def can_authenticate(self) -> bool:
         """Only an ACTIVE identity may sign in. Everything else has a *reason*,
@@ -88,8 +95,18 @@ IDENTITY_TRANSITIONS: dict[IdentityStatus, set[IdentityStatus]] = {
     IdentityStatus.EMAIL_VERIFIED: {IdentityStatus.ACTIVE, IdentityStatus.DISABLED},
     IdentityStatus.CREATED: {IdentityStatus.PENDING_VERIFICATION, IdentityStatus.ACTIVE},
     IdentityStatus.PENDING_VERIFICATION: {IdentityStatus.ACTIVE, IdentityStatus.DISABLED},
-    IdentityStatus.ACTIVE: {IdentityStatus.SUSPENDED, IdentityStatus.DISABLED, IdentityStatus.ARCHIVED},
+    IdentityStatus.ACTIVE: {
+        IdentityStatus.SUSPENDED, IdentityStatus.DISABLED, IdentityStatus.ARCHIVED,
+        IdentityStatus.LOCKED, IdentityStatus.PASSWORD_RESET_REQUIRED,
+        IdentityStatus.MFA_REQUIRED, IdentityStatus.SECURITY_REVIEW_REQUIRED,
+    },
     IdentityStatus.SUSPENDED: {IdentityStatus.ACTIVE, IdentityStatus.DISABLED, IdentityStatus.ARCHIVED},
+    # Protection states return to ACTIVE once the required action is taken (admin
+    # unlock, password reset, MFA enrolment, security review passed).
+    IdentityStatus.LOCKED: {IdentityStatus.ACTIVE, IdentityStatus.SECURITY_REVIEW_REQUIRED, IdentityStatus.DISABLED},
+    IdentityStatus.PASSWORD_RESET_REQUIRED: {IdentityStatus.ACTIVE, IdentityStatus.DISABLED},
+    IdentityStatus.MFA_REQUIRED: {IdentityStatus.ACTIVE, IdentityStatus.DISABLED},
+    IdentityStatus.SECURITY_REVIEW_REQUIRED: {IdentityStatus.ACTIVE, IdentityStatus.SUSPENDED, IdentityStatus.DISABLED},
     IdentityStatus.DISABLED: {IdentityStatus.ACTIVE, IdentityStatus.ARCHIVED},
     IdentityStatus.ARCHIVED: {IdentityStatus.DELETED, IdentityStatus.ACTIVE},
     IdentityStatus.DELETED: set(),

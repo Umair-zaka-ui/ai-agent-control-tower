@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { AtSign, KeyRound, LayoutDashboard, LogOut, ShieldAlert, ShieldQuestion } from 'lucide-react'
+import { AtSign, KeyRound, LayoutDashboard, LogOut, ShieldAlert, ShieldCheck, ShieldQuestion } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -53,6 +53,7 @@ export function SecuritySessionsPage() {
   const { logout, permissions } = useAuth()
   const canViewPasswordDashboard = permissions.includes(PERMISSIONS.CREDENTIAL_DASHBOARD)
   const canViewRecovery = permissions.includes(PERMISSIONS.RECOVERY_VIEW)
+  const canViewProtection = permissions.includes(PERMISSIONS.SECURITY_PROTECTION)
   const sessions = useSessions()
   const devices = useDevices()
   const revokeSession = useRevokeSession()
@@ -137,6 +138,14 @@ export function SecuritySessionsPage() {
               <Link to={ROUTES.SECURITY_RECOVERY}>
                 <ShieldQuestion className="h-4 w-4" aria-hidden="true" />
                 Recovery events
+              </Link>
+            </Button>
+          )}
+          {canViewProtection && (
+            <Button asChild variant="outline" size="sm">
+              <Link to={ROUTES.SECURITY_PROTECTION}>
+                <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+                Account protection
               </Link>
             </Button>
           )}

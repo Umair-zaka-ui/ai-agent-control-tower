@@ -258,6 +258,66 @@ silently open public registration.
   [email-verification](docs/identity/email-verification.md).
   Backend 230/230 green; frontend 174/174 green.
 
+### Part 4.2.2.3.2 — Enterprise password policy & credential management ✅
+
+The full credential lifecycle on top of argon2id: a single-source policy (length,
+character classes, common-password blocklist, keyboard/number sequences, repeats, and
+your own name/email/org), **password history** (no reuse of the last 10), **90-day
+expiration** with in-app warnings, **administrative reset** issuing a one-time temporary
+password, and a **mandatory first-login change** the app cannot be skipped past.
+
+- `password_history` table + `users` lifecycle columns (`password_changed_at`,
+  `password_expires_at`, `must_change_password`); migration `0013`.
+- One write path (`CredentialService`): verify current → min-age → complexity → no-reuse
+  → argon2id → history → stamp → audit → revoke other sessions.
+- Endpoints: change-password, admin/reset-password, validate-password, password-policy,
+  password-expiration, and the org password dashboard. 9 audit events, reachability-grepped.
+- Deviations documented: reused `users.password_hash` + `security_events` rather than the
+  SRS's separate credential/policy/temp/event tables. Enforcement boundary (UI/session,
+  not per-endpoint) documented as a known limitation.
+- Docs: [password-policy](docs/identity/password-policy.md),
+  [credential-management](docs/identity/credential-management.md),
+  [password-history](docs/identity/password-history.md).
+
+### Part 4.2.2.3.3 — Password reset, account recovery & email change ✅
+
+Enterprise recovery that reuses the platform's discipline rather than a weaker parallel.
+
+- **Forgot password**: `rst_` tokens (256-bit, SHA-256, single-use, 30 min), a
+  non-enumerating uniform response (identical for known/unknown and even on error).
+- **Reset** runs the full credential write path and **revokes every session** (§13);
+  dead links are 410 and say which kind of dead.
+- **Verified email change**: confirm the new address before it takes effect
+  (`pending_email`); alert the old mailbox on completion.
+- `password_reset_requests` table + `email_verifications.purpose/new_email`; migration
+  `0014`. Rate limited; recovery-events dashboard (`recovery.view`). 9 audit events.
+- Docs: [password-reset](docs/identity/password-reset.md), [recovery](docs/identity/recovery.md).
+
+### Part 4.2.2.3.4 — Account protection & risk-based authentication ✅
+
+Authentication becomes non-binary: every login is scored and the score plus admin rules
+decide allow / challenge / MFA / lock / block.
+
+- **Risk scoring** (0–100) from signals — new device/country, impossible travel, failed
+  attempts, suspicious agent, blocked IP — with a first-login baseline guard so new
+  accounts are not flagged.
+- **Progressive lockout** (15m → 30m → 1h → 24h → security review) on a stateful
+  `account_locks` table; **brute-force & credential-stuffing** detection per
+  account/IP/target-set; **blocked IPs** refused before the password; **protection rules**
+  (`conditions → decision`), **adaptive rate limits**, and a **CAPTCHA** seam.
+- New tables `account_locks`, `identity_risk_events`, `blocked_ips`,
+  `identity_protection_rules`; `login_history` extended with the risk columns; migration
+  `0015`. Generic login errors preserved (no enumeration, no signal leak).
+- Security console (Settings → Security → Account protection): dashboard, login attempts,
+  risk events, locks with audited unlock, blocked IPs, rules. 14 audit events,
+  reachability-grepped.
+- Docs: [account-protection](docs/security/account-protection.md),
+  [risk-based-authentication](docs/security/risk-based-authentication.md),
+  [brute-force-protection](docs/security/brute-force-protection.md),
+  [account-lockout](docs/security/account-lockout.md),
+  [identity-protection-rules](docs/security/identity-protection-rules.md).
+  Backend 338/338 green.
+
 ## Future (Phase 4+)
 
 Retiring the legacy `/auth/login` surface (now the platform's only non-revocable

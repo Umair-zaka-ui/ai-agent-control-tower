@@ -21,3 +21,14 @@ from app.core.config import settings
 @pytest.fixture(autouse=True)
 def _hermetic_notifications(monkeypatch):
     monkeypatch.setattr(settings, "NOTIFICATIONS_ENABLED", False)
+
+
+@pytest.fixture(autouse=True)
+def _no_rate_limit(monkeypatch):
+    """Rate limiting is per-IP, but every test shares one client IP ("testclient"),
+    so a live limiter would conflate unrelated tests and, once login became rate
+    limited (4.2.2.3.4 §10), throttle the very attempts a lockout/flow test needs.
+
+    So it is off by default. The dedicated rate-limit tests opt back in with their own
+    ``RATE_LIMIT_ENABLED = True`` (which runs after this fixture and therefore wins)."""
+    monkeypatch.setattr(settings, "RATE_LIMIT_ENABLED", False)

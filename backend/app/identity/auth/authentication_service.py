@@ -39,6 +39,14 @@ from app.identity.auth.session_security_service import SessionSecurityService
 from app.identity.auth.token_service import TokenService
 from app.identity.errors import ErrorCode, IdentityError
 from app.identity.models.enums import IdentityStatus, SessionRevocationReason
+
+# ``app.identity.protection`` is imported lazily inside the methods that use it.
+# A module-level import would close a package-init cycle: protection → lockout →
+# app.identity.auth.enums → app.identity.auth.__init__ → authentication_service →
+# protection. With ``from __future__ import annotations`` the ``ProtectionOutcome`` /
+# ``AuthDecision`` type hints below are strings, so they need no import here.
+if False:  # pragma: no cover - typing only
+    from app.identity.protection import AccountProtectionService, AuthDecision, ProtectionOutcome
 from app.identity.models.session import UserSession
 from app.models.user import User
 from app.services import auth_service
@@ -117,20 +125,37 @@ class AuthenticationService:
         )
         ip, ua, rid = client.ip_address, client.user_agent, client.request_id
 
-        # 1. Account lockout gate (SRS §10) — before touching credentials, so a
-        #    locked account cannot be used to burn argon2id CPU.
-        if self.login_history.is_locked(email):
-            self._record_locked(email, ip, ua, rid)
-            self.db.commit()
-            raise IdentityError(
-                ErrorCode.ACCOUNT_LOCKED,
-                "Account temporarily locked due to repeated failed logins. Try again later.",
-            )
+        # 1. Account-protection pre-check (4.2.2.3.4 §6, §21) — before touching
+        #    credentials, so a blocked IP or locked account cannot even burn argon2id
+        #    CPU. Resolve the account first (never revealing existence in the response).
+        from app.identity.protection import AccountProtectionService  # lazy: see top-of-file note
 
-        # 2. Credential verification (generic failure — never reveals existence).
+        known_user = self._lookup_user(email)
+        protection = AccountProtectionService(self.db)
+        pre = protection.pre_check(
+            email=email,
+            ip_address=ip,
+            user_agent=ua,
+            user=known_user,
+            organization_id=known_user.organization_id if known_user else None,
+        )
+        if pre is not None:
+            self._enforce_protection_precheck(pre)
+
+        # 2. Credential verification (generic failure — never reveals existence, §33).
         user = auth_service.authenticate_user(self.db, email, password)
         if user is None:
             self._record_failed_login(email, "invalid_credentials", ip, ua, rid)
+            # The protection layer counts the failure, detects attack patterns and
+            # locks at the threshold — but this failing attempt still returns a generic
+            # INVALID_CREDENTIALS; the lock bites on the *next* attempt (§33).
+            protection.record_failure(
+                email=email,
+                ip_address=ip,
+                user_agent=ua,
+                user=known_user,
+                organization_id=known_user.organization_id if known_user else None,
+            )
             self.db.commit()
             raise IdentityError(ErrorCode.INVALID_CREDENTIALS, "Invalid email or password.")
 
@@ -192,6 +217,22 @@ class AuthenticationService:
                 request_id=rid,
                 metadata={"device_id": str(device.id), "device_name": device.device_name},
             )
+
+        # 4b. Risk-based authentication (4.2.2.3.4 §14, §21). Score the attempt and
+        #     apply identity-protection rules. ALLOW proceeds; anything else stops here
+        #     with a generic response and a recorded risk event.
+        protection_outcome = protection.evaluate_login_attempt(
+            user,
+            email=email,
+            ip_address=ip,
+            user_agent=ua,
+            device_fingerprint=client.device_id_header,
+            country=client.country,
+            city=client.city,
+            is_new_device=is_new_device,
+        )
+        if not protection_outcome.allowed:
+            self._enforce_protection_post(protection_outcome, user, ip, ua, rid)
 
         # 5. Step-up seam: stop before issuing a session if MFA is required.
         if self._mfa_required(user):
@@ -255,6 +296,10 @@ class AuthenticationService:
         self.login_history.record(
             email=email, success=True, user_id=user.id,
             ip_address=ip, user_agent=ua, country=client.country, city=client.city,
+            organization_id=user.organization_id,
+            device_fingerprint=client.device_id_header,
+            risk_score=protection_outcome.risk_score,
+            decision=protection_outcome.decision.value,
         )
         self.events.record(
             AuthEventType.SESSION_CREATED,
@@ -332,45 +377,92 @@ class AuthenticationService:
     # ------------------------------------------------------------------ #
     # Login-history / lockout helpers (SRS §10, §13)
     # ------------------------------------------------------------------ #
+    def _lookup_user(self, email: str) -> User | None:
+        return self.db.execute(select(User).where(User.email == email)).scalar_one_or_none()
+
     def _user_id_for_email(self, email: str) -> uuid.UUID | None:
-        user = self.db.execute(select(User).where(User.email == email)).scalar_one_or_none()
+        user = self._lookup_user(email)
         return user.id if user else None
 
     def _record_failed_login(
         self, email: str, reason: str, ip: str | None, ua: str | None, request_id: str | None
     ) -> None:
-        user_id = self._user_id_for_email(email)
+        # Lockout is no longer decided here: the account-protection layer
+        # (``record_failure``) counts this attempt, detects attack patterns and locks
+        # progressively, emitting ACCOUNT_LOCKED / AUTH_LOGIN_LOCKED itself (§8).
+        from app.identity.protection import AuthDecision  # lazy: see top-of-file note
+
+        user = self._lookup_user(email)
         self.login_history.record(
-            email=email, success=False, user_id=user_id, failure_reason=reason,
+            email=email, success=False, user_id=user.id if user else None, failure_reason=reason,
             ip_address=ip, user_agent=ua,
+            organization_id=user.organization_id if user else None,
+            decision=AuthDecision.DENY.value,
         )
         self.events.record(
             AuthEventType.AUTH_LOGIN_FAILED,
             auth_method=AuthMethod.PASSWORD,
             identity_type=AuthIdentityType.HUMAN_USER.value,
-            identity_id=user_id,
+            identity_id=user.id if user else None,
             ip_address=ip,
             user_agent=ua,
             request_id=request_id,
             metadata={"email": email, "reason": reason},
         )
-        if self.login_history.is_locked(email):
-            self._record_locked(email, ip, ua, request_id, user_id=user_id)
 
-    def _record_locked(
-        self, email: str, ip: str | None, ua: str | None, request_id: str | None,
-        *, user_id: uuid.UUID | None = None,
+    # ------------------------------------------------------------------ #
+    # Account-protection enforcement (4.2.2.3.4 §7, §33)
+    # ------------------------------------------------------------------ #
+    # Every branch returns a *generic* error: an attacker must not learn from the
+    # response whether the account exists or why exactly they were refused (§33).
+    def _enforce_protection_precheck(self, outcome: ProtectionOutcome) -> None:
+        from app.identity.protection import AuthDecision  # lazy: see top-of-file note
+
+        self.db.commit()  # persist the recorded risk/lock state before raising
+        if outcome.decision is AuthDecision.LOCK_ACCOUNT:
+            headers = (
+                {"Retry-After": str(outcome.retry_after_seconds)}
+                if outcome.retry_after_seconds
+                else None
+            )
+            raise IdentityError(
+                ErrorCode.ACCOUNT_LOCKED,
+                "Account temporarily locked due to repeated failed logins. Try again later.",
+                headers=headers,
+            )
+        if outcome.decision is AuthDecision.BLOCK_IP:
+            raise IdentityError(ErrorCode.IP_BLOCKED, "Access from your network is blocked.")
+        if outcome.decision is AuthDecision.REQUIRE_SECURITY_REVIEW:
+            raise IdentityError(
+                ErrorCode.SECURITY_REVIEW_REQUIRED,
+                "This account is under security review. Contact your administrator.",
+            )
+        # Any other pre-check decision is a generic denial.
+        raise IdentityError(ErrorCode.INVALID_CREDENTIALS, "Invalid email or password.")
+
+    def _enforce_protection_post(
+        self, outcome: ProtectionOutcome, user: User, ip: str | None, ua: str | None, rid: str | None
     ) -> None:
-        self.events.record(
-            AuthEventType.AUTH_LOGIN_LOCKED,
-            auth_method=AuthMethod.PASSWORD,
-            identity_type=AuthIdentityType.HUMAN_USER.value,
-            identity_id=user_id if user_id is not None else self._user_id_for_email(email),
-            ip_address=ip,
-            user_agent=ua,
-            request_id=request_id,
-            metadata={"email": email, "reason": "account_locked"},
-        )
+        from app.identity.protection import AuthDecision  # lazy: see top-of-file note
+
+        self.db.commit()
+        if outcome.decision in (AuthDecision.CHALLENGE, AuthDecision.REQUIRE_MFA):
+            raise IdentityError(
+                ErrorCode.RISK_CHALLENGE_REQUIRED,
+                "Additional verification is required to sign in. Please try again or contact your administrator.",
+            )
+        if outcome.decision is AuthDecision.LOCK_ACCOUNT:
+            raise IdentityError(
+                ErrorCode.ACCOUNT_LOCKED,
+                "Account temporarily locked. Try again later.",
+            )
+        if outcome.decision is AuthDecision.REQUIRE_SECURITY_REVIEW:
+            raise IdentityError(
+                ErrorCode.SECURITY_REVIEW_REQUIRED,
+                "This sign-in needs a security review. Contact your administrator.",
+            )
+        # BLOCK_IP / DENY and anything else: generic block.
+        raise IdentityError(ErrorCode.LOGIN_BLOCKED, "Unable to sign in. Contact your administrator.")
 
     # ------------------------------------------------------------------ #
     # Refresh with rotation + reuse detection (SRS §8, §9, §20)

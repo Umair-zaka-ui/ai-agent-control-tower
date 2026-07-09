@@ -45,6 +45,14 @@ import {
 } from '@/modules/audit'
 import { SecuritySessionsPage } from '@/modules/security'
 import {
+  AccountLocksPage,
+  BlockedIpsPage,
+  IdentityProtectionRulesPage,
+  LoginAttemptsPage,
+  RiskEventsPage,
+  SecurityDashboardPage,
+} from '@/modules/protection'
+import {
   AcceptInvitationPage,
   ChangeEmailPage,
   ChangePasswordPage,
@@ -155,6 +163,13 @@ export function AppRoutes() {
           <Route path={ROUTES.SECURITY_PASSWORDS} element={<SecurityPasswordDashboard />} />
           <Route path={ROUTES.CHANGE_EMAIL} element={<ChangeEmailPage />} />
           <Route path={ROUTES.SECURITY_RECOVERY} element={<SecurityRecoveryDashboard />} />
+          {/* Account protection console (4.2.2.3.4 §22) */}
+          <Route path={ROUTES.SECURITY_PROTECTION} element={<SecurityDashboardPage />} />
+          <Route path={ROUTES.SECURITY_LOGIN_ATTEMPTS} element={<LoginAttemptsPage />} />
+          <Route path={ROUTES.SECURITY_RISK_EVENTS} element={<RiskEventsPage />} />
+          <Route path={ROUTES.SECURITY_ACCOUNT_LOCKS} element={<AccountLocksPage />} />
+          <Route path={ROUTES.SECURITY_PROTECTION_RULES} element={<IdentityProtectionRulesPage />} />
+          <Route path={ROUTES.SECURITY_BLOCKED_IPS} element={<BlockedIpsPage />} />
           <Route path={ROUTES.PROFILE} element={<ProfilePage />} />
         </Route>
         </Route>
