@@ -227,7 +227,11 @@ def error_body(code: str, message: str, request_id: str | None) -> dict[str, obj
 
 
 def _request_id(request: Request) -> str | None:
-    return request.headers.get("x-request-id") or getattr(request.state, "request_id", None)
+    # ``RequestContextMiddleware`` (app.core.middleware) sets ``state.request_id`` to
+    # the supplied-or-generated id for every request, honouring the configured header
+    # name. Prefer it; fall back to the raw header for any request that somehow
+    # bypassed the middleware (e.g. a directly-constructed test request).
+    return getattr(request.state, "request_id", None) or request.headers.get("x-request-id")
 
 
 def register_identity_exception_handlers(app: FastAPI) -> None:

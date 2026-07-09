@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.router import api_router
 from app.core.config import settings
+from app.core.middleware import install_http_middleware
 from app.identity.api import identity_router
 from app.identity.api.routes.registration import router as registration_router
 from app.identity.auth.routes import router as auth_v1_router
@@ -39,6 +40,11 @@ if settings.BACKEND_CORS_ORIGINS:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+# Phase 4.2.2.3.5 (§15, §16, §23): request correlation ids + security response
+# headers on every response. Registered after CORS so they sit outermost and
+# still wrap error responses.
+install_http_middleware(app)
 
 
 @app.get("/health", tags=["health"])

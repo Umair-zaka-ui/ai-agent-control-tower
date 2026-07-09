@@ -236,6 +236,16 @@ rules. See [account protection](docs/security/account-protection.md),
 [account lockout](docs/security/account-lockout.md) and
 [protection rules](docs/security/identity-protection-rules.md).
 
+### API contract & HTTP hardening (Phase 4.2.2.3.5)
+
+The Phase 4.2.2 close-out. Every request carries a correlation id (`X-Request-ID`,
+generated when absent, echoed on the response and threaded into the error envelope), and
+every response — success or error — carries standard security headers (`nosniff`,
+`X-Frame-Options: DENY`, a deny-by-default CSP, `Referrer-Policy`, `Permissions-Policy`,
+opt-in HSTS). Errors follow the `{success, error:{code,message}, request_id}` envelope;
+success bodies stay bare by design. The consolidated endpoint map, response format and
+error codes are in [HTTP API conventions](docs/api/http-conventions.md).
+
 **Users** (password `DemoPass!2026`):
 
 | Email                  | Role       |
