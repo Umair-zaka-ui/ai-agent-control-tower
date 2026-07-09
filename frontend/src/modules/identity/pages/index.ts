@@ -11,3 +11,9 @@ export {
   PasswordExpiredPage,
 } from './ForcedPasswordChangePage'
 export { SecurityPasswordDashboard } from './SecurityPasswordDashboard'
+export { ForgotPasswordPage } from './ForgotPasswordPage'
+export { ResetPasswordPage } from './ResetPasswordPage'
+export { RecoverySuccessPage } from './RecoverySuccessPage'
+export { VerifyNewEmailPage } from './VerifyNewEmailPage'
+export { ChangeEmailPage } from './ChangeEmailPage'
+export { SecurityRecoveryDashboard } from './SecurityRecoveryDashboard'

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { AlertCircle, LogIn } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -133,6 +133,12 @@ export function LoginPage() {
             <LogIn />
             {submitting ? 'Signing in…' : 'Sign in'}
           </Button>
+
+          <p className="text-center text-sm">
+            <Link to={ROUTES.FORGOT_PASSWORD} className="text-primary hover:underline">
+              Forgot your password?
+            </Link>
+          </p>
         </form>
       </CardContent>
     </Card>

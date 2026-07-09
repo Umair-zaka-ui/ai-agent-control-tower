@@ -50,6 +50,16 @@ def verification_url(token: str) -> str:
     return f"{settings.APP_BASE_URL.rstrip('/')}/verify-email/{quote(token, safe='')}"
 
 
+def reset_url(token: str) -> str:
+    """The link a user clicks to reset their password (4.2.2.3.3 §10)."""
+    return f"{settings.APP_BASE_URL.rstrip('/')}/reset-password/{quote(token, safe='')}"
+
+
+def new_email_verification_url(token: str) -> str:
+    """The link sent to a *new* address to confirm an email change (§12)."""
+    return f"{settings.APP_BASE_URL.rstrip('/')}/verify-new-email/{quote(token, safe='')}"
+
+
 def _send(to: str, subject: str, body: str, *, what: str) -> EmailResult:
     """``send_email`` never raises and returns whether the message was accepted.
 
@@ -128,3 +138,51 @@ class EmailService:
             f"{settings.APP_BASE_URL.rstrip('/')}/login\n"
         )
         return _send(to, "Your account is active", body, what="activation")
+
+    # --- Recovery (4.2.2.3.3 §16, §17) ------------------------------------- #
+    def send_password_reset(
+        self, to: str, *, first_name: str | None, token: str, expires_in_minutes: int
+    ) -> EmailResult:
+        url = reset_url(token)
+        greeting = f"Hi {first_name}," if first_name else "Hi,"
+        body = (
+            f"{greeting}\n\n"
+            f"We received a request to reset your password. Choose a new one here:\n{url}\n\n"
+            f"This link expires in {expires_in_minutes} minutes and can be used once.\n"
+            f"If you did not request this, you can ignore this email — your password is "
+            f"unchanged. You may want to review your account security.\n"
+        )
+        return _send(to, "Reset your password", body, what="password-reset")
+
+    def send_password_changed_alert(self, to: str) -> EmailResult:
+        """After a successful reset/change (§17). A recovery alert: if the user did
+        not do this, it is their signal that the account may be compromised."""
+        body = (
+            "Your password was just changed.\n\n"
+            "If this was you, no action is needed. If it was not, contact your "
+            "administrator immediately — someone may have access to your account.\n"
+        )
+        return _send(to, "Your password was changed", body, what="password-changed")
+
+    def send_email_change_verification(
+        self, to_new: str, *, first_name: str | None, token: str, expires_in_hours: int
+    ) -> EmailResult:
+        url = new_email_verification_url(token)
+        greeting = f"Hi {first_name}," if first_name else "Hi,"
+        body = (
+            f"{greeting}\n\n"
+            f"Confirm this address to make it the new email for your account:\n{url}\n\n"
+            f"This link expires in {expires_in_hours} hours and can be used once.\n"
+            f"Until you confirm, your current email address stays in effect.\n"
+        )
+        return _send(to_new, "Confirm your new email address", body, what="email-change")
+
+    def send_email_changed_alert(self, to_old: str, *, new_email: str) -> EmailResult:
+        """Sent to the OLD address when an email change is verified (§17). The old
+        mailbox is the one an attacker does not control, so this is where the alarm
+        must ring."""
+        body = (
+            f"The email address on your account was changed to {new_email}.\n\n"
+            f"If you did not make this change, contact your administrator immediately.\n"
+        )
+        return _send(to_old, "Your account email was changed", body, what="email-changed")

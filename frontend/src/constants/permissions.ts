@@ -20,6 +20,8 @@ export const PERMISSIONS = {
   CREDENTIAL_RESET: 'credential.reset',
   /** View the org password/credential dashboard (4.2.2.3.2 §17). */
   CREDENTIAL_DASHBOARD: 'credential.dashboard',
+  /** View password-reset & recovery events (4.2.2.3.3 §18). */
+  RECOVERY_VIEW: 'recovery.view',
 } as const
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS]

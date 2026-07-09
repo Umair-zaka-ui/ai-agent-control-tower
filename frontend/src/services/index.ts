@@ -1,6 +1,7 @@
 export { apiClient } from './apiClient'
 export { authService } from './authService'
 export { credentialService, adminCredentialService } from './credentialService'
+export { recoveryService, adminRecoveryService } from './recoveryService'
 export { approvalService } from './approvalService'
 export { auditService } from './auditService'
 export { dashboardService } from './dashboardService'

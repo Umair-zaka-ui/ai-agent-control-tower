@@ -24,6 +24,9 @@ from app.identity.security.passwords import hash_secret
 
 INVITATION_PREFIX = "inv_"
 VERIFICATION_PREFIX = "vrf_"
+# Password-reset token (4.2.2.3.3). Same 256-bit entropy, distinct prefix so a
+# leaked token cannot be replayed on the wrong endpoint.
+RESET_PREFIX = "rst_"
 
 # 32 bytes -> 43 url-safe characters. Well past any practical guessing attack, and
 # short enough to survive a mail client's line wrapping.
@@ -42,6 +45,12 @@ def generate_invitation_token() -> tuple[str, str]:
 
 def generate_verification_token() -> tuple[str, str]:
     plaintext = _generate(VERIFICATION_PREFIX)
+    return plaintext, hash_secret(plaintext)
+
+
+def generate_reset_token() -> tuple[str, str]:
+    """Return ``(plaintext, hash)`` for a password-reset link (4.2.2.3.3 §6, §7)."""
+    plaintext = _generate(RESET_PREFIX)
     return plaintext, hash_secret(plaintext)
 
 

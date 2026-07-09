@@ -146,7 +146,36 @@ enough to correlate an incident, not enough to harvest.
 Each records the target email, organization, request id, correlation id, IP and user
 agent (§20), and is readable through the [security-event stream](./security-events.md).
 
+## Changing an email address (Part 4.2.2.3.3 §12)
+
+Changing the address on an account is a takeover vector, so it is gated three ways
+(`EmailChangeService`):
+
+1. **Re-authentication** — `POST /api/v1/auth/change-email` requires the current
+   password again.
+2. **Confirm the new address before it takes effect** — the confirmation link goes to
+   the *new* address; `users.pending_email` holds it meanwhile, and the current
+   `email` stays authoritative. A typo or hostile request cannot lock the owner out.
+3. **Alert the old address** — when `POST /api/v1/auth/verify-new-email` swaps the
+   address in, an alert is sent to the *old* mailbox, the one an attacker does not
+   control.
+
+The change reuses the `email_verifications` table with `purpose='EMAIL_CHANGE'` and
+`new_email` set, so the same single-use/hashed/supersede discipline applies. Requesting
+a change again supersedes the previous pending token. Errors:
+
+| Situation | Code | HTTP |
+| --------- | ---- | ---- |
+| Wrong current password | `INVALID_CURRENT_PASSWORD` | 401 |
+| New address already in use | `EMAIL_ALREADY_IN_USE` | 409 |
+| Already your address | `INVALID_RECOVERY_REQUEST` | 400 |
+| Confirmation link expired | `EMAIL_VERIFICATION_EXPIRED` | **410 Gone** |
+
+Audited as `EMAIL_CHANGE_REQUESTED` → `EMAIL_CHANGE_VERIFIED` + `EMAIL_CHANGED`.
+
 ## Related
 
 - [Registration](./registration.md)
 - [Invitations](./invitations.md)
+- [Recovery](./recovery.md)
+- [Password reset](./password-reset.md)

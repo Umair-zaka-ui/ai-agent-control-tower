@@ -46,13 +46,19 @@ import {
 import { SecuritySessionsPage } from '@/modules/security'
 import {
   AcceptInvitationPage,
+  ChangeEmailPage,
   ChangePasswordPage,
   ForcedPasswordChangePage,
+  ForgotPasswordPage,
   InvitationExpiredPage,
+  RecoverySuccessPage,
   RegisterPage,
   RegistrationSuccessPage,
+  ResetPasswordPage,
   SecurityPasswordDashboard,
+  SecurityRecoveryDashboard,
   VerifyEmailPage,
+  VerifyNewEmailPage,
 } from '@/modules/identity/pages'
 import {
   AgentsAnalyticsPage,
@@ -89,6 +95,11 @@ export function AppRoutes() {
         <Route path={ROUTES.VERIFY_EMAIL} element={<VerifyEmailPage />} />
         <Route path={ROUTES.INVITATION_EXPIRED} element={<InvitationExpiredPage />} />
         <Route path={ROUTES.REGISTRATION_SUCCESS} element={<RegistrationSuccessPage />} />
+        {/* Recovery (Part 4.2.2.3.3 §22). Public: the user cannot sign in. */}
+        <Route path={ROUTES.FORGOT_PASSWORD} element={<ForgotPasswordPage />} />
+        <Route path={ROUTES.RESET_PASSWORD} element={<ResetPasswordPage />} />
+        <Route path={ROUTES.RECOVERY_SUCCESS} element={<RecoverySuccessPage />} />
+        <Route path={ROUTES.VERIFY_NEW_EMAIL} element={<VerifyNewEmailPage />} />
       </Route>
 
       {/* Authenticated app shell */}
@@ -142,6 +153,8 @@ export function AppRoutes() {
           <Route path={ROUTES.SETTINGS_SECURITY} element={<SecuritySessionsPage />} />
           <Route path={ROUTES.CHANGE_PASSWORD} element={<ChangePasswordPage />} />
           <Route path={ROUTES.SECURITY_PASSWORDS} element={<SecurityPasswordDashboard />} />
+          <Route path={ROUTES.CHANGE_EMAIL} element={<ChangeEmailPage />} />
+          <Route path={ROUTES.SECURITY_RECOVERY} element={<SecurityRecoveryDashboard />} />
           <Route path={ROUTES.PROFILE} element={<ProfilePage />} />
         </Route>
         </Route>

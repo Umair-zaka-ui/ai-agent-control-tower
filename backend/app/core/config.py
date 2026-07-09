@@ -77,6 +77,16 @@ class Settings(BaseSettings):
     # caller rotating IP addresses cannot leave the table growing for ever.
     RATE_LIMIT_SWEEP_BATCH: int = 50
 
+    # --- Phase 4.2.2.3.3: password reset, account recovery & email change -----
+    # Password-reset tokens are short-lived (§8): 30 minutes.
+    PASSWORD_RESET_TTL_SECONDS: int = 30 * 60
+    # Kill-switch for the whole forgot-password flow (§25 PASSWORD_RESET_DISABLED).
+    PASSWORD_RESET_ENABLED: bool = True
+    # Email-change verification token lifetime (§8): 24 hours, like activation.
+    EMAIL_CHANGE_TTL_SECONDS: int = 24 * 60 * 60
+    # A successful reset revokes every session (§13). "Remembered devices" too.
+    PASSWORD_RESET_REVOKES_SESSIONS: bool = True
+
     # --- Phase 4.2.2.3.2: enterprise password policy & credential management ---
     # Password history: reject reuse of the last N hashes (SRS §6, §10).
     PASSWORD_HISTORY_DEPTH: int = 10

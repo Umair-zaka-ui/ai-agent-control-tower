@@ -209,6 +209,16 @@ audited. See [password policy](docs/identity/password-policy.md),
 [credential management](docs/identity/credential-management.md) and
 [password history](docs/identity/password-history.md).
 
+### Account recovery (Phase 4.2.2.3.3)
+
+Self-service **forgot password** (a hashed, single-use, 30-minute `rst_` token emailed
+as a link), **reset** that runs the full credential discipline and revokes every session,
+and **verified email change** (confirm the new address before it takes effect; alert the
+old one when it does). Forgot-password is a non-enumerating uniform response; all public
+recovery endpoints are rate limited (5/min/IP). Admins get a **recovery-events dashboard**
+(Settings → Security → Recovery events). See [password reset](docs/identity/password-reset.md),
+[recovery](docs/identity/recovery.md) and [email verification & change](docs/identity/email-verification.md).
+
 **Users** (password `DemoPass!2026`):
 
 | Email                  | Role       |
