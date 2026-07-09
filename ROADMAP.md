@@ -318,6 +318,27 @@ decide allow / challenge / MFA / lock / block.
   [identity-protection-rules](docs/security/identity-protection-rules.md).
   Backend 338/338 green.
 
+### Part 4.2.2.3.5 — Backend APIs, integration & release (Phase 4.2.2 close-out) ✅
+
+The consolidation pass over the whole Enterprise Human Authentication subsystem
+(4.2.2.1 → 4.2.2.3.4): verify the §4 API contract end-to-end, close the cross-cutting
+HTTP-layer gaps, and record the release contract honestly.
+
+- **HTTP hardening**: `RequestContextMiddleware` stamps every request/response with a
+  correlation id (`X-Request-ID`, generated when absent) that flows into the error
+  envelope (§15); `SecurityHeadersMiddleware` applies `X-Content-Type-Options`,
+  `X-Frame-Options`, `Referrer-Policy`, a deny-by-default `Content-Security-Policy`,
+  `Permissions-Policy` and opt-in HSTS to every response, errors included (§16, §23).
+- **Contract verified**: every §4 capability is implemented. The honest path deviations
+  (invitations/password/admin routes live under `/identity` & `/security`) and the
+  deliberate **bare-success / enveloped-error** response decision (§5) are documented,
+  not silently skipped — and no unreachable `logout-all` / `device-delete` stubs were
+  added just to match the sketch.
+- New `app/core/middleware.py`; `SECURITY_*` + `REQUEST_ID_HEADER` settings; 5 new tests
+  (`test_http_hardening.py`). Backend **346/346** green; frontend tsc + build clean.
+- Docs: [http-conventions](docs/api/http-conventions.md) — the consolidated endpoint map,
+  response format, error codes, correlation and security-header contract.
+
 ## Future (Phase 4+)
 
 Retiring the legacy `/auth/login` surface (now the platform's only non-revocable

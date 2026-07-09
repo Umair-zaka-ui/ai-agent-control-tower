@@ -140,6 +140,24 @@ class Settings(BaseSettings):
         "http://localhost:5173",
     ]
 
+    # --- Phase 4.2.2.3.5: HTTP hardening (integration §15, §16, §23) ----------
+    # Security response headers applied to *every* response (§16). Disable only
+    # if a reverse proxy already injects them, to avoid duplicate headers.
+    SECURITY_HEADERS_ENABLED: bool = True
+    # Content-Security-Policy. The API serves JSON, not HTML, so a strict
+    # default-deny policy is safe; the SPA is served separately by Vite/CDN.
+    SECURITY_CSP: str = "default-src 'none'; frame-ancestors 'none'"
+    SECURITY_REFERRER_POLICY: str = "no-referrer"
+    SECURITY_PERMISSIONS_POLICY: str = "geolocation=(), microphone=(), camera=()"
+    # HSTS is only meaningful over TLS; off by default for local http on :8002.
+    # Enable in production (behind HTTPS) to pin the browser to TLS.
+    SECURITY_HSTS_ENABLED: bool = False
+    SECURITY_HSTS_MAX_AGE: int = 31536000  # 1 year
+    # Request correlation (§15): the header carrying a request id in and out. When a
+    # caller does not send one, the middleware generates a UUID4 so every log line,
+    # audit event and error body can be tied together.
+    REQUEST_ID_HEADER: str = "X-Request-ID"
+
     # --- Phase 2: agent API keys ---
     API_KEY_PREFIX: str = "agt_live_"
 
