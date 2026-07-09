@@ -17,6 +17,8 @@ from app.identity.api.routes.registration import router as registration_router
 from app.identity.auth.routes import router as auth_v1_router
 from app.identity.credentials.routes import router as credentials_router
 from app.identity.credentials.routes import security_router as credentials_security_router
+from app.identity.recovery.routes import router as recovery_router
+from app.identity.recovery.routes import security_router as recovery_security_router
 from app.identity.errors import register_identity_exception_handlers
 
 app = FastAPI(
@@ -60,3 +62,8 @@ app.include_router(registration_router)
 # and the org-wide password dashboard under /api/v1/security.
 app.include_router(credentials_router)
 app.include_router(credentials_security_router)
+
+# Phase 4 Part 4.2.2.3.3: password reset, account recovery & email change under
+# /api/v1/auth, and the recovery-events dashboard under /api/v1/security.
+app.include_router(recovery_router)
+app.include_router(recovery_security_router)

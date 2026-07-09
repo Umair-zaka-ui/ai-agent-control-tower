@@ -47,6 +47,9 @@ PERMISSION_CATALOG: dict[str, str] = {
     # permissions even though both currently sit on the same admin roles.
     "credential.reset": "Reset another user's password and issue temporary credentials",
     "credential.dashboard": "View the organization password/credential dashboard",
+    # Account recovery (4.2.2.3.3 §18). Reading recovery/reset activity is a distinct
+    # power from resetting a password, though both currently sit on the admin roles.
+    "recovery.view": "View password-reset and recovery events in the organization",
     "rbac.manage": "Manage roles and role assignments",
     "approval.view": "View the approval queue and review details",
     "approval.review": "Approve or reject pending actions",

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { KeyRound, LayoutDashboard, LogOut, ShieldAlert } from 'lucide-react'
+import { AtSign, KeyRound, LayoutDashboard, LogOut, ShieldAlert, ShieldQuestion } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -52,6 +52,7 @@ function ListSkeleton() {
 export function SecuritySessionsPage() {
   const { logout, permissions } = useAuth()
   const canViewPasswordDashboard = permissions.includes(PERMISSIONS.CREDENTIAL_DASHBOARD)
+  const canViewRecovery = permissions.includes(PERMISSIONS.RECOVERY_VIEW)
   const sessions = useSessions()
   const devices = useDevices()
   const revokeSession = useRevokeSession()
@@ -117,11 +118,25 @@ export function SecuritySessionsPage() {
               Change password
             </Link>
           </Button>
+          <Button asChild variant="outline" size="sm">
+            <Link to={ROUTES.CHANGE_EMAIL}>
+              <AtSign className="h-4 w-4" aria-hidden="true" />
+              Change email
+            </Link>
+          </Button>
           {canViewPasswordDashboard && (
             <Button asChild variant="outline" size="sm">
               <Link to={ROUTES.SECURITY_PASSWORDS}>
                 <LayoutDashboard className="h-4 w-4" aria-hidden="true" />
                 Password dashboard
+              </Link>
+            </Button>
+          )}
+          {canViewRecovery && (
+            <Button asChild variant="outline" size="sm">
+              <Link to={ROUTES.SECURITY_RECOVERY}>
+                <ShieldQuestion className="h-4 w-4" aria-hidden="true" />
+                Recovery events
               </Link>
             </Button>
           )}

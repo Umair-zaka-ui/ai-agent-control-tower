@@ -129,6 +129,15 @@ class AuthEventType(str, enum.Enum):
     TEMP_PASSWORD_CREATED = "TEMP_PASSWORD_CREATED"
     FIRST_LOGIN_PASSWORD_CHANGED = "FIRST_LOGIN_PASSWORD_CHANGED"
     PASSWORD_POLICY_VIOLATION = "PASSWORD_POLICY_VIOLATION"
+    # Password reset, account recovery & email change (4.2.2.3.3 §24).
+    PASSWORD_RESET_REQUESTED = "PASSWORD_RESET_REQUESTED"
+    PASSWORD_RESET_COMPLETED = "PASSWORD_RESET_COMPLETED"
+    PASSWORD_RESET_FAILED = "PASSWORD_RESET_FAILED"
+    EMAIL_CHANGE_REQUESTED = "EMAIL_CHANGE_REQUESTED"
+    EMAIL_CHANGED = "EMAIL_CHANGED"
+    EMAIL_CHANGE_VERIFIED = "EMAIL_CHANGE_VERIFIED"
+    RECOVERY_REQUEST_EXPIRED = "RECOVERY_REQUEST_EXPIRED"
+    RECOVERY_REQUEST_REVOKED = "RECOVERY_REQUEST_REVOKED"
     # NOTE: there is deliberately no RATE_LIMIT_EXCEEDED *audit event*. Writing one
     # security-event row per throttled request would turn a flood into self-inflicted
     # write amplification -- the attacker chooses how many rows we insert. The

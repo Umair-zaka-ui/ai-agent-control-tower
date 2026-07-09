@@ -127,6 +127,34 @@ class RegistrationMode(str, enum.Enum):
     SELF_SERVICE = "SELF_SERVICE"
 
 
+class PasswordResetStatus(str, enum.Enum):
+    """Lifecycle of a password-reset request (4.2.2.3.3 §5).
+
+    ``EXPIRED`` is a *derived* fact the clock decides; ``USED``/``REVOKED`` are
+    *recorded* facts. Recorded facts win — a request used or revoked does not become
+    "expired" merely because time later passed. Same discipline as invitations.
+    """
+
+    PENDING = "PENDING"
+    USED = "USED"
+    EXPIRED = "EXPIRED"
+    REVOKED = "REVOKED"
+
+    def is_terminal(self) -> bool:
+        return self is not PasswordResetStatus.PENDING
+
+
+class EmailVerificationPurpose(str, enum.Enum):
+    """Why an ``email_verifications`` row exists (4.2.2.3.3 §11, §12).
+
+    ``ACTIVATION`` confirms the address an account was created with; ``EMAIL_CHANGE``
+    confirms a *new* address before it replaces the current one.
+    """
+
+    ACTIVATION = "ACTIVATION"
+    EMAIL_CHANGE = "EMAIL_CHANGE"
+
+
 def can_transition(current: IdentityStatus, target: IdentityStatus) -> bool:
     """Whether ``current → target`` is an allowed lifecycle transition."""
     if current == target:

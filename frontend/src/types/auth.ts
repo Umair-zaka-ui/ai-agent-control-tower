@@ -112,6 +112,32 @@ export interface PasswordDashboard {
   total_users: number
 }
 
+// --- Recovery (Part 4.2.2.3.3) --------------------------------------------- //
+export interface RecoveryAck {
+  success: boolean
+  message: string
+}
+
+export interface ResetPasswordPayload {
+  token: string
+  new_password: string
+}
+
+export interface ChangeEmailPayload {
+  new_email: string
+  current_password: string
+}
+
+export interface RecoveryEvent {
+  id: ID
+  event_type: string
+  actor_id: ID | null
+  ip_address: string | null
+  user_agent: string | null
+  created_at: ISODateString
+  metadata: Record<string, unknown> | null
+}
+
 /** Lifecycle state of a session (SRS 4.2.2.2 §4). */
 export type SessionStatus =
   | 'CREATED'

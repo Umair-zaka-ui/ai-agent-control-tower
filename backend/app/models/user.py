@@ -64,5 +64,8 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     must_change_password: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )
+    # Phase 4 Part 4.2.2.3.3: a requested-but-unverified new email (§12). The current
+    # ``email`` stays authoritative until the new address is confirmed, then replaces it.
+    pending_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
 
     organization: Mapped["Organization"] = relationship(back_populates="users")

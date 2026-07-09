@@ -211,6 +211,38 @@ class CredentialService:
         )
 
     # ------------------------------------------------------------------ #
+    # Recovery reset (4.2.2.3.3) — no current password, revoke everything
+    # ------------------------------------------------------------------ #
+    def apply_recovery_reset(
+        self,
+        user: User,
+        new_password: str,
+        *,
+        actor: User | None = None,
+        context: CredentialContext | None = None,
+        event: AuthEventType = AuthEventType.PASSWORD_RESET_COMPLETED,
+    ) -> User:
+        """Set a new password during a forgot-password flow.
+
+        There is no current password to verify — possession of the single-use reset
+        token is the proof (that check belongs to the recovery service). The full
+        discipline still applies: complexity, no-reuse, argon2id, history, lifecycle
+        stamp, audit. Then **every** session is revoked (§13): a reset exists for the
+        compromised-account case, so no live session may survive it.
+        """
+        self._apply_new_password(
+            user,
+            new_password,
+            actor=actor or user,
+            context=context,
+            event=event,
+            metadata={"via": "recovery"},
+        )
+        self._revoke_sessions(user.id, "PASSWORD_RESET")
+        self.db.commit()
+        return user
+
+    # ------------------------------------------------------------------ #
     # New-account credential (registration) — stamp expiry, no history/reuse
     # ------------------------------------------------------------------ #
     def initialize_password_lifecycle(self, user: User) -> None:

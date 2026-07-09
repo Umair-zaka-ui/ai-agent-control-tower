@@ -87,6 +87,12 @@ class EmailVerification(Base, UUIDPrimaryKeyMixin):
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Set when a newer token supersedes this one (resend). Keeps single-use honest.
     superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # 4.2.2.3.3 §12: an ACTIVATION row confirms the account's own address; an
+    # EMAIL_CHANGE row confirms ``new_email`` before it replaces the current one.
+    purpose: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="ACTIVATION", server_default="ACTIVATION"
+    )
+    new_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

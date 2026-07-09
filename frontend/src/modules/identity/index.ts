@@ -18,4 +18,10 @@ export {
   FirstLoginPasswordPage,
   PasswordExpiredPage,
   SecurityPasswordDashboard,
+  ForgotPasswordPage,
+  ResetPasswordPage,
+  RecoverySuccessPage,
+  VerifyNewEmailPage,
+  ChangeEmailPage,
+  SecurityRecoveryDashboard,
 } from './pages'
