@@ -65,9 +65,12 @@ class Grant:
 @dataclass(frozen=True)
 class ResourceContext:
     """What is being acted upon. All optional — a permission-only check (endpoint
-    gating) passes at most an organization."""
+    gating) passes at most an organization. When a resource is named, its full
+    organizational path (Phase 4.3.3) is resolved so a scoped grant at any level
+    applies via downward inheritance."""
 
     organization_id: uuid.UUID | None = None
+    business_unit_id: uuid.UUID | None = None
     department_id: uuid.UUID | None = None
     team_id: uuid.UUID | None = None
     project_id: uuid.UUID | None = None

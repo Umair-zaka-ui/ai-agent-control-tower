@@ -55,6 +55,7 @@ export function SecuritySessionsPage() {
   const canViewRecovery = permissions.includes(PERMISSIONS.RECOVERY_VIEW)
   const canViewProtection = permissions.includes(PERMISSIONS.SECURITY_PROTECTION)
   const canViewAuthz = permissions.includes(PERMISSIONS.ROLE_VIEW)
+  const canViewOrg = permissions.includes(PERMISSIONS.ORGANIZATION_VIEW)
   const sessions = useSessions()
   const devices = useDevices()
   const revokeSession = useRevokeSession()
@@ -180,6 +181,41 @@ export function SecuritySessionsPage() {
             </Button>
             <Button asChild variant="outline" size="sm">
               <Link to={ROUTES.AUTHZ_AUDIT}>Audit</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Organization hierarchy (Phase 4.3.3). Renders only with organization.view. */}
+      {canViewOrg && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Organization</CardTitle>
+            <CardDescription>
+              Business units, departments, teams, projects, and delegated administration.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-3">
+            <Button asChild variant="outline" size="sm">
+              <Link to={ROUTES.ORG_EXPLORER}>
+                <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+                Hierarchy explorer
+              </Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link to={ROUTES.ORG_BUSINESS_UNITS}>Business units</Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link to={ROUTES.ORG_DEPARTMENTS}>Departments</Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link to={ROUTES.ORG_TEAMS}>Teams</Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link to={ROUTES.ORG_PROJECTS}>Projects</Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link to={ROUTES.ORG_DELEGATION}>Delegation</Link>
             </Button>
           </CardContent>
         </Card>

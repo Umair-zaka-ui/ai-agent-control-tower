@@ -6,6 +6,30 @@ versions track the roadmap phases rather than semver guarantees.
 
 ## [Unreleased] — Phase 4.3 · Enterprise Authorization Platform
 
+### Part 4.3.3 — Enterprise organization hierarchy
+
+- **Added** the full hierarchy — Platform → Organization → Business Unit → Department →
+  Team → Project → Resources — extending existing tables (migration `0018`): new
+  `business_units`, `projects`, `resource_ownership`, `delegations`; `organizations`
+  +slug/owner, `departments` +business_unit/status, `teams` +status.
+- **Added** services: entity CRUD (org/BU/dept/team/project) with parent validation and
+  child-deletion guards, `HierarchyResolverService`, `ResourceOwnershipService`,
+  `OrganizationHierarchyService` (tree), `DelegationService` (with boundary enforcement).
+- **Changed** the Permission Engine to resolve a resource's ownership path into the
+  check's `ResourceContext` — scoped grants now apply via **downward inheritance** — and
+  to enforce **cross-organization isolation** (foreign-org resources denied unless the
+  caller holds `*` or an active delegation).
+- **Added** 20+ `/api/v1` endpoints (organizations, business-units, departments, teams,
+  projects, hierarchy/tree, resource-ownership, delegations) gated
+  `organization.view`/`.manage`; 10 org audit events; error codes `CROSS_ORG_FORBIDDEN`,
+  `ENTITY_HAS_CHILDREN`, `DELEGATION_EXCEEDS_AUTHORITY`, `BUSINESS_UNIT_NOT_FOUND`, ….
+- **Added** the admin portal (Settings → Security → Organization): a searchable Hierarchy
+  Explorer tree plus Business units, Departments, Teams, Projects and Delegation pages.
+- **Docs**: `docs/authorization/{organization-hierarchy,hierarchy-resolution,
+  resource-ownership,delegated-administration}.md`.
+- **Tests**: backend **421** (8 new: CRUD/tree, department inheritance, cross-org
+  isolation, delegation boundary, resolver); frontend **235** (3 new). tsc + build clean.
+
 ### Part 4.3.2 — Enterprise Permission Engine
 
 - **Added** a centralized `PermissionEngine` (`app/authorization/engine.py`) with pure

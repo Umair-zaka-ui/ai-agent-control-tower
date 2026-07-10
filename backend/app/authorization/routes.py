@@ -350,22 +350,57 @@ def authorization_check(
 
     from app.authorization.cache import PermissionCacheService
     from app.authorization.decisions import AuthorizationDecisionService
-    from app.authorization.engine import ResourceContext
-
-    ctx = None
-    if payload.resource_type or payload.resource_id:
-        ctx = ResourceContext(
-            organization_id=actor.organization_id,
-            resource_type=payload.resource_type,
-            resource_id=payload.resource_id,
-        )
+    from app.authorization.engine import GLOBAL_WILDCARD, PermissionEngine, ResourceContext
     from app.authorization.enums import AuthorizationEngineEvent
+    from app.authorization.hierarchy.services import DelegationService, ResourceOwnershipService
 
     started = time.perf_counter()
-    result, cache_hit = PermissionCacheService(db).authorize(actor, payload.permission, ctx)
+
+    # Resolve the resource's full organizational path so a scoped grant at any level
+    # applies via downward inheritance (Phase 4.3.3 §7, §14).
+    ctx = None
+    if payload.resource_type and payload.resource_id:
+        path = ResourceOwnershipService(db).resolve_path(payload.resource_type, payload.resource_id)
+        ctx = ResourceContext(
+            organization_id=(path or {}).get("organization_id") or actor.organization_id,
+            business_unit_id=(path or {}).get("business_unit_id"),
+            department_id=(path or {}).get("department_id"),
+            team_id=(path or {}).get("team_id"),
+            project_id=(path or {}).get("project_id"),
+            resource_type=payload.resource_type, resource_id=payload.resource_id,
+        )
+    elif payload.resource_type or payload.resource_id:
+        ctx = ResourceContext(
+            organization_id=actor.organization_id,
+            resource_type=payload.resource_type, resource_id=payload.resource_id,
+        )
+
+    grants, cache_hit = PermissionCacheService(db).get_grants(actor)
+
+    # Cross-organization isolation (§9): a resource in another org is denied unless
+    # the caller holds the global wildcard or an active delegation into that org.
+    isolation_denied = False
+    if ctx is not None and ctx.organization_id and ctx.organization_id != actor.organization_id:
+        has_star = any(g.pattern == GLOBAL_WILDCARD for g in grants)
+        delegated = any(
+            d.organization_id == ctx.organization_id
+            for d in DelegationService(db).active_for_user(actor.id)
+        )
+        isolation_denied = not (has_star or delegated)
+
+    if isolation_denied:
+        from app.authorization.engine import AuthorizationResult
+
+        result = AuthorizationResult(
+            allowed=False, permission=payload.permission,
+            reason="Cross-organization access denied", trace=["CROSS_ORG_DENIED"],
+            resource_type=payload.resource_type, resource_id=payload.resource_id,
+        )
+    else:
+        result = PermissionEngine(db).evaluate(actor, payload.permission, grants, ctx)
+
     elapsed_ms = (time.perf_counter() - started) * 1000
     result.evaluation_time_ms = elapsed_ms
-    # A miss rebuilt the identity's cached grants (§27).
     events = list(result.trace)
     if not cache_hit:
         events.insert(0, AuthorizationEngineEvent.PERMISSION_CACHE_REFRESHED.value)

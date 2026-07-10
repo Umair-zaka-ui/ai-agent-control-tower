@@ -277,6 +277,22 @@ the SPA gets `useCan("agent.create")` and `<ProtectedComponent permission=…>`.
 [wildcards](docs/authorization/wildcards.md), [scopes](docs/authorization/scopes.md) and
 [caching](docs/authorization/caching.md).
 
+### Organization hierarchy (Phase 4.3.3)
+
+Authorization is now evaluated **within a full organizational hierarchy**: Platform →
+Organization → Business Unit → Department → Team → Project → Resources. Permissions flow
+**downward** (a department-scoped role authorizes any team/project below it, resolved via
+each resource's ownership path), isolation flows **upward** (cross-organization access is
+denied by default — a foreign entity 404s), and **delegated administration** lets each
+level grant authority only over its own scope (never exceeding the delegator's). Resource
+ownership attaches agents/policies/workflows to the tree. Admin portal at
+**Settings → Security → Organization** (Hierarchy explorer, Business units, Departments,
+Teams, Projects, Delegation). See
+[organization hierarchy](docs/authorization/organization-hierarchy.md),
+[hierarchy resolution](docs/authorization/hierarchy-resolution.md),
+[resource ownership](docs/authorization/resource-ownership.md) and
+[delegated administration](docs/authorization/delegated-administration.md).
+
 **Users** (password `DemoPass!2026`):
 
 | Email                  | Role       |

@@ -68,4 +68,6 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     # ``email`` stays authoritative until the new address is confirmed, then replaces it.
     pending_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
 
-    organization: Mapped["Organization"] = relationship(back_populates="users")
+    organization: Mapped["Organization"] = relationship(
+        back_populates="users", foreign_keys=[organization_id]
+    )

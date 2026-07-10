@@ -30,6 +30,10 @@ export const PERMISSIONS = {
   ROLE_MANAGE: 'role.manage',
   /** Assign and remove roles, including scoped assignments (4.3.1 §20). */
   ROLE_ASSIGN: 'role.assign',
+  /** View the organization hierarchy, ownership and delegations (4.3.3 §15). */
+  ORGANIZATION_VIEW: 'organization.view',
+  /** Manage business units, departments, teams, projects, ownership, delegation. */
+  ORGANIZATION_MANAGE: 'organization.manage',
 } as const
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS]

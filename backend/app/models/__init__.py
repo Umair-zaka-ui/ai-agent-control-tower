@@ -10,6 +10,12 @@ from app.models.api_key import AgentApiKey
 from app.models.approval import Approval, ApprovalComment
 from app.models.audit_log import AuditLog
 from app.models.organization import Organization
+from app.models.organization_hierarchy import (
+    BusinessUnit,
+    Delegation,
+    Project,
+    ResourceOwnership,
+)
 from app.models.permission import Permission
 from app.models.policy import Policy
 from app.models.rbac import (
@@ -47,4 +53,8 @@ __all__ = [
     "PermissionVersion",
     "PermissionCache",
     "AuthorizationDecision",
+    "BusinessUnit",
+    "Project",
+    "ResourceOwnership",
+    "Delegation",
 ]

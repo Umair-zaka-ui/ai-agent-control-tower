@@ -1,0 +1,41 @@
+"""Organization hierarchy enums (Phase 4.3.3 §3, §18)."""
+
+from __future__ import annotations
+
+import enum
+
+
+class HierarchyLevel(str, enum.Enum):
+    """The organizational levels, top to bottom (§3)."""
+
+    PLATFORM = "PLATFORM"
+    ORGANIZATION = "ORGANIZATION"
+    BUSINESS_UNIT = "BUSINESS_UNIT"
+    DEPARTMENT = "DEPARTMENT"
+    TEAM = "TEAM"
+    PROJECT = "PROJECT"
+    RESOURCE = "RESOURCE"
+
+
+class OrgEntityStatus(str, enum.Enum):
+    ACTIVE = "ACTIVE"
+    ARCHIVED = "ARCHIVED"
+
+
+class OrgAuditEvent(str, enum.Enum):
+    """§18 — organizational audit events (recorded on ``authorization_audit``)."""
+
+    ORGANIZATION_CREATED = "ORGANIZATION_CREATED"
+    ORGANIZATION_UPDATED = "ORGANIZATION_UPDATED"
+    ORGANIZATION_DELETED = "ORGANIZATION_DELETED"
+    BUSINESS_UNIT_CREATED = "BUSINESS_UNIT_CREATED"
+    DEPARTMENT_CREATED = "DEPARTMENT_CREATED"
+    TEAM_CREATED = "TEAM_CREATED"
+    PROJECT_CREATED = "PROJECT_CREATED"
+    ENTITY_UPDATED = "ENTITY_UPDATED"
+    ENTITY_DELETED = "ENTITY_DELETED"
+    RESOURCE_ASSIGNED = "RESOURCE_ASSIGNED"
+    OWNERSHIP_TRANSFERRED = "OWNERSHIP_TRANSFERRED"
+    DELEGATION_CREATED = "DELEGATION_CREATED"
+    DELEGATION_REVOKED = "DELEGATION_REVOKED"
+    HIERARCHY_UPDATED = "HIERARCHY_UPDATED"

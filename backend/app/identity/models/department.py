@@ -28,6 +28,16 @@ class Department(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
     )
+    # Phase 4.3.3 §5, §11: optional parent business unit + lifecycle status. A
+    # department always belongs to an organization; a business unit is an optional
+    # intermediate grouping.
+    business_unit_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("business_units.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="ACTIVE")
 
 
 class Team(Base, UUIDPrimaryKeyMixin, TimestampMixin):
@@ -45,3 +55,4 @@ class Team(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
     )
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="ACTIVE")
