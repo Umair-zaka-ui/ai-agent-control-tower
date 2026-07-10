@@ -359,10 +359,16 @@ def authorization_check(
             resource_type=payload.resource_type,
             resource_id=payload.resource_id,
         )
+    from app.authorization.enums import AuthorizationEngineEvent
+
     started = time.perf_counter()
     result, cache_hit = PermissionCacheService(db).authorize(actor, payload.permission, ctx)
     elapsed_ms = (time.perf_counter() - started) * 1000
     result.evaluation_time_ms = elapsed_ms
+    # A miss rebuilt the identity's cached grants (§27).
+    events = list(result.trace)
+    if not cache_hit:
+        events.insert(0, AuthorizationEngineEvent.PERMISSION_CACHE_REFRESHED.value)
     AuthorizationDecisionService(db).record(
         actor, result, request_id=request.headers.get("x-request-id"),
         evaluation_time_ms=elapsed_ms, force=True,
@@ -370,7 +376,7 @@ def authorization_check(
     return AuthorizationCheckResponse(
         allowed=result.allowed, permission=result.permission, reason=result.reason,
         scope=result.scope, source_role=result.source_role,
-        evaluation_time_ms=round(elapsed_ms, 3), cache_hit=cache_hit,
+        evaluation_time_ms=round(elapsed_ms, 3), cache_hit=cache_hit, events=events,
     )
 
 

@@ -50,6 +50,21 @@ class AuthorizationDecision(str, enum.Enum):
     DENY = "DENY"
 
 
+class AuthorizationEngineEvent(str, enum.Enum):
+    """The events the Permission Engine generates while evaluating a decision
+    (Phase 4.3.2 §27). The two outcome events are persisted on the decision; the
+    pipeline-step events are generated as a per-decision trace and surfaced on the
+    ``/authorization/check`` response for observability."""
+
+    AUTHORIZATION_GRANTED = "AUTHORIZATION_GRANTED"
+    AUTHORIZATION_DENIED = "AUTHORIZATION_DENIED"
+    PERMISSION_CACHE_REFRESHED = "PERMISSION_CACHE_REFRESHED"
+    ROLE_RESOLVED = "ROLE_RESOLVED"
+    WILDCARD_EXPANDED = "WILDCARD_EXPANDED"
+    SCOPE_VALIDATED = "SCOPE_VALIDATED"
+    CONFLICT_RESOLVED = "CONFLICT_RESOLVED"
+
+
 class AuthorizationAuditEvent(str, enum.Enum):
     """§23 — the administrative change events this subsystem emits, plus the
     per-request decision event."""
