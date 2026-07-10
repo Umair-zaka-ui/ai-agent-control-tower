@@ -21,6 +21,7 @@ from app.identity.credentials.routes import security_router as credentials_secur
 from app.identity.recovery.routes import router as recovery_router
 from app.identity.recovery.routes import security_router as recovery_security_router
 from app.identity.protection.routes import router as protection_router
+from app.authorization.routes import router as authorization_router
 from app.identity.errors import register_identity_exception_handlers
 
 app = FastAPI(
@@ -78,3 +79,7 @@ app.include_router(recovery_security_router)
 # Phase 4 Part 4.2.2.3.4: account protection & risk-based auth admin console under
 # /api/v1/security (locks, blocked IPs, protection rules, login attempts, risk events).
 app.include_router(protection_router)
+
+# Phase 4.3.1: Enterprise RBAC foundation — roles, permissions, permission groups,
+# scoped role assignments, role hierarchy and the authorization audit under /api/v1.
+app.include_router(authorization_router)

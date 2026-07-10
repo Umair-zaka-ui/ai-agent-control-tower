@@ -54,6 +54,11 @@ PERMISSION_CATALOG: dict[str, str] = {
     # console: locks, blocked IPs, protection rules and risk events.
     "security.protection": "View and manage account protection: locks, blocked IPs, rules",
     "rbac.manage": "Manage roles and role assignments",
+    # Enterprise authorization platform (Phase 4.3.1 §20, §25). Split so viewing the
+    # role/permission catalog is a lesser power than editing it or assigning roles.
+    "role.view": "View roles, permissions, groups and role assignments",
+    "role.manage": "Create, edit, archive and delete roles, permissions and hierarchy",
+    "role.assign": "Assign and remove roles (including scoped assignments)",
     "approval.view": "View the approval queue and review details",
     "approval.review": "Approve or reject pending actions",
     "approval.escalate": "Escalate approvals to another reviewer or team",

@@ -12,7 +12,15 @@ from app.models.audit_log import AuditLog
 from app.models.organization import Organization
 from app.models.permission import Permission
 from app.models.policy import Policy
-from app.models.rbac import RbacPermission, Role, RolePermission, UserRole
+from app.models.rbac import (
+    AuthorizationAudit,
+    PermissionGroup,
+    RbacPermission,
+    Role,
+    RoleHierarchy,
+    RolePermission,
+    UserRole,
+)
 from app.models.user import User
 
 __all__ = [
@@ -30,4 +38,7 @@ __all__ = [
     "RbacPermission",
     "RolePermission",
     "UserRole",
+    "PermissionGroup",
+    "RoleHierarchy",
+    "AuthorizationAudit",
 ]

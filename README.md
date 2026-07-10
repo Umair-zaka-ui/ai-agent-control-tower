@@ -246,6 +246,20 @@ opt-in HSTS). Errors follow the `{success, error:{code,message}, request_id}` en
 success bodies stay bare by design. The consolidated endpoint map, response format and
 error codes are in [HTTP API conventions](docs/api/http-conventions.md).
 
+### Enterprise RBAC foundation (Phase 4.3.1)
+
+Authorization becomes a first-class subsystem. Enterprise **roles** (with category,
+lifecycle status and priority), a `resource.action` **permission catalog** grouped by
+domain, **scoped role assignments** (global / organization / department / team / project
+/ resource, optionally time-boxed), an acyclic **role hierarchy** (a senior role inherits
+its children's permissions), and an **authorization audit** trail. 18 built-in roles ship
+seeded alongside the legacy four. Business logic never branches on role names — it gates
+on permission codes (`Depends(require_permission("agent.create"))`). Admin portal at
+**Settings → Security → Authorization** (Roles, Permissions, Assignments, Hierarchy,
+Audit). See [RBAC](docs/authorization/rbac.md), [roles](docs/authorization/roles.md),
+[permissions](docs/authorization/permissions.md) and
+[role hierarchy](docs/authorization/role-hierarchy.md).
+
 **Users** (password `DemoPass!2026`):
 
 | Email                  | Role       |

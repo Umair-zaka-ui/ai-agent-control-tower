@@ -4,6 +4,28 @@ All notable changes to the AI Agent Control Tower are documented here. The forma
 based on [Keep a Changelog](https://keepachangelog.com/); the project is pre-1.0 and
 versions track the roadmap phases rather than semver guarantees.
 
+## [Unreleased] — Phase 4.3 · Enterprise Authorization Platform
+
+### Part 4.3.1 — Enterprise RBAC foundation
+
+- **Added** a new `app/authorization/` package extending the existing flat RBAC:
+  role category/status/priority/assignability, a domain-grouped `resource.action`
+  permission catalog, scoped role assignments (global → resource, time-boxed), an acyclic
+  role hierarchy (senior inherits descendants), and an `authorization_audit` trail.
+- **Added** three tables (`permission_groups`, `role_hierarchy`, `authorization_audit`)
+  and columns on `roles`/`rbac_permissions`/`role_permissions`/`user_roles` — migration
+  `0016`, additive. 18 built-in roles seeded globally alongside the legacy four.
+- **Added** 15+ `/api/v1` endpoints (roles, permissions, permission-groups,
+  role-assignments, role-hierarchy, authorization/audit) gated on
+  `role.view`/`role.manage`/`role.assign`, and error codes `ROLE_ALREADY_EXISTS`,
+  `CIRCULAR_ROLE_HIERARCHY`, `SYSTEM_ROLE_PROTECTED`, `ROLE_HAS_ASSIGNMENTS`,
+  `INVALID_PERMISSION_NAME`, `INVALID_SCOPE`, … (§24).
+- **Added** the admin portal (Settings → Security → Authorization): Roles, Permissions,
+  Permission groups, Assignments, Hierarchy, Audit.
+- **Docs**: `docs/authorization/{rbac,roles,permissions,role-hierarchy}.md`.
+- **Tests**: backend **383** (31 new: cycle detection, scope validation, CRUD, inheritance,
+  audit); frontend **221** (4 new). tsc + build clean.
+
 ## [0.4.0] — Phase 4.2.2 · Enterprise Human Authentication
 
 The identity platform now spans authentication → sessions → registration → password

@@ -24,6 +24,12 @@ export const PERMISSIONS = {
   RECOVERY_VIEW: 'recovery.view',
   /** View/manage account protection: locks, blocked IPs, rules (4.2.2.3.4 §20). */
   SECURITY_PROTECTION: 'security.protection',
+  /** View roles, permissions, groups and assignments (Phase 4.3.1 §20). */
+  ROLE_VIEW: 'role.view',
+  /** Create/edit/archive/delete roles, permissions and hierarchy (4.3.1 §20). */
+  ROLE_MANAGE: 'role.manage',
+  /** Assign and remove roles, including scoped assignments (4.3.1 §20). */
+  ROLE_ASSIGN: 'role.assign',
 } as const
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS]

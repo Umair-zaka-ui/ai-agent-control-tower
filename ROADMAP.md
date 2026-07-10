@@ -345,6 +345,39 @@ HTTP-layer gaps, and record the release contract honestly.
 - Docs: [http-conventions](docs/api/http-conventions.md), [testing](docs/testing/strategy.md),
   [deployment](docs/deployment.md), `CHANGELOG.md`.
 
+## Phase 4.3 — Enterprise Authorization Platform 🚧
+
+RBAC + ABAC + policy engine: centralized, auditable authorization for every request.
+
+### Part 4.3.1 — Enterprise RBAC foundation ✅
+
+Turns the flat Phase-1 RBAC into an enterprise foundation **by extension, not
+replacement** — the existing `roles`/`rbac_permissions`/`user_roles` tables gain columns
+and everything that already resolves permissions keeps working.
+
+- **Roles** gain category (SYSTEM/CUSTOM/ORGANIZATION/PROJECT/RESOURCE), lifecycle status,
+  `priority` (conflict resolution), `is_assignable` and audit columns; **permissions**
+  gain a domain **group**, `resource_type`/`action` split and `is_system`.
+- **Scoped assignments**: `user_roles` carries scope + org/department/team/project/
+  resource targets and `expires_at` (time-boxed). **Role hierarchy** (`role_hierarchy`):
+  a senior role inherits its descendants' permissions, kept acyclic by cycle detection.
+- **18 built-in roles** (Platform / AI Ops / Organization / read-only) seeded globally
+  with priorities + hierarchy, alongside the legacy four. **Authorization audit** table
+  records every change and (from 4.3.2) every decision.
+- New `app/authorization/` package (enums, catalog, repositories, services, schemas,
+  routes) + migration `0016`; 15+ endpoints under `/api/v1` (`roles`, `permissions`,
+  `permission-groups`, `role-assignments`, `role-hierarchy`, `authorization/audit`),
+  permission-gated (`role.view`/`role.manage`/`role.assign`).
+- Admin portal (Settings → Security → Authorization): Roles, Permissions, Permission
+  groups, Assignments, Hierarchy, Audit. Backend **383** green (31 new); frontend **221**
+  green (4 new); tsc + build clean.
+- Docs: [rbac](docs/authorization/rbac.md), [roles](docs/authorization/roles.md),
+  [permissions](docs/authorization/permissions.md),
+  [role-hierarchy](docs/authorization/role-hierarchy.md).
+
+Next: 4.3.2 permission engine (wildcards + cache), 4.3.3 org hierarchy, 4.3.4 resource
+authorization, 4.3.5 ABAC, 4.3.6 middleware, 4.3.7 portal, 4.3.8 production readiness.
+
 ## Future (Phase 4+)
 
 Retiring the legacy `/auth/login` surface (now the platform's only non-revocable

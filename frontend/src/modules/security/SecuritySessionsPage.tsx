@@ -54,6 +54,7 @@ export function SecuritySessionsPage() {
   const canViewPasswordDashboard = permissions.includes(PERMISSIONS.CREDENTIAL_DASHBOARD)
   const canViewRecovery = permissions.includes(PERMISSIONS.RECOVERY_VIEW)
   const canViewProtection = permissions.includes(PERMISSIONS.SECURITY_PROTECTION)
+  const canViewAuthz = permissions.includes(PERMISSIONS.ROLE_VIEW)
   const sessions = useSessions()
   const devices = useDevices()
   const revokeSession = useRevokeSession()
@@ -151,6 +152,38 @@ export function SecuritySessionsPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Authorization (RBAC) — Phase 4.3.1. Renders only with role.view. */}
+      {canViewAuthz && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Authorization</CardTitle>
+            <CardDescription>
+              Enterprise roles, permissions, scoped assignments and role hierarchy.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-3">
+            <Button asChild variant="outline" size="sm">
+              <Link to={ROUTES.AUTHZ_ROLES}>
+                <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+                Roles
+              </Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link to={ROUTES.AUTHZ_PERMISSIONS}>Permissions</Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link to={ROUTES.AUTHZ_ASSIGNMENTS}>Assignments</Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link to={ROUTES.AUTHZ_HIERARCHY}>Hierarchy</Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link to={ROUTES.AUTHZ_AUDIT}>Audit</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Sessions -------------------------------------------------------- */}
       <Card>
