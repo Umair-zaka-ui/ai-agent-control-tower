@@ -53,6 +53,14 @@ import {
   SecurityDashboardPage,
 } from '@/modules/protection'
 import {
+  AuthorizationAuditPage,
+  PermissionGroupsPage,
+  PermissionsPage,
+  RoleAssignmentsPage,
+  RoleHierarchyPage,
+  RolesPage,
+} from '@/modules/authorization'
+import {
   AcceptInvitationPage,
   ChangeEmailPage,
   ChangePasswordPage,
@@ -170,6 +178,13 @@ export function AppRoutes() {
           <Route path={ROUTES.SECURITY_ACCOUNT_LOCKS} element={<AccountLocksPage />} />
           <Route path={ROUTES.SECURITY_PROTECTION_RULES} element={<IdentityProtectionRulesPage />} />
           <Route path={ROUTES.SECURITY_BLOCKED_IPS} element={<BlockedIpsPage />} />
+          {/* Enterprise Authorization portal (Phase 4.3.1 §21) */}
+          <Route path={ROUTES.AUTHZ_ROLES} element={<RolesPage />} />
+          <Route path={ROUTES.AUTHZ_PERMISSIONS} element={<PermissionsPage />} />
+          <Route path={ROUTES.AUTHZ_PERMISSION_GROUPS} element={<PermissionGroupsPage />} />
+          <Route path={ROUTES.AUTHZ_ASSIGNMENTS} element={<RoleAssignmentsPage />} />
+          <Route path={ROUTES.AUTHZ_HIERARCHY} element={<RoleHierarchyPage />} />
+          <Route path={ROUTES.AUTHZ_AUDIT} element={<AuthorizationAuditPage />} />
           <Route path={ROUTES.PROFILE} element={<ProfilePage />} />
         </Route>
         </Route>

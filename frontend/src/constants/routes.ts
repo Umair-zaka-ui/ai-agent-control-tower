@@ -49,6 +49,13 @@ export const ROUTES = {
   SECURITY_ACCOUNT_LOCKS: '/settings/security/account-locks',
   SECURITY_PROTECTION_RULES: '/settings/security/protection-rules',
   SECURITY_BLOCKED_IPS: '/settings/security/blocked-ips',
+  /** Enterprise Authorization portal (Phase 4.3.1 §21). */
+  AUTHZ_ROLES: '/settings/authorization/roles',
+  AUTHZ_PERMISSIONS: '/settings/authorization/permissions',
+  AUTHZ_PERMISSION_GROUPS: '/settings/authorization/permission-groups',
+  AUTHZ_ASSIGNMENTS: '/settings/authorization/assignments',
+  AUTHZ_HIERARCHY: '/settings/authorization/hierarchy',
+  AUTHZ_AUDIT: '/settings/authorization/audit',
   /**
    * Forced password change (4.2.2.3.2 §11, §13). Outside the dashboard shell and
    * NOT behind the change guard, so it is the one place the user can go while a

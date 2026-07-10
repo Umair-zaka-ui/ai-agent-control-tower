@@ -28,6 +28,7 @@ from app.models.permission import Permission
 from app.models.policy import Policy
 from app.models.user import User
 from app.services import api_key_service, rbac_service
+from app.authorization.seeding import seed_authorization
 
 DEMO_ORG_NAME = "Demo Healthcare Org"
 DEMO_PASSWORD = "DemoPass!2026"
@@ -203,6 +204,8 @@ def seed() -> None:
         _seed_policies(db, org)
         print("  seeding RBAC roles/permissions...")
         rbac_service.seed_rbac(db, org)
+        print("  seeding authorization groups/roles/hierarchy (Phase 4.3.1)...")
+        seed_authorization(db)
         db.commit()
         print("Done.")
         print("\nLogin with:")
