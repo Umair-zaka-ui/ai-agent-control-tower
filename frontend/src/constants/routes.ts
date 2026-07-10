@@ -56,6 +56,14 @@ export const ROUTES = {
   AUTHZ_ASSIGNMENTS: '/settings/authorization/assignments',
   AUTHZ_HIERARCHY: '/settings/authorization/hierarchy',
   AUTHZ_AUDIT: '/settings/authorization/audit',
+  /** Enterprise organization hierarchy (Phase 4.3.3 §16). */
+  ORG_EXPLORER: '/settings/organization/explorer',
+  ORG_ORGANIZATIONS: '/settings/organization/organizations',
+  ORG_BUSINESS_UNITS: '/settings/organization/business-units',
+  ORG_DEPARTMENTS: '/settings/organization/departments',
+  ORG_TEAMS: '/settings/organization/teams',
+  ORG_PROJECTS: '/settings/organization/projects',
+  ORG_DELEGATION: '/settings/organization/delegation',
   /**
    * Forced password change (4.2.2.3.2 §11, §13). Outside the dashboard shell and
    * NOT behind the change guard, so it is the one place the user can go while a

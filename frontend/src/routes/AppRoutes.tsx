@@ -61,6 +61,15 @@ import {
   RolesPage,
 } from '@/modules/authorization'
 import {
+  BusinessUnitsPage,
+  DelegatedAdministrationPage,
+  DepartmentsPage,
+  HierarchyExplorerPage,
+  OrganizationsPage,
+  ProjectsPage,
+  TeamsPage,
+} from '@/modules/hierarchy'
+import {
   AcceptInvitationPage,
   ChangeEmailPage,
   ChangePasswordPage,
@@ -185,6 +194,14 @@ export function AppRoutes() {
           <Route path={ROUTES.AUTHZ_ASSIGNMENTS} element={<RoleAssignmentsPage />} />
           <Route path={ROUTES.AUTHZ_HIERARCHY} element={<RoleHierarchyPage />} />
           <Route path={ROUTES.AUTHZ_AUDIT} element={<AuthorizationAuditPage />} />
+          {/* Enterprise organization hierarchy (Phase 4.3.3 §16) */}
+          <Route path={ROUTES.ORG_EXPLORER} element={<HierarchyExplorerPage />} />
+          <Route path={ROUTES.ORG_ORGANIZATIONS} element={<OrganizationsPage />} />
+          <Route path={ROUTES.ORG_BUSINESS_UNITS} element={<BusinessUnitsPage />} />
+          <Route path={ROUTES.ORG_DEPARTMENTS} element={<DepartmentsPage />} />
+          <Route path={ROUTES.ORG_TEAMS} element={<TeamsPage />} />
+          <Route path={ROUTES.ORG_PROJECTS} element={<ProjectsPage />} />
+          <Route path={ROUTES.ORG_DELEGATION} element={<DelegatedAdministrationPage />} />
           <Route path={ROUTES.PROFILE} element={<ProfilePage />} />
         </Route>
         </Route>

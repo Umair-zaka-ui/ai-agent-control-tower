@@ -401,8 +401,36 @@ controller branches on role names.
   [caching](docs/authorization/caching.md). Backend **408** green (25 new); frontend
   **232** green (8 new); tsc + build clean.
 
-Next: 4.3.3 org hierarchy, 4.3.4 resource authorization, 4.3.5 ABAC, 4.3.6 middleware,
-4.3.7 portal, 4.3.8 production readiness.
+Next: 4.3.4 resource authorization, 4.3.5 ABAC, 4.3.6 middleware, 4.3.7 portal,
+4.3.8 production readiness.
+
+### Part 4.3.3 — Enterprise organization hierarchy ✅
+
+Authorization is now evaluated within the full enterprise structure — Platform →
+Organization → Business Unit → Department → Team → Project → Resources — extending the
+existing `organizations`/`departments`/`teams` in place.
+
+- **Schema** (migration `0018`): new `business_units`, `projects`, `resource_ownership`,
+  `delegations`; `organizations` +slug/owner, `departments` +business_unit/status,
+  `teams` +status.
+- **Services**: entity CRUD (org/BU/dept/team/project) with parent validation and
+  child-deletion guards; `HierarchyResolverService` (parent chain / descendants / path);
+  `ResourceOwnershipService` (assign/transfer/resolve); `OrganizationHierarchyService`
+  (tree); `DelegationService` (delegate/revoke with boundary enforcement).
+- **Engine integration (§14)**: a resource's ownership path is resolved into the check's
+  `ResourceContext`, so a scoped grant applies via **downward inheritance**; **cross-org
+  isolation (§9)** denies foreign-org resources unless the caller holds `*` or a delegation.
+- 20+ `/api/v1` endpoints (organizations, business-units, departments, teams, projects,
+  hierarchy/tree, resource-ownership, delegations) gated `organization.view`/`.manage`;
+  10 audit events; new error codes (`CROSS_ORG_FORBIDDEN`, `ENTITY_HAS_CHILDREN`,
+  `DELEGATION_EXCEEDS_AUTHORITY`, …).
+- Admin portal (Settings → Security → Organization): Hierarchy explorer (searchable tree),
+  Business units, Departments, Teams, Projects, Delegation. Backend **421** green (8 new);
+  frontend **235** green (3 new).
+- Docs: [organization-hierarchy](docs/authorization/organization-hierarchy.md),
+  [hierarchy-resolution](docs/authorization/hierarchy-resolution.md),
+  [resource-ownership](docs/authorization/resource-ownership.md),
+  [delegated-administration](docs/authorization/delegated-administration.md).
 
 ## Future (Phase 4+)
 

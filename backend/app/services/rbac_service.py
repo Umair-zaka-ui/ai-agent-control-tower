@@ -59,6 +59,9 @@ PERMISSION_CATALOG: dict[str, str] = {
     "role.view": "View roles, permissions, groups and role assignments",
     "role.manage": "Create, edit, archive and delete roles, permissions and hierarchy",
     "role.assign": "Assign and remove roles (including scoped assignments)",
+    # Enterprise organization hierarchy (Phase 4.3.3 §15, §19).
+    "organization.view": "View the organization hierarchy, ownership and delegations",
+    "organization.manage": "Manage business units, departments, teams, projects, ownership and delegation",
     "approval.view": "View the approval queue and review details",
     "approval.review": "Approve or reject pending actions",
     "approval.escalate": "Escalate approvals to another reviewer or team",
