@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import (
     Boolean,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
     String,
@@ -124,6 +125,8 @@ class RolePermission(Base, UUIDPrimaryKeyMixin):
         nullable=False,
         index=True,
     )
+    # Phase 4.3.2 §16: ALLOW (default) or DENY. An explicit DENY always wins.
+    effect: Mapped[str] = mapped_column(String(10), nullable=False, default="ALLOW")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -222,6 +225,66 @@ class AuthorizationAudit(Base, UUIDPrimaryKeyMixin):
     decision: Mapped[str | None] = mapped_column(String(10), nullable=True)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     meta: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Phase 4.3.2 — Permission Engine persistence
+# --------------------------------------------------------------------------- #
+class PermissionVersion(Base, UUIDPrimaryKeyMixin):
+    """Per-org monotonic version (§10). Bumping it invalidates every cached
+    permission set for the organization at once."""
+
+    __tablename__ = "permission_versions"
+    __table_args__ = (
+        UniqueConstraint("organization_id", name="uq_permission_version_org"),
+    )
+
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class PermissionCache(Base, UUIDPrimaryKeyMixin):
+    """Resolved permission grants for one identity, versioned (§10, §18)."""
+
+    __tablename__ = "permission_cache"
+    __table_args__ = (
+        UniqueConstraint("identity_id", name="uq_permission_cache_identity"),
+    )
+
+    identity_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
+    grants_json: Mapped[list] = mapped_column(JSONB, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class AuthorizationDecision(Base, UUIDPrimaryKeyMixin):
+    """One row per evaluated authorization decision, with timing (§18, §27)."""
+
+    __tablename__ = "authorization_decisions"
+
+    identity_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
+    permission: Mapped[str] = mapped_column(String(100), nullable=False)
+    resource_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    resource_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    allowed: Mapped[bool] = mapped_column(Boolean, nullable=False, index=True)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    scope: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    source_role: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    evaluation_time_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
+    request_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
     )

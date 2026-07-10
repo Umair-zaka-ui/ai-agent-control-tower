@@ -147,6 +147,32 @@ def _backfill_legacy_roles(db: Session) -> None:
     db.flush()
 
 
+def _ensure_global_wildcard(db: Session, roles: dict[str, Role]) -> None:
+    """Grant the reserved global wildcard ``*`` to ROLE_PLATFORM_OWNER only (§14).
+
+    Kept out of the shared PERMISSION_CATALOG so ordinary admin roles never receive
+    it; created directly here and granted to the platform owner."""
+    owner = roles.get("ROLE_PLATFORM_OWNER")
+    if owner is None:
+        return
+    star = db.execute(select(RbacPermission).where(RbacPermission.code == "*")).scalar_one_or_none()
+    if star is None:
+        star = RbacPermission(
+            code="*", description="Global wildcard — every permission (reserved)",
+            display_name="Global wildcard", resource_type="*", action="*", is_system=True,
+        )
+        db.add(star)
+        db.flush()
+    already = db.execute(
+        select(RolePermission).where(
+            RolePermission.role_id == owner.id, RolePermission.permission_id == star.id
+        )
+    ).scalar_one_or_none()
+    if already is None:
+        db.add(RolePermission(role_id=owner.id, permission_id=star.id))
+    db.flush()
+
+
 def seed_authorization(db: Session) -> None:
     """Idempotently seed groups, permission metadata, built-in roles and hierarchy.
     Stages everything; the caller commits."""
@@ -154,4 +180,5 @@ def seed_authorization(db: Session) -> None:
     by_code = _ensure_permissions(db, groups)
     roles = _ensure_builtin_roles(db, by_code)
     _ensure_hierarchy(db, roles)
+    _ensure_global_wildcard(db, roles)
     _backfill_legacy_roles(db)

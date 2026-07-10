@@ -11,6 +11,7 @@ import uuid
 from collections import deque
 from datetime import datetime
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.authorization.enums import (
@@ -227,6 +228,7 @@ class RoleService:
         permission_codes: list[str],
         organization_id: uuid.UUID,
         actor_id: uuid.UUID | None,
+        denied_permission_codes: list[str] | None = None,
     ) -> Role:
         if not name or not name.strip():
             raise IdentityError(ErrorCode.VALIDATION_ERROR, "Role name is required.")
@@ -249,7 +251,8 @@ class RoleService:
                 updated_by=actor_id,
             )
         )
-        self._set_permissions(role, permission_codes, actor_id, organization_id, audit=False)
+        self._set_permissions(role, permission_codes, denied_permission_codes, actor_id,
+                              organization_id, audit=False)
         self.audit.record_change(
             AuthorizationAuditEvent.ROLE_CREATED,
             organization_id=organization_id, actor_id=actor_id,
@@ -268,10 +271,11 @@ class RoleService:
         permission_codes: list[str] | None,
         actor_id: uuid.UUID | None,
         organization_id: uuid.UUID | None,
+        denied_permission_codes: list[str] | None = None,
     ) -> Role:
         # System roles are catalog fixtures: their permission set and name are
         # protected, though display metadata may be curated.
-        if role.is_system and permission_codes is not None:
+        if role.is_system and (permission_codes is not None or denied_permission_codes is not None):
             raise IdentityError(
                 ErrorCode.SYSTEM_ROLE_PROTECTED, "A system role's permissions cannot be changed."
             )
@@ -290,8 +294,11 @@ class RoleService:
                 )
             role.status = status
             role.is_assignable = RoleStatus(status).is_assignable_state
-        if permission_codes is not None:
-            self._set_permissions(role, permission_codes, actor_id, organization_id, audit=True)
+        if permission_codes is not None or denied_permission_codes is not None:
+            self._set_permissions(
+                role, permission_codes or [], denied_permission_codes, actor_id,
+                organization_id, audit=True,
+            )
         role.updated_by = actor_id
         self.db.flush()
         self.audit.record_change(
@@ -334,37 +341,64 @@ class RoleService:
     def _set_permissions(
         self,
         role: Role,
-        codes: list[str],
+        allow_codes: list[str],
+        deny_codes: list[str] | None,
         actor_id: uuid.UUID | None,
         organization_id: uuid.UUID | None,
         *,
         audit: bool,
     ) -> None:
-        wanted: set[str] = set()
-        for code in codes:
+        """Reconcile a role's permission grants, managing ``RolePermission`` rows
+        directly so each grant carries an ALLOW/DENY effect (§16). A code present in
+        both lists is denied (deny wins)."""
+        from app.models.rbac import RbacPermission, RolePermission
+
+        desired: dict[str, str] = {}
+        for code in allow_codes:
+            desired[code] = "ALLOW"
+        for code in deny_codes or []:
+            desired[code] = "DENY"  # deny wins over allow
+
+        # Validate every referenced permission exists, and resolve ids.
+        perm_ids: dict[str, uuid.UUID] = {}
+        for code in desired:
             perm = self.perms.get_by_code(code)
             if perm is None:
                 raise IdentityError(ErrorCode.PERMISSION_NOT_FOUND, f"Unknown permission: {code}")
-            wanted.add(code)
-        current = {p.code: p for p in role.permissions}
-        # Grant new.
-        for code in wanted - set(current):
-            role.permissions.append(self.perms.get_by_code(code))
-            if audit:
-                self.audit.record_change(
-                    AuthorizationAuditEvent.PERMISSION_ASSIGNED,
-                    organization_id=organization_id, actor_id=actor_id, permission=code,
-                    meta={"role_id": str(role.id)},
-                )
-        # Revoke removed.
-        for code in set(current) - wanted:
-            role.permissions.remove(current[code])
-            if audit:
-                self.audit.record_change(
-                    AuthorizationAuditEvent.PERMISSION_REMOVED,
-                    organization_id=organization_id, actor_id=actor_id, permission=code,
-                    meta={"role_id": str(role.id)},
-                )
+            perm_ids[code] = perm.id
+
+        current = {
+            code: rp
+            for code, rp in self.db.execute(
+                select(RbacPermission.code, RolePermission)
+                .join(RolePermission, RolePermission.permission_id == RbacPermission.id)
+                .where(RolePermission.role_id == role.id)
+            )
+        }
+
+        # Add / update.
+        for code, effect in desired.items():
+            rp = current.get(code)
+            if rp is None:
+                self.db.add(RolePermission(role_id=role.id, permission_id=perm_ids[code], effect=effect))
+                if audit:
+                    self.audit.record_change(
+                        AuthorizationAuditEvent.PERMISSION_ASSIGNED,
+                        organization_id=organization_id, actor_id=actor_id, permission=code,
+                        meta={"role_id": str(role.id), "effect": effect},
+                    )
+            elif rp.effect != effect:
+                rp.effect = effect
+        # Remove.
+        for code, rp in current.items():
+            if code not in desired:
+                self.db.delete(rp)
+                if audit:
+                    self.audit.record_change(
+                        AuthorizationAuditEvent.PERMISSION_REMOVED,
+                        organization_id=organization_id, actor_id=actor_id, permission=code,
+                        meta={"role_id": str(role.id)},
+                    )
         self.db.flush()
 
 

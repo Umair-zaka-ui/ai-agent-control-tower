@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi import APIRouter, Depends, Query, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.authorization.repositories import (
@@ -21,6 +21,8 @@ from app.authorization.repositories import (
 )
 from app.authorization.schemas import (
     AuthorizationAuditRead,
+    AuthorizationCheckRequest,
+    AuthorizationCheckResponse,
     EffectivePermissionsRead,
     PermissionCreate,
     PermissionGroupRead,
@@ -41,9 +43,11 @@ from app.authorization.services import (
     RoleHierarchyService,
     RoleService,
 )
+from sqlalchemy import select
+
 from app.core.database import get_db
-from app.identity.api.deps import require_permission
-from app.models.rbac import Role
+from app.identity.api.deps import get_current_user, require_permission
+from app.models.rbac import RbacPermission, Role, RolePermission
 from app.models.user import User
 
 router = APIRouter(prefix="/api/v1", tags=["authorization"])
@@ -53,7 +57,26 @@ _MANAGE = "role.manage"
 _ASSIGN = "role.assign"
 
 
-def _role_read(role: Role, *, assignment_count: int | None = None) -> RoleRead:
+def _commit_invalidating(db: Session, organization_id) -> None:
+    """Commit a mutation and invalidate the org's permission cache (§10, §26).
+
+    System/global roles are permission-protected, so only org-scoped changes alter
+    grants at runtime — bumping the acting org's version is sufficient and immediate.
+    """
+    from app.authorization.cache import PermissionCacheService
+
+    PermissionCacheService(db).bump_version(organization_id)
+    db.commit()
+
+
+def _role_read(role: Role, db: Session, *, assignment_count: int | None = None) -> RoleRead:
+    rows = db.execute(
+        select(RbacPermission.code, RolePermission.effect)
+        .join(RolePermission, RolePermission.permission_id == RbacPermission.id)
+        .where(RolePermission.role_id == role.id)
+    ).all()
+    allow = sorted(code for code, effect in rows if effect != "DENY")
+    deny = sorted(code for code, effect in rows if effect == "DENY")
     return RoleRead(
         id=role.id,
         organization_id=role.organization_id,
@@ -65,7 +88,8 @@ def _role_read(role: Role, *, assignment_count: int | None = None) -> RoleRead:
         is_system=role.is_system,
         is_assignable=role.is_assignable,
         priority=role.priority,
-        permissions=sorted(p.code for p in role.permissions),
+        permissions=allow,
+        denied_permissions=deny,
         assignment_count=assignment_count,
         created_at=role.created_at,
         updated_at=role.updated_at,
@@ -86,7 +110,7 @@ def list_roles(
     roles = RoleRepository(db).list_visible(
         actor.organization_id, category=category, status=status_filter, search=search
     )
-    return [r for r in (_role_read(role) for role in roles)]
+    return [_role_read(role, db) for role in roles]
 
 
 @router.post("/roles", response_model=RoleRead, status_code=status.HTTP_201_CREATED)
@@ -98,10 +122,11 @@ def create_role(
     role = RoleService(db).create(
         name=payload.name, display_name=payload.display_name, description=payload.description,
         category=payload.category, priority=payload.priority,
-        permission_codes=payload.permissions, organization_id=actor.organization_id, actor_id=actor.id,
+        permission_codes=payload.permissions, denied_permission_codes=payload.denied_permissions,
+        organization_id=actor.organization_id, actor_id=actor.id,
     )
-    db.commit()
-    return _role_read(role)
+    _commit_invalidating(db, actor.organization_id)
+    return _role_read(role, db)
 
 
 @router.get("/roles/{role_id}", response_model=RoleRead)
@@ -112,7 +137,7 @@ def get_role(
 ) -> RoleRead:
     svc = RoleService(db)
     role = svc.get_or_404(role_id, actor.organization_id)
-    return _role_read(role, assignment_count=svc.repo.assignment_count(role.id))
+    return _role_read(role, db, assignment_count=svc.repo.assignment_count(role.id))
 
 
 @router.put("/roles/{role_id}", response_model=RoleRead)
@@ -127,10 +152,11 @@ def update_role(
     svc.update(
         role, display_name=payload.display_name, description=payload.description,
         priority=payload.priority, status=payload.status, permission_codes=payload.permissions,
+        denied_permission_codes=payload.denied_permissions,
         actor_id=actor.id, organization_id=actor.organization_id,
     )
-    db.commit()
-    return _role_read(role)
+    _commit_invalidating(db, actor.organization_id)
+    return _role_read(role, db)
 
 
 @router.delete("/roles/{role_id}", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
@@ -142,7 +168,7 @@ def delete_role(
     svc = RoleService(db)
     role = svc.get_or_404(role_id, actor.organization_id)
     svc.delete(role, actor_id=actor.id, organization_id=actor.organization_id)
-    db.commit()
+    _commit_invalidating(db, actor.organization_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -181,7 +207,7 @@ def create_permission(
         code=payload.code, description=payload.description, display_name=payload.display_name,
         group_id=payload.group_id, actor_id=actor.id, organization_id=actor.organization_id,
     )
-    db.commit()
+    _commit_invalidating(db, actor.organization_id)
     return perm
 
 
@@ -196,7 +222,7 @@ def update_permission(
         permission_id, description=payload.description, display_name=payload.display_name,
         group_id=payload.group_id, actor_id=actor.id, organization_id=actor.organization_id,
     )
-    db.commit()
+    _commit_invalidating(db, actor.organization_id)
     return perm
 
 
@@ -210,7 +236,7 @@ def delete_permission(
     PermissionService(db).delete(
         permission_id, actor_id=actor.id, organization_id=actor.organization_id
     )
-    db.commit()
+    _commit_invalidating(db, actor.organization_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -249,7 +275,7 @@ def create_role_assignment(
         resource_type=payload.resource_type, resource_id=payload.resource_id,
         expires_at=payload.expires_at, actor_id=actor.id,
     )
-    db.commit()
+    _commit_invalidating(db, actor.organization_id)
     return assignment
 
 
@@ -263,7 +289,7 @@ def delete_role_assignment(
     RoleAssignmentService(db).remove(
         assignment_id, organization_id=actor.organization_id, actor_id=actor.id
     )
-    db.commit()
+    _commit_invalidating(db, actor.organization_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -289,7 +315,7 @@ def create_role_hierarchy(
         payload.parent_role_id, payload.child_role_id,
         organization_id=actor.organization_id, actor_id=actor.id,
     )
-    db.commit()
+    _commit_invalidating(db, actor.organization_id)
     return edge
 
 
@@ -303,8 +329,49 @@ def delete_role_hierarchy(
     RoleHierarchyService(db).remove_edge(
         edge_id, organization_id=actor.organization_id, actor_id=actor.id
     )
-    db.commit()
+    _commit_invalidating(db, actor.organization_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# --------------------------------------------------------------------------- #
+# Permission engine: authorization check (§22)
+# --------------------------------------------------------------------------- #
+@router.post("/authorization/check", response_model=AuthorizationCheckResponse)
+def authorization_check(
+    payload: AuthorizationCheckRequest,
+    request: Request,
+    actor: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> AuthorizationCheckResponse:
+    """Evaluate whether the caller holds a permission (optionally on a resource),
+    through the centralized engine. Any authenticated identity may ask about its own
+    access; the decision is recorded."""
+    import time
+
+    from app.authorization.cache import PermissionCacheService
+    from app.authorization.decisions import AuthorizationDecisionService
+    from app.authorization.engine import ResourceContext
+
+    ctx = None
+    if payload.resource_type or payload.resource_id:
+        ctx = ResourceContext(
+            organization_id=actor.organization_id,
+            resource_type=payload.resource_type,
+            resource_id=payload.resource_id,
+        )
+    started = time.perf_counter()
+    result, cache_hit = PermissionCacheService(db).authorize(actor, payload.permission, ctx)
+    elapsed_ms = (time.perf_counter() - started) * 1000
+    result.evaluation_time_ms = elapsed_ms
+    AuthorizationDecisionService(db).record(
+        actor, result, request_id=request.headers.get("x-request-id"),
+        evaluation_time_ms=elapsed_ms, force=True,
+    )
+    return AuthorizationCheckResponse(
+        allowed=result.allowed, permission=result.permission, reason=result.reason,
+        scope=result.scope, source_role=result.source_role,
+        evaluation_time_ms=round(elapsed_ms, 3), cache_hit=cache_hit,
+    )
 
 
 # --------------------------------------------------------------------------- #

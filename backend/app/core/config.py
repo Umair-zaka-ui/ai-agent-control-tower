@@ -164,6 +164,16 @@ class Settings(BaseSettings):
     # resource contract directly; on everywhere else. The SPA unwraps it centrally.
     RESPONSE_ENVELOPE_ENABLED: bool = True
 
+    # --- Phase 4.3.2: Enterprise Permission Engine (§10, §25, §27) ------------
+    # Cache resolved permission grants per identity, versioned per org. A role /
+    # permission / assignment change bumps the org version and invalidates all rows.
+    PERMISSION_CACHE_ENABLED: bool = True
+    PERMISSION_CACHE_TTL_SECONDS: int = 300
+    # Persist every ALLOW decision from the gate path? Off by default so the
+    # <5ms middleware budget is not spent on a DB write per request; DENY is always
+    # recorded, and the /authorization/check endpoint always records.
+    AUTHZ_LOG_ALLOW_DECISIONS: bool = False
+
     # --- Phase 2: agent API keys ---
     API_KEY_PREFIX: str = "agt_live_"
 
