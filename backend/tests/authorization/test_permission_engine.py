@@ -108,3 +108,24 @@ def test_cache_hit_on_second_check(client: TestClient, admin: dict) -> None:
     _check(client, admin, "agent.view")          # populates cache (miss)
     second = _check(client, admin, "agent.view")  # should hit
     assert second["cache_hit"] is True
+
+
+# --- audit events (§27) ---------------------------------------------------- #
+def test_check_generates_named_engine_events(client: TestClient, admin: dict) -> None:
+    # First call is a miss -> a cache refresh + the pipeline-step events + a granted event.
+    first = _check(client, admin, "agent.view")
+    assert "PERMISSION_CACHE_REFRESHED" in first["events"]
+    for ev in ("ROLE_RESOLVED", "SCOPE_VALIDATED", "CONFLICT_RESOLVED", "AUTHORIZATION_GRANTED"):
+        assert ev in first["events"], ev
+
+    denied = _check(client, admin, "nope.nope")
+    assert "AUTHORIZATION_DENIED" in denied["events"]
+
+
+def test_wildcard_expanded_event(client: TestClient, admin: dict) -> None:
+    roles = client.get("/api/v1/roles", headers=admin["headers"]).json()
+    owner = next(r for r in roles if r["name"] == "ROLE_PLATFORM_OWNER")
+    _assign(client, admin, owner["id"], scope="GLOBAL")  # grants '*'
+    result = _check(client, admin, f"anything.{uuid.uuid4().hex[:6]}")
+    assert result["allowed"] is True
+    assert "WILDCARD_EXPANDED" in result["events"]

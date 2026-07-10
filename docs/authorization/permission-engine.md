@@ -52,12 +52,25 @@ Default is **deny** — a permission with no matching allow grant is refused.
   calling identity.
 - **Frontend**: `useCan("agent.create")`, `<ProtectedComponent permission=…>` (§23, §24).
 
-## Audit (§18, §27)
+## Audit & events (§18, §27)
 
-Decisions are persisted to `authorization_decisions` with timing. **Denials are always
-recorded**; allows on the high-volume gate path are recorded only when
-`AUTHZ_LOG_ALLOW_DECISIONS` is on (to protect the middleware budget); the `/check`
-endpoint always records.
+The engine generates a fixed event vocabulary (`AuthorizationEngineEvent`):
+
+| Event | When |
+|-------|------|
+| `ROLE_RESOLVED` | roles + inheritance resolved into grants |
+| `WILDCARD_EXPANDED` | a `*` / `resource.*` grant matched the requested code |
+| `SCOPE_VALIDATED` | scope applicability was applied |
+| `CONFLICT_RESOLVED` | allow/deny conflict resolved |
+| `AUTHORIZATION_GRANTED` / `AUTHORIZATION_DENIED` | the outcome |
+| `PERMISSION_CACHE_REFRESHED` | a cache miss rebuilt the identity's grants |
+
+The two **outcome** events are the persisted audit: decisions are written to
+`authorization_decisions` with timing. **Denials are always recorded**; allows on the
+high-volume gate path are recorded only when `AUTHZ_LOG_ALLOW_DECISIONS` is on (to protect
+the middleware budget); the `/check` endpoint always records. The **pipeline-step** events
+are generated as a per-decision `trace` and returned on the `/authorization/check`
+response (`events`) for observability, rather than one DB row per step per request.
 
 See [permission resolution](permission-resolution.md), [wildcards](wildcards.md),
 [scopes](scopes.md), [caching](caching.md).

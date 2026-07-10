@@ -85,6 +85,8 @@ class AuthorizationResult:
     evaluation_time_ms: float | None = None
     resource_type: str | None = None
     resource_id: uuid.UUID | None = None
+    # The engine events generated while reaching this decision (§27).
+    trace: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -309,12 +311,27 @@ class PermissionEngine:
         grants: list[Grant],
         ctx: ResourceContext | None = None,
     ) -> AuthorizationResult:
-        """Pure evaluation of a decision from a resolved grant list."""
-        applicable = [
-            g for g in grants
-            if WildcardResolver.matches(g.pattern, permission) and ScopeResolver.applies(g, user, ctx)
-        ]
+        """Pure evaluation of a decision from a resolved grant list.
+
+        Populates ``result.trace`` with the §27 engine events generated on the way to
+        the decision, in order."""
+        from app.authorization.enums import AuthorizationEngineEvent as E
+
+        trace: list[str] = [E.ROLE_RESOLVED.value]
+
+        wildcard_matched = [g for g in grants if WildcardResolver.matches(g.pattern, permission)]
+        if any(g.pattern.endswith(".*") or g.pattern == GLOBAL_WILDCARD for g in wildcard_matched):
+            trace.append(E.WILDCARD_EXPANDED.value)
+
+        applicable = [g for g in wildcard_matched if ScopeResolver.applies(g, user, ctx)]
+        trace.append(E.SCOPE_VALIDATED.value)
+
         result = ConflictResolver.resolve(permission, applicable)
+        trace.append(E.CONFLICT_RESOLVED.value)
+        trace.append(
+            E.AUTHORIZATION_GRANTED.value if result.allowed else E.AUTHORIZATION_DENIED.value
+        )
+        result.trace = trace
         if ctx is not None:
             result.resource_type = ctx.resource_type
             result.resource_id = ctx.resource_id

@@ -148,6 +148,8 @@ class AuthorizationCheckResponse(BaseModel):
     source_role: str | None = None
     evaluation_time_ms: float | None = None
     cache_hit: bool | None = None
+    # The §27 engine events generated for this decision (observability).
+    events: list[str] = []
 
 
 # --- Authorization audit --------------------------------------------------- #
