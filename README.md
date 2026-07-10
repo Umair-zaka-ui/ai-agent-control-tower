@@ -260,6 +260,23 @@ Audit). See [RBAC](docs/authorization/rbac.md), [roles](docs/authorization/roles
 [permissions](docs/authorization/permissions.md) and
 [role hierarchy](docs/authorization/role-hierarchy.md).
 
+### Permission Engine (Phase 4.3.2)
+
+Every authorization decision flows through one centralized **PermissionEngine** — no
+controller ever branches on a role name. It resolves an identity's roles (with
+inheritance), collects allow/deny grants, expands **wildcards** (`agent.*`, and the
+reserved global `*` for `ROLE_PLATFORM_OWNER`), applies **scope**, and resolves
+**conflicts** (explicit deny always wins) before allowing or denying — default deny.
+Resolved grants are **cached** per identity (Postgres-backed, version-invalidated on any
+role/permission/assignment change) and every decision is auditable
+(`authorization_decisions`, with timing). `require_permission` now gates through the
+engine platform-wide; `POST /api/v1/authorization/check` answers "can I?" for the caller;
+the SPA gets `useCan("agent.create")` and `<ProtectedComponent permission=…>`. See
+[permission engine](docs/authorization/permission-engine.md),
+[resolution](docs/authorization/permission-resolution.md),
+[wildcards](docs/authorization/wildcards.md), [scopes](docs/authorization/scopes.md) and
+[caching](docs/authorization/caching.md).
+
 **Users** (password `DemoPass!2026`):
 
 | Email                  | Role       |

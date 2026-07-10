@@ -127,13 +127,27 @@ def require_roles(*roles: UserRole) -> Callable[[User], User]:
 
 
 def require_permission(code: str) -> Callable[..., User]:
-    """Restrict a route to users holding the given RBAC permission code."""
+    """Restrict a route to users holding the given RBAC permission code.
+
+    Phase 4.3.2: every gate flows through the centralized ``PermissionEngine`` (via
+    the versioned permission cache) rather than an ad-hoc query — so role inheritance,
+    wildcards, scope and explicit-deny are honoured identically everywhere, and denials
+    are audited. Imports are lazy to keep this module import-cycle free.
+    """
 
     def _checker(
+        request: Request,
         current_user: User = Depends(get_current_user),
         db: Session = Depends(get_db),
     ) -> User:
-        if not rbac_service.user_has_permission(db, current_user, code):
+        from app.authorization.cache import PermissionCacheService
+        from app.authorization.decisions import AuthorizationDecisionService
+
+        result, _ = PermissionCacheService(db).authorize(current_user, code)
+        if not result.allowed:
+            AuthorizationDecisionService(db).record(
+                current_user, result, request_id=request.headers.get("x-request-id")
+            )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Missing required permission: {code}",

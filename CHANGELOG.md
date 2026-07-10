@@ -6,6 +6,28 @@ versions track the roadmap phases rather than semver guarantees.
 
 ## [Unreleased] — Phase 4.3 · Enterprise Authorization Platform
 
+### Part 4.3.2 — Enterprise Permission Engine
+
+- **Added** a centralized `PermissionEngine` (`app/authorization/engine.py`) with pure
+  resolvers: Role (assigned + inherited), Permission (grant list), Wildcard (`resource.*`
+  + global `*`), Scope (global→resource), Conflict (**explicit deny wins**, default deny).
+- **Added** a Postgres permission cache: `permission_cache` (resolved grants per identity)
+  + `permission_versions` (per-org invalidation token, bumped on any role/permission/
+  assignment change) + `role_permissions.effect` (ALLOW/DENY) + `authorization_decisions`
+  (decision audit with timing). Migration `0017`.
+- **Changed** `require_permission` to gate through the engine platform-wide — inheritance,
+  wildcards, scope and deny now apply on every endpoint (all existing checks preserved).
+- **Added** `POST /api/v1/authorization/check` (evaluate the caller's access;
+  `evaluation_time_ms`, `cache_hit`), role create/update `denied_permissions`, and error
+  codes `ROLE_NOT_ASSIGNED`, `RESOURCE_FORBIDDEN`, `EXPLICIT_DENY`, `AUTHORIZATION_FAILED`,
+  `PERMISSION_CACHE_MISS` (§28).
+- **Added** the frontend permission layer: `PermissionProvider`, `usePermissions`/`useCan`,
+  `ProtectedComponent` / `RequirePermission` (wildcard-aware; server is source of truth).
+- **Docs**: `docs/authorization/{permission-engine,permission-resolution,wildcards,scopes,
+  caching}.md`.
+- **Tests**: backend **408** (25 new: wildcards, scope, conflict/deny, cache invalidation,
+  `/check`, decision audit); frontend **232** (8 new). tsc + build clean.
+
 ### Part 4.3.1 — Enterprise RBAC foundation
 
 - **Added** a new `app/authorization/` package extending the existing flat RBAC:

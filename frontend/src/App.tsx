@@ -5,6 +5,7 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { Toaster } from '@/components/ui/sonner'
 import { queryClient } from '@/config/queryClient'
 import { AuthProvider } from '@/contexts/AuthContext'
+import { PermissionProvider } from '@/authorization'
 import { NotificationsProvider } from '@/contexts/NotificationsContext'
 import { ThemeProvider } from '@/contexts/ThemeContext'
 import { AppRoutes } from '@/routes/AppRoutes'
@@ -20,10 +21,12 @@ export default function App() {
         <NotificationsProvider>
           <BrowserRouter>
             <AuthProvider>
-              <TooltipProvider delayDuration={200}>
-                <AppRoutes />
-                <Toaster />
-              </TooltipProvider>
+              <PermissionProvider>
+                <TooltipProvider delayDuration={200}>
+                  <AppRoutes />
+                  <Toaster />
+                </TooltipProvider>
+              </PermissionProvider>
             </AuthProvider>
           </BrowserRouter>
         </NotificationsProvider>

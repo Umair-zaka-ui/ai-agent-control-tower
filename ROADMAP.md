@@ -375,8 +375,34 @@ and everything that already resolves permissions keeps working.
   [permissions](docs/authorization/permissions.md),
   [role-hierarchy](docs/authorization/role-hierarchy.md).
 
-Next: 4.3.2 permission engine (wildcards + cache), 4.3.3 org hierarchy, 4.3.4 resource
-authorization, 4.3.5 ABAC, 4.3.6 middleware, 4.3.7 portal, 4.3.8 production readiness.
+### Part 4.3.2 — Enterprise Permission Engine ✅
+
+Every authorization decision now flows through one centralized, cached engine — no
+controller branches on role names.
+
+- **Engine** (`app/authorization/engine.py`): small pure resolvers — Role (assigned +
+  inherited via hierarchy), Permission (grant list = legacy fallback + scoped role
+  grants), **Wildcard** (`resource.*` and the reserved global `*`), **Scope**
+  (global→resource), **Conflict** (**explicit deny wins**, else allow, else default deny).
+  Returns a structured `{allowed, reason, scope, source_role}`.
+- **Cache**: resolved grants cached per identity in `permission_cache`, tagged with a
+  per-org `permission_versions` counter; any role/permission/assignment change bumps the
+  version and invalidates immediately (Postgres, ADR-0002). `role_permissions.effect`
+  adds explicit DENY grants. Migration `0017`.
+- **Centralization**: `require_permission` gates through the engine platform-wide (all
+  408 existing checks unchanged — a faithful superset); `POST /api/v1/authorization/check`
+  evaluates the caller's access with `evaluation_time_ms` + `cache_hit`; decisions are
+  audited to `authorization_decisions` (denials always; allows opt-in).
+- **Frontend**: `PermissionProvider`, `usePermissions`/`useCan`, `ProtectedComponent` /
+  `RequirePermission` — wildcard-aware, server remains source of truth.
+- Docs: [permission-engine](docs/authorization/permission-engine.md),
+  [permission-resolution](docs/authorization/permission-resolution.md),
+  [wildcards](docs/authorization/wildcards.md), [scopes](docs/authorization/scopes.md),
+  [caching](docs/authorization/caching.md). Backend **408** green (25 new); frontend
+  **232** green (8 new); tsc + build clean.
+
+Next: 4.3.3 org hierarchy, 4.3.4 resource authorization, 4.3.5 ABAC, 4.3.6 middleware,
+4.3.7 portal, 4.3.8 production readiness.
 
 ## Future (Phase 4+)
 

@@ -14,7 +14,10 @@ from app.models.permission import Permission
 from app.models.policy import Policy
 from app.models.rbac import (
     AuthorizationAudit,
+    AuthorizationDecision,
+    PermissionCache,
     PermissionGroup,
+    PermissionVersion,
     RbacPermission,
     Role,
     RoleHierarchy,
@@ -41,4 +44,7 @@ __all__ = [
     "PermissionGroup",
     "RoleHierarchy",
     "AuthorizationAudit",
+    "PermissionVersion",
+    "PermissionCache",
+    "AuthorizationDecision",
 ]

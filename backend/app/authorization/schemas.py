@@ -58,6 +58,7 @@ class RoleRead(BaseModel):
     is_assignable: bool
     priority: int
     permissions: list[str] = []
+    denied_permissions: list[str] = []
     assignment_count: int | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
@@ -70,6 +71,8 @@ class RoleCreate(BaseModel):
     category: str = "CUSTOM"
     priority: int = Field(default=50, ge=0, le=100)
     permissions: list[str] = []
+    # Explicit DENY grants (§16) — a deny always wins over any allow.
+    denied_permissions: list[str] = []
 
 
 class RoleUpdate(BaseModel):
@@ -78,6 +81,7 @@ class RoleUpdate(BaseModel):
     priority: int | None = Field(default=None, ge=0, le=100)
     status: str | None = None
     permissions: list[str] | None = None
+    denied_permissions: list[str] | None = None
 
 
 class EffectivePermissionsRead(BaseModel):
@@ -127,6 +131,23 @@ class RoleHierarchyRead(BaseModel):
     parent_role_id: uuid.UUID
     child_role_id: uuid.UUID
     created_at: datetime | None = None
+
+
+# --- Permission engine: authorization check (§22) -------------------------- #
+class AuthorizationCheckRequest(BaseModel):
+    permission: str = Field(min_length=1, max_length=100)
+    resource_type: str | None = None
+    resource_id: uuid.UUID | None = None
+
+
+class AuthorizationCheckResponse(BaseModel):
+    allowed: bool
+    permission: str
+    reason: str
+    scope: str | None = None
+    source_role: str | None = None
+    evaluation_time_ms: float | None = None
+    cache_hit: bool | None = None
 
 
 # --- Authorization audit --------------------------------------------------- #
