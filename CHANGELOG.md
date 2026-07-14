@@ -6,6 +6,42 @@ versions track the roadmap phases rather than semver guarantees.
 
 ## [Unreleased] — Phase 4.3 · Enterprise Authorization Platform
 
+### Part 4.3.4 — Enterprise resource-based authorization (RBAC + Resource ACL)
+
+- **Added** the protected-resource registry and per-resource authorization metadata
+  (migration `0019`): `resources` (owner + owner_type, visibility PRIVATE→PUBLIC_INTERNAL,
+  status, JSONB resource policy), `resource_acl`, `resource_shares`, `ownership_history`,
+  `resource_delegations` — all org-anchored, satellites cascading with the registry.
+- **Added** `app/authorization/resources/`: `ResourceAuthorizationService` (the §5/§18
+  evaluation chain — org scope → roles → explicit deny → policy → ownership → ACL →
+  delegation → sharing → visibility → default deny, with a step trace), plus registry,
+  ACL, sharing, ownership (audited transfers + preserved history), delegation and policy
+  services and a `MembershipResolver` for USER/ROLE/TEAM/DEPARTMENT/ORGANIZATION
+  principals.
+- **Changed** the Permission Engine check (`POST /api/v1/authorization/check`) to route
+  **registered** resources through the resource-level chain — identical roles, different
+  per-resource answers; unregistered resources keep the 4.3.2/4.3.3 path.
+- **Added** 20 `/api/v1/resources` endpoints (§19): registry CRUD + types,
+  owner / transfer-ownership / ownership-history, ACL CRUD, share/update/revoke,
+  delegate/revoke/list, policy, and `POST /resources/{id}/authorize` with identity
+  simulation (`resource.manage`) powering the **Authorization Inspector**.
+- **Security (§22)**: default deny; explicit deny overrides every allow; owners cannot
+  bypass global denies or resource policies; platform admins cannot be ACL-denied on
+  SYSTEM resources; cross-org lookups 404 and cross-org sharing is rejected; expired
+  ACL entries/shares/delegations are ignored. 14 audit events
+  (`RESOURCE_SHARED/UNSHARED`, `RESOURCE_OWNER_CHANGED`, `RESOURCE_ACL_CREATED/UPDATED/
+  DELETED`, `RESOURCE_DELEGATED/DELEGATION_REVOKED`, `RESOURCE_POLICY_UPDATED`,
+  `RESOURCE_ACCESS_GRANTED/DENIED`, …); 9 error codes; permissions
+  `resource.view` / `resource.manage`.
+- **Added** the admin portal (Settings → Security → Resources): Resource permissions,
+  Resource ACL (search/filter + effect toggle), Sharing, Ownership transfer (+history),
+  Delegation management, Authorization Inspector.
+- **Docs**: `docs/authorization/{resource-authorization,resource-acl,resource-sharing,
+  delegation}.md`, `resource-ownership.md` + ERD + README updated.
+- **Tests**: backend **442** green (21 new: ownership/transfer, ACL deny precedence +
+  expiry, sharing levels + cross-tenant, delegation lifecycle + expiry, visibility,
+  policy, inspector, audit, §25 perf); frontend **242** green (7 new). tsc + build clean.
+
 ### Part 4.3.3 — Enterprise organization hierarchy
 
 - **Added** the full hierarchy — Platform → Organization → Business Unit → Department →

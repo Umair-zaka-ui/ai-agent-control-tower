@@ -350,11 +350,51 @@ def authorization_check(
 
     from app.authorization.cache import PermissionCacheService
     from app.authorization.decisions import AuthorizationDecisionService
-    from app.authorization.engine import GLOBAL_WILDCARD, PermissionEngine, ResourceContext
+    from app.authorization.engine import (
+        GLOBAL_WILDCARD,
+        AuthorizationResult,
+        PermissionEngine,
+        ResourceContext,
+    )
     from app.authorization.enums import AuthorizationEngineEvent
     from app.authorization.hierarchy.services import DelegationService, ResourceOwnershipService
+    from app.authorization.resources.services import (
+        ResourceAuthorizationService,
+        ResourceRegistryService,
+    )
 
     started = time.perf_counter()
+
+    # Phase 4.3.4 §18: when the named resource is *registered* in the resource
+    # authorization registry, the full resource-level chain decides — ownership,
+    # ACL, delegation, sharing, policy and visibility layered over the role
+    # decision. Unregistered resources keep the pure role/scope path below.
+    if payload.resource_type and payload.resource_id:
+        registered = ResourceRegistryService(db).by_external(
+            payload.resource_type, payload.resource_id
+        )
+        if registered is not None:
+            rd = ResourceAuthorizationService(db).authorize(
+                actor, payload.permission, registered, record=False
+            )
+            elapsed_ms = (time.perf_counter() - started) * 1000
+            result = AuthorizationResult(
+                allowed=rd.allowed, permission=payload.permission, reason=rd.reason,
+                scope=rd.scope, source_role=rd.source_role,
+                evaluation_time_ms=elapsed_ms,
+                resource_type=payload.resource_type, resource_id=payload.resource_id,
+                trace=list(rd.steps),
+            )
+            AuthorizationDecisionService(db).record(
+                actor, result, request_id=request.headers.get("x-request-id"),
+                evaluation_time_ms=elapsed_ms, force=True,
+            )
+            return AuthorizationCheckResponse(
+                allowed=result.allowed, permission=result.permission, reason=result.reason,
+                scope=result.scope, source_role=result.source_role,
+                evaluation_time_ms=round(elapsed_ms, 3), cache_hit=False,
+                events=list(rd.steps),
+            )
 
     # Resolve the resource's full organizational path so a scoped grant at any level
     # applies via downward inheritance (Phase 4.3.3 §7, §14).

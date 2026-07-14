@@ -17,6 +17,13 @@ from app.models.organization_hierarchy import (
     ResourceOwnership,
 )
 from app.models.permission import Permission
+from app.models.resource_authorization import (
+    OwnershipHistory,
+    ProtectedResource,
+    ResourceACLEntry,
+    ResourceDelegation,
+    ResourceShare,
+)
 from app.models.policy import Policy
 from app.models.rbac import (
     AuthorizationAudit,
@@ -57,4 +64,9 @@ __all__ = [
     "Project",
     "ResourceOwnership",
     "Delegation",
+    "ProtectedResource",
+    "ResourceACLEntry",
+    "ResourceShare",
+    "OwnershipHistory",
+    "ResourceDelegation",
 ]

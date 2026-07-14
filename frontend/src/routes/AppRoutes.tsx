@@ -70,6 +70,14 @@ import {
   TeamsPage,
 } from '@/modules/hierarchy'
 import {
+  AuthorizationInspectorPage,
+  DelegationManagementPage,
+  OwnershipTransferPage,
+  ResourceACLPage,
+  ResourcePermissionsPage,
+  ResourceSharingPage,
+} from '@/modules/resources'
+import {
   AcceptInvitationPage,
   ChangeEmailPage,
   ChangePasswordPage,
@@ -202,6 +210,13 @@ export function AppRoutes() {
           <Route path={ROUTES.ORG_TEAMS} element={<TeamsPage />} />
           <Route path={ROUTES.ORG_PROJECTS} element={<ProjectsPage />} />
           <Route path={ROUTES.ORG_DELEGATION} element={<DelegatedAdministrationPage />} />
+          {/* Resource-based authorization portal (Phase 4.3.4 §20) */}
+          <Route path={ROUTES.RES_PERMISSIONS} element={<ResourcePermissionsPage />} />
+          <Route path={ROUTES.RES_ACL} element={<ResourceACLPage />} />
+          <Route path={ROUTES.RES_SHARING} element={<ResourceSharingPage />} />
+          <Route path={ROUTES.RES_OWNERSHIP} element={<OwnershipTransferPage />} />
+          <Route path={ROUTES.RES_DELEGATION} element={<DelegationManagementPage />} />
+          <Route path={ROUTES.RES_INSPECTOR} element={<AuthorizationInspectorPage />} />
           <Route path={ROUTES.PROFILE} element={<ProfilePage />} />
         </Route>
         </Route>
