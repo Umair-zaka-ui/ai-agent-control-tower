@@ -56,6 +56,7 @@ export function SecuritySessionsPage() {
   const canViewProtection = permissions.includes(PERMISSIONS.SECURITY_PROTECTION)
   const canViewAuthz = permissions.includes(PERMISSIONS.ROLE_VIEW)
   const canViewOrg = permissions.includes(PERMISSIONS.ORGANIZATION_VIEW)
+  const canViewResources = permissions.includes(PERMISSIONS.RESOURCE_VIEW)
   const sessions = useSessions()
   const devices = useDevices()
   const revokeSession = useRevokeSession()
@@ -216,6 +217,41 @@ export function SecuritySessionsPage() {
             </Button>
             <Button asChild variant="outline" size="sm">
               <Link to={ROUTES.ORG_DELEGATION}>Delegation</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Resource authorization (Phase 4.3.4). Renders only with resource.view. */}
+      {canViewResources && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Resources</CardTitle>
+            <CardDescription>
+              Per-resource ownership, ACLs, sharing, delegation and the authorization inspector.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-3">
+            <Button asChild variant="outline" size="sm">
+              <Link to={ROUTES.RES_PERMISSIONS}>
+                <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+                Resource permissions
+              </Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link to={ROUTES.RES_ACL}>ACL</Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link to={ROUTES.RES_SHARING}>Sharing</Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link to={ROUTES.RES_OWNERSHIP}>Ownership</Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link to={ROUTES.RES_DELEGATION}>Delegation</Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link to={ROUTES.RES_INSPECTOR}>Inspector</Link>
             </Button>
           </CardContent>
         </Card>

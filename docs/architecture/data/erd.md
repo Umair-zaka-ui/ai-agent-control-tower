@@ -198,6 +198,71 @@ erDiagram
   legacy coarse role; RBAC is the real authorization source. Another artefact of
   the [additive migration](../adr/0005-additive-identity-layer-alongside-legacy-auth.md).
 
+### Resource-based authorization (Phase 4.3.4)
+
+Fine-grained, per-resource authorization metadata. `resources` is the registry;
+the four satellite tables cascade with it. `(resource_type, resource_id)` also
+links to the Phase 4.3.3 `resource_ownership` hierarchy path (not shown).
+
+```mermaid
+erDiagram
+    organizations ||--o{ resources : "owns"
+    resources ||--o{ resource_acl : "controls"
+    resources ||--o{ resource_shares : "shared via"
+    resources ||--o{ ownership_history : "transfers"
+    resources ||--o{ resource_delegations : "delegated via"
+
+    resources {
+        uuid id PK
+        varchar resource_type "with resource_id: UK"
+        uuid resource_id "the underlying object"
+        uuid organization_id FK
+        uuid owner_id "no FK: polymorphic by owner_type"
+        varchar owner_type "USER / TEAM / DEPARTMENT / ORG / SVC"
+        varchar visibility "PRIVATE..PUBLIC_INTERNAL"
+        varchar status "ACTIVE / ARCHIVED / SYSTEM"
+        jsonb policy "resource policy rules"
+    }
+    resource_acl {
+        uuid id PK
+        uuid resource_id FK
+        varchar principal_type
+        uuid principal_id "no FK: polymorphic"
+        varchar permission "code, action or *"
+        varchar effect "ALLOW / DENY"
+        datetime expires_at "expired = ignored"
+    }
+    resource_shares {
+        uuid id PK
+        uuid resource_id FK
+        varchar shared_with_type
+        uuid shared_with_id "no FK: polymorphic"
+        varchar access_level "READ..MANAGE"
+        datetime expires_at
+    }
+    ownership_history {
+        uuid id PK
+        uuid resource_id FK
+        uuid previous_owner
+        uuid new_owner
+        uuid changed_by
+        varchar reason
+    }
+    resource_delegations {
+        uuid id PK
+        uuid resource_id FK
+        uuid delegate_id FK
+        jsonb permissions "actions or codes"
+        datetime expires_at
+        varchar status "ACTIVE / REVOKED"
+    }
+```
+
+`owner_id`, `principal_id` and `shared_with_id` are polymorphic (typed by their
+companion `*_type` column), so they carry no FK — the same pattern as
+`audit_logs.actor_id`. Explicit DENY beats every allow; expired rows are ignored
+at evaluation time — see [resource authorization](../../authorization/resource-authorization.md).
+
 ---
 
 ## 2. Agent Governance

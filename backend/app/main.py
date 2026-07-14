@@ -23,6 +23,7 @@ from app.identity.recovery.routes import security_router as recovery_security_ro
 from app.identity.protection.routes import router as protection_router
 from app.authorization.routes import router as authorization_router
 from app.authorization.hierarchy.routes import router as hierarchy_router
+from app.authorization.resources.routes import router as resources_router
 from app.identity.errors import register_identity_exception_handlers
 
 app = FastAPI(
@@ -88,3 +89,8 @@ app.include_router(authorization_router)
 # Phase 4.3.3: Enterprise organization hierarchy — organizations, business units,
 # departments, teams, projects, resource ownership and delegation under /api/v1.
 app.include_router(hierarchy_router)
+
+# Phase 4.3.4: Resource-based authorization — the protected-resource registry,
+# per-resource ownership/ACL/sharing/delegation/policy and the authorization
+# inspector under /api/v1.
+app.include_router(resources_router)

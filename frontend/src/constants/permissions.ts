@@ -34,6 +34,10 @@ export const PERMISSIONS = {
   ORGANIZATION_VIEW: 'organization.view',
   /** Manage business units, departments, teams, projects, ownership, delegation. */
   ORGANIZATION_MANAGE: 'organization.manage',
+  /** View the resource registry, ACLs, shares and delegations (4.3.4 §16). */
+  RESOURCE_VIEW: 'resource.view',
+  /** Administer any resource: ACLs, shares, delegations, transfers, policy (4.3.4 §16). */
+  RESOURCE_MANAGE: 'resource.manage',
 } as const
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS]

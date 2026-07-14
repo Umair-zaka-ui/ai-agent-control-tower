@@ -62,6 +62,10 @@ PERMISSION_CATALOG: dict[str, str] = {
     # Enterprise organization hierarchy (Phase 4.3.3 §15, §19).
     "organization.view": "View the organization hierarchy, ownership and delegations",
     "organization.manage": "Manage business units, departments, teams, projects, ownership and delegation",
+    # Resource-based authorization (Phase 4.3.4 §16, §19). Owners manage their own
+    # resources without either permission; these gate the org-wide admin surface.
+    "resource.view": "View the resource registry, ACLs, shares, delegations and ownership history",
+    "resource.manage": "Administer any resource: ACLs, shares, delegations, ownership transfer, policy",
     "approval.view": "View the approval queue and review details",
     "approval.review": "Approve or reject pending actions",
     "approval.escalate": "Escalate approvals to another reviewer or team",

@@ -401,8 +401,7 @@ controller branches on role names.
   [caching](docs/authorization/caching.md). Backend **408** green (25 new); frontend
   **232** green (8 new); tsc + build clean.
 
-Next: 4.3.4 resource authorization, 4.3.5 ABAC, 4.3.6 middleware, 4.3.7 portal,
-4.3.8 production readiness.
+Next: 4.3.5 ABAC, 4.3.6 middleware, 4.3.7 portal, 4.3.8 production readiness.
 
 ### Part 4.3.3 — Enterprise organization hierarchy ✅
 
@@ -431,6 +430,42 @@ existing `organizations`/`departments`/`teams` in place.
   [hierarchy-resolution](docs/authorization/hierarchy-resolution.md),
   [resource-ownership](docs/authorization/resource-ownership.md),
   [delegated-administration](docs/authorization/delegated-administration.md).
+
+### Part 4.3.4 — Enterprise resource-based authorization (RBAC + Resource ACL) ✅
+
+Every managed object is now a first-class protected resource; access decisions layer
+ownership, ACLs, delegation, sharing, visibility and resource policy over the role
+decision — users with identical roles get different answers per resource.
+
+- **Schema** (migration `0019`): `resources` (registry: owner + owner_type, visibility,
+  status, JSONB policy), `resource_acl` (per-principal ALLOW/DENY with expiry),
+  `resource_shares` (READ→MANAGE with expiry), `ownership_history` (transfers preserved),
+  `resource_delegations` (time-boxed, revocable).
+- **Services** (`app/authorization/resources/`): `ResourceAuthorizationService` runs the
+  §5/§18 chain — identity → org scope → roles → **explicit deny** → policy → ownership →
+  ACL allow → delegation → sharing → role allow → visibility → **default deny**;
+  plus registry, ACL, sharing, ownership(+history), delegation, policy services and a
+  `MembershipResolver` (user/role/team/department/org principals).
+- **Engine integration (§18)**: `POST /api/v1/authorization/check` routes *registered*
+  resources through the full resource chain; unregistered resources keep the 4.3.2/4.3.3
+  path. Owners cannot bypass global denies; a DENY never binds a platform admin on
+  SYSTEM resources (§22).
+- 20 `/api/v1/resources` endpoints (registry, owner/transfer-ownership/history, acl,
+  share, delegate, policy, authorize with identity simulation); 14 audit events
+  (`RESOURCE_SHARED`, `RESOURCE_OWNER_CHANGED`, `RESOURCE_ACL_*`, `RESOURCE_DELEGATED`,
+  `RESOURCE_ACCESS_GRANTED/DENIED`, …); 9 error codes (`RESOURCE_ACCESS_DENIED`,
+  `OWNER_TRANSFER_NOT_ALLOWED`, `CROSS_ORGANIZATION_ACCESS_DENIED`, `DELEGATION_EXPIRED`,
+  …); permissions `resource.view` / `resource.manage`.
+- Admin portal (Settings → Security → Resources): Resource permissions (registry +
+  visibility), ACL (search/filter, effect toggle), Sharing, Ownership transfer (+history),
+  Delegation, and the **Authorization Inspector** (simulate identity × resource ×
+  permission → ALLOW/DENY with reason, source, owner, visibility, steps).
+- Docs: [resource-authorization](docs/authorization/resource-authorization.md),
+  [resource-acl](docs/authorization/resource-acl.md),
+  [resource-sharing](docs/authorization/resource-sharing.md),
+  [delegation](docs/authorization/delegation.md),
+  [resource-ownership](docs/authorization/resource-ownership.md) (updated); ERD updated.
+  Backend **442** green (21 new); frontend **242** green (7 new); tsc + build clean.
 
 ## Future (Phase 4+)
 

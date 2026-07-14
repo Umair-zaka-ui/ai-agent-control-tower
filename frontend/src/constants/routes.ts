@@ -64,6 +64,13 @@ export const ROUTES = {
   ORG_TEAMS: '/settings/organization/teams',
   ORG_PROJECTS: '/settings/organization/projects',
   ORG_DELEGATION: '/settings/organization/delegation',
+  /** Resource-based authorization portal (Phase 4.3.4 §20). */
+  RES_PERMISSIONS: '/settings/resources',
+  RES_ACL: '/settings/resources/acl',
+  RES_SHARING: '/settings/resources/sharing',
+  RES_OWNERSHIP: '/settings/resources/ownership',
+  RES_DELEGATION: '/settings/resources/delegation',
+  RES_INSPECTOR: '/settings/resources/inspector',
   /**
    * Forced password change (4.2.2.3.2 §11, §13). Outside the dashboard shell and
    * NOT behind the change guard, so it is the one place the user can go while a

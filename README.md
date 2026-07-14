@@ -293,6 +293,26 @@ Teams, Projects, Delegation). See
 [resource ownership](docs/authorization/resource-ownership.md) and
 [delegated administration](docs/authorization/delegated-administration.md).
 
+### Resource-based authorization (Phase 4.3.4)
+
+Every managed object — agents, prompts, workflows, policies, datasets, dashboards,
+connectors, … — is a **first-class protected resource** with its own authorization
+metadata: an **owner** (user/team/department/organization, transfers audited with
+preserved history), an **ACL** (per-principal allow/deny with expiry; explicit deny
+always wins), **sharing** (READ → MANAGE levels for users/teams/departments/org, with
+expiry), **time-boxed delegation**, **visibility levels** (PRIVATE → PUBLIC_INTERNAL)
+and an optional **resource policy** ("only the Compliance team may publish"). The
+Permission Engine layers all of this over the role decision, so two users with the same
+role can get different answers for the same permission on different resources — default
+deny, cross-tenant isolated, every decision auditable. Security admins simulate any
+identity × resource × permission in the **Authorization Inspector**. Admin portal at
+**Settings → Security → Resources** (Resource permissions, ACL, Sharing, Ownership,
+Delegation, Inspector). See
+[resource authorization](docs/authorization/resource-authorization.md),
+[resource ACL](docs/authorization/resource-acl.md),
+[resource sharing](docs/authorization/resource-sharing.md) and
+[delegation](docs/authorization/delegation.md).
+
 **Users** (password `DemoPass!2026`):
 
 | Email                  | Role       |
