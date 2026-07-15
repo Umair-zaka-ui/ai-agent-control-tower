@@ -263,6 +263,88 @@ companion `*_type` column), so they carry no FK — the same pattern as
 `audit_logs.actor_id`. Explicit DENY beats every allow; expired rows are ignored
 at evaluation time — see [resource authorization](../../authorization/resource-authorization.md).
 
+### ABAC engine (Phase 4.3.5)
+
+Context-aware policies layered over RBAC + resource authorization. A row in
+`abac_policies` is one *version*; versions of the same logical policy share
+`policy_family_id` and at most one version per family is `ACTIVE`.
+`organization_id IS NULL` marks a platform-level policy that applies to every
+tenant and cannot be overridden by organization policies.
+
+```mermaid
+erDiagram
+    organizations ||--o{ abac_policies : "scopes"
+    organizations ||--o{ abac_evaluations : "scopes"
+    abac_policies ||--o{ abac_policy_exceptions : "exempted via"
+
+    abac_policies {
+        uuid id PK
+        uuid policy_family_id "versions share this"
+        uuid organization_id FK "NULL = platform"
+        varchar status "DRAFT..ARCHIVED"
+        int version
+        int priority
+        varchar combining_algorithm "DENY_OVERRIDES default"
+        varchar scope_type "PLATFORM..RESOURCE"
+        uuid scope_id
+        jsonb target "resource_types / actions / ..."
+        jsonb conditions "nested all-any-not tree"
+        varchar effect "ALLOW..LOG_ONLY"
+        jsonb obligations
+        datetime valid_from
+        datetime valid_until
+        datetime published_at
+    }
+    abac_policy_versions {
+        uuid id PK
+        uuid policy_family_id "no FK: history is immutable"
+        int version
+        jsonb snapshot "full policy at publish"
+        uuid created_by
+    }
+    attribute_definitions {
+        uuid id PK
+        varchar name UK "e.g. resource.contains_phi"
+        varchar category "SUBJECT..AI"
+        varchar data_type "STRING..OBJECT"
+        varchar sensitivity "RESTRICTED = redacted"
+        jsonb supported_operators
+        boolean is_system
+        boolean enabled
+    }
+    abac_evaluations {
+        uuid id PK
+        uuid organization_id FK
+        uuid identity_id "no FK: survives deletion"
+        varchar resource_type
+        uuid resource_id
+        varchar action
+        varchar decision "ALLOW / DENY / REQUIRE_*"
+        jsonb matched_policy_ids
+        jsonb obligations
+        jsonb explanation "redacted trace"
+        float evaluation_time_ms
+        varchar request_id
+        varchar correlation_id
+    }
+    abac_policy_exceptions {
+        uuid id PK
+        uuid policy_id FK
+        varchar subject_type
+        uuid subject_id
+        varchar reason
+        uuid approved_by
+        datetime valid_until "expires automatically"
+        varchar status "ACTIVE / REVOKED"
+    }
+```
+
+`abac_policy_versions` deliberately carries **no FK** to `abac_policies`:
+published history must survive even if the working row is deleted (§40.13).
+Only names registered in `attribute_definitions` may appear in `conditions`;
+`RESTRICTED` attributes are redacted from user-facing explanations and logs —
+see [ABAC overview](../../authorization/abac/overview.md).
+
 ---
 
 ## 2. Agent Governance

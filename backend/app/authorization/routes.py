@@ -365,6 +365,44 @@ def authorization_check(
 
     started = time.perf_counter()
 
+    def _finish(result: "AuthorizationResult", *, cache_hit: bool,
+                events: list[str], registered=None) -> AuthorizationCheckResponse:
+        """Phase 4.3.5 §4, §25 — the ABAC layer runs after the baseline:
+        baseline deny → final deny (ABAC never grants); baseline allow → ABAC
+        may deny, challenge or constrain; no applicable policy → baseline."""
+        from app.authorization.abac.engine import ABACEngine
+
+        decision = "ALLOW" if result.allowed else "DENY"
+        obligations: list[dict] = []
+        if result.allowed:
+            abac = ABACEngine(db).evaluate(
+                actor, payload.permission, registered,
+                overrides=payload.context,
+                ip_address=request.client.host if request.client else None,
+                request_id=request.headers.get("x-request-id"),
+                correlation_id=request.headers.get("x-correlation-id"),
+            )
+            if abac.applicable:
+                decision = abac.decision
+                obligations = abac.obligations
+                if not abac.allowed:
+                    result.allowed = False
+                    result.reason = abac.reason
+                events = events + [f"ABAC_{abac.decision}"]
+
+        elapsed_ms = (time.perf_counter() - started) * 1000
+        result.evaluation_time_ms = elapsed_ms
+        AuthorizationDecisionService(db).record(
+            actor, result, request_id=request.headers.get("x-request-id"),
+            evaluation_time_ms=elapsed_ms, force=True,
+        )
+        return AuthorizationCheckResponse(
+            allowed=result.allowed, permission=result.permission, reason=result.reason,
+            scope=result.scope, source_role=result.source_role,
+            evaluation_time_ms=round(elapsed_ms, 3), cache_hit=cache_hit, events=events,
+            decision=decision, obligations=obligations,
+        )
+
     # Phase 4.3.4 §18: when the named resource is *registered* in the resource
     # authorization registry, the full resource-level chain decides — ownership,
     # ACL, delegation, sharing, policy and visibility layered over the role
@@ -377,24 +415,14 @@ def authorization_check(
             rd = ResourceAuthorizationService(db).authorize(
                 actor, payload.permission, registered, record=False
             )
-            elapsed_ms = (time.perf_counter() - started) * 1000
             result = AuthorizationResult(
                 allowed=rd.allowed, permission=payload.permission, reason=rd.reason,
                 scope=rd.scope, source_role=rd.source_role,
-                evaluation_time_ms=elapsed_ms,
                 resource_type=payload.resource_type, resource_id=payload.resource_id,
                 trace=list(rd.steps),
             )
-            AuthorizationDecisionService(db).record(
-                actor, result, request_id=request.headers.get("x-request-id"),
-                evaluation_time_ms=elapsed_ms, force=True,
-            )
-            return AuthorizationCheckResponse(
-                allowed=result.allowed, permission=result.permission, reason=result.reason,
-                scope=result.scope, source_role=result.source_role,
-                evaluation_time_ms=round(elapsed_ms, 3), cache_hit=False,
-                events=list(rd.steps),
-            )
+            return _finish(result, cache_hit=False, events=list(rd.steps),
+                           registered=registered)
 
     # Resolve the resource's full organizational path so a scoped grant at any level
     # applies via downward inheritance (Phase 4.3.3 §7, §14).
@@ -439,20 +467,10 @@ def authorization_check(
     else:
         result = PermissionEngine(db).evaluate(actor, payload.permission, grants, ctx)
 
-    elapsed_ms = (time.perf_counter() - started) * 1000
-    result.evaluation_time_ms = elapsed_ms
     events = list(result.trace)
     if not cache_hit:
         events.insert(0, AuthorizationEngineEvent.PERMISSION_CACHE_REFRESHED.value)
-    AuthorizationDecisionService(db).record(
-        actor, result, request_id=request.headers.get("x-request-id"),
-        evaluation_time_ms=elapsed_ms, force=True,
-    )
-    return AuthorizationCheckResponse(
-        allowed=result.allowed, permission=result.permission, reason=result.reason,
-        scope=result.scope, source_role=result.source_role,
-        evaluation_time_ms=round(elapsed_ms, 3), cache_hit=cache_hit, events=events,
-    )
+    return _finish(result, cache_hit=cache_hit, events=events)
 
 
 # --------------------------------------------------------------------------- #

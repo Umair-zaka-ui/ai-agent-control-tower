@@ -138,6 +138,9 @@ class AuthorizationCheckRequest(BaseModel):
     permission: str = Field(min_length=1, max_length=100)
     resource_type: str | None = None
     resource_id: uuid.UUID | None = None
+    # Phase 4.3.5 §25 — optional contextual attributes for the ABAC layer
+    # (dotted attribute names, e.g. {"action.target_count": 20000}).
+    context: dict | None = None
 
 
 class AuthorizationCheckResponse(BaseModel):
@@ -150,6 +153,12 @@ class AuthorizationCheckResponse(BaseModel):
     cache_hit: bool | None = None
     # The §27 engine events generated for this decision (observability).
     events: list[str] = []
+    # Phase 4.3.5 §4, §25 — the normalized final decision after the ABAC layer:
+    # ALLOW / DENY / REQUIRE_APPROVAL / REQUIRE_MFA / REQUIRE_JUSTIFICATION /
+    # MASK_FIELDS / LIMIT_ACTION. Obligations accompany challenge/constraint
+    # decisions for the enforcement point.
+    decision: str | None = None
+    obligations: list[dict] = []
 
 
 # --- Authorization audit --------------------------------------------------- #

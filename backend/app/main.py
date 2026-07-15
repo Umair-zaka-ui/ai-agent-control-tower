@@ -24,6 +24,7 @@ from app.identity.protection.routes import router as protection_router
 from app.authorization.routes import router as authorization_router
 from app.authorization.hierarchy.routes import router as hierarchy_router
 from app.authorization.resources.routes import router as resources_router
+from app.authorization.abac.routes import router as abac_router
 from app.identity.errors import register_identity_exception_handlers
 
 app = FastAPI(
@@ -94,3 +95,7 @@ app.include_router(hierarchy_router)
 # per-resource ownership/ACL/sharing/delegation/policy and the authorization
 # inspector under /api/v1.
 app.include_router(resources_router)
+
+# Phase 4.3.5: ABAC engine — context-aware policies, the attribute catalog,
+# simulation, evaluations and policy exceptions under /api/v1/authorization.
+app.include_router(abac_router)

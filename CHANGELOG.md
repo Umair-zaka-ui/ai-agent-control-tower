@@ -6,6 +6,55 @@ versions track the roadmap phases rather than semver guarantees.
 
 ## [Unreleased] — Phase 4.3 · Enterprise Authorization Platform
 
+### Part 4.3.5 — Attribute-Based Access Control engine (ABAC)
+
+- **Added** the ABAC schema (migration `0020`): `abac_policies` (versioned,
+  lifecycle-managed context policies — a NULL `organization_id` marks a platform policy
+  no tenant can override), `abac_policy_versions` (immutable published snapshots, no FK
+  so history survives deletion), `attribute_definitions` (the attribute registry),
+  `abac_evaluations` (one row per decision with the redacted explanation) and
+  `abac_policy_exceptions` (time-boxed, approved, auto-expiring exemptions).
+- **Added** `app/authorization/abac/`: attribute registry + five providers
+  (subject/resource/action/environment/AI) behind an `AttributeContextBuilder` — only
+  registered attributes may appear in policies; an `OperatorRegistry` mapping all 16
+  comparison operators to safe functions (no dynamic code execution, regex length +
+  nested-quantifier guards against ReDoS); a recursive `ConditionEvaluator` for nested
+  ALL/ANY/NOT trees (depth-capped, with a per-condition trace);
+  `PolicyValidationService` (schema, attribute existence, data types, operators,
+  effects, obligations); policy lifecycle DRAFT → VALIDATED → ACTIVE →
+  DISABLED/DEPRECATED/ARCHIVED with publish-time snapshots, clone and rollback;
+  a `PolicyResolver` (scope + target matching over the org hierarchy, per-org cache
+  invalidated on any policy/attribute change); five combining algorithms
+  (`DENY_OVERRIDES` default — deny → approval → MFA → justification → mask/limit →
+  allow); an `ObligationService` (CREATE_APPROVAL, REQUIRE_MFA, REQUIRE_JUSTIFICATION,
+  MASK_FIELDS, LIMIT_ACTION, LOG_ONLY) and a `DecisionExplanationService` that redacts
+  RESTRICTED attribute values from user-facing output.
+- **Changed** `POST /api/v1/authorization/check` to run ABAC **after** the baseline:
+  RBAC/resource deny is final (ABAC can never grant); on baseline allow ABAC may deny,
+  challenge (`REQUIRE_APPROVAL` / `REQUIRE_MFA` / `REQUIRE_JUSTIFICATION`) or constrain
+  (`MASK_FIELDS` / `LIMIT_ACTION`); no applicable policy → the baseline decision stands.
+  Responses now carry `decision` + `obligations`.
+- **Added** 26 `/api/v1/authorization` endpoints (§30): policy CRUD, validate / publish /
+  disable / archive / clone, versions + rollback, simulate (stack-wide and single-policy,
+  read-only — the simulator never executes the action and is the only place subject
+  attributes may be overridden), evaluate, the evaluation log, ABAC metrics, the
+  attribute catalog and policy exceptions (expiry mandatory).
+- **Security (§40)**: default deny preserved; only registered operators/attributes;
+  caller context can never spoof `identity.*` attributes; platform policies are not
+  overridable; published history is immutable; cross-tenant policies and evaluations are
+  invisible; sensitive values masked in explanations and logs; 13 error codes; 17 audit
+  events; 10 permissions (`authorization.abac.*`, `authorization.attribute.manage`,
+  `authorization.exception.manage`) with authoring and publishing separable for
+  segregation of duties.
+- **Added** the admin portal (Settings → Security → Context policies): ABAC policies
+  (list/detail/create/edit with the **visual policy builder** — nested condition groups,
+  attribute/operator/typed-value selectors, human-readable preview, raw JSON for
+  advanced admins), version history, the **Policy Simulator**, the attribute catalog,
+  the evaluation viewer and policy exceptions.
+- **Docs**: `docs/authorization/abac/{overview,policy-language,attributes,operators,
+  combining-algorithms,policy-lifecycle,policy-simulation,security}.md`; ERD + README +
+  ROADMAP updated.
+
 ### Part 4.3.4 — Enterprise resource-based authorization (RBAC + Resource ACL)
 
 - **Added** the protected-resource registry and per-resource authorization metadata

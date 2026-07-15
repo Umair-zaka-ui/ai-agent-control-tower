@@ -57,6 +57,7 @@ export function SecuritySessionsPage() {
   const canViewAuthz = permissions.includes(PERMISSIONS.ROLE_VIEW)
   const canViewOrg = permissions.includes(PERMISSIONS.ORGANIZATION_VIEW)
   const canViewResources = permissions.includes(PERMISSIONS.RESOURCE_VIEW)
+  const canViewAbac = permissions.includes(PERMISSIONS.ABAC_VIEW)
   const sessions = useSessions()
   const devices = useDevices()
   const revokeSession = useRevokeSession()
@@ -252,6 +253,38 @@ export function SecuritySessionsPage() {
             </Button>
             <Button asChild variant="outline" size="sm">
               <Link to={ROUTES.RES_INSPECTOR}>Inspector</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ABAC engine (Phase 4.3.5). Renders only with authorization.abac.view. */}
+      {canViewAbac && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Context policies (ABAC)</CardTitle>
+            <CardDescription>
+              Context-aware authorization: attribute-based policies, simulation and evaluations.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-3">
+            <Button asChild variant="outline" size="sm">
+              <Link to={ROUTES.ABAC_POLICIES}>
+                <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+                ABAC policies
+              </Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link to={ROUTES.ABAC_SIMULATOR}>Simulator</Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link to={ROUTES.ABAC_ATTRIBUTES}>Attributes</Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link to={ROUTES.ABAC_EVALUATIONS}>Evaluations</Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link to={ROUTES.ABAC_EXCEPTIONS}>Exceptions</Link>
             </Button>
           </CardContent>
         </Card>

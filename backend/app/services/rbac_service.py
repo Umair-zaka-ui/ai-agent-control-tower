@@ -66,6 +66,18 @@ PERMISSION_CATALOG: dict[str, str] = {
     # resources without either permission; these gate the org-wide admin surface.
     "resource.view": "View the resource registry, ACLs, shares, delegations and ownership history",
     "resource.manage": "Administer any resource: ACLs, shares, delegations, ownership transfer, policy",
+    # ABAC engine (Phase 4.3.5 §37). Authoring and publishing are separable so
+    # enterprises can enforce segregation of duties.
+    "authorization.abac.view": "View ABAC policies, versions and the attribute catalog",
+    "authorization.abac.create": "Create draft ABAC policies",
+    "authorization.abac.update": "Edit draft ABAC policies (new version for published ones)",
+    "authorization.abac.publish": "Validate and publish ABAC policies (incl. rollback)",
+    "authorization.abac.disable": "Disable active ABAC policies",
+    "authorization.abac.archive": "Archive ABAC policies",
+    "authorization.abac.simulate": "Run the ABAC policy simulator",
+    "authorization.abac.audit": "View ABAC evaluations and internal explanations",
+    "authorization.attribute.manage": "Create and edit ABAC attribute definitions",
+    "authorization.exception.manage": "Create and revoke ABAC policy exceptions",
     "approval.view": "View the approval queue and review details",
     "approval.review": "Approve or reject pending actions",
     "approval.escalate": "Escalate approvals to another reviewer or team",

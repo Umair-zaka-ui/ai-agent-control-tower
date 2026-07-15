@@ -1,0 +1,10 @@
+// ABAC administration portal (Phase 4.3.5 §33).
+export { ABACPoliciesPage } from './ABACPoliciesPage'
+export { CreateABACPolicyPage } from './CreateABACPolicyPage'
+export { EditABACPolicyPage } from './EditABACPolicyPage'
+export { ABACPolicyDetailsPage } from './ABACPolicyDetailsPage'
+export { ABACPolicyVersionsPage } from './ABACPolicyVersionsPage'
+export { AttributeCatalogPage } from './AttributeCatalogPage'
+export { PolicySimulatorPage } from './PolicySimulatorPage'
+export { ABACEvaluationsPage } from './ABACEvaluationsPage'
+export { PolicyExceptionsPage } from './PolicyExceptionsPage'
