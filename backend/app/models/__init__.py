@@ -4,6 +4,13 @@ Importing this package registers every model on ``Base.metadata`` which is
 what Alembic autogenerate and ``create_all`` rely on.
 """
 
+from app.models.abac import (
+    ABACEvaluation,
+    ABACPolicy,
+    ABACPolicyException,
+    ABACPolicyVersion,
+    AttributeDefinition,
+)
 from app.models.agent import Agent
 from app.models.agent_action import AgentAction
 from app.models.api_key import AgentApiKey
@@ -69,4 +76,9 @@ __all__ = [
     "ResourceShare",
     "OwnershipHistory",
     "ResourceDelegation",
+    "ABACPolicy",
+    "ABACPolicyVersion",
+    "AttributeDefinition",
+    "ABACEvaluation",
+    "ABACPolicyException",
 ]

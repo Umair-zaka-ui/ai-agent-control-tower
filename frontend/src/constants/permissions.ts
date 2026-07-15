@@ -38,6 +38,12 @@ export const PERMISSIONS = {
   RESOURCE_VIEW: 'resource.view',
   /** Administer any resource: ACLs, shares, delegations, transfers, policy (4.3.4 §16). */
   RESOURCE_MANAGE: 'resource.manage',
+  /** View ABAC policies, versions and the attribute catalog (4.3.5 §37). */
+  ABAC_VIEW: 'authorization.abac.view',
+  /** Run the ABAC policy simulator (4.3.5 §37). */
+  ABAC_SIMULATE: 'authorization.abac.simulate',
+  /** View ABAC evaluations and internal explanations (4.3.5 §37). */
+  ABAC_AUDIT: 'authorization.abac.audit',
 } as const
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS]

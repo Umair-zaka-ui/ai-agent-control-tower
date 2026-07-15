@@ -78,6 +78,17 @@ import {
   ResourceSharingPage,
 } from '@/modules/resources'
 import {
+  ABACEvaluationsPage,
+  ABACPoliciesPage,
+  ABACPolicyDetailsPage,
+  ABACPolicyVersionsPage,
+  AttributeCatalogPage,
+  CreateABACPolicyPage,
+  EditABACPolicyPage,
+  PolicyExceptionsPage,
+  PolicySimulatorPage,
+} from '@/modules/abac'
+import {
   AcceptInvitationPage,
   ChangeEmailPage,
   ChangePasswordPage,
@@ -217,6 +228,16 @@ export function AppRoutes() {
           <Route path={ROUTES.RES_OWNERSHIP} element={<OwnershipTransferPage />} />
           <Route path={ROUTES.RES_DELEGATION} element={<DelegationManagementPage />} />
           <Route path={ROUTES.RES_INSPECTOR} element={<AuthorizationInspectorPage />} />
+          {/* ABAC administration (Phase 4.3.5 §33) */}
+          <Route path={ROUTES.ABAC_POLICIES} element={<ABACPoliciesPage />} />
+          <Route path={`${ROUTES.ABAC_POLICIES}/new`} element={<CreateABACPolicyPage />} />
+          <Route path={ROUTES.ABAC_SIMULATOR} element={<PolicySimulatorPage />} />
+          <Route path={`${ROUTES.ABAC_POLICIES}/:id`} element={<ABACPolicyDetailsPage />} />
+          <Route path={`${ROUTES.ABAC_POLICIES}/:id/edit`} element={<EditABACPolicyPage />} />
+          <Route path={`${ROUTES.ABAC_POLICIES}/:id/versions`} element={<ABACPolicyVersionsPage />} />
+          <Route path={ROUTES.ABAC_ATTRIBUTES} element={<AttributeCatalogPage />} />
+          <Route path={ROUTES.ABAC_EVALUATIONS} element={<ABACEvaluationsPage />} />
+          <Route path={ROUTES.ABAC_EXCEPTIONS} element={<PolicyExceptionsPage />} />
           <Route path={ROUTES.PROFILE} element={<ProfilePage />} />
         </Route>
         </Route>

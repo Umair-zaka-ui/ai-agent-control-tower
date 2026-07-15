@@ -313,6 +313,31 @@ Delegation, Inspector). See
 [resource sharing](docs/authorization/resource-sharing.md) and
 [delegation](docs/authorization/delegation.md).
 
+### Attribute-Based Access Control (Phase 4.3.5)
+
+The final authorization layer is **context-aware**: after RBAC, the organization
+hierarchy and the resource chain allow an action, the **ABAC engine** decides whether it
+is safe *right now* — evaluating **subject** (roles, clearance, MFA, risk score),
+**resource** (classification, PII/PHI flags, environment), **action** (destructive,
+data-export, bulk), **environment** (network zone, device trust, business hours, session
+risk) and **AI-specific** attributes (autonomy level, model, tool risk) against
+versioned, lifecycle-managed policies. A policy's effect can deny, require **human
+approval / MFA / justification**, **mask fields** or **limit the action** — and ABAC can
+never grant what the baseline denied (default deny stands). Policies use nested
+ALL/ANY/NOT conditions over **registered attributes only**, are combined with
+deny-overrides precedence, and every decision is explainable (sensitive values redacted)
+and audited. Admins get a **visual policy builder**, a read-only **Policy Simulator**,
+an attribute catalog, an evaluation viewer and time-boxed policy exceptions at
+**Settings → Security → Context policies**. See the
+[ABAC overview](docs/authorization/abac/overview.md),
+[policy language](docs/authorization/abac/policy-language.md),
+[attributes](docs/authorization/abac/attributes.md),
+[operators](docs/authorization/abac/operators.md),
+[combining algorithms](docs/authorization/abac/combining-algorithms.md),
+[lifecycle](docs/authorization/abac/policy-lifecycle.md),
+[simulation](docs/authorization/abac/policy-simulation.md) and
+[security](docs/authorization/abac/security.md).
+
 **Users** (password `DemoPass!2026`):
 
 | Email                  | Role       |

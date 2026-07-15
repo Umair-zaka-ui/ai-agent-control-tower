@@ -71,6 +71,12 @@ export const ROUTES = {
   RES_OWNERSHIP: '/settings/resources/ownership',
   RES_DELEGATION: '/settings/resources/delegation',
   RES_INSPECTOR: '/settings/resources/inspector',
+  /** ABAC administration (Phase 4.3.5 §33). */
+  ABAC_POLICIES: '/authorization/abac',
+  ABAC_SIMULATOR: '/authorization/abac/simulator',
+  ABAC_ATTRIBUTES: '/authorization/attributes',
+  ABAC_EVALUATIONS: '/authorization/evaluations',
+  ABAC_EXCEPTIONS: '/authorization/exceptions',
   /**
    * Forced password change (4.2.2.3.2 §11, §13). Outside the dashboard shell and
    * NOT behind the change guard, so it is the one place the user can go while a

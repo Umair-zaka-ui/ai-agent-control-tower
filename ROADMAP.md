@@ -467,6 +467,51 @@ decision — users with identical roles get different answers per resource.
   [resource-ownership](docs/authorization/resource-ownership.md) (updated); ERD updated.
   Backend **442** green (21 new); frontend **242** green (7 new); tsc + build clean.
 
+### Part 4.3.5 — Attribute-Based Access Control engine (ABAC) ✅
+
+Authorization is now **context-aware**: after RBAC, the org hierarchy and the resource
+chain say *allow*, the ABAC engine decides whether the action is safe **right now** —
+considering identity, resource sensitivity (PII/PHI), action, environment (network zone,
+device trust, business hours, risk score) and AI-specific attributes (autonomy level,
+model, tool risk). ABAC can never grant what the baseline denied.
+
+- **Schema** (migration `0020`): `abac_policies` (versioned + lifecycle DRAFT →
+  VALIDATED → ACTIVE → DISABLED/DEPRECATED/ARCHIVED; NULL org = platform policy),
+  `abac_policy_versions` (immutable snapshots), `attribute_definitions` (the registry —
+  only registered attributes may be used), `abac_evaluations`, `abac_policy_exceptions`
+  (time-boxed, auto-expiring).
+- **Engine** (`app/authorization/abac/`): five attribute providers
+  (subject/resource/action/environment/AI) → normalized context; 16 safe operators
+  (typed, ReDoS-guarded, no dynamic code); nested ALL/ANY/NOT condition trees with
+  per-condition traces; scope + target policy resolution (org hierarchy aware, per-org
+  cached); five combining algorithms (default `DENY_OVERRIDES`: deny → approval → MFA →
+  justification → mask/limit → allow); obligations (CREATE_APPROVAL, REQUIRE_MFA,
+  REQUIRE_JUSTIFICATION, MASK_FIELDS, LIMIT_ACTION, LOG_ONLY); explainable decisions
+  with RESTRICTED values redacted; §43 metrics.
+- **Integration (§25)**: `POST /api/v1/authorization/check` runs RBAC → org scope →
+  resource chain → ABAC and returns one normalized decision (`decision` +
+  `obligations`); baseline deny is final; no applicable policy → baseline stands;
+  callers can never spoof `identity.*` attributes.
+- 26 `/api/v1/authorization` endpoints: policy CRUD + validate/publish/disable/archive/
+  clone, versions + rollback, read-only simulation (stack-wide & single-policy),
+  evaluate, evaluation log, metrics, attribute catalog, exceptions. 10 permissions
+  (author/publisher separable), 17 audit events, 13 error codes.
+- Admin portal (Settings → Security → Context policies): policy list/details/versions,
+  **visual policy builder** (nested condition groups, typed values, human-readable
+  preview, raw JSON), **Policy Simulator** (never executes the action), attribute
+  catalog, evaluation viewer, exceptions.
+- Docs: [overview](docs/authorization/abac/overview.md),
+  [policy-language](docs/authorization/abac/policy-language.md),
+  [attributes](docs/authorization/abac/attributes.md),
+  [operators](docs/authorization/abac/operators.md),
+  [combining-algorithms](docs/authorization/abac/combining-algorithms.md),
+  [policy-lifecycle](docs/authorization/abac/policy-lifecycle.md),
+  [policy-simulation](docs/authorization/abac/policy-simulation.md),
+  [security](docs/authorization/abac/security.md); ERD updated.
+  Backend **471** green (29 new); frontend **249** green (7 new); tsc + build clean.
+
+Next: 4.3.6 authorization middleware, 4.3.7 admin portal, 4.3.8 production readiness.
+
 ## Future (Phase 4+)
 
 Retiring the legacy `/auth/login` surface (now the platform's only non-revocable
