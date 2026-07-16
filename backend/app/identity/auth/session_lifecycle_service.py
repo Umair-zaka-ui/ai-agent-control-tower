@@ -310,7 +310,18 @@ class SessionLifecycleService:
         session.revoked_at = now
         session.revoked_reason = reason.value
         self.db.flush()
+        self._invalidate_decisions(session)
         return session
+
+    @staticmethod
+    def _invalidate_decisions(session: UserSession) -> None:
+        """Phase 4.3.6 §19: a revoked session invalidates the identity's cached
+        authorization decisions immediately. Imported lazily — identity must
+        not import authorization at module scope."""
+        from app.authorization.middleware.cache import DecisionCacheService
+
+        if session.user_id is not None:
+            DecisionCacheService.invalidate_identity(session.user_id)
 
     def mark_suspicious(
         self, session: UserSession, reason: SessionRevocationReason, *, now: datetime | None = None
@@ -323,6 +334,7 @@ class SessionLifecycleService:
             session.revoked_at = now
             session.revoked_reason = reason.value
         self.db.flush()
+        self._invalidate_decisions(session)
         return session
 
     # ------------------------------------------------------------------ #

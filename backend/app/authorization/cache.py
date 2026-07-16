@@ -44,9 +44,22 @@ class PermissionCacheService:
             )
         ).scalar_one_or_none()
         if row is None:
-            row = PermissionVersion(organization_id=organization_id, version=1)
-            self.db.add(row)
+            # Concurrent first requests for one org race to create the row
+            # (Phase 4.3.6 §37 concurrency tests); ON CONFLICT makes the
+            # bootstrap idempotent instead of failing the loser.
+            self.db.execute(
+                pg_insert(PermissionVersion)
+                .values(id=uuid.uuid4(), organization_id=organization_id, version=1)
+                .on_conflict_do_nothing(constraint="uq_permission_version_org")
+            )
             self.db.flush()
+            row = self.db.execute(
+                select(PermissionVersion).where(
+                    PermissionVersion.organization_id.is_(organization_id)
+                    if organization_id is None
+                    else PermissionVersion.organization_id == organization_id
+                )
+            ).scalar_one()
         return row.version
 
     def bump_version(self, organization_id: uuid.UUID | None) -> int:

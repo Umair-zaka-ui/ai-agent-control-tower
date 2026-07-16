@@ -68,6 +68,9 @@ class PolicyCache:
     _versions: dict[str, int] = {}
     hits: int = 0
     misses: int = 0
+    # Monotonic generation across *any* policy mutation — the 4.3.6 decision
+    # cache keys on it so a policy change invalidates cached decisions too.
+    generation: int = 0
 
     @classmethod
     def _key(cls, organization_id: uuid.UUID | None) -> str:
@@ -93,6 +96,7 @@ class PolicyCache:
     def invalidate(cls, organization_id: uuid.UUID | None) -> None:
         key = cls._key(organization_id)
         cls._versions[key] = cls._versions.get(key, 0) + 1
+        cls.generation += 1
         if organization_id is not None:
             # A platform policy change affects every tenant; an org change also
             # invalidates the merged view cached under the org key.
@@ -105,6 +109,7 @@ class PolicyCache:
         cls._versions.clear()
         cls.hits = 0
         cls.misses = 0
+        cls.generation += 1
 
 
 # --------------------------------------------------------------------------- #

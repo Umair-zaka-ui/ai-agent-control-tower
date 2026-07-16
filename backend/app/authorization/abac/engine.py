@@ -305,6 +305,7 @@ class ABACEngine:
         request_id: str | None = None,
         correlation_id: str | None = None,
         record: bool = True,
+        record_applicable_only: bool = False,
         audit_event_meta: dict | None = None,
         allow_subject_overrides: bool = False,
     ) -> ABACResult:
@@ -329,15 +330,97 @@ class ABACEngine:
         ABACMetrics.observe(decision=result.decision, matched=len(result.matched_policies),
                             missing=missing, obligations=len(result.obligations),
                             latency_ms=result.evaluation_time_ms)
-        if record:
+        # 4.3.6 hot path: the per-route gate evaluates ABAC on every request —
+        # recording NOT_APPLICABLE outcomes there would flood the evaluation log.
+        if record and not (record_applicable_only and not result.applicable):
             self._record(user, action, resource, result, correlation_id, audit_event_meta)
+        return result
+
+    def evaluate_for_agent(
+        self,
+        agent,
+        action: str,
+        *,
+        ai_context: dict[str, Any] | None = None,
+        ip_address: str | None = None,
+        request_id: str | None = None,
+        correlation_id: str | None = None,
+        record: bool = True,
+    ) -> ABACResult:
+        """Phase 4.3.6 §29 — evaluate policies for an *agent* principal.
+
+        Subject attributes are built server-side from the agent row
+        (identity.type = AI_AGENT); ``ai_context`` may only contribute ``ai.*``
+        and ``environment.*`` keys, so an agent request can never spoof its own
+        identity any more than a user request can.
+        """
+        from app.authorization.abac.attributes import (
+            ActionAttributeProvider,
+            EnvironmentAttributeProvider,
+        )
+
+        started = time.perf_counter()
+        subject = {
+            "identity.id": str(agent.id),
+            "identity.type": "AI_AGENT",
+            "identity.status": getattr(agent.status, "value", agent.status),
+            "identity.organization_id": str(agent.organization_id),
+        }
+        ai_attrs = {"ai.agent_id": str(agent.id)}
+        env_extra: dict[str, Any] = {}
+        for name, value in (ai_context or {}).items():
+            if name.startswith("ai."):
+                ai_attrs[name] = value
+            elif name.startswith("environment."):
+                env_extra[name] = value
+        environment = EnvironmentAttributeProvider().collect(
+            ip_address=ip_address, request_id=request_id, correlation_id=correlation_id
+        )
+        environment.update(env_extra)
+        ctx = AuthorizationAttributeContext(
+            subject=subject,
+            action=ActionAttributeProvider().collect(action),
+            environment=environment,
+            ai=ai_attrs,
+        )
+        try:
+            result = self._evaluate_flat(
+                subject_id=agent.id, organization_id=agent.organization_id,
+                ctx=ctx, request_id=request_id,
+            )
+        except Exception:
+            ABACMetrics.counters["abac_policy_errors_total"] += 1
+            raise
+        result.evaluation_time_ms = round((time.perf_counter() - started) * 1000, 3)
+        missing = len(result.explanation.get("missing_attributes", []))
+        ABACMetrics.observe(decision=result.decision, matched=len(result.matched_policies),
+                            missing=missing, obligations=len(result.obligations),
+                            latency_ms=result.evaluation_time_ms)
+        if record and result.applicable:
+            self.db.add(ABACEvaluation(
+                organization_id=agent.organization_id, identity_id=agent.id,
+                resource_type="AI_AGENT", resource_id=agent.id, action=action,
+                decision=result.decision,
+                matched_policy_ids=[m["policy_id"] for m in result.matched_policies],
+                obligations=result.obligations, explanation=result.explanation,
+                evaluation_time_ms=result.evaluation_time_ms,
+                request_id=request_id, correlation_id=correlation_id,
+            ))
+            self.db.flush()
         return result
 
     def _evaluate_context(self, user: User, action: str,
                           ctx: AuthorizationAttributeContext, *,
                           request_id: str | None) -> ABACResult:
+        return self._evaluate_flat(subject_id=user.id,
+                                   organization_id=user.organization_id,
+                                   ctx=ctx, request_id=request_id)
+
+    def _evaluate_flat(self, *, subject_id, organization_id,
+                       ctx: AuthorizationAttributeContext,
+                       request_id: str | None) -> ABACResult:
         flat = ctx.flat()
-        considered = self.resolver.resolve(user.organization_id, flat, subject_id=user.id)
+        considered = self.resolver.resolve(organization_id, flat, subject_id=subject_id)
 
         matched: list[MatchedPolicy] = []
         missing: list[str] = []

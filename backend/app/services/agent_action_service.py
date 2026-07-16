@@ -1,9 +1,16 @@
 """Agent action orchestration.
 
-The end-to-end Phase 2 pipeline:
+The end-to-end pipeline (Phase 2 governance + Phase 4.3.6 middleware):
 
     permission check -> risk score (v2) -> policy evaluation -> decision
+                     -> ABAC layer (AuthorizationGateway, §29)
                      -> persist action -> approval queue (if needed) -> audit log
+
+The AI runtime is an enforcement point (§7): the agent baseline (permission,
+risk, database policy) is computed first, then the ``AuthorizationGateway``
+applies context-aware ABAC policies for the agent principal — a gateway deny
+blocks an otherwise-allowed action, a REQUIRE_APPROVAL routes it into the
+human-review queue. The gateway never *grants* what the baseline blocked.
 
 It composes the engines/services so the HTTP route stays thin. The caller owns
 the transaction (commit/rollback) and handles notifications.
@@ -81,6 +88,34 @@ def process_agent_action(
         agent, permission_result, risk.score, policy_result
     )
 
+    # 4b. ABAC layer (Phase 4.3.6 §29): context-aware policies for the agent
+    # principal run through the gateway. Deny wins over the baseline; a
+    # REQUIRE_APPROVAL challenge downgrades an ALLOW to PENDING_APPROVAL.
+    gateway_decision = None
+    if decision.decision != ActionDecision.BLOCK:
+        from app.authorization.middleware.gateway import AuthorizationGateway
+
+        gateway_decision = AuthorizationGateway(db).authorize_agent(
+            agent, f"{resource.lower()}.{action.lower()}",
+            ai_context={"ai.agent_type": agent.agent_type,
+                        "ai.execution_cost": float(risk.score)},
+            ip_address=context.ip_address,
+            request_id=context.request_id, correlation_id=context.trace_id,
+        )
+        if not gateway_decision.allowed:
+            downgraded = (
+                ActionDecision.PENDING_APPROVAL
+                if gateway_decision.decision == "REQUIRE_APPROVAL"
+                else ActionDecision.BLOCK
+            )
+            decision = decision_engine.DecisionResult(
+                decision=downgraded,
+                decision_reason=gateway_decision.reason,
+                risk_score=decision.risk_score,
+                matched_policy_id=decision.matched_policy_id,
+                matched_policy_name=decision.matched_policy_name,
+            )
+
     # 5. Persist the action with the derived initial status.
     agent_action = AgentAction(
         organization_id=agent.organization_id,
@@ -130,5 +165,15 @@ def process_agent_action(
     approval: Approval | None = None
     if decision.decision == ActionDecision.PENDING_APPROVAL:
         approval = approval_service.create_pending_approval(db, agent_action)
+
+    # 8. Close the middleware loop (§24): the enforcement point reports what
+    # actually happened after the authorization decision.
+    if gateway_decision is not None:
+        from app.authorization.middleware.gateway import AuthorizationGateway
+
+        AuthorizationGateway(db).execution_completed(
+            gateway_decision, outcome=agent_action.status.value,
+            detail={"agent_action_id": str(agent_action.id)},
+        )
 
     return ProcessResult(action=agent_action, approval=approval, decision=decision)

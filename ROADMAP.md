@@ -512,6 +512,54 @@ model, tool risk). ABAC can never grant what the baseline denied.
 
 Next: 4.3.6 authorization middleware, 4.3.7 admin portal, 4.3.8 production readiness.
 
+### Part 4.3.6 — Enterprise authorization middleware & enforcement architecture ✅
+
+Every protected operation now flows through **one enforcement pipeline** — REST
+routes, the explicit check endpoint, background workers, scheduled jobs, workflow
+nodes, the AI agent runtime and API-key integrations. No controller, service, agent
+or job performs independent authorization checks.
+
+- **Gateway** (`app/authorization/middleware/`): `AuthorizationGateway.authorize /
+  authorize_background / authorize_agent` coordinates RBAC, org hierarchy, resource
+  authorization, ABAC, obligations, audit, caching and metrics behind one call and
+  returns one normalized decision (§17) with a stage-by-stage pipeline trace (§18).
+  The ten-stage order (§9) is pinned and order-enforced. Baseline deny is final;
+  ABAC errors fail closed.
+- **Context** (§5): immutable `AuthorizationContext` (frozen dataclass, read-only
+  mappings, append-only trace) built only by the `AuthorizationContextBuilder`;
+  caller attributes can never spoof `identity.*`.
+- **Decision cache** (§19, §23): identity × permission × resource × org ×
+  RBAC-version × ABAC-generation keys + TTL + per-identity epoch — role changes,
+  policy changes, org changes and session revocation invalidate instantly;
+  challenges and dynamic contexts are never cached. Warm path <5ms.
+- **Enforcement** (§27–§31): `require_permission` runs the pipeline on every route
+  (challenges → typed errors `APPROVAL_REQUIRED` / `MFA_REQUIRED` /
+  `JUSTIFICATION_REQUIRED`, the latter satisfiable in-band via `X-Justification`;
+  constraints ride on `request.state.authorization`); the agent runtime layers ABAC
+  over the Phase-2 governance baseline (deny → BLOCK, approval → the human-review
+  queue); workers/schedulers/workflow nodes use `authorize_background`.
+- **Obligations** (§16): approval routing, MFA, justification, recursive field
+  masking, parameter clamping (rows/tokens/cost/export), security notification,
+  LOG_ONLY — obligations modify execution, never replace authorization.
+- **Audit & observability** (§24, §34, §35): six pipeline events incl.
+  `DECISION_GENERATED` (with the full trace) and `EXECUTION_COMPLETED`;
+  `GET /api/v1/authorization/middleware/metrics` (requests, denies, challenges,
+  latency avg/p95, cache hit ratio, pipeline errors).
+- **Frontend** (§32, §33): `AuthorizationProvider` (decision/error → dialog
+  routing), `ApprovalRequiredDialog`, `MFAChallenge`, `ObligationDialog`,
+  `AuthorizationErrorBoundary`, `PermissionGuard`, `useAuthorize`,
+  `decisionToUi` / `maskFields` / `actionLimits`.
+- Also fixed a concurrent get-or-create race in the permission-version bootstrap.
+- Docs: [middleware](docs/authorization/middleware.md),
+  [pipeline](docs/authorization/pipeline.md),
+  [obligations](docs/authorization/obligations.md),
+  [context](docs/authorization/context.md),
+  [gateway](docs/authorization/gateway.md).
+  Backend **518** green (47 new: 21 unit, 22 integration/security, 4 perf);
+  frontend **259** green (10 new); tsc + build clean.
+
+Next: 4.3.7 authorization admin portal, 4.3.8 production readiness.
+
 ## Future (Phase 4+)
 
 Retiring the legacy `/auth/login` surface (now the platform's only non-revocable

@@ -129,10 +129,14 @@ def require_roles(*roles: UserRole) -> Callable[[User], User]:
 def require_permission(code: str) -> Callable[..., User]:
     """Restrict a route to users holding the given RBAC permission code.
 
-    Phase 4.3.2: every gate flows through the centralized ``PermissionEngine`` (via
-    the versioned permission cache) rather than an ad-hoc query — so role inheritance,
-    wildcards, scope and explicit-deny are honoured identically everywhere, and denials
-    are audited. Imports are lazy to keep this module import-cycle free.
+    Phase 4.3.6 (§22, §27): every gate flows through the centralized
+    ``AuthorizationGateway`` — one pipeline for RBAC (inheritance, wildcards,
+    scope, explicit-deny), ABAC context policies, obligations, auditing and
+    decision caching. A deny keeps the legacy 403 shape; ABAC challenge
+    decisions surface as typed §25 errors so the SPA can launch the matching
+    flow. Constraint decisions (mask/limit) allow the request and attach the
+    decision to ``request.state.authorization`` for the handler to honour.
+    Imports are lazy to keep this module import-cycle free.
     """
 
     def _checker(
@@ -140,19 +144,35 @@ def require_permission(code: str) -> Callable[..., User]:
         current_user: User = Depends(get_current_user),
         db: Session = Depends(get_db),
     ) -> User:
-        from app.authorization.cache import PermissionCacheService
-        from app.authorization.decisions import AuthorizationDecisionService
+        from app.authorization.middleware.errors import (
+            ApprovalRequired,
+            JustificationRequired,
+            MFARequired,
+        )
+        from app.authorization.middleware.gateway import AuthorizationGateway
 
-        result, _ = PermissionCacheService(db).authorize(current_user, code)
-        if not result.allowed:
-            AuthorizationDecisionService(db).record(
-                current_user, result, request_id=request.headers.get("x-request-id")
-            )
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Missing required permission: {code}",
-            )
-        return current_user
+        decision = AuthorizationGateway(db).authorize(
+            current_user, code,
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            request_id=request.headers.get("x-request-id"),
+            correlation_id=request.headers.get("x-correlation-id"),
+            justification=request.headers.get("x-justification"),
+        )
+        request.state.authorization = decision
+        if decision.allowed:
+            return current_user
+        if decision.decision == "REQUIRE_APPROVAL":
+            raise ApprovalRequired(decision.reason)
+        if decision.decision == "REQUIRE_MFA":
+            raise MFARequired(decision.reason)
+        if decision.decision == "REQUIRE_JUSTIFICATION":
+            raise JustificationRequired(decision.reason)
+        # RBAC/resource/ABAC deny — keep the legacy 403 contract.
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Missing required permission: {code}",
+        )
 
     return _checker
 
