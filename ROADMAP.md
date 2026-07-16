@@ -560,6 +560,49 @@ or job performs independent authorization checks.
 
 Next: 4.3.7 authorization admin portal, 4.3.8 production readiness.
 
+### Part 4.3.7 — Enterprise authorization administration portal ✅
+
+One web control plane for the whole authorization platform. The portal unifies
+the 4.3.1–4.3.6 surfaces (roles, hierarchy, resources, ABAC builder/simulator,
+audit) behind a permission-aware navigation and adds the operational pages that
+were missing: dashboard, decision explorer, access reviews and analytics.
+
+- **Admin API** (`app/authorization/admin/`, §18): 20 `/api/v1/admin` endpoints
+  delegating to the existing phase services — dashboard, roles CRUD, permission
+  catalog, organization tree, resource registry, ABAC policy CRUD, policy
+  simulator (audited `SIMULATION_EXECUTED`, read-only), decision explorer,
+  access reviews, analytics. Gated by 10 new separable `admin.*` permissions
+  (§21); enforced through the 4.3.6 gateway like every route.
+- **Dashboard** (§6): 12 widgets + 5 charts, tenant-scoped, <2 s (§24, tested).
+- **Access reviews** (§14; migration `0021`): DRAFT → SCHEDULED → ACTIVE →
+  COMPLETED → ARCHIVED; activation snapshots in-scope role assignments;
+  certify/revoke per item with comments — **revoke removes the live assignment**
+  via the RBAC service; completion blocked while items are pending; JSON report
+  export; 6 audit events; lifecycle guards return 409.
+- **Decision explorer** (§13): filterable tenant-isolated decision history with
+  reasons/scope/latency/request-id detail; every view audited
+  (`DECISION_VIEWED`).
+- **Security analytics** (§17): denied trends, high-risk decisions, MFA and
+  approval rates, latency avg/p95, cache performance, ABAC deny/challenge
+  counters, top denied permissions, sharing trends.
+- **Frontend** (`modules/admin`): AdminDashboardPage, DecisionExplorerPage,
+  AccessReviewsPage, SecurityAnalyticsPage + `AdminNav` (§5 navigation across
+  every authorization surface, permission-filtered); `/admin/*` routes; portal
+  card in Settings → Security.
+- Docs: [dashboard](docs/admin/dashboard.md), [roles](docs/admin/roles.md),
+  [organization-explorer](docs/admin/organization-explorer.md),
+  [resource-management](docs/admin/resource-management.md),
+  [abac-builder](docs/admin/abac-builder.md),
+  [policy-simulator](docs/admin/policy-simulator.md),
+  [decision-explorer](docs/admin/decision-explorer.md),
+  [access-reviews](docs/admin/access-reviews.md),
+  [audit-center](docs/admin/audit-center.md),
+  [security-analytics](docs/admin/security-analytics.md); ERD updated.
+  Backend **530** green (12 new); frontend **267** green (8 new); tsc + build
+  clean.
+
+Next: 4.3.8 production readiness.
+
 ## Future (Phase 4+)
 
 Retiring the legacy `/auth/login` surface (now the platform's only non-revocable

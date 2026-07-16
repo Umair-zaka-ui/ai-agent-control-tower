@@ -78,6 +78,18 @@ PERMISSION_CATALOG: dict[str, str] = {
     "authorization.abac.audit": "View ABAC evaluations and internal explanations",
     "authorization.attribute.manage": "Create and edit ABAC attribute definitions",
     "authorization.exception.manage": "Create and revoke ABAC policy exceptions",
+    # Administration portal (Phase 4.3.7 §21). The portal surfaces existing
+    # capabilities behind one control plane; these gate the /api/v1/admin API.
+    "admin.dashboard.view": "View the authorization administration dashboard",
+    "admin.roles.manage": "Manage roles and permission assignments from the admin portal",
+    "admin.permissions.manage": "Manage the permission catalog from the admin portal",
+    "admin.organizations.manage": "Manage the organization hierarchy from the admin portal",
+    "admin.resources.manage": "Manage resource authorization from the admin portal",
+    "admin.policies.manage": "Manage ABAC policies from the admin portal",
+    "admin.simulator.use": "Run the admin policy simulator",
+    "admin.audit.view": "View the authorization audit center",
+    "admin.analytics.view": "View the security analytics dashboard",
+    "admin.reviews.manage": "Create and run access review campaigns",
     "approval.view": "View the approval queue and review details",
     "approval.review": "Approve or reject pending actions",
     "approval.escalate": "Escalate approvals to another reviewer or team",

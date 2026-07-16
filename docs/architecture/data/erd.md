@@ -345,6 +345,47 @@ Only names registered in `attribute_definitions` may appear in `conditions`;
 `RESTRICTED` attributes are redacted from user-facing explanations and logs —
 see [ABAC overview](../../authorization/abac/overview.md).
 
+### Access reviews (Phase 4.3.7)
+
+Periodic access certification. Activating a campaign snapshots every in-scope
+role assignment as an item; a REVOKED decision removes the underlying
+`user_roles` row through the RBAC service.
+
+```mermaid
+erDiagram
+    organizations ||--o{ access_review_campaigns : "runs"
+    access_review_campaigns ||--o{ access_review_items : "reviews"
+
+    access_review_campaigns {
+        uuid id PK
+        uuid organization_id FK
+        varchar name
+        varchar status "DRAFT..ARCHIVED"
+        jsonb scope "role_ids / include_system_roles"
+        uuid reviewer_id
+        datetime due_at
+        datetime activated_at
+        datetime completed_at
+    }
+    access_review_items {
+        uuid id PK
+        uuid campaign_id FK
+        uuid subject_id "no FK: survives user deletion"
+        varchar subject_label
+        uuid assignment_id "the user_roles row under review"
+        varchar role_name "kept legible after revoke"
+        varchar decision "PENDING / CERTIFIED / REVOKED"
+        uuid decided_by
+        datetime decided_at
+        varchar comment
+    }
+```
+
+`subject_id`, `assignment_id` and the label columns are deliberately
+denormalized: a completed campaign is a compliance record and must stay
+readable after the user, role or assignment it certified is gone — see
+[access reviews](../../admin/access-reviews.md).
+
 ---
 
 ## 2. Agent Governance

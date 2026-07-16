@@ -78,6 +78,12 @@ import {
   ResourceSharingPage,
 } from '@/modules/resources'
 import {
+  AccessReviewsPage,
+  AdminDashboardPage,
+  DecisionExplorerPage,
+  SecurityAnalyticsPage,
+} from '@/modules/admin'
+import {
   ABACEvaluationsPage,
   ABACPoliciesPage,
   ABACPolicyDetailsPage,
@@ -228,6 +234,11 @@ export function AppRoutes() {
           <Route path={ROUTES.RES_OWNERSHIP} element={<OwnershipTransferPage />} />
           <Route path={ROUTES.RES_DELEGATION} element={<DelegationManagementPage />} />
           <Route path={ROUTES.RES_INSPECTOR} element={<AuthorizationInspectorPage />} />
+          {/* Authorization administration portal (Phase 4.3.7 §5) */}
+          <Route path={ROUTES.ADMIN_DASHBOARD} element={<AdminDashboardPage />} />
+          <Route path={ROUTES.ADMIN_DECISIONS} element={<DecisionExplorerPage />} />
+          <Route path={ROUTES.ADMIN_REVIEWS} element={<AccessReviewsPage />} />
+          <Route path={ROUTES.ADMIN_ANALYTICS} element={<SecurityAnalyticsPage />} />
           {/* ABAC administration (Phase 4.3.5 §33) */}
           <Route path={ROUTES.ABAC_POLICIES} element={<ABACPoliciesPage />} />
           <Route path={`${ROUTES.ABAC_POLICIES}/new`} element={<CreateABACPolicyPage />} />

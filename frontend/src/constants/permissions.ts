@@ -44,6 +44,11 @@ export const PERMISSIONS = {
   ABAC_SIMULATE: 'authorization.abac.simulate',
   /** View ABAC evaluations and internal explanations (4.3.5 §37). */
   ABAC_AUDIT: 'authorization.abac.audit',
+  /** Administration portal (4.3.7 §21). */
+  ADMIN_DASHBOARD_VIEW: 'admin.dashboard.view',
+  ADMIN_AUDIT_VIEW: 'admin.audit.view',
+  ADMIN_ANALYTICS_VIEW: 'admin.analytics.view',
+  ADMIN_REVIEWS_MANAGE: 'admin.reviews.manage',
 } as const
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS]

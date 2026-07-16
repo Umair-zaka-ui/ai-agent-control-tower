@@ -6,6 +6,49 @@ versions track the roadmap phases rather than semver guarantees.
 
 ## [Unreleased] — Phase 4.3 · Enterprise Authorization Platform
 
+### Part 4.3.7 — Enterprise authorization administration portal
+
+- **Added** the `/api/v1/admin` control plane (§18) — 20 endpoints in
+  `app/authorization/admin/`, each a thin, permission-gated delegation to the
+  existing phase services (no duplicated authorization logic, all enforcement
+  through the 4.3.6 gateway): dashboard, roles CRUD, the permission catalog,
+  the organization tree, the resource registry, ABAC policy CRUD, the policy
+  simulator, the authorization decision explorer, access reviews and security
+  analytics.
+- **Added** the administration dashboard (§6): twelve tenant-scoped widgets
+  (users, roles, permissions, policies, sessions, requests/denied 24h, pending
+  approvals, MFA challenges, high-risk decisions, cache hit ratio, evaluation
+  latency) and five charts (authorization trend, top permissions, policy
+  matches, decision breakdown, approval queue).
+- **Added** **access review campaigns** (§14; migration `0021`):
+  `access_review_campaigns` + `access_review_items` with the DRAFT → SCHEDULED
+  → ACTIVE → COMPLETED → ARCHIVED lifecycle. Activation snapshots every
+  in-scope role assignment; reviewers certify or revoke each item — a revoke
+  removes the underlying assignment through the RBAC service (caches
+  invalidate, `ROLE_REMOVED` fires); completion requires every item decided;
+  reports export as JSON with an `AUDIT_EXPORTED` event.
+- **Added** the **authorization decision explorer** (§13): filterable,
+  tenant-isolated decision history (identity, permission, resource, outcome,
+  time range) with per-row detail; every query emits `DECISION_VIEWED`.
+- **Added** the **security analytics dashboard** (§17): denied trends,
+  high-risk decisions, MFA/approval rates, latency (avg/p95), cache
+  performance, ABAC denies/challenges, top denied permissions and resource
+  sharing trends.
+- **Added** 10 portal permissions (`admin.*`, §21 — separable from the raw
+  `role.manage`/`authorization.abac.*` sets) and 8 audit events (§22:
+  `ACCESS_REVIEW_*`, `SIMULATION_EXECUTED`, `DECISION_VIEWED`,
+  `AUDIT_EXPORTED`).
+- **Frontend**: `modules/admin` — AdminDashboardPage, DecisionExplorerPage,
+  AccessReviewsPage (create/activate/decide/complete/export), 
+  SecurityAnalyticsPage and the permission-aware `AdminNav` unifying the
+  4.3.1–4.3.5 pages (roles, organization explorer, resources, ABAC builder,
+  simulator, audit) into one §5 navigation; routes under `/admin`; portal
+  entry card in Settings → Security.
+- **Docs**: `docs/admin/{dashboard,roles,organization-explorer,
+  resource-management,abac-builder,policy-simulator,decision-explorer,
+  access-reviews,audit-center,security-analytics}.md`; ERD + README + ROADMAP
+  updated.
+
 ### Part 4.3.6 — Enterprise authorization middleware & enforcement architecture
 
 - **Added** `app/authorization/middleware/`: the **AuthorizationGateway** (§22) —
