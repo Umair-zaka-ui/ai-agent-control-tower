@@ -360,6 +360,28 @@ errors fail closed. See [middleware](docs/authorization/middleware.md),
 [obligations](docs/authorization/obligations.md) and
 [context](docs/authorization/context.md).
 
+### Authorization administration portal (Phase 4.3.7)
+
+A unified **IAM control plane** at `/admin`: an operational **dashboard**
+(users, roles, policies, sessions, request/deny volumes, approval queue, MFA
+challenges, cache and latency health, trend charts), the **decision explorer**
+(searchable, tenant-isolated history of every authorization decision — viewing
+is itself audited), **access review campaigns** (periodic certification with a
+DRAFT → ACTIVE → COMPLETED → ARCHIVED lifecycle; activation snapshots every
+in-scope role assignment, and a reviewer's *revoke* removes the live grant
+immediately through the RBAC service), and **security analytics** (denied
+trends, high-risk decisions, approval rates, latency percentiles, top denied
+permissions). A permission-aware portal navigation unifies the existing roles,
+organization, resources, ABAC builder/simulator and audit pages, and a
+dedicated `/api/v1/admin` API (10 separable `admin.*` permissions) delegates
+every operation to the underlying phase services — one implementation, fully
+audited, enforced through the authorization gateway. See
+[dashboard](docs/admin/dashboard.md),
+[access reviews](docs/admin/access-reviews.md),
+[decision explorer](docs/admin/decision-explorer.md),
+[audit center](docs/admin/audit-center.md) and
+[security analytics](docs/admin/security-analytics.md).
+
 **Users** (password `DemoPass!2026`):
 
 | Email                  | Role       |

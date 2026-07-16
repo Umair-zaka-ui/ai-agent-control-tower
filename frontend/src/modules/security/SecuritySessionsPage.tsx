@@ -58,6 +58,7 @@ export function SecuritySessionsPage() {
   const canViewOrg = permissions.includes(PERMISSIONS.ORGANIZATION_VIEW)
   const canViewResources = permissions.includes(PERMISSIONS.RESOURCE_VIEW)
   const canViewAbac = permissions.includes(PERMISSIONS.ABAC_VIEW)
+  const canViewAdmin = permissions.includes(PERMISSIONS.ADMIN_DASHBOARD_VIEW)
   const sessions = useSessions()
   const devices = useDevices()
   const revokeSession = useRevokeSession()
@@ -257,6 +258,27 @@ export function SecuritySessionsPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Administration portal (Phase 4.3.7). Renders only with admin.dashboard.view. */}
+      {canViewAdmin ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Administration portal</CardTitle>
+            <CardDescription>
+              The unified control plane: dashboard, decision explorer, access reviews and
+              security analytics.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-3">
+            <Button asChild variant="outline" size="sm">
+              <Link to={ROUTES.ADMIN_DASHBOARD}>
+                <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+                Open administration portal
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {/* ABAC engine (Phase 4.3.5). Renders only with authorization.abac.view. */}
       {canViewAbac && (

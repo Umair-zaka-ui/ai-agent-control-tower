@@ -71,6 +71,11 @@ export const ROUTES = {
   RES_OWNERSHIP: '/settings/resources/ownership',
   RES_DELEGATION: '/settings/resources/delegation',
   RES_INSPECTOR: '/settings/resources/inspector',
+  /** Authorization administration portal (Phase 4.3.7 §5). */
+  ADMIN_DASHBOARD: '/admin',
+  ADMIN_DECISIONS: '/admin/decisions',
+  ADMIN_REVIEWS: '/admin/reviews',
+  ADMIN_ANALYTICS: '/admin/analytics',
   /** ABAC administration (Phase 4.3.5 §33). */
   ABAC_POLICIES: '/authorization/abac',
   ABAC_SIMULATOR: '/authorization/abac/simulator',

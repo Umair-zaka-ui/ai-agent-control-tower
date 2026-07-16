@@ -11,6 +11,7 @@ from app.models.abac import (
     ABACPolicyVersion,
     AttributeDefinition,
 )
+from app.models.access_review import AccessReviewCampaign, AccessReviewItem
 from app.models.agent import Agent
 from app.models.agent_action import AgentAction
 from app.models.api_key import AgentApiKey
@@ -47,6 +48,8 @@ from app.models.rbac import (
 from app.models.user import User
 
 __all__ = [
+    "AccessReviewCampaign",
+    "AccessReviewItem",
     "Organization",
     "User",
     "Agent",
