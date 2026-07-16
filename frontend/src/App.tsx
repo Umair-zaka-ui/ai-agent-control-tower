@@ -5,7 +5,7 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { Toaster } from '@/components/ui/sonner'
 import { queryClient } from '@/config/queryClient'
 import { AuthProvider } from '@/contexts/AuthContext'
-import { PermissionProvider } from '@/authorization'
+import { AuthorizationProvider } from '@/authorization'
 import { NotificationsProvider } from '@/contexts/NotificationsContext'
 import { ThemeProvider } from '@/contexts/ThemeContext'
 import { AppRoutes } from '@/routes/AppRoutes'
@@ -21,12 +21,14 @@ export default function App() {
         <NotificationsProvider>
           <BrowserRouter>
             <AuthProvider>
-              <PermissionProvider>
+              {/* Phase 4.3.6 §32: wraps PermissionProvider and adds the
+                  middleware layer — challenge/obligation dialogs. */}
+              <AuthorizationProvider>
                 <TooltipProvider delayDuration={200}>
                   <AppRoutes />
                   <Toaster />
                 </TooltipProvider>
-              </PermissionProvider>
+              </AuthorizationProvider>
             </AuthProvider>
           </BrowserRouter>
         </NotificationsProvider>

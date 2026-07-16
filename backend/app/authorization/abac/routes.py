@@ -309,6 +309,15 @@ def abac_metrics(actor: User = Depends(require_permission(_VIEW))) -> dict:
     return ABACMetrics.snapshot()
 
 
+@router.get("/middleware/metrics")
+def middleware_metrics(actor: User = Depends(require_permission(_VIEW))) -> dict:
+    """Phase 4.3.6 §34 — pipeline counters, latency percentiles and the
+    decision-cache hit ratio."""
+    from app.authorization.middleware.metrics import PipelineMetricsService
+
+    return PipelineMetricsService.snapshot()
+
+
 # --------------------------------------------------------------------------- #
 # Attribute catalog (§20, §30)
 # --------------------------------------------------------------------------- #

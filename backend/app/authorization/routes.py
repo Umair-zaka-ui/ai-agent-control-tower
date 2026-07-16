@@ -343,134 +343,32 @@ def authorization_check(
     actor: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> AuthorizationCheckResponse:
-    """Evaluate whether the caller holds a permission (optionally on a resource),
-    through the centralized engine. Any authenticated identity may ask about its own
-    access; the decision is recorded."""
-    import time
+    """Evaluate whether the caller holds a permission (optionally on a resource).
+    Phase 4.3.6 (§22): the route is a thin enforcement point — the
+    ``AuthorizationGateway`` runs the full deterministic pipeline (organization
+    context, RBAC/resource baseline, ABAC, obligations, audit, cache) and this
+    endpoint just maps the normalized decision onto the response schema."""
+    from app.authorization.middleware.gateway import AuthorizationGateway
 
-    from app.authorization.cache import PermissionCacheService
-    from app.authorization.decisions import AuthorizationDecisionService
-    from app.authorization.engine import (
-        GLOBAL_WILDCARD,
-        AuthorizationResult,
-        PermissionEngine,
-        ResourceContext,
+    decision = AuthorizationGateway(db).authorize(
+        actor, payload.permission,
+        resource_type=payload.resource_type, resource_id=payload.resource_id,
+        context=payload.context,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+        request_id=request.headers.get("x-request-id"),
+        correlation_id=request.headers.get("x-correlation-id"),
+        justification=request.headers.get("x-justification"),
+        force_record=True,  # the explicit check endpoint always records (4.3.2 §20)
     )
-    from app.authorization.enums import AuthorizationEngineEvent
-    from app.authorization.hierarchy.services import DelegationService, ResourceOwnershipService
-    from app.authorization.resources.services import (
-        ResourceAuthorizationService,
-        ResourceRegistryService,
+    return AuthorizationCheckResponse(
+        allowed=decision.allowed, permission=decision.permission,
+        reason=decision.reason, scope=decision.scope,
+        source_role=decision.source_role,
+        evaluation_time_ms=decision.evaluation_time_ms,
+        cache_hit=decision.cache_hit, events=decision.events,
+        decision=decision.decision, obligations=decision.obligations,
     )
-
-    started = time.perf_counter()
-
-    def _finish(result: "AuthorizationResult", *, cache_hit: bool,
-                events: list[str], registered=None) -> AuthorizationCheckResponse:
-        """Phase 4.3.5 §4, §25 — the ABAC layer runs after the baseline:
-        baseline deny → final deny (ABAC never grants); baseline allow → ABAC
-        may deny, challenge or constrain; no applicable policy → baseline."""
-        from app.authorization.abac.engine import ABACEngine
-
-        decision = "ALLOW" if result.allowed else "DENY"
-        obligations: list[dict] = []
-        if result.allowed:
-            abac = ABACEngine(db).evaluate(
-                actor, payload.permission, registered,
-                overrides=payload.context,
-                ip_address=request.client.host if request.client else None,
-                request_id=request.headers.get("x-request-id"),
-                correlation_id=request.headers.get("x-correlation-id"),
-            )
-            if abac.applicable:
-                decision = abac.decision
-                obligations = abac.obligations
-                if not abac.allowed:
-                    result.allowed = False
-                    result.reason = abac.reason
-                events = events + [f"ABAC_{abac.decision}"]
-
-        elapsed_ms = (time.perf_counter() - started) * 1000
-        result.evaluation_time_ms = elapsed_ms
-        AuthorizationDecisionService(db).record(
-            actor, result, request_id=request.headers.get("x-request-id"),
-            evaluation_time_ms=elapsed_ms, force=True,
-        )
-        return AuthorizationCheckResponse(
-            allowed=result.allowed, permission=result.permission, reason=result.reason,
-            scope=result.scope, source_role=result.source_role,
-            evaluation_time_ms=round(elapsed_ms, 3), cache_hit=cache_hit, events=events,
-            decision=decision, obligations=obligations,
-        )
-
-    # Phase 4.3.4 §18: when the named resource is *registered* in the resource
-    # authorization registry, the full resource-level chain decides — ownership,
-    # ACL, delegation, sharing, policy and visibility layered over the role
-    # decision. Unregistered resources keep the pure role/scope path below.
-    if payload.resource_type and payload.resource_id:
-        registered = ResourceRegistryService(db).by_external(
-            payload.resource_type, payload.resource_id
-        )
-        if registered is not None:
-            rd = ResourceAuthorizationService(db).authorize(
-                actor, payload.permission, registered, record=False
-            )
-            result = AuthorizationResult(
-                allowed=rd.allowed, permission=payload.permission, reason=rd.reason,
-                scope=rd.scope, source_role=rd.source_role,
-                resource_type=payload.resource_type, resource_id=payload.resource_id,
-                trace=list(rd.steps),
-            )
-            return _finish(result, cache_hit=False, events=list(rd.steps),
-                           registered=registered)
-
-    # Resolve the resource's full organizational path so a scoped grant at any level
-    # applies via downward inheritance (Phase 4.3.3 §7, §14).
-    ctx = None
-    if payload.resource_type and payload.resource_id:
-        path = ResourceOwnershipService(db).resolve_path(payload.resource_type, payload.resource_id)
-        ctx = ResourceContext(
-            organization_id=(path or {}).get("organization_id") or actor.organization_id,
-            business_unit_id=(path or {}).get("business_unit_id"),
-            department_id=(path or {}).get("department_id"),
-            team_id=(path or {}).get("team_id"),
-            project_id=(path or {}).get("project_id"),
-            resource_type=payload.resource_type, resource_id=payload.resource_id,
-        )
-    elif payload.resource_type or payload.resource_id:
-        ctx = ResourceContext(
-            organization_id=actor.organization_id,
-            resource_type=payload.resource_type, resource_id=payload.resource_id,
-        )
-
-    grants, cache_hit = PermissionCacheService(db).get_grants(actor)
-
-    # Cross-organization isolation (§9): a resource in another org is denied unless
-    # the caller holds the global wildcard or an active delegation into that org.
-    isolation_denied = False
-    if ctx is not None and ctx.organization_id and ctx.organization_id != actor.organization_id:
-        has_star = any(g.pattern == GLOBAL_WILDCARD for g in grants)
-        delegated = any(
-            d.organization_id == ctx.organization_id
-            for d in DelegationService(db).active_for_user(actor.id)
-        )
-        isolation_denied = not (has_star or delegated)
-
-    if isolation_denied:
-        from app.authorization.engine import AuthorizationResult
-
-        result = AuthorizationResult(
-            allowed=False, permission=payload.permission,
-            reason="Cross-organization access denied", trace=["CROSS_ORG_DENIED"],
-            resource_type=payload.resource_type, resource_id=payload.resource_id,
-        )
-    else:
-        result = PermissionEngine(db).evaluate(actor, payload.permission, grants, ctx)
-
-    events = list(result.trace)
-    if not cache_hit:
-        events.insert(0, AuthorizationEngineEvent.PERMISSION_CACHE_REFRESHED.value)
-    return _finish(result, cache_hit=cache_hit, events=events)
 
 
 # --------------------------------------------------------------------------- #

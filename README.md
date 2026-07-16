@@ -338,6 +338,28 @@ an attribute catalog, an evaluation viewer and time-boxed policy exceptions at
 [simulation](docs/authorization/abac/policy-simulation.md) and
 [security](docs/authorization/abac/security.md).
 
+### Authorization middleware & enforcement (Phase 4.3.6)
+
+The whole authorization stack now runs behind **one enforcement pipeline**. The
+**Authorization Gateway** coordinates authentication context, session state,
+organization hierarchy, RBAC, resource authorization, ABAC, obligations, audit,
+caching and metrics in a fixed ten-stage order, and every enforcement surface —
+REST routes (`require_permission`), the explicit check endpoint, background
+workers, scheduled jobs, workflow nodes, the **AI agent runtime** and API-key
+integrations — calls the gateway; nothing calls RBAC or ABAC directly. Every
+decision carries a stage-by-stage **pipeline trace** stored in the audit trail
+(six events, from `AUTHORIZATION_STARTED` to `EXECUTION_COMPLETED`), challenges
+surface as typed errors the SPA turns into approval / MFA / justification
+flows, constraint decisions (mask fields, limit action) ride with the request,
+and final decisions are **cached** with keys that rotate on any role, policy,
+organization or session change (warm path <5ms, never caching challenges or
+dynamic context). The context object is immutable and spoof-proof; evaluation
+errors fail closed. See [middleware](docs/authorization/middleware.md),
+[pipeline](docs/authorization/pipeline.md),
+[gateway](docs/authorization/gateway.md),
+[obligations](docs/authorization/obligations.md) and
+[context](docs/authorization/context.md).
+
 **Users** (password `DemoPass!2026`):
 
 | Email                  | Role       |

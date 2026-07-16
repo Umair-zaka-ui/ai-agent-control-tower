@@ -6,6 +6,55 @@ versions track the roadmap phases rather than semver guarantees.
 
 ## [Unreleased] — Phase 4.3 · Enterprise Authorization Platform
 
+### Part 4.3.6 — Enterprise authorization middleware & enforcement architecture
+
+- **Added** `app/authorization/middleware/`: the **AuthorizationGateway** (§22) —
+  the single coordination point through which every enforcement surface authorizes;
+  an immutable **AuthorizationContext** (frozen dataclass + read-only mappings,
+  `identity.*` spoofing stripped at build time) assembled only by the
+  `AuthorizationContextBuilder`; a pinned ten-stage **pipeline** (AUTHENTICATION →
+  IDENTITY_CONTEXT → SESSION_VALIDATION → ORGANIZATION_CONTEXT → RBAC →
+  RESOURCE_AUTHORIZATION → ABAC → OBLIGATIONS → AUDIT → CACHE) whose trace service
+  rejects out-of-order recording; an **ObligationExecutor** (approval / MFA /
+  justification flags, recursive field masking, parameter clamping, security
+  notification); a **DecisionCacheService** keyed by identity × permission ×
+  resource × org × RBAC-version × ABAC-generation (+ TTL and per-identity epoch —
+  role, policy, org and session-revocation changes all invalidate; challenges and
+  dynamic contexts never cached); `PipelineMetricsService` (§34) and the six §24
+  audit events (`AUTHORIZATION_STARTED/COMPLETED/FAILED`, `DECISION_GENERATED`
+  with the full pipeline trace, `OBLIGATIONS_APPLIED`, `EXECUTION_COMPLETED`).
+- **Changed** every enforcement point onto the gateway (§27–§31):
+  `require_permission` (all routes) now runs the full pipeline — ABAC challenges
+  surface as typed errors (`APPROVAL_REQUIRED` 403, `MFA_REQUIRED` 401,
+  `JUSTIFICATION_REQUIRED` 403, satisfiable in-band via `X-Justification`),
+  constraint decisions ride on `request.state.authorization`, and plain denials
+  keep the legacy 403 contract; `POST /api/v1/authorization/check` became a thin
+  gateway call; the **agent runtime** (`process_agent_action`) applies the ABAC
+  layer for agent principals (deny → BLOCK, approval → PENDING_APPROVAL into the
+  human-review queue) and reports EXECUTION_COMPLETED; background workers,
+  schedulers and workflow nodes authorize via `authorize_background(...)` (no
+  session; account state still enforced).
+- **Added** `evaluate_for_agent` to the ABAC engine (subject = AI_AGENT built
+  server-side; `ai_context` may only contribute `ai.*` / `environment.*` keys) and
+  a monotonic `generation` to the policy cache powering decision-cache rotation.
+- **Fixed** a get-or-create race in the permission-version bootstrap (concurrent
+  first requests for one org) with `ON CONFLICT DO NOTHING`.
+- **Security (§36)**: middleware mandatory (bypass test proves routes fail without
+  it); default deny preserved; ABAC evaluation errors **fail closed**; immutable
+  context; challenge errors leak no policy internals; cached decisions are
+  per-identity (poisoning impossible by key construction) and tamper-proof
+  (copies out); session revocation invalidates instantly.
+- **Added** `GET /api/v1/authorization/middleware/metrics` (§34) and error codes
+  `ABAC_DENIED`, `APPROVAL_REQUIRED`, `JUSTIFICATION_REQUIRED` (§25).
+- **Frontend (§32, §33)**: `AuthorizationProvider` (wraps the 4.3.2
+  PermissionProvider; routes gateway decisions and typed API errors to the
+  matching UI), `ApprovalRequiredDialog`, `MFAChallenge`, `ObligationDialog`
+  (justification capture, mask/limit display), `AuthorizationErrorBoundary`,
+  `PermissionGuard`, `useAuthorize` (live gateway check) and
+  `decisionToUi` / `maskFields` / `actionLimits` utilities.
+- **Docs**: `docs/authorization/{middleware,pipeline,obligations,context,gateway}.md`;
+  README + ROADMAP updated.
+
 ### Part 4.3.5 — Attribute-Based Access Control engine (ABAC)
 
 - **Added** the ABAC schema (migration `0020`): `abac_policies` (versioned,
