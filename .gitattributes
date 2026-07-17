@@ -1,0 +1,7 @@
+* text=auto
+
+# Container entrypoints must retain Unix line endings after a Windows clone.
+*.sh text eol=lf
+
+# PowerShell recovery tooling is intended for Windows.
+*.ps1 text eol=crlf

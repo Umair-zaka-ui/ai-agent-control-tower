@@ -12,6 +12,9 @@ As organizations hand more real-world tasks to autonomous AI agents (submitting 
 
 This repository contains the FastAPI + PostgreSQL backend (`backend/`) and the React + TypeScript dashboard (`frontend/`). It is a personal learning / startup project and uses no company code, data, or infrastructure.
 
+For machine-independent source and database backups, scheduled snapshots, and
+new-system restore steps, see [`RECOVERY.md`](RECOVERY.md).
+
 ---
 
 ## How it works

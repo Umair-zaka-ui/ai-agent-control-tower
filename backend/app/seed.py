@@ -4,7 +4,7 @@ Run with:  python -m app.seed   (from the ``backend`` directory)
 
 Creates:
   * Organization: "Demo Healthcare Org"
-  * Users:  admin@example.com / reviewer@example.com  (password: password123)
+  * Users:  admin@example.com / reviewer@example.com  (password: DemoPass!2026)
   * Agents: BillingAgent, SchedulingAgent, ClinicalSummaryAgent (+ an API key each)
   * Permission rules for each agent
   * RBAC roles/permissions (and links users to matching roles)
@@ -17,6 +17,10 @@ from __future__ import annotations
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+
+# Register the identity tables on shared SQLAlchemy metadata before the seed
+# flushes models (User.department_id references the departments table).
+import app.identity.models  # noqa: F401
 
 from app.core.database import SessionLocal
 from app.core.enums import ActionDecision, UserRole
@@ -209,8 +213,8 @@ def seed() -> None:
         db.commit()
         print("Done.")
         print("\nLogin with:")
-        print("  admin@example.com    / password123  (ADMIN)")
-        print("  reviewer@example.com / password123  (REVIEWER)")
+        print(f"  admin@example.com    / {DEMO_PASSWORD}  (ADMIN)")
+        print(f"  reviewer@example.com / {DEMO_PASSWORD}  (REVIEWER)")
     except Exception:
         db.rollback()
         raise

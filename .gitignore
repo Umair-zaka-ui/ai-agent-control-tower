@@ -26,6 +26,12 @@ env/
 htmlcov/
 coverage.xml
 
+# Local PostgreSQL backups may contain sensitive project data.
+/backups/
+*.dump
+*.pgpass
+pgpass.conf
+
 # IDE
 .idea/
 .vscode/
