@@ -84,6 +84,20 @@ import {
   SecurityAnalyticsPage,
 } from '@/modules/admin'
 import {
+  CertificationCampaignsPage,
+  CertificationReviewPage,
+  ComplianceReportsPage,
+  GovernanceAnalyticsPage,
+  GovernanceDashboardPage,
+  GovernanceFindingsPage,
+  OrphanedAccountsPage,
+  PrivilegedAccessPage,
+  RemediationCenterPage,
+  SoDFindingsPage,
+  SoDRulesPage,
+  ToxicPermissionsPage,
+} from '@/modules/governance'
+import {
   ABACEvaluationsPage,
   ABACPoliciesPage,
   ABACPolicyDetailsPage,
@@ -239,6 +253,19 @@ export function AppRoutes() {
           <Route path={ROUTES.ADMIN_DECISIONS} element={<DecisionExplorerPage />} />
           <Route path={ROUTES.ADMIN_REVIEWS} element={<AccessReviewsPage />} />
           <Route path={ROUTES.ADMIN_ANALYTICS} element={<SecurityAnalyticsPage />} />
+          {/* Identity Governance & Administration (Phase 4.3.8 §20) */}
+          <Route path={ROUTES.GOVERNANCE_DASHBOARD} element={<GovernanceDashboardPage />} />
+          <Route path={ROUTES.GOVERNANCE_CAMPAIGNS} element={<CertificationCampaignsPage />} />
+          <Route path={ROUTES.GOVERNANCE_CAMPAIGN_REVIEW} element={<CertificationReviewPage />} />
+          <Route path={ROUTES.GOVERNANCE_SOD_RULES} element={<SoDRulesPage />} />
+          <Route path={ROUTES.GOVERNANCE_SOD_FINDINGS} element={<SoDFindingsPage />} />
+          <Route path={ROUTES.GOVERNANCE_TOXIC_PERMISSIONS} element={<ToxicPermissionsPage />} />
+          <Route path={ROUTES.GOVERNANCE_PRIVILEGED_ACCESS} element={<PrivilegedAccessPage />} />
+          <Route path={ROUTES.GOVERNANCE_ORPHANED_ACCOUNTS} element={<OrphanedAccountsPage />} />
+          <Route path={ROUTES.GOVERNANCE_FINDINGS} element={<GovernanceFindingsPage />} />
+          <Route path={ROUTES.GOVERNANCE_REMEDIATION} element={<RemediationCenterPage />} />
+          <Route path={ROUTES.GOVERNANCE_COMPLIANCE} element={<ComplianceReportsPage />} />
+          <Route path={ROUTES.GOVERNANCE_ANALYTICS} element={<GovernanceAnalyticsPage />} />
           {/* ABAC administration (Phase 4.3.5 §33) */}
           <Route path={ROUTES.ABAC_POLICIES} element={<ABACPoliciesPage />} />
           <Route path={`${ROUTES.ABAC_POLICIES}/new`} element={<CreateABACPolicyPage />} />

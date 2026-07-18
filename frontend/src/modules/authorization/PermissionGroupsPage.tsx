@@ -1,7 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
-import { Loader2 } from 'lucide-react'
+import { Layers, Loader2 } from 'lucide-react'
 
 import { Card, CardContent } from '@/components/ui/card'
+import { PageHeader } from '@/components/common'
+import { ROUTES } from '@/constants/routes'
 import { authorizationService } from '@/services'
 
 /** Permission groups (domains) — read-only catalog view (Phase 4.3.1 §12, §21). */
@@ -13,10 +15,13 @@ export function PermissionGroupsPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-4 p-4 sm:p-6">
-      <div>
-        <h1 className="text-xl font-semibold text-foreground">Permission groups</h1>
-        <p className="text-sm text-muted-foreground">Domains the permission catalog is organised by.</p>
-      </div>
+      <PageHeader
+        icon={Layers}
+        title="Permission groups"
+        description="Domains the permission catalog is organised by."
+        backTo={ROUTES.AUTHZ_ROLES}
+        backLabel="Authorization overview"
+      />
       <Card>
         <CardContent className="p-0">
           {groups.isLoading ? (

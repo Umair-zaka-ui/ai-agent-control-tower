@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { PageHeader } from '@/components/common'
+import { ROUTES } from '@/constants/routes'
 import { hierarchyService } from '@/services'
 import type { ApiError, ID } from '@/types'
 
@@ -35,10 +37,13 @@ export function DepartmentsPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-4 p-4 sm:p-6">
-      <div>
-        <h1 className="text-xl font-semibold text-foreground">Departments</h1>
-        <p className="text-sm text-muted-foreground">Departments in your organization.</p>
-      </div>
+      <PageHeader
+        icon={Users}
+        title="Departments"
+        description="Departments in your organization."
+        backTo={ROUTES.ORG_EXPLORER}
+        backLabel="Organization overview"
+      />
       <Card>
         <CardHeader><CardTitle className="text-base">Add a department</CardTitle></CardHeader>
         <CardContent className="space-y-3">

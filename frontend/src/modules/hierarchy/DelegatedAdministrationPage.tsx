@@ -5,6 +5,8 @@ import { Loader2, Plus, ShieldMinus, UserCog } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
+import { PageHeader } from '@/components/common'
+import { ROUTES } from '@/constants/routes'
 import { adminSessionService } from '@/services/authService'
 import { hierarchyService } from '@/services'
 import type { ApiError, ID } from '@/types'
@@ -35,12 +37,13 @@ export function DelegatedAdministrationPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-4 p-4 sm:p-6">
-      <div>
-        <h1 className="text-xl font-semibold text-foreground">Delegated administration</h1>
-        <p className="text-sm text-muted-foreground">
-          Grant scoped administrative authority. Delegations never exceed your own.
-        </p>
-      </div>
+      <PageHeader
+        icon={UserCog}
+        title="Delegated administration"
+        description="Grant scoped administrative authority. Delegations never exceed your own."
+        backTo={ROUTES.ORG_EXPLORER}
+        backLabel="Organization overview"
+      />
       <Card>
         <CardHeader><CardTitle className="text-base">Delegate authority</CardTitle></CardHeader>
         <CardContent className="space-y-3">

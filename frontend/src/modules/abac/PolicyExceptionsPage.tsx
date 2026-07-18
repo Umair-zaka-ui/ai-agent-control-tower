@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { PageHeader } from '@/components/common'
+import { ROUTES } from '@/constants/routes'
 import { adminSessionService } from '@/services/authService'
 import { abacService } from '@/services'
 import type { ApiError, ID } from '@/types'
@@ -42,12 +44,13 @@ export function PolicyExceptionsPage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-4 p-4 sm:p-6">
-      <div>
-        <h1 className="text-xl font-semibold text-foreground">Policy exceptions</h1>
-        <p className="text-sm text-muted-foreground">
-          Approved, time-boxed exemptions from a policy for one subject. Exceptions expire automatically.
-        </p>
-      </div>
+      <PageHeader
+        icon={ShieldMinus}
+        title="Policy exceptions"
+        description="Approved, time-boxed exemptions from a policy for one subject. Exceptions expire automatically."
+        backTo={ROUTES.ABAC_POLICIES}
+        backLabel="Context policies overview"
+      />
 
       <Card>
         <CardHeader><CardTitle className="text-base">Grant an exception</CardTitle></CardHeader>

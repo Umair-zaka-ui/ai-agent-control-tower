@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { PageHeader } from '@/components/common'
+import { ROUTES } from '@/constants/routes'
 import { adminSessionService } from '@/services/authService'
 import { resourceAuthzService } from '@/services'
 import type { ApiError, ID } from '@/types'
@@ -54,12 +56,13 @@ export function DelegationManagementPage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-4 p-4 sm:p-6">
-      <div>
-        <h1 className="text-xl font-semibold text-foreground">Delegation management</h1>
-        <p className="text-sm text-muted-foreground">
-          Delegate management of a single resource — time-boxed, revocable and audited.
-        </p>
-      </div>
+      <PageHeader
+        icon={UserCog}
+        title="Delegation management"
+        description="Delegate management of a single resource — time-boxed, revocable and audited."
+        backTo={ROUTES.RES_PERMISSIONS}
+        backLabel="Resources overview"
+      />
 
       <Card>
         <CardContent className="pt-4">

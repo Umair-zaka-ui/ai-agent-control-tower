@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Loader2 } from 'lucide-react'
+import { Loader2, ScrollText } from 'lucide-react'
 
 import { Card, CardContent } from '@/components/ui/card'
+import { PageHeader } from '@/components/common'
+import { ROUTES } from '@/constants/routes'
 import { authorizationService } from '@/services'
 
 const EVENT_TYPES = [
@@ -30,10 +32,13 @@ export function AuthorizationAuditPage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-4 p-4 sm:p-6">
-      <div>
-        <h1 className="text-xl font-semibold text-foreground">Authorization audit</h1>
-        <p className="text-sm text-muted-foreground">Every role, permission and hierarchy change is recorded.</p>
-      </div>
+      <PageHeader
+        icon={ScrollText}
+        title="Authorization audit"
+        description="Every role, permission and hierarchy change is recorded."
+        backTo={ROUTES.AUTHZ_ROLES}
+        backLabel="Authorization overview"
+      />
 
       <select
         value={eventType}

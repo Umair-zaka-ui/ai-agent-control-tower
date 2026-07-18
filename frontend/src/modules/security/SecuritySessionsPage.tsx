@@ -59,6 +59,7 @@ export function SecuritySessionsPage() {
   const canViewResources = permissions.includes(PERMISSIONS.RESOURCE_VIEW)
   const canViewAbac = permissions.includes(PERMISSIONS.ABAC_VIEW)
   const canViewAdmin = permissions.includes(PERMISSIONS.ADMIN_DASHBOARD_VIEW)
+  const canViewGovernance = permissions.includes(PERMISSIONS.GOVERNANCE_DASHBOARD_VIEW)
   const sessions = useSessions()
   const devices = useDevices()
   const revokeSession = useRevokeSession()
@@ -274,6 +275,29 @@ export function SecuritySessionsPage() {
               <Link to={ROUTES.ADMIN_DASHBOARD}>
                 <ShieldCheck className="h-4 w-4" aria-hidden="true" />
                 Open administration portal
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {/* Identity Governance & Administration (Phase 4.3.8). Renders only with
+          governance.dashboard.view. */}
+      {canViewGovernance ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Governance</CardTitle>
+            <CardDescription>
+              Access certification, SoD/toxic-permission detection, privileged access
+              review, orphaned identities, risk scoring, remediation and compliance
+              reporting.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-3">
+            <Button asChild variant="outline" size="sm">
+              <Link to={ROUTES.GOVERNANCE_DASHBOARD}>
+                <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+                Open governance dashboard
               </Link>
             </Button>
           </CardContent>

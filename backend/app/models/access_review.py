@@ -31,6 +31,8 @@ class AccessReviewCampaign(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="DRAFT", index=True)
+    # §5 — QUARTERLY / ANNUAL / PRIVILEGED / PROJECT / EMERGENCY.
+    campaign_type: Mapped[str] = mapped_column(String(30), nullable=False, default="QUARTERLY")
     # {"role_ids": [...], "department_id": ..., "include_system_roles": bool} —
     # what the campaign covers; snapshotted into items on activation.
     scope: Mapped[dict | None] = mapped_column(JSONB, nullable=True)

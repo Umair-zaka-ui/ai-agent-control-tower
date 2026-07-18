@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { PageHeader } from '@/components/common'
+import { ROUTES } from '@/constants/routes'
 import { adminSessionService } from '@/services/authService'
 import { abacService } from '@/services'
 import type { ABACSimulation, ApiError } from '@/types'
@@ -49,13 +51,13 @@ export function PolicySimulatorPage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-4 p-4 sm:p-6">
-      <div>
-        <h1 className="text-xl font-semibold text-foreground">Policy simulator</h1>
-        <p className="text-sm text-muted-foreground">
-          What-if evaluation across RBAC, resource authorization and ABAC — nothing is executed.
-          {policyId ? ' Simulating one selected policy.' : ''}
-        </p>
-      </div>
+      <PageHeader
+        icon={PlayCircle}
+        title="Policy simulator"
+        description={`What-if evaluation across RBAC, resource authorization and ABAC — nothing is executed.${policyId ? ' Simulating one selected policy.' : ''}`}
+        backTo={ROUTES.ABAC_POLICIES}
+        backLabel="Context policies overview"
+      />
 
       <Card>
         <CardHeader><CardTitle className="text-base">Inputs</CardTitle></CardHeader>

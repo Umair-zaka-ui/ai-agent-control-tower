@@ -386,6 +386,88 @@ denormalized: a completed campaign is a compliance record and must stay
 readable after the user, role or assignment it certified is gone — see
 [access reviews](../../admin/access-reviews.md).
 
+### Identity Governance & Administration (Phase 4.3.8)
+
+SoD and toxic-permission detection share one rule table (`rule_type`
+discriminates them). A rule match creates a `governance_findings` row;
+findings drive `remediation_actions`. Risk scores, compliance reports and
+privileged-account reviews are independent snapshot tables, each keyed to an
+identity or organization rather than to one another.
+
+```mermaid
+erDiagram
+    organizations ||--o{ sod_rules : "defines"
+    organizations ||--o{ governance_findings : "detects"
+    sod_rules ||--o{ governance_findings : "matched by"
+    governance_findings ||--o{ remediation_actions : "remediated by"
+    organizations ||--o{ governance_risk_scores : "scores"
+    organizations ||--o{ compliance_reports : "generates"
+    organizations ||--o{ privileged_account_reviews : "reviews"
+
+    sod_rules {
+        uuid id PK
+        uuid organization_id FK
+        varchar rule_type "SOD / TOXIC_PERMISSION"
+        varchar name
+        varchar risk_level "LOW..CRITICAL"
+        jsonb permissions_a
+        jsonb permissions_b
+        varchar status "DRAFT / ACTIVE / DISABLED"
+        uuid approved_by
+    }
+    governance_findings {
+        uuid id PK
+        uuid organization_id FK
+        varchar finding_type "SOD_VIOLATION / TOXIC_PERMISSION / ORPHANED_ACCOUNT / PRIVILEGED_REVIEW_DUE"
+        varchar severity
+        uuid identity_id "nullable: resource-scoped findings"
+        varchar identity_label
+        uuid resource_id "stale key / unused role"
+        uuid rule_id FK "nullable"
+        jsonb details
+        varchar status "OPEN..DISMISSED"
+    }
+    remediation_actions {
+        uuid id PK
+        uuid organization_id FK
+        uuid finding_id FK
+        varchar action_type
+        varchar status "PENDING..CANCELLED"
+        varchar mode "MANUAL / APPROVAL / AUTOMATIC"
+        jsonb payload
+    }
+    governance_risk_scores {
+        uuid id PK
+        uuid organization_id FK
+        uuid identity_id "unique per org"
+        int score "0-100"
+        varchar band "LOW..CRITICAL"
+        jsonb factors
+    }
+    compliance_reports {
+        uuid id PK
+        uuid organization_id FK
+        varchar framework "SOC2 / ISO27001 / HIPAA / GDPR / NIST / CIS / INTERNAL"
+        varchar report_type
+        jsonb payload "immutable evidence snapshot"
+    }
+    privileged_account_reviews {
+        uuid id PK
+        uuid organization_id FK
+        uuid identity_id
+        varchar role_name
+        int risk_score
+        varchar status "PENDING / APPROVED / REVOKED"
+        datetime due_at
+    }
+```
+
+Findings are the hub: SoD/toxic detection, orphaned-identity scans and
+privileged-review-due checks all write to the same `governance_findings`
+table, so the findings explorer and the remediation queue see every
+governance issue regardless of source — see
+[docs/governance/](../../governance/).
+
 ---
 
 ## 2. Agent Governance

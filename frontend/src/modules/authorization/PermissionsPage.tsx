@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Loader2, Plus } from 'lucide-react'
+import { KeyRound, Loader2, Plus } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { PageHeader } from '@/components/common'
+import { ROUTES } from '@/constants/routes'
 import { authorizationService } from '@/services'
 import type { ApiError, Permission, PermissionGroup } from '@/types'
 
@@ -46,12 +48,13 @@ export function PermissionsPage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-4 p-4 sm:p-6">
-      <div>
-        <h1 className="text-xl font-semibold text-foreground">Permissions</h1>
-        <p className="text-sm text-muted-foreground">
-          The <code>resource.action</code> catalog, grouped by domain (Phase 4.3.1).
-        </p>
-      </div>
+      <PageHeader
+        icon={KeyRound}
+        title="Permissions"
+        description="The resource.action catalog, grouped by domain (Phase 4.3.1)."
+        backTo={ROUTES.AUTHZ_ROLES}
+        backLabel="Authorization overview"
+      />
 
       <Card>
         <CardHeader>

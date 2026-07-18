@@ -17,6 +17,14 @@ from app.models.agent_action import AgentAction
 from app.models.api_key import AgentApiKey
 from app.models.approval import Approval, ApprovalComment
 from app.models.audit_log import AuditLog
+from app.models.governance import (
+    ComplianceReport,
+    GovernanceFinding,
+    GovernanceRiskScore,
+    PrivilegedAccountReview,
+    RemediationAction,
+    SoDRule,
+)
 from app.models.organization import Organization
 from app.models.organization_hierarchy import (
     BusinessUnit,
@@ -84,4 +92,10 @@ __all__ = [
     "AttributeDefinition",
     "ABACEvaluation",
     "ABACPolicyException",
+    "SoDRule",
+    "GovernanceFinding",
+    "RemediationAction",
+    "GovernanceRiskScore",
+    "ComplianceReport",
+    "PrivilegedAccountReview",
 ]

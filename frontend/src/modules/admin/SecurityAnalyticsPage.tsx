@@ -13,6 +13,8 @@ import {
 } from 'recharts'
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { PageHeader } from '@/components/common'
+import { ROUTES } from '@/constants/routes'
 import { adminService } from '@/services'
 import { AdminNav } from './components/AdminNav'
 
@@ -42,14 +44,13 @@ export function SecurityAnalyticsPage() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-4 sm:p-6">
-      <div>
-        <h1 className="flex items-center gap-2 text-xl font-semibold text-foreground">
-          <Activity className="h-5 w-5" /> Security analytics
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Operational security metrics for the authorization platform.
-        </p>
-      </div>
+      <PageHeader
+        icon={Activity}
+        title="Security analytics"
+        description="Operational security metrics for the authorization platform."
+        backTo={ROUTES.ADMIN_DASHBOARD}
+        backLabel="Administration overview"
+      />
       <AdminNav />
 
       {analytics.isLoading ? (

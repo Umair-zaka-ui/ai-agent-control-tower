@@ -2,6 +2,8 @@ import { useQuery } from '@tanstack/react-query'
 import { Building2, Loader2 } from 'lucide-react'
 
 import { Card, CardContent } from '@/components/ui/card'
+import { PageHeader } from '@/components/common'
+import { ROUTES } from '@/constants/routes'
 import { hierarchyService } from '@/services'
 
 /**
@@ -13,12 +15,13 @@ export function OrganizationsPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-4 p-4 sm:p-6">
-      <div>
-        <h1 className="text-xl font-semibold text-foreground">Organizations</h1>
-        <p className="text-sm text-muted-foreground">
-          Your organization and any you administer by delegation.
-        </p>
-      </div>
+      <PageHeader
+        icon={Building2}
+        title="Organizations"
+        description="Your organization and any you administer by delegation."
+        backTo={ROUTES.ORG_EXPLORER}
+        backLabel="Organization overview"
+      />
       <Card>
         <CardContent className="p-0">
           {orgs.isLoading ? (

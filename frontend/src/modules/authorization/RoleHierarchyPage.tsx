@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowRight, Loader2, Plus, Trash2 } from 'lucide-react'
+import { ArrowRight, Loader2, Network, Plus, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
+import { PageHeader } from '@/components/common'
+import { ROUTES } from '@/constants/routes'
 import { authorizationService } from '@/services'
 import type { ApiError, ID, RoleHierarchyEdge } from '@/types'
 
@@ -37,12 +39,13 @@ export function RoleHierarchyPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-4 p-4 sm:p-6">
-      <div>
-        <h1 className="text-xl font-semibold text-foreground">Role hierarchy</h1>
-        <p className="text-sm text-muted-foreground">
-          A parent role inherits every permission of its children. The graph is kept acyclic.
-        </p>
-      </div>
+      <PageHeader
+        icon={Network}
+        title="Role hierarchy"
+        description="A parent role inherits every permission of its children. The graph is kept acyclic."
+        backTo={ROUTES.AUTHZ_ROLES}
+        backLabel="Authorization overview"
+      />
 
       <Card>
         <CardHeader>

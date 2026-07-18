@@ -5,6 +5,8 @@ import { Loader2, SearchCode } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { PageHeader } from '@/components/common'
+import { ROUTES } from '@/constants/routes'
 import { adminService } from '@/services'
 import type { AuthorizationDecisionRow, ID } from '@/types'
 import { AdminNav } from './components/AdminNav'
@@ -23,12 +25,13 @@ export function DecisionExplorerPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-4 p-4 sm:p-6">
-      <div>
-        <h1 className="text-xl font-semibold text-foreground">Decision explorer</h1>
-        <p className="text-sm text-muted-foreground">
-          Searchable history of every authorization decision. Viewing is audited.
-        </p>
-      </div>
+      <PageHeader
+        icon={SearchCode}
+        title="Decision explorer"
+        description="Searchable history of every authorization decision. Viewing is audited."
+        backTo={ROUTES.ADMIN_DASHBOARD}
+        backLabel="Administration overview"
+      />
       <AdminNav />
 
       <Card>
