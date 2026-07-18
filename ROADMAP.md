@@ -601,7 +601,61 @@ were missing: dashboard, decision explorer, access reviews and analytics.
   Backend **530** green (12 new); frontend **267** green (8 new); tsc + build
   clean.
 
-Next: 4.3.8 production readiness.
+Next: 4.3.8 Identity Governance & Administration.
+
+### Part 4.3.8 — Identity Governance & Administration (IGA) ✅
+
+Extends the authorization platform with continuous governance: SoD/toxic
+permission detection, privileged access review, orphaned-identity detection,
+risk scoring, automated remediation and compliance reporting, over the
+existing 4.3.1–4.3.7 authorization/certification foundation.
+
+- **Governance API** (`app/governance/`, §19): 40 `/api/v1/governance`
+  endpoints. Certification campaigns (§5-§7) are a thin proxy over the 4.3.7
+  `AccessReviewService` — same engine, extended with `campaign_type` and
+  MODIFIED/DELEGATED decisions — everything else is new. Gated by 11 new
+  `governance.*` permissions (§18); new builtin `ROLE_COMPLIANCE_ADMIN`.
+- **SoD / toxic permission detection** (§9, §10; migration `0022`): one
+  `sod_rules` engine (`rule_type=SOD|TOXIC_PERMISSION`) — an identity trips a
+  rule when its effective permissions (role hierarchy resolved) intersect
+  both of the rule's permission sets. Detection is continuous: an org-wide
+  scan endpoint, plus a best-effort scan on every `POST /role-assignments`.
+- **Privileged access governance** (§11): lists identities holding a tracked
+  privileged role with a live risk score and last activity; review/approve/
+  revoke workflow — revoke removes the grant through the RBAC service.
+- **Orphaned identity detection** (§12): disabled-but-still-granted users,
+  90-day-inactive users, stale API keys, unused roles — deduplicated findings.
+- **Governance risk scoring** (§13): 0-100 score from five weighted factors
+  (privileged roles, open toxic/SoD findings, inactivity, failed
+  certifications, outstanding approvals) → LOW/MEDIUM/HIGH/CRITICAL band.
+- **Remediation** (§14): typed actions against a finding; REMOVE_ROLE/
+  DISABLE_ACCOUNT/DISABLE_API_KEY/EXPIRE_DELEGATION execute against live
+  state; NOTIFY_MANAGER/CREATE_APPROVAL_REQUEST/REQUIRE_MFA/
+  CREATE_SECURITY_TICKET are audit-tracked hooks (no manager hierarchy,
+  ticketing, or per-user MFA-required flag exists yet to wire into).
+- **Compliance reporting** (§15, §16): SOC 2/ISO 27001/HIPAA/GDPR/NIST/CIS/
+  Internal control → evidence mapping; immutable evidence snapshots; JSON/CSV
+  export (PDF/Excel via client-side conversion, matching the existing export
+  pattern elsewhere in this app).
+- **Governance dashboard + analytics** (§21, §26): 10 widgets, 5 charts,
+  computed live (no caching layer yet).
+- **Frontend** (`modules/governance`): 12 pages + `GovernanceNav`
+  (permission-filtered, mirrors `AdminNav`); `/governance/*` routes; linked
+  from `AdminNav` and the Settings → Security governance card.
+- Docs: [governance-dashboard](docs/governance/governance-dashboard.md),
+  [access-certification](docs/governance/access-certification.md),
+  [sod-analysis](docs/governance/sod-analysis.md),
+  [toxic-permissions](docs/governance/toxic-permissions.md),
+  [privileged-access](docs/governance/privileged-access.md),
+  [orphaned-identities](docs/governance/orphaned-identities.md),
+  [risk-scoring](docs/governance/risk-scoring.md),
+  [remediation](docs/governance/remediation.md),
+  [compliance-reporting](docs/governance/compliance-reporting.md).
+  Backend **544** green (14 new); frontend **267** green, tsc + build clean;
+  verified end-to-end in a real browser (registration → login → create/
+  activate an SoD rule → create/launch/review a certification campaign).
+
+Next: production readiness (MFA, OAuth/SSO, observability).
 
 ## Future (Phase 4+)
 

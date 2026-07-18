@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { PageHeader } from '@/components/common'
+import { ROUTES } from '@/constants/routes'
 import { adminSessionService } from '@/services/authService'
 import { authorizationService } from '@/services'
 import type { ApiError, AssignmentScope, ID, RoleAssignment } from '@/types'
@@ -53,10 +55,13 @@ export function RoleAssignmentsPage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-4 p-4 sm:p-6">
-      <div>
-        <h1 className="text-xl font-semibold text-foreground">Role assignments</h1>
-        <p className="text-sm text-muted-foreground">Grant a role to a user at a given scope (Phase 4.3.1).</p>
-      </div>
+      <PageHeader
+        icon={UserCog}
+        title="Role assignments"
+        description="Grant a role to a user at a given scope (Phase 4.3.1)."
+        backTo={ROUTES.AUTHZ_ROLES}
+        backLabel="Authorization overview"
+      />
 
       <Card>
         <CardHeader>

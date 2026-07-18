@@ -13,6 +13,8 @@ import {
 } from 'recharts'
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { PageHeader } from '@/components/common'
+import { ROUTES } from '@/constants/routes'
 import { adminService } from '@/services'
 import { AdminNav } from './components/AdminNav'
 
@@ -44,14 +46,13 @@ export function AdminDashboardPage() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-4 sm:p-6">
-      <div>
-        <h1 className="flex items-center gap-2 text-xl font-semibold text-foreground">
-          <ShieldCheck className="h-5 w-5" /> Authorization administration
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          The operational control plane for identity and access management.
-        </p>
-      </div>
+      <PageHeader
+        icon={ShieldCheck}
+        title="Authorization administration"
+        description="The operational control plane for identity and access management."
+        backTo={ROUTES.SETTINGS_SECURITY}
+        backLabel="Security overview"
+      />
       <AdminNav />
 
       {dashboard.isLoading ? (

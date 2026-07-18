@@ -385,6 +385,28 @@ audited, enforced through the authorization gateway. See
 [audit center](docs/admin/audit-center.md) and
 [security analytics](docs/admin/security-analytics.md).
 
+### Identity Governance & Administration (Phase 4.3.8)
+
+A full **IGA** layer at `/governance`, built on the 4.3.1–4.3.7 authorization
+platform: **access certification** (reuses the 4.3.7 campaign engine, adds
+campaign types and MODIFIED/DELEGATED decisions), **Separation of Duties and
+toxic-permission detection** (one rule engine — an identity trips a rule when
+its effective, hierarchy-resolved permissions cover both of the rule's
+permission sets; detection runs on demand *and* continuously on every role
+assignment), **privileged access review** (risk-scored list of every identity
+holding a tracked admin-tier role, with approve/revoke), **orphaned identity
+detection** (disabled-but-granted, 90-day-inactive, stale API keys, unused
+roles), **governance risk scoring** (0–100, five weighted factors → LOW/
+MEDIUM/HIGH/CRITICAL), **automated remediation** (typed actions against a
+finding — role removal, account/key disable and delegation expiry execute for
+real; notify/approval-request/MFA/ticket actions are audit-tracked hooks with
+no downstream system to call yet), and **compliance reporting** (SOC 2/ISO
+27001/HIPAA/GDPR/NIST/CIS control → evidence mapping, immutable snapshots,
+JSON/CSV export). See [docs/governance/](docs/governance/) for the full set —
+dashboard, access-certification, sod-analysis, toxic-permissions,
+privileged-access, orphaned-identities, risk-scoring, remediation and
+compliance-reporting.
+
 **Users** (password `DemoPass!2026`):
 
 | Email                  | Role       |

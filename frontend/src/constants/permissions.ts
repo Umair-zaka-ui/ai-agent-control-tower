@@ -49,6 +49,18 @@ export const PERMISSIONS = {
   ADMIN_AUDIT_VIEW: 'admin.audit.view',
   ADMIN_ANALYTICS_VIEW: 'admin.analytics.view',
   ADMIN_REVIEWS_MANAGE: 'admin.reviews.manage',
+  /** Identity Governance & Administration (Phase 4.3.8 §18). */
+  GOVERNANCE_DASHBOARD_VIEW: 'governance.dashboard.view',
+  GOVERNANCE_CERTIFICATION_MANAGE: 'governance.certification.manage',
+  GOVERNANCE_SOD_MANAGE: 'governance.sod.manage',
+  GOVERNANCE_SOD_VIEW: 'governance.sod.view',
+  GOVERNANCE_TOXIC_MANAGE: 'governance.toxic.manage',
+  GOVERNANCE_PRIVILEGED_MANAGE: 'governance.privileged.manage',
+  GOVERNANCE_ORPHANED_MANAGE: 'governance.orphaned.manage',
+  GOVERNANCE_FINDINGS_MANAGE: 'governance.findings.manage',
+  GOVERNANCE_REMEDIATION_MANAGE: 'governance.remediation.manage',
+  GOVERNANCE_COMPLIANCE_VIEW: 'governance.compliance.view',
+  GOVERNANCE_ANALYTICS_VIEW: 'governance.analytics.view',
 } as const
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS]

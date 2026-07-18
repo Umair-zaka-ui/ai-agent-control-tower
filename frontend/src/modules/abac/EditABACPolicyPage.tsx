@@ -1,7 +1,8 @@
 import { useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { Loader2 } from 'lucide-react'
+import { Loader2, Pencil } from 'lucide-react'
 
+import { PageHeader } from '@/components/common'
 import { ROUTES } from '@/constants/routes'
 import { abacService } from '@/services'
 import type { ABACPolicy, ABACPolicyWrite, ApiError } from '@/types'
@@ -28,14 +29,15 @@ export function EditABACPolicyPage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-4 p-4 sm:p-6">
-      <div>
-        <h1 className="text-xl font-semibold text-foreground">Edit: {policy.data.name}</h1>
-        <p className="text-sm text-muted-foreground">
-          {policy.data.status === 'ACTIVE'
-            ? 'This version is published and immutable — saving creates a new draft version.'
-            : 'Editing the current draft.'}
-        </p>
-      </div>
+      <PageHeader
+        icon={Pencil}
+        title={`Edit: ${policy.data.name}`}
+        description={policy.data.status === 'ACTIVE'
+          ? 'This version is published and immutable — saving creates a new draft version.'
+          : 'Editing the current draft.'}
+        backTo={ROUTES.ABAC_POLICIES}
+        backLabel="Context policies overview"
+      />
       <PolicyBuilder
         initial={policy.data}
         onSubmit={(payload) => update.mutate(payload)}

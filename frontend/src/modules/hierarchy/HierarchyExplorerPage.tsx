@@ -4,6 +4,8 @@ import { Building2, ChevronDown, ChevronRight, FolderKanban, Loader2, Network, U
 
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { PageHeader } from '@/components/common'
+import { ROUTES } from '@/constants/routes'
 import { hierarchyService } from '@/services'
 import type { HierarchyLevel, HierarchyNode } from '@/types'
 
@@ -63,12 +65,13 @@ export function HierarchyExplorerPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-4 p-4 sm:p-6">
-      <div>
-        <h1 className="text-xl font-semibold text-foreground">Hierarchy explorer</h1>
-        <p className="text-sm text-muted-foreground">
-          Organization → business unit → department → team → project (Phase 4.3.3).
-        </p>
-      </div>
+      <PageHeader
+        icon={Building2}
+        title="Hierarchy explorer"
+        description="Organization → business unit → department → team → project (Phase 4.3.3)."
+        backTo={ROUTES.SETTINGS_SECURITY}
+        backLabel="Security overview"
+      />
       <Input
         value={search}
         onChange={(e) => setSearch(e.target.value)}

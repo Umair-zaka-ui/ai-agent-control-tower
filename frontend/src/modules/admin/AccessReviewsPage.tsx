@@ -6,6 +6,8 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { PageHeader } from '@/components/common'
+import { ROUTES } from '@/constants/routes'
 import { adminService } from '@/services'
 import type { AccessReviewCampaign, ID } from '@/types'
 import { AdminNav } from './components/AdminNav'
@@ -79,14 +81,13 @@ export function AccessReviewsPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-4 p-4 sm:p-6">
-      <div>
-        <h1 className="flex items-center gap-2 text-xl font-semibold text-foreground">
-          <ClipboardCheck className="h-5 w-5" /> Access reviews
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Periodic certification of role assignments. A revoke removes the grant immediately.
-        </p>
-      </div>
+      <PageHeader
+        icon={ClipboardCheck}
+        title="Access reviews"
+        description="Periodic certification of role assignments. A revoke removes the grant immediately."
+        backTo={ROUTES.ADMIN_DASHBOARD}
+        backLabel="Administration overview"
+      />
       <AdminNav />
 
       <Card>

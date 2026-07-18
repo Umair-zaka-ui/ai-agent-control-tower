@@ -4,6 +4,7 @@ import { CheckCircle2, History, Loader2, Pencil, PlayCircle, XCircle } from 'luc
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { PageHeader } from '@/components/common'
 import { ROUTES } from '@/constants/routes'
 import { abacService } from '@/services'
 import type { ABACValidationResult, ApiError } from '@/types'
@@ -42,19 +43,16 @@ export function ABACPolicyDetailsPage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-4 p-4 sm:p-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="flex items-center gap-2 text-xl font-semibold text-foreground">
-            {p.name}
+      <PageHeader
+        title={p.name}
+        description={`v${p.version} · ${p.effect} · priority ${p.priority} · ${p.combining_algorithm} · ${p.scope_type}`}
+        backTo={ROUTES.ABAC_POLICIES}
+        backLabel="Context policies overview"
+        actions={
+          <>
             <span className={`rounded px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[p.status] ?? ''}`}>
               {p.status}
             </span>
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            v{p.version} · {p.effect} · priority {p.priority} · {p.combining_algorithm} · {p.scope_type}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
           {(p.status === 'DRAFT' || p.status === 'VALIDATED') && (
             <>
               <Button size="sm" variant="outline" onClick={() => validate.mutate()}
@@ -74,11 +72,12 @@ export function ABACPolicyDetailsPage() {
           <Button asChild size="sm" variant="outline">
             <Link to={`${ROUTES.ABAC_POLICIES}/${p.id}/versions`}><History className="h-4 w-4" /> Versions</Link>
           </Button>
-          <Button asChild size="sm" variant="outline">
-            <Link to={`${ROUTES.ABAC_SIMULATOR}?policy=${p.id}`}><PlayCircle className="h-4 w-4" /> Simulate</Link>
-          </Button>
-        </div>
-      </div>
+            <Button asChild size="sm" variant="outline">
+              <Link to={`${ROUTES.ABAC_SIMULATOR}?policy=${p.id}`}><PlayCircle className="h-4 w-4" /> Simulate</Link>
+            </Button>
+          </>
+        }
+      />
 
       {validate.data && (
         <Card data-testid="validation-result">

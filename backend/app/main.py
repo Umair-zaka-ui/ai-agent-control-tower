@@ -26,6 +26,7 @@ from app.authorization.hierarchy.routes import router as hierarchy_router
 from app.authorization.resources.routes import router as resources_router
 from app.authorization.abac.routes import router as abac_router
 from app.authorization.admin.routes import router as admin_router
+from app.governance.routes import router as governance_router
 from app.identity.errors import register_identity_exception_handlers
 
 app = FastAPI(
@@ -104,3 +105,9 @@ app.include_router(abac_router)
 # Phase 4.3.7: Administration portal — dashboard, delegated role/policy/resource
 # management, decision explorer, access reviews and analytics under /api/v1/admin.
 app.include_router(admin_router)
+
+# Phase 4.3.8: Identity Governance & Administration — certification campaigns,
+# SoD/toxic-permission detection, privileged access review, orphaned-identity
+# detection, risk scoring, remediation and compliance reporting under
+# /api/v1/governance.
+app.include_router(governance_router)

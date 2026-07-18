@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { PageHeader } from '@/components/common'
+import { ROUTES } from '@/constants/routes'
 import { authorizationService } from '@/services'
 import type { ApiError, ID, Permission, Role } from '@/types'
 
@@ -65,12 +67,13 @@ export function RolesPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-4 p-4 sm:p-6">
-      <div>
-        <h1 className="text-xl font-semibold text-foreground">Roles</h1>
-        <p className="text-sm text-muted-foreground">
-          Enterprise roles, permission sets, priority and category (Phase 4.3.1).
-        </p>
-      </div>
+      <PageHeader
+        icon={ShieldCheck}
+        title="Roles"
+        description="Enterprise roles, permission sets, priority and category (Phase 4.3.1)."
+        backTo={ROUTES.SETTINGS_SECURITY}
+        backLabel="Security overview"
+      />
 
       {/* Create */}
       <Card>

@@ -5,6 +5,8 @@ import { Loader2, Plus, ShieldCheck } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { PageHeader } from '@/components/common'
+import { Select } from '@/components/ui/select'
 import { ROUTES } from '@/constants/routes'
 import { abacService } from '@/services'
 import type { ABACPolicy, ApiError, ID } from '@/types'
@@ -49,24 +51,23 @@ export function ABACPoliciesPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-4 p-4 sm:p-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-foreground">ABAC policies</h1>
-          <p className="text-sm text-muted-foreground">
-            Context-aware authorization rules — drafted, validated, published, versioned.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <select value={status} aria-label="Filter by status"
-            onChange={(e) => setStatus(e.target.value)}
-            className="rounded-md border border-border bg-background px-2 py-1.5 text-sm">
-            {STATUSES.map((s) => <option key={s} value={s}>{s || 'All statuses'}</option>)}
-          </select>
-          <Button asChild>
-            <Link to={`${ROUTES.ABAC_POLICIES}/new`}><Plus className="h-4 w-4" /> New policy</Link>
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        icon={ShieldCheck}
+        title="ABAC policies"
+        description="Context-aware authorization rules — drafted, validated, published, versioned."
+        backTo={ROUTES.SETTINGS_SECURITY}
+        backLabel="Security overview"
+        actions={
+          <>
+            <Select className="w-40" value={status} aria-label="Filter by status"
+                    options={STATUSES.map((s) => ({ value: s, label: s || 'All statuses' }))}
+                    onChange={(e) => setStatus(e.target.value)} />
+            <Button asChild>
+              <Link to={`${ROUTES.ABAC_POLICIES}/new`}><Plus className="h-4 w-4" /> New policy</Link>
+            </Button>
+          </>
+        }
+      />
 
       <Card>
         <CardHeader>

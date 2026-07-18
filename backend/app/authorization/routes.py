@@ -69,6 +69,22 @@ def _commit_invalidating(db: Session, organization_id) -> None:
     db.commit()
 
 
+def _scan_sod_best_effort(db: Session, user_id: uuid.UUID, actor: User) -> None:
+    """Phase 4.3.8 §10 — "detection runs continuously and during role
+    assignment": a best-effort SoD/toxic-permission scan of the newly-assigned
+    identity. Never allowed to fail the assignment it observes."""
+    try:
+        from app.governance.services import SoDAnalysisService
+
+        user = db.get(User, user_id)
+        if user is not None:
+            SoDAnalysisService(db).scan_identity(
+                user, organization_id=actor.organization_id, actor_id=actor.id)
+            db.commit()
+    except Exception:
+        db.rollback()
+
+
 def _role_read(role: Role, db: Session, *, assignment_count: int | None = None) -> RoleRead:
     rows = db.execute(
         select(RbacPermission.code, RolePermission.effect)
@@ -276,6 +292,7 @@ def create_role_assignment(
         expires_at=payload.expires_at, actor_id=actor.id,
     )
     _commit_invalidating(db, actor.organization_id)
+    _scan_sod_best_effort(db, payload.user_id, actor)
     return assignment
 
 

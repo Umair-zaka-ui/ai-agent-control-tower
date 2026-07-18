@@ -6,6 +6,60 @@ versions track the roadmap phases rather than semver guarantees.
 
 ## [Unreleased] — Phase 4.3 · Enterprise Authorization Platform
 
+### Part 4.3.8 — Identity Governance & Administration (IGA)
+
+- **Added** the `/api/v1/governance` control plane (§19) — 40 endpoints in
+  `app/governance/`: certification campaigns (a thin proxy over the 4.3.7
+  `AccessReviewService`, extended with `campaign_type` and MODIFIED/DELEGATED
+  decisions), SoD rules/findings, toxic-permission rules/findings, governance
+  findings, privileged accounts/reviews, orphaned-account detection, risk
+  scores, remediation actions, compliance reports/frameworks, and the
+  governance dashboard/analytics. Gated by 11 new `governance.*` permissions
+  and a new builtin `ROLE_COMPLIANCE_ADMIN`.
+- **Added** migration `0022_governance_iga`: `sod_rules`,
+  `governance_findings`, `remediation_actions`, `governance_risk_scores`,
+  `compliance_reports`, `privileged_account_reviews`, plus an additive
+  `campaign_type` column on `access_review_campaigns`.
+- **Added** Separation of Duties / toxic-permission detection (§9, §10): one
+  rule engine (`rule_type=SOD|TOXIC_PERMISSION`) — an identity trips a rule
+  when its effective, role-hierarchy-resolved permissions intersect both of
+  the rule's permission sets. Detection runs on an org-wide scan endpoint
+  *and* as a best-effort check after every `POST /role-assignments`
+  (continuous detection, §10), never blocking the assignment it observes.
+- **Added** privileged access governance (§11): lists identities holding a
+  tracked admin-tier role with a live risk score and last session activity;
+  review/approve/revoke — revoke removes the grant through the RBAC service.
+- **Added** orphaned identity detection (§12): disabled-but-still-granted
+  users, 90-day-inactive users with live assignments, stale API keys, unused
+  roles — deduplicated against already-open findings.
+- **Added** governance risk scoring (§13): 0–100 score from five weighted
+  factors (privileged roles, open toxic/SoD findings, inactivity, failed
+  certifications, outstanding approvals) → LOW/MEDIUM/HIGH/CRITICAL band.
+- **Added** automated remediation (§14): typed actions against a finding.
+  REMOVE_ROLE/DISABLE_ACCOUNT/DISABLE_API_KEY/EXPIRE_DELEGATION execute
+  against live state; NOTIFY_MANAGER/CREATE_APPROVAL_REQUEST/REQUIRE_MFA/
+  CREATE_SECURITY_TICKET are recorded as audit-tracked hooks (documented gap:
+  no manager hierarchy, ticketing integration, or per-user MFA-required flag
+  exists yet to wire into).
+- **Added** compliance reporting (§15, §16): SOC 2/ISO 27001/HIPAA/GDPR/NIST/
+  CIS/Internal control → platform-evidence mapping; immutable evidence
+  snapshots; JSON/CSV export (PDF/Excel via client-side conversion).
+- **Added** the governance dashboard + analytics (§21, §26): 10 widgets, 5
+  charts, computed live from current governance/certification tables.
+- **Added** frontend `modules/governance`: 12 pages (dashboard, campaigns,
+  certification review, SoD rules/findings, toxic permissions, privileged
+  access, orphaned accounts, findings, remediation, compliance, analytics) +
+  `GovernanceNav`; `/governance/*` routes; linked from `AdminNav` and a new
+  Settings → Security governance card.
+- Docs: `docs/governance/{governance-dashboard,access-certification,
+  sod-analysis,toxic-permissions,privileged-access,orphaned-identities,
+  risk-scoring,remediation,compliance-reporting}.md`.
+- Backend **544** tests green (14 new); frontend **267** tests green; `tsc -b`
+  and `vite build` clean; verified end-to-end against a live Postgres
+  database in a real headless-Chromium session (register → login → create
+  and activate an SoD rule → create, launch and review a certification
+  campaign — zero console errors, all mutations reflected live).
+
 ### Part 4.3.7 — Enterprise authorization administration portal
 
 - **Added** the `/api/v1/admin` control plane (§18) — 20 endpoints in

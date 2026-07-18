@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { PageHeader } from '@/components/common'
 import { ROUTES } from '@/constants/routes'
 import { resourceAuthzService } from '@/services'
 import type { ApiError, VisibilityLevel } from '@/types'
@@ -38,17 +39,20 @@ export function ResourcePermissionsPage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-4 p-4 sm:p-6">
-      <div>
-        <h1 className="text-xl font-semibold text-foreground">Resource permissions</h1>
-        <p className="text-sm text-muted-foreground">
-          Every protected resource with its owner and visibility. Manage fine-grained access via
-          the <Link className="underline" to={ROUTES.RES_ACL}>ACL</Link>,{' '}
-          <Link className="underline" to={ROUTES.RES_SHARING}>sharing</Link>,{' '}
-          <Link className="underline" to={ROUTES.RES_OWNERSHIP}>ownership</Link> and{' '}
-          <Link className="underline" to={ROUTES.RES_DELEGATION}>delegation</Link> pages, and verify
-          decisions in the <Link className="underline" to={ROUTES.RES_INSPECTOR}>inspector</Link>.
-        </p>
-      </div>
+      <PageHeader
+        icon={Lock}
+        title="Resource permissions"
+        description="Every protected resource with its owner and visibility. Manage fine-grained access via the ACL, sharing, ownership and delegation pages, and verify decisions in the inspector."
+        backTo={ROUTES.SETTINGS_SECURITY}
+        backLabel="Security overview"
+      />
+      <p className="-mt-4 flex flex-wrap gap-x-3 text-sm text-muted-foreground">
+        <Link className="underline hover:text-foreground" to={ROUTES.RES_ACL}>ACL</Link>
+        <Link className="underline hover:text-foreground" to={ROUTES.RES_SHARING}>Sharing</Link>
+        <Link className="underline hover:text-foreground" to={ROUTES.RES_OWNERSHIP}>Ownership</Link>
+        <Link className="underline hover:text-foreground" to={ROUTES.RES_DELEGATION}>Delegation</Link>
+        <Link className="underline hover:text-foreground" to={ROUTES.RES_INSPECTOR}>Inspector</Link>
+      </p>
 
       <Card>
         <CardHeader><CardTitle className="text-base">Register a resource</CardTitle></CardHeader>
