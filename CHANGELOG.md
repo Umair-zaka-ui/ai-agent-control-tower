@@ -4,6 +4,66 @@ All notable changes to the AI Agent Control Tower are documented here. The forma
 based on [Keep a Changelog](https://keepachangelog.com/); the project is pre-1.0 and
 versions track the roadmap phases rather than semver guarantees.
 
+## [Unreleased] — Phase 5.0 · Agent Runtime & Lifecycle Management
+
+### Part 5.0 — Agent Runtime & Lifecycle Management
+
+- **Added** the `/api/v1/runtime` control plane (§66) — `app/runtime/`:
+  agent registry and lifecycle, immutable versioning, deployments, the
+  Runtime Gateway, executions, capabilities, tools, runtime approvals,
+  health/workers and the kill switch. Gated by 32 new `runtime.*`
+  permissions and new builtin roles `ROLE_RUNTIME_ADMIN`/
+  `ROLE_RUNTIME_OPERATOR`.
+- **Added** migration `0023_agent_runtime`: additive `lifecycle_status`,
+  `slug`, `project_id`, `owner_type`/`owner_id`, `criticality`,
+  `data_classification`, `default_environment`, `archived_at` on the
+  existing `agents` table (no parallel registry — see
+  [docs/runtime/architecture.md](docs/runtime/architecture.md)); new
+  `agent_definitions`, `agent_versions`, `agent_deployments`,
+  `agent_executions`, `execution_attempts`, `execution_locks`,
+  `capabilities`, `agent_capabilities`, `tools`, `agent_tools`,
+  `tool_calls`, `runtime_events`, `deployment_health`,
+  `idempotency_records`, `runtime_approvals`.
+- **Added** immutable, checksummed agent versions (§11, §12): DRAFT →
+  READY_FOR_REVIEW → APPROVED → PUBLISHED → DEPRECATED/REVOKED; publish
+  recomputes and compares the `sha256` checksum, blocking on tamper.
+- **Added** the Runtime Gateway (§24-§28, §33): the only execution entry
+  point — agent/deployment/version state → idempotency → the existing
+  Phase 4.3.6 `AuthorizationGateway` (RBAC/ABAC) → runtime policy → human
+  approval → the Postgres-backed queue. Denials and policy blocks are
+  saved as inspectable execution rows rather than raised as errors.
+- **Added** the worker runtime (§31-§37): `SELECT ... FOR UPDATE SKIP
+  LOCKED` claim + `execution_locks` lease, per-attempt retry with a
+  non-retryable error allowlist, dead-lettering after `maximum_retries`.
+  Driven inline/eagerly by the Runtime Gateway in this environment (no
+  Redis/Celery dependency added).
+- **Added** the Model Gateway (§40-§42) and Tool Gateway (§43, §44):
+  provider-/tool-neutral contracts; only the `MOCK` model provider and the
+  `FUNCTION`/`echo` tool action actually execute — every other provider or
+  tool type is fully authorized but fails closed
+  (`MODEL_PROVIDER_UNAVAILABLE`/`TOOL_ACTION_NOT_ALLOWED`).
+- **Added** runtime approvals (§39, new `runtime_approvals` table — the
+  existing `Approval` model is 1:1 with `agent_action_id` and doesn't fit
+  a deployment/execution-scoped approval) and the kill switch (§60,
+  execution/agent/organization scope, always audited and reason-required).
+- **Added** the runtime dashboard and Operations Center (§70, §75):
+  live KPIs, 7-day execution trend, status distribution, worker health
+  derived from heartbeat age.
+- **Added** frontend `modules/runtime`: 11 pages + `RuntimeNav`
+  (permission-filtered, mirrors `GovernanceNav`); `/runtime/*` routes;
+  linked from `AdminNav`.
+- **Added** 17 new backend integration tests
+  (`tests/authorization/test_runtime.py`): lifecycle, checksum tampering,
+  deployment gating, idempotency, concurrency limits, tool authorization
+  with retry, mission-critical approval, kill switch, and role-scoping.
+  Backend **561** green; frontend tsc + build clean; verified end-to-end
+  in a real browser (register → activate an agent → publish a version →
+  deploy → run an execution to `SUCCEEDED`).
+- Docs: [docs/runtime/](docs/runtime/) — overview, architecture,
+  agent-lifecycle, versioning, deployments, executions, workers-and-queue,
+  capabilities-and-tools, gateways, runtime-policy-and-approvals,
+  health-and-observability, operations-and-kill-switch, security.
+
 ## [Unreleased] — Phase 4.3 · Enterprise Authorization Platform
 
 ### Part 4.3.8 — Identity Governance & Administration (IGA)

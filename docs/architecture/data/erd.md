@@ -470,6 +470,176 @@ governance issue regardless of source — see
 
 ---
 
+### Agent Runtime & Lifecycle Management (Phase 5.0)
+
+`agents` (§1 above) gains additive runtime-lifecycle columns rather than a
+parallel registry: `slug`, `project_id`, `owner_type`/`owner_id`,
+`criticality`, `data_classification`, `default_environment`,
+`lifecycle_status`, `archived_at`. Everything below hangs off
+`agents.id`. `agent_executions` doubles as the execution queue — a worker
+claims a row with `SELECT ... FOR UPDATE SKIP LOCKED` and takes a lease in
+`execution_locks`; there is no separate queue table. See
+[docs/runtime/architecture.md](../../runtime/architecture.md).
+
+```mermaid
+erDiagram
+    agents ||--o{ agent_definitions : "describes"
+    agents ||--o{ agent_versions : "versions"
+    agent_definitions ||--o{ agent_versions : "snapshotted by"
+    agents ||--o{ agent_deployments : "deployed as"
+    agent_versions ||--o{ agent_deployments : "runs"
+    agents ||--o{ agent_executions : "executes"
+    agent_versions ||--o{ agent_executions : "runs under"
+    agent_deployments ||--o{ agent_executions : "queued on"
+    agent_executions ||--o{ execution_attempts : "attempted"
+    agent_executions ||--o| execution_locks : "leased by"
+    agents ||--o{ agent_capabilities : "assigned"
+    capabilities ||--o{ agent_capabilities : "granted as"
+    agents ||--o{ agent_tools : "assigned"
+    tools ||--o{ agent_tools : "granted as"
+    agent_executions ||--o{ tool_calls : "invokes"
+    tools ||--o{ tool_calls : "called via"
+    organizations ||--o{ runtime_events : "streams"
+    organizations ||--o{ runtime_approvals : "gates"
+    organizations ||--o{ idempotency_records : "dedupes"
+
+    agent_definitions {
+        uuid id PK
+        uuid agent_id FK
+        varchar framework
+        varchar entrypoint
+        jsonb configuration_schema
+        jsonb input_schema
+        jsonb output_schema
+    }
+    agent_versions {
+        uuid id PK
+        uuid agent_id FK
+        uuid definition_id FK
+        int version "monotonic per agent"
+        varchar semantic_version
+        varchar status "DRAFT..PUBLISHED..REVOKED"
+        varchar checksum "sha256, verified at publish"
+        jsonb model_configuration
+        jsonb capabilities_snapshot
+        jsonb tools_snapshot
+        jsonb policy_snapshot
+        datetime published_at
+    }
+    agent_deployments {
+        uuid id PK
+        uuid agent_id FK
+        uuid agent_version_id FK
+        uuid organization_id FK
+        varchar environment "DEVELOPMENT..SANDBOX"
+        varchar deployment_strategy "RECREATE / CANARY / ROLLING / BLUE_GREEN"
+        varchar status "CREATED..ACTIVE..RETIRED"
+        jsonb runtime_limits
+        varchar health_status
+    }
+    agent_executions {
+        uuid id PK
+        uuid organization_id FK
+        uuid agent_id FK
+        uuid agent_version_id FK
+        uuid deployment_id FK "nullable"
+        uuid parent_execution_id FK "nullable: replay lineage"
+        varchar idempotency_key "nullable"
+        jsonb input_payload
+        jsonb output_payload
+        varchar status "CREATED..QUEUED..SUCCEEDED..DEAD_LETTERED"
+        varchar decision "ALLOW / DENY / REQUIRE_APPROVAL"
+        int risk_score
+        int attempt_count
+        numeric cost
+    }
+    execution_attempts {
+        uuid id PK
+        uuid execution_id FK
+        int attempt_number
+        varchar worker_id
+        varchar status
+        varchar error_code
+    }
+    execution_locks {
+        uuid id PK
+        uuid execution_id FK "unique: one lease at a time"
+        varchar worker_id
+        datetime expires_at
+    }
+    capabilities {
+        uuid id PK
+        varchar name "unique, global catalog"
+        varchar risk_level
+        boolean requires_approval
+    }
+    agent_capabilities {
+        uuid id PK
+        uuid agent_id FK
+        uuid agent_version_id FK "nullable"
+        uuid capability_id FK
+        varchar status "REQUESTED..APPROVED..REVOKED"
+    }
+    tools {
+        uuid id PK
+        uuid organization_id FK "nullable: platform-wide tool"
+        varchar name
+        varchar tool_type "FUNCTION / INTERNAL_API / EXTERNAL_API / ..."
+        boolean requires_approval
+        boolean enabled
+    }
+    agent_tools {
+        uuid id PK
+        uuid agent_id FK
+        uuid agent_version_id FK "nullable"
+        uuid tool_id FK
+        jsonb allowed_actions
+        jsonb constraints
+        varchar status "REQUESTED..APPROVED..REVOKED"
+    }
+    tool_calls {
+        uuid id PK
+        uuid execution_id FK
+        uuid agent_id FK
+        uuid tool_id FK
+        varchar action
+        varchar status "ALLOWED / DENIED"
+    }
+    runtime_events {
+        uuid id PK
+        uuid organization_id FK
+        uuid agent_id FK "nullable"
+        uuid deployment_id FK "nullable"
+        uuid execution_id FK "nullable"
+        varchar event_type
+        varchar severity
+    }
+    runtime_approvals {
+        uuid id PK
+        uuid organization_id FK
+        uuid agent_id FK "nullable"
+        uuid deployment_id FK "nullable"
+        uuid execution_id FK "nullable"
+        varchar requested_action "DEPLOYMENT / EXECUTION"
+        varchar status "PENDING / APPROVED / REJECTED"
+    }
+    idempotency_records {
+        uuid id PK
+        uuid organization_id FK
+        uuid agent_id FK
+        varchar idempotency_key
+        varchar request_hash
+        uuid execution_id FK
+        datetime expires_at
+    }
+```
+
+`deployment_health` (one row per heartbeat sample, FK to
+`agent_deployments`) is omitted above for readability — see
+[docs/runtime/health-and-observability.md](../../runtime/health-and-observability.md).
+
+---
+
 ## 2. Agent Governance
 
 The product's core domain: what an agent tried to do, and what we decided.

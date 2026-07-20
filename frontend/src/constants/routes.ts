@@ -89,6 +89,18 @@ export const ROUTES = {
   GOVERNANCE_REMEDIATION: '/governance/remediation',
   GOVERNANCE_COMPLIANCE: '/governance/compliance',
   GOVERNANCE_ANALYTICS: '/governance/analytics',
+  /** Agent Runtime & Lifecycle Management (Phase 5.0 §69). */
+  RUNTIME_DASHBOARD: '/runtime',
+  RUNTIME_AGENTS: '/runtime/agents',
+  RUNTIME_AGENT_DETAIL: '/runtime/agents/:id',
+  RUNTIME_DEPLOYMENTS: '/runtime/deployments',
+  RUNTIME_DEPLOYMENT_DETAIL: '/runtime/deployments/:id',
+  RUNTIME_EXECUTIONS: '/runtime/executions',
+  RUNTIME_EXECUTION_DETAIL: '/runtime/executions/:id',
+  RUNTIME_CAPABILITIES: '/runtime/capabilities',
+  RUNTIME_TOOLS: '/runtime/tools',
+  RUNTIME_APPROVALS: '/runtime/approvals',
+  RUNTIME_OPERATIONS: '/runtime/operations',
   /** ABAC administration (Phase 4.3.5 §33). */
   ABAC_POLICIES: '/authorization/abac',
   ABAC_SIMULATOR: '/authorization/abac/simulator',

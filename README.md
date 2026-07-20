@@ -407,6 +407,30 @@ dashboard, access-certification, sod-analysis, toxic-permissions,
 privileged-access, orphaned-identities, risk-scoring, remediation and
 compliance-reporting.
 
+### Agent Runtime & Lifecycle Management (Phase 5.0)
+
+The execution layer, at `/runtime`: **agent registry** (additive columns on
+the existing Phase 1 `agents` table — no parallel registry), **immutable,
+checksummed versioning** (DRAFT → READY_FOR_REVIEW → APPROVED → PUBLISHED,
+tamper-detected by recomputing the checksum at publish), **deployments**
+(RECREATE strategy across DEVELOPMENT/TEST/STAGING/PRODUCTION/SANDBOX, with
+rollback), the **Runtime Gateway** (every execution request walks agent
+state → deployment → version → idempotency → the existing
+`AuthorizationGateway` RBAC/ABAC pipeline → runtime policy → approval →
+queue, exactly as Phase 4.3.6's gateway was already designed to be called
+by "agent runtime"), a **Postgres-backed execution queue** (`SELECT ... FOR
+UPDATE SKIP LOCKED`, no Redis/Celery dependency, driven inline/eagerly in
+this environment), **capability and tool registries** with per-agent
+assignment and a default-deny Tool Gateway (only `FUNCTION`/`echo` actually
+executes; every other tool type is fully authorized but fails closed),
+runtime **approvals** (mission-critical + production always gates), a live
+**dashboard** and **Operations Center**, and an **emergency kill switch**
+(execution/agent/organization scope). See [docs/runtime/](docs/runtime/)
+for the full set — architecture, agent-lifecycle, versioning, deployments,
+executions, workers-and-queue, capabilities-and-tools, gateways,
+runtime-policy-and-approvals, health-and-observability,
+operations-and-kill-switch and security.
+
 **Users** (password `DemoPass!2026`):
 
 | Email                  | Role       |

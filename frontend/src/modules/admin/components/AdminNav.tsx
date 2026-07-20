@@ -22,6 +22,7 @@ const SECTIONS: { label: string; to: string; permission: string }[] = [
   { label: 'Audit', to: ROUTES.AUDIT, permission: 'audit.view' },
   { label: 'Analytics', to: ROUTES.ADMIN_ANALYTICS, permission: PERMISSIONS.ADMIN_ANALYTICS_VIEW },
   { label: 'Governance', to: ROUTES.GOVERNANCE_DASHBOARD, permission: PERMISSIONS.GOVERNANCE_DASHBOARD_VIEW },
+  { label: 'Runtime', to: ROUTES.RUNTIME_DASHBOARD, permission: PERMISSIONS.RUNTIME_AGENT_VIEW },
 ]
 
 export function AdminNav() {

@@ -98,6 +98,19 @@ import {
   ToxicPermissionsPage,
 } from '@/modules/governance'
 import {
+  AgentDetailPage as RuntimeAgentDetailPage,
+  AgentsPage as RuntimeAgentsPage,
+  ApprovalsPage as RuntimeApprovalsPage,
+  CapabilitiesPage as RuntimeCapabilitiesPage,
+  DeploymentDetailPage as RuntimeDeploymentDetailPage,
+  DeploymentsPage as RuntimeDeploymentsPage,
+  ExecutionDetailPage as RuntimeExecutionDetailPage,
+  ExecutionsPage as RuntimeExecutionsPage,
+  OperationsPage as RuntimeOperationsPage,
+  RuntimeDashboardPage,
+  ToolsPage as RuntimeToolsPage,
+} from '@/modules/runtime'
+import {
   ABACEvaluationsPage,
   ABACPoliciesPage,
   ABACPolicyDetailsPage,
@@ -266,6 +279,18 @@ export function AppRoutes() {
           <Route path={ROUTES.GOVERNANCE_REMEDIATION} element={<RemediationCenterPage />} />
           <Route path={ROUTES.GOVERNANCE_COMPLIANCE} element={<ComplianceReportsPage />} />
           <Route path={ROUTES.GOVERNANCE_ANALYTICS} element={<GovernanceAnalyticsPage />} />
+          {/* Agent Runtime & Lifecycle Management (Phase 5.0 §69) */}
+          <Route path={ROUTES.RUNTIME_DASHBOARD} element={<RuntimeDashboardPage />} />
+          <Route path={ROUTES.RUNTIME_AGENTS} element={<RuntimeAgentsPage />} />
+          <Route path={ROUTES.RUNTIME_AGENT_DETAIL} element={<RuntimeAgentDetailPage />} />
+          <Route path={ROUTES.RUNTIME_DEPLOYMENTS} element={<RuntimeDeploymentsPage />} />
+          <Route path={ROUTES.RUNTIME_DEPLOYMENT_DETAIL} element={<RuntimeDeploymentDetailPage />} />
+          <Route path={ROUTES.RUNTIME_EXECUTIONS} element={<RuntimeExecutionsPage />} />
+          <Route path={ROUTES.RUNTIME_EXECUTION_DETAIL} element={<RuntimeExecutionDetailPage />} />
+          <Route path={ROUTES.RUNTIME_CAPABILITIES} element={<RuntimeCapabilitiesPage />} />
+          <Route path={ROUTES.RUNTIME_TOOLS} element={<RuntimeToolsPage />} />
+          <Route path={ROUTES.RUNTIME_APPROVALS} element={<RuntimeApprovalsPage />} />
+          <Route path={ROUTES.RUNTIME_OPERATIONS} element={<RuntimeOperationsPage />} />
           {/* ABAC administration (Phase 4.3.5 §33) */}
           <Route path={ROUTES.ABAC_POLICIES} element={<ABACPoliciesPage />} />
           <Route path={`${ROUTES.ABAC_POLICIES}/new`} element={<CreateABACPolicyPage />} />
