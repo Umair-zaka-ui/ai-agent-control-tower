@@ -27,9 +27,24 @@ a platform-wide tool) is a callable the agent can invoke at runtime:
 `CONNECTOR`/…), `risk_level`, `side_effect_level`, `timeout_seconds`.
 Assignment (`agent_tools`) works the same shape as capabilities —
 `allowed_actions` (e.g. `["EXECUTE"]`) and free-form `constraints` JSONB
-(§23 — `maximum_calls_per_execution`, `allowed_domains`, `read_only`, …
-are supported shapes but not yet enforced by the gateway, which currently
-checks only that the requested `action` is in `allowed_actions`).
+(§23), all enforced by the gateway:
+
+- **`read_only`** — blocks `WRITE`/`DELETE`/`EXPORT`/`ADMINISTRATIVE`
+  actions (§22's action vocabulary); `EXECUTE`/`READ` still pass.
+- **`maximum_calls_per_execution`** — counts this execution's own
+  already-`ALLOWED` calls to this tool; the call that would exceed the
+  limit is denied.
+- **`allowed_domains`** — checked against the tool's `endpoint_reference`
+  host. This is enforced even though most tool types never actually make
+  the outbound call in this build (see below) — it's still a real,
+  checkable authorization decision independent of whether the call would
+  go anywhere.
+
+A constraint violation is recorded as a `DENIED` `tool_calls` row with
+`error_code=TOOL_CONSTRAINT_VIOLATION` (distinct from
+`TOOL_ACTION_NOT_ALLOWED`, which means "not connected in this
+environment" — see below) and is non-retryable: retrying the same
+execution won't change the constraint.
 
 ## What actually executes (§43, §44)
 
@@ -43,15 +58,18 @@ happens — an agent never calls a tool directly. It:
    it hasn't been granted).
 3. Checks the requested `action` is in `allowed_actions`
    (`TOOL_ACTION_NOT_ALLOWED` otherwise).
-4. **Only then**, if `tool_type == FUNCTION` and `action == EXECUTE`, runs
-   the built-in `echo` behavior (returns the input unchanged, records a
-   `tool_calls` row, `status=ALLOWED`). Every other tool type/action is
-   fully authorized by steps 1-3 but fails closed at step 4 —
-   `TOOL_ACTION_NOT_ALLOWED`, "tool type not connected in this
+4. Checks every constraint above (`TOOL_CONSTRAINT_VIOLATION` on the first
+   one that fails).
+5. **Only then**, if `tool_type == FUNCTION` and `action` is `EXECUTE` or
+   `READ`, runs the built-in echo behavior (returns the input unchanged,
+   records a `tool_calls` row, `status=ALLOWED`). Every other tool
+   type/action is fully authorized by steps 1-4 but fails closed at step 5
+   — `TOOL_ACTION_NOT_ALLOWED`, "tool type not connected in this
    environment." This is deliberate: this build does not make outbound
    HTTP calls or execute arbitrary code on an agent's behalf (no SSRF
    surface, no code-execution surface), while still fully exercising the
-   authorization pipeline real tool types would go through.
+   authorization *and* constraint pipeline real tool types would go
+   through.
 
 See [gateways.md](gateways.md) for how this composes with the Model Gateway
 inside one worker attempt.

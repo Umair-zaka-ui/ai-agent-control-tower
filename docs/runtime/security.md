@@ -40,6 +40,18 @@ needs one (see [gateways.md](gateways.md)). A real provider adapter would
 resolve the reference through a `SecretsResolver` at invocation time, never
 storing the decrypted value beyond that call.
 
+## Contract validation & state integrity
+
+Execution input is validated against the agent definition's `input_schema`
+before an execution row is even created; a successful attempt's output is
+validated against `output_schema` before it's allowed to report
+`SUCCEEDED` (§7.2 — see [executions.md](executions.md)). Separately,
+`AgentExecution.status` can only move along the edges in
+`_EXECUTION_TRANSITIONS`; every assignment in `services.py` goes through
+`_set_execution_status`, which raises `INVALID_EXECUTION_TRANSITION`
+rather than accepting an illegal jump (e.g. a terminal `SUCCEEDED` row
+being reset to `QUEUED`) — see [executions.md](executions.md#state-machine-27).
+
 ## Kill switch & suspension as security controls
 
 `runtime.kill_switch.execute` is a separate, more sensitive permission from
@@ -54,10 +66,10 @@ inherit it) can. Verified by `test_runtime_operator_role_is_scoped`.
 No sandboxing/isolation between agent executions beyond database-row
 tenant scoping (there is no code execution surface in this build — the
 Model Gateway is a mock, the Tool Gateway's only working action is
-`echo`); no rate limiting below the `maximum_executions_per_minute`/
-`maximum_concurrent_executions` policy fields (which are read but only the
-concurrency one is currently enforced — see
-[runtime-policy-and-approvals.md](runtime-policy-and-approvals.md)); no
-MFA step-up for high-risk operations (§78 mentions it as a possibility, not
-a requirement, and the platform's existing MFA infrastructure is not yet
-wired into this module).
+`echo`); no MFA step-up for high-risk operations (§78 mentions it as a
+possibility, not a requirement, and the platform's existing MFA
+infrastructure is not yet wired into this module); the emergency kill
+switch has no rate limit of its own (an actor holding
+`runtime.kill_switch.execute` can call it repeatedly) since it is already
+gated by a distinct, sensitive permission and — for the cross-tenant
+`PLATFORM` scope — the `SUPER_ADMIN` role check above.

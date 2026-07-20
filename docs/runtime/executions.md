@@ -14,6 +14,9 @@ Deployment resolved (explicit deployment_id, or the agent's active
    │
 Agent version resolved from the deployment, not REVOKED, PUBLISHED/DEPRECATED
    │
+Input contract validated against the agent definition's input_schema
+   (§7.2) — a mismatch raises VALIDATION_ERROR (422), no execution row created
+   │
 Idempotency check (§33) — same key + same payload hash returns the
    existing execution; same key + different payload → 409 IDEMPOTENCY_CONFLICT
    │
@@ -50,16 +53,28 @@ CREATED → AUTHORIZING → DENIED
                     └─→ QUEUED → RUNNING → SUCCEEDED
                                        ├─→ FAILED
                                        ├─→ QUEUED (retry)
+                                       ├─→ TIMED_OUT
                                        ├─→ CANCELLED
                                        └─→ DEAD_LETTERED
 ```
 
-`TIMED_OUT`, `SCHEDULED` and `WAITING_FOR_*` are modeled in the status
-column (free-form `String(24)`, not a DB enum) but not currently produced —
-this environment's synchronous inline worker has no notion of a queue
-timeout separate from the model/tool call itself. See
-[workers-and-queue.md](workers-and-queue.md) for the retry/dead-letter
-mechanics that produce `FAILED`/`DEAD_LETTERED`.
+Every transition is validated centrally by
+`_set_execution_status`/`_EXECUTION_TRANSITIONS` in `services.py` (§27's
+"every state transition must be authorized and audited" — here,
+*validated*: an assignment not in the table raises
+`INVALID_EXECUTION_TRANSITION` rather than silently landing the row in a
+state the machine doesn't recognize) — every call site that used to write
+`execution.status = "..."` directly now goes through it, so a bug that
+tries to (for example) resurrect a `SUCCEEDED` execution back to `QUEUED`
+fails loudly at the point of the mistake instead of corrupting the row.
+
+`SCHEDULED` and `WAITING_FOR_*` are modeled in the status column
+(free-form `String(24)`, not a DB enum) but not currently produced — this
+environment's synchronous inline worker has no separate scheduling delay.
+`TIMED_OUT` **is** produced: see
+[workers-and-queue.md](workers-and-queue.md) for the timeout enforcement
+and the retry/dead-letter mechanics that produce
+`FAILED`/`TIMED_OUT`/`DEAD_LETTERED`.
 
 ## Idempotency (§33)
 

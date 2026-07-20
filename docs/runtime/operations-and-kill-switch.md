@@ -5,23 +5,17 @@
 sensitive `runtime.kill_switch.execute` permission (§60 — "high-privilege
 authorization").
 
-## Scopes actually implemented
+## Scopes
 
 §60 lists five scopes: Execution, Agent, Project, Organization, Platform.
-This build implements **Execution, Agent and Organization** —
-`runtime.kill_switch.execute` is granted per-organization (like every other
-runtime permission), so a *Platform*-wide switch would need a separate
-cross-tenant super-admin surface that doesn't exist yet, and *Project*
-scope would need to resolve every agent under a project first (the `Project`
-model exists from the org-hierarchy phase, but that join isn't built here).
-Both are natural follow-ups, not architectural dead ends — `KillSwitchService`
-already takes a `scope` string and dispatches on it, so adding a case is
-additive.
+All five are implemented.
 
 ```
-POST /kill-switch/executions/{execution_id}   {reason}
-POST /kill-switch/agents/{agent_id}           {reason}
+POST /kill-switch/executions/{execution_id}     {reason}
+POST /kill-switch/agents/{agent_id}              {reason}
+POST /kill-switch/projects/{project_id}          {reason}
 POST /kill-switch/organizations/{organization_id}   {reason}
+POST /kill-switch/platform                       {reason}
 ```
 
 - **EXECUTION** — cancels that one execution if not already terminal.
@@ -29,12 +23,24 @@ POST /kill-switch/organizations/{organization_id}   {reason}
   active execution (`QUEUED`/`RUNNING`/`PENDING_APPROVAL`/…) for that agent
   in one call — a suspended agent with executions still running would be a
   kill switch that didn't actually kill anything.
+- **PROJECT** — resolves every agent with that `project_id` in the actor's
+  organization, suspends all of them, cancels their active executions, and
+  suspends their active deployments. Empty project (no agents, or none in
+  this organization) is rejected rather than silently succeeding.
 - **ORGANIZATION** — cancels every active execution *and* suspends every
   active deployment org-wide. The route double-checks
   `organization_id == actor.organization_id` even though `require_permission`
   already scopes the actor — activating another organization's kill switch
   is rejected with `PERMISSION_DENIED`, not merely relying on the caller
   not knowing another org's ID.
+- **PLATFORM** — cross-tenant: cancels every active execution and suspends
+  every active deployment across *every* organization. Because
+  `runtime.kill_switch.execute` is granted per-organization like every
+  other runtime permission, holding it is **not** sufficient for this
+  scope — `KillSwitchService.activate` additionally requires the actor's
+  legacy `role` to be `SUPER_ADMIN` before it will even look outside the
+  actor's own organization. A permission scoped to one tenant must never
+  be enough, by itself, to halt every tenant's executions.
 
 Every activation is both audited (`RUNTIME_KILL_SWITCH_ACTIVATED`,
 `AuthorizationAudit`) and recorded as a `CRITICAL`-severity `runtime_events`
