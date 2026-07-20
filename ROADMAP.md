@@ -655,6 +655,67 @@ existing 4.3.1–4.3.7 authorization/certification foundation.
   verified end-to-end in a real browser (registration → login → create/
   activate an SoD rule → create/launch/review a certification campaign).
 
+Next: 5.0 Agent Runtime & Lifecycle Management.
+
+### Part 5.0 — Agent Runtime & Lifecycle Management ✅
+
+The execution layer: register, version, deploy and execute real AI agents
+under the same governance and security controls as the rest of the
+platform, over the existing agent registry and authorization gateway.
+
+- **Agent registry** (migration `0023`): additive columns on the existing
+  Phase 1 `agents` table (`slug`, `project_id`, `owner_type`/`owner_id`,
+  `criticality`, `data_classification`, `default_environment`,
+  `lifecycle_status`, `archived_at`) — no parallel registry. New
+  `agent_definitions` table; DRAFT → VALIDATED → APPROVED → ACTIVE →
+  SUSPENDED/DEPRECATED/ARCHIVED/RETIRED lifecycle.
+- **Immutable versioning** (`agent_versions`): checksummed snapshots
+  (config, prompt, model config, capability/tool refs, policy);
+  DRAFT → READY_FOR_REVIEW → APPROVED → PUBLISHED → DEPRECATED/REVOKED;
+  publish recomputes the checksum and blocks on tamper.
+- **Deployments** (`agent_deployments`): DEVELOPMENT/TEST/STAGING/
+  PRODUCTION/SANDBOX; RECREATE strategy (CANARY/ROLLING/BLUE_GREEN modeled,
+  not yet executed); mission-critical + production deployments gate on
+  approval; rollback to any prior published/deprecated version.
+- **Runtime Gateway** (`app/runtime/services.py::ExecutionRequestService`):
+  the only entry point for execution — agent/deployment/version state →
+  idempotency (`idempotency_records`) → the existing 4.3.6
+  `AuthorizationGateway` (RBAC/ABAC) → runtime policy (concurrency limits,
+  approved models, environment restrictions) → approval → queue. Denials
+  and policy blocks are saved as inspectable execution rows, not thrown.
+- **Postgres-backed queue & worker** (`agent_executions` +
+  `execution_locks`, no Redis/Celery): `SELECT ... FOR UPDATE SKIP LOCKED`
+  claim, per-attempt retry with a non-retryable error allowlist, dead-
+  lettering after `maximum_retries`. Driven inline/eagerly in this
+  environment (see [docs/runtime/workers-and-queue.md](docs/runtime/workers-and-queue.md)).
+- **Capabilities & tools** (`capabilities`/`agent_capabilities`,
+  `tools`/`agent_tools`/`tool_calls`): declare-then-assign-then-authorize;
+  the Tool Gateway default-denies everything except the built-in
+  `FUNCTION`/`echo` action (no outbound network/code-execution surface in
+  this build).
+- **Model Gateway**: provider-neutral contract; only `MOCK` is a working
+  adapter (deterministic, no network call); any other provider fails
+  closed with `MODEL_PROVIDER_UNAVAILABLE`.
+- **Runtime approvals** (`runtime_approvals`, new — the existing
+  `Approval` model is 1:1 with `agent_action_id` and doesn't fit): gates
+  mission-critical/production deployments and executions.
+- **Kill switch**: execution/agent/organization scope, always audited,
+  always reason-required and confirmed in the UI.
+- Gated by 32 new `runtime.*` permissions; new builtin roles
+  `ROLE_RUNTIME_ADMIN` (full control) and `ROLE_RUNTIME_OPERATOR`
+  (register/version/run, no publish/kill-switch).
+- **Frontend** (`modules/runtime`): 11 pages + `RuntimeNav`
+  (permission-filtered, mirrors `GovernanceNav`); `/runtime/*` routes;
+  linked from `AdminNav`.
+- Docs: [docs/runtime/](docs/runtime/) — overview, architecture,
+  agent-lifecycle, versioning, deployments, executions, workers-and-queue,
+  capabilities-and-tools, gateways, runtime-policy-and-approvals,
+  health-and-observability, operations-and-kill-switch, security.
+  Backend **561** green (17 new); frontend tsc + build clean; verified
+  end-to-end in a real browser (register → validate/approve/activate an
+  agent → create/publish a version → deploy → run an execution to
+  `SUCCEEDED`).
+
 Next: production readiness (MFA, OAuth/SSO, observability).
 
 ## Future (Phase 4+)

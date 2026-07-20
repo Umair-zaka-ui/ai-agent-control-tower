@@ -33,6 +33,7 @@ PERMISSION_GROUPS: tuple[PermissionGroupDef, ...] = (
     PermissionGroupDef("organizations", "Organizations", "Users, invitations and org management", 60),
     PermissionGroupDef("analytics", "Analytics", "Operational and executive dashboards", 70),
     PermissionGroupDef("authorization", "Authorization", "Roles, permissions and assignments", 80),
+    PermissionGroupDef("runtime", "Agent Runtime", "Agent registry, versions, deployments and executions", 90),
     PermissionGroupDef("general", "General", "Uncategorised permissions", 999),
 )
 
@@ -56,6 +57,7 @@ _RESOURCE_GROUP: dict[str, str] = {
     "role": "authorization",
     "permission": "authorization",
     "rbac": "authorization",
+    "runtime": "runtime",
 }
 
 
@@ -119,6 +121,15 @@ _AI_REVIEW = {
     "dashboard.view",
 }
 _ORG_ADMIN = (_ALL - {"rbac.manage", "role.manage", "analytics.executive"}) | {"role.view"}
+# Agent Runtime & Lifecycle Management (Phase 5.0 §67).
+_RUNTIME_ADMIN = {code for code in _ALL if code.startswith("runtime.")}
+_RUNTIME_OPERATOR = {
+    "runtime.agent.view", "runtime.agent.create", "runtime.agent.update",
+    "runtime.version.view", "runtime.version.create", "runtime.version.update",
+    "runtime.deployment.view", "runtime.execution.view", "runtime.execution.create",
+    "runtime.execution.cancel", "runtime.execution.retry", "runtime.health.view",
+    "runtime.telemetry.view", "dashboard.view",
+}
 
 
 @dataclass(frozen=True)
@@ -143,7 +154,8 @@ BUILTIN_ROLES: tuple[BuiltinRoleDef, ...] = (
                    RoleCategory.SYSTEM, 100, set(_ALL), children=("ROLE_PLATFORM_ADMIN",)),
     BuiltinRoleDef("ROLE_PLATFORM_ADMIN", "Platform Admin", "Administer the platform (except ownership transfer)",
                    RoleCategory.SYSTEM, 90, _ALL - {"role.manage"},
-                   children=("ROLE_SECURITY_ADMIN", "ROLE_ORG_ADMIN", "ROLE_COMPLIANCE_ADMIN")),
+                   children=("ROLE_SECURITY_ADMIN", "ROLE_ORG_ADMIN", "ROLE_COMPLIANCE_ADMIN",
+                             "ROLE_RUNTIME_ADMIN")),
     BuiltinRoleDef("ROLE_SECURITY_ADMIN", "Security Admin", "Security operations: locks, sessions, recovery, audit",
                    RoleCategory.SYSTEM, 80, set(_SECURITY), children=("ROLE_AUDITOR",)),
     BuiltinRoleDef("ROLE_AUDITOR", "Auditor", "Read and export audit, compliance and analytics",
@@ -162,6 +174,15 @@ BUILTIN_ROLES: tuple[BuiltinRoleDef, ...] = (
                    children=("ROLE_AUDITOR",)),
     BuiltinRoleDef("ROLE_SUPPORT_ENGINEER", "Support Engineer", "Read-mostly support access",
                    RoleCategory.SYSTEM, 35, _READ_ONLY | {"session.view"}, children=("ROLE_VIEWER",)),
+    # Agent Runtime & Lifecycle Management (Phase 5.0 §67).
+    BuiltinRoleDef("ROLE_RUNTIME_ADMIN", "Runtime Admin",
+                   "Full control of the agent runtime: registry, versions, deployments, "
+                   "executions, capabilities, tools, approvals and the kill switch",
+                   RoleCategory.SYSTEM, 77, set(_RUNTIME_ADMIN) | {"audit.view", "audit.export"},
+                   children=("ROLE_RUNTIME_OPERATOR",)),
+    BuiltinRoleDef("ROLE_RUNTIME_OPERATOR", "Runtime Operator",
+                   "Register agents, publish versions and run/monitor executions",
+                   RoleCategory.SYSTEM, 48, set(_RUNTIME_OPERATOR), children=("ROLE_VIEWER",)),
     # AI operations
     BuiltinRoleDef("ROLE_AI_OPERATOR", "AI Operator", "Operate AI agents and their keys",
                    RoleCategory.SYSTEM, 50, set(_AI_OPS), children=("ROLE_VIEWER",)),

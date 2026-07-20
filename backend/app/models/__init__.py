@@ -41,6 +41,23 @@ from app.models.resource_authorization import (
     ResourceShare,
 )
 from app.models.policy import Policy
+from app.models.runtime import (
+    AgentCapability,
+    AgentDefinition,
+    AgentDeployment,
+    AgentExecution,
+    AgentTool,
+    AgentVersion,
+    Capability,
+    DeploymentHealth,
+    ExecutionAttempt,
+    ExecutionLock,
+    IdempotencyRecord,
+    RuntimeApproval,
+    RuntimeEvent,
+    Tool,
+    ToolCall,
+)
 from app.models.rbac import (
     AuthorizationAudit,
     AuthorizationDecision,
@@ -98,4 +115,19 @@ __all__ = [
     "GovernanceRiskScore",
     "ComplianceReport",
     "PrivilegedAccountReview",
+    "AgentDefinition",
+    "AgentVersion",
+    "AgentDeployment",
+    "AgentExecution",
+    "ExecutionAttempt",
+    "ExecutionLock",
+    "Capability",
+    "AgentCapability",
+    "Tool",
+    "AgentTool",
+    "ToolCall",
+    "RuntimeEvent",
+    "DeploymentHealth",
+    "IdempotencyRecord",
+    "RuntimeApproval",
 ]

@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, Enum, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -51,6 +52,27 @@ class Agent(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     auto_suspend_threshold: Mapped[int | None] = mapped_column(Integer, nullable=True)
     risk_level: Mapped[str] = mapped_column(String(20), nullable=False, default="LOW")
     health: Mapped[str] = mapped_column(String(20), nullable=False, default="HEALTHY")
+
+    # --- Phase 5.0: runtime & lifecycle management (SRS §7.1) ---
+    # ``status`` above is the Phase-1 API-key/governance status; runtime
+    # adds a distinct lifecycle (DRAFT..ACTIVE..RETIRED) rather than
+    # repurposing it, since 20+ authorization/governance call sites already
+    # depend on ``status``'s existing ACTIVE/SUSPENDED/ARCHIVED/BLOCKED meaning.
+    slug: Mapped[str | None] = mapped_column(String(150), nullable=True, index=True)
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="SET NULL"), nullable=True
+    )
+    owner_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    criticality: Mapped[str] = mapped_column(String(20), nullable=False, default="MEDIUM")
+    data_classification: Mapped[str] = mapped_column(String(30), nullable=False, default="INTERNAL")
+    default_environment: Mapped[str] = mapped_column(String(20), nullable=False, default="DEVELOPMENT")
+    # DRAFT / VALIDATING / VALIDATED / APPROVED / ACTIVE / SUSPENDED /
+    # DEPRECATED / ARCHIVED / RETIRED (SRS §10)
+    lifecycle_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="ACTIVE", index=True
+    )
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     organization: Mapped["Organization"] = relationship(back_populates="agents")
     permissions: Mapped[list["Permission"]] = relationship(

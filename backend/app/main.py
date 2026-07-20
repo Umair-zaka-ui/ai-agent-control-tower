@@ -27,6 +27,7 @@ from app.authorization.resources.routes import router as resources_router
 from app.authorization.abac.routes import router as abac_router
 from app.authorization.admin.routes import router as admin_router
 from app.governance.routes import router as governance_router
+from app.runtime.routes import router as runtime_router
 from app.identity.errors import register_identity_exception_handlers
 
 app = FastAPI(
@@ -111,3 +112,8 @@ app.include_router(admin_router)
 # detection, risk scoring, remediation and compliance reporting under
 # /api/v1/governance.
 app.include_router(governance_router)
+
+# Phase 5.0: Agent Runtime & Lifecycle Management — agent registry, immutable
+# versions, deployments, the Runtime Gateway, executions, capabilities, tools,
+# runtime approvals, health/workers and the kill switch under /api/v1/runtime.
+app.include_router(runtime_router)
