@@ -10,12 +10,31 @@ lives in JSONB already on the entities it governs, so a deployment's limits
 travel with the deployment and a version's policy travels with the
 (immutable) version.
 
-- **`deployment.runtime_limits`** (§46-§48): `maximum_concurrent_executions`
-  — counts `QUEUED`/`RUNNING`/`SCHEDULED` executions for this deployment;
-  at the limit, the new execution is saved as `BLOCKED`
-  (`RUNTIME_RATE_LIMITED`) rather than queued. `maximum_retries` is also
-  read from here by the worker's retry policy (see
-  [workers-and-queue.md](workers-and-queue.md)).
+- **`deployment.runtime_limits`** (§46-§48), all enforced on every request:
+  - `maximum_concurrent_executions` — counts `QUEUED`/`RUNNING`/`SCHEDULED`
+    executions for this deployment (excluding the request being evaluated
+    itself — see below).
+  - `maximum_executions_per_minute` — counts executions created in the
+    trailing 60 seconds for this deployment.
+  - `maximum_cost` — a rolling daily budget: sums `cost` for this
+    deployment since midnight UTC.
+  - `maximum_tokens` — a pre-flight estimate (the same `len(json)//4`
+    heuristic the Model Gateway uses post-hoc, applied *before* any model
+    call) rejects a request whose input alone would already exceed the
+    per-execution token budget.
+  - `maximum_retries` is also read from here by the worker's retry policy
+    (see [workers-and-queue.md](workers-and-queue.md)), and
+    `maximum_execution_seconds` by its timeout enforcement (see
+    [executions.md](executions.md)).
+
+  Any limit that's exceeded saves the execution as `BLOCKED`
+  (`RUNTIME_RATE_LIMITED` or `RUNTIME_BUDGET_EXCEEDED`) rather than
+  queuing it. Every count query explicitly excludes the execution row
+  being evaluated (`exclude_execution_id`) — that row is already flushed
+  (it needs an id before this point), so without the exclusion every
+  request would count against its own limit before it had even been
+  decided, blocking the very first request against a `maximum_..._per_...`
+  limit of 1.
 - **`version.policy_snapshot`** (immutable, part of the checksum — see
   [versioning.md](versioning.md)): `approved_models` (a model not on the
   list → `MODEL_NOT_APPROVED`), `prohibited_environments` (execution

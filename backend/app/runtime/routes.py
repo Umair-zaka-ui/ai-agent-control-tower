@@ -49,6 +49,7 @@ from app.runtime.services import (
     CapabilityService,
     DeploymentService,
     ExecutionRequestService,
+    ExecutionWorkerService,
     HealthMonitoringService,
     KillSwitchService,
     RuntimeApprovalService,
@@ -490,6 +491,16 @@ def list_workers(actor: User = Depends(require_permission(_HEALTH)), db: Session
     return HealthMonitoringService(db).workers(actor)
 
 
+@router.post("/workers/reap", response_model=dict)
+def reap_stale_locks(actor: User = Depends(require_permission(_EXEC_RETRY)), db: Session = Depends(get_db)):
+    """§32 — recover executions left ``RUNNING`` by a worker that never
+    renewed its lease. Self-healing paths call this automatically before
+    every claim; this endpoint exists for operator-triggered recovery and
+    observability (how many were actually stuck)."""
+    reaped = ExecutionWorkerService(db).reap_expired_locks()
+    return {"reaped": reaped}
+
+
 # --------------------------------------------------------------------------- #
 # Kill switch (§60, §66)
 # --------------------------------------------------------------------------- #
@@ -505,9 +516,25 @@ def kill_agent(agent_id: uuid.UUID, payload: KillSwitchRequest,
     return KillSwitchService(db).activate(actor, "AGENT", agent_id, payload.reason)
 
 
+@router.post("/kill-switch/projects/{project_id}", response_model=dict)
+def kill_project(project_id: uuid.UUID, payload: KillSwitchRequest,
+                 actor: User = Depends(require_permission(_KILL_SWITCH)), db: Session = Depends(get_db)):
+    return KillSwitchService(db).activate(actor, "PROJECT", project_id, payload.reason)
+
+
 @router.post("/kill-switch/organizations/{organization_id}", response_model=dict)
 def kill_organization(organization_id: uuid.UUID, payload: KillSwitchRequest,
                       actor: User = Depends(require_permission(_KILL_SWITCH)), db: Session = Depends(get_db)):
     if organization_id != actor.organization_id:
         raise IdentityError(ErrorCode.PERMISSION_DENIED, "Cannot activate the kill switch for another organization.")
     return KillSwitchService(db).activate(actor, "ORGANIZATION", organization_id, payload.reason)
+
+
+@router.post("/kill-switch/platform", response_model=dict)
+def kill_platform(payload: KillSwitchRequest,
+                  actor: User = Depends(require_permission(_KILL_SWITCH)), db: Session = Depends(get_db)):
+    """§60 — cross-tenant; ``KillSwitchService.activate`` additionally
+    requires the actor's legacy role to be SUPER_ADMIN, since the ordinary
+    per-organization ``runtime.kill_switch.execute`` grant must never be
+    sufficient on its own to halt every organization's executions."""
+    return KillSwitchService(db).activate(actor, "PLATFORM", None, payload.reason)

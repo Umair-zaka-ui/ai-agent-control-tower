@@ -26,17 +26,61 @@ Priority ordering (`CRITICAL, HIGH, NORMAL, LOW`) is a SQL `CASE` expression
 compiled once at import time (`_PRIORITY_RANK` in `services.py`), not
 recomputed per call.
 
+The claim query is **intentionally global** — it is not filtered by
+organization or agent. A real worker pool serves every tenant fairly, by
+queue position, not by tenant; the oldest `QUEUED` row anywhere gets
+claimed first. One consequence worth knowing when testing against this
+queue directly: if an unrelated `QUEUED` row is left behind (a crashed
+test, a manually-inserted row), it — not the row you just enqueued — is
+what the next `run_once()` call claims, because it's older. Production
+code never notices this (nothing is ever left `QUEUED` without a worker
+eventually claiming it); it only matters if you're constructing rows by
+hand.
+
 ## Locking & heartbeats (§32)
 
 Claiming a row also inserts an `execution_locks` row (`execution_id`
 unique, `worker_id`, `acquired_at`, `expires_at` 5 minutes out,
 `heartbeat_at`) and an `execution_attempts` row for this attempt. The lock
 is deleted in a `finally` block after the attempt completes — success or
-failure — so a crash mid-attempt would otherwise leave a stale lock past
-its `expires_at`; a real out-of-process poller would additionally sweep
-expired locks before claiming (not needed here since the worker runs
-in-process, synchronously, and can't crash independently of the request
-that invoked it).
+failure.
+
+If a worker crashes mid-attempt (or is killed, or loses its network
+connection) without reaching that `finally`, the execution is stuck
+`RUNNING` and the lock's `expires_at` is never renewed.
+`ExecutionWorkerService.reap_expired_locks()` recovers this: it finds
+every `execution_locks` row past its `expires_at`, runs the *same*
+fail-or-retry policy below against the execution it was guarding
+(`WORKER_UNAVAILABLE` — requeue if attempts remain, else
+`DEAD_LETTERED`), and drops the stale lock. `claim_next()` calls it
+opportunistically before every claim, so recovery happens automatically
+the next time *any* worker asks for work — no separate sweeper process is
+needed in this environment. `POST /runtime/workers/reap` also exposes it
+directly, for operator-triggered recovery and to see how many were
+actually stuck (`{"reaped": N}`).
+
+## Execution timeout (§36)
+
+`deployment.runtime_limits.maximum_execution_seconds` (default 300s)
+bounds the model invocation: `ExecutionWorkerService._execute` runs
+`ModelGatewayService.invoke` in a one-worker `ThreadPoolExecutor` and calls
+`future.result(timeout=...)`. On timeout, the future is abandoned (not
+killed — Python has no safe way to kill a running thread) and
+`pool.shutdown(wait=False)` so the abandoned call doesn't itself block the
+worker; the attempt fails with `EXECUTION_TIMED_OUT`, which follows the
+normal retry policy below but reports as `TIMED_OUT` rather than
+`DEAD_LETTERED` once attempts are exhausted, so the terminal reason stays
+distinguishable in the UI.
+
+Only the model call is time-boxed. Tool calls (`ToolGatewayService.invoke`,
+below) are not run on that same thread — they write through the worker's
+own `self.db`, and a SQLAlchemy `Session` is not safe to use from two
+threads at once. Since an abandoned future keeps running in the
+background rather than actually stopping, giving it DB access would let it
+race the thread that gave up waiting on it. In practice this doesn't limit
+real coverage: the only outbound-I/O boundary in this build is the model
+call (§43 — tool calls are in-process only, no outbound network/DB access
+is wired up), which is exactly the boundary that's timed.
 
 ## How this environment actually runs the worker
 

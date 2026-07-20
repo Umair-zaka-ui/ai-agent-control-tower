@@ -22,15 +22,21 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlparse
 
+import jsonschema
 from sqlalchemy import case, delete, func, select
 from sqlalchemy.orm import Session
 
 from app.authorization.enums import AuthorizationAuditEvent
 from app.authorization.middleware.gateway import AuthorizationGateway
 from app.authorization.services import AuthorizationAuditService
+from app.core.enums import UserRole
 from app.identity.errors import ErrorCode, IdentityError
 from app.models.agent import Agent
 from app.models.organization_hierarchy import Project
@@ -63,9 +69,27 @@ VERSION_LIFECYCLE = ("DRAFT", "VALIDATING", "READY_FOR_REVIEW", "APPROVED",
 DEPLOYMENT_LIFECYCLE = ("CREATED", "PENDING_APPROVAL", "SCHEDULED", "DEPLOYING",
                         "HEALTH_CHECKING", "ACTIVE", "DEGRADED", "FAILED",
                         "SUSPENDED", "ROLLING_BACK", "RETIRED")
-TERMINAL_EXECUTION_STATUSES = {"SUCCEEDED", "FAILED", "CANCELLED", "DEAD_LETTERED", "DENIED"}
+TERMINAL_EXECUTION_STATUSES = {"SUCCEEDED", "FAILED", "CANCELLED", "DEAD_LETTERED",
+                               "DENIED", "REJECTED", "BLOCKED", "TIMED_OUT"}
 ACTIVE_EXECUTION_STATUSES = {"CREATED", "AUTHORIZING", "PENDING_APPROVAL", "QUEUED",
-                             "SCHEDULED", "RUNNING", "RETRYING"}
+                             "SCHEDULED", "RUNNING"}
+# §27 — the only transitions ``AgentExecution.status`` may make after its
+# initial value (set at construction, not a transition). Any assignment not
+# listed here is a bug, not a policy choice, so ``_set_execution_status``
+# rejects it rather than trusting every call site to only ever assign a
+# legal value.
+_EXECUTION_TRANSITIONS: dict[str, frozenset[str]] = {
+    "CREATED": frozenset({"AUTHORIZING", "CANCELLED"}),
+    "AUTHORIZING": frozenset({"DENIED", "BLOCKED", "PENDING_APPROVAL", "QUEUED", "CANCELLED"}),
+    "PENDING_APPROVAL": frozenset({"QUEUED", "REJECTED", "CANCELLED"}),
+    "QUEUED": frozenset({"RUNNING", "CANCELLED"}),
+    "SCHEDULED": frozenset({"QUEUED", "RUNNING", "CANCELLED"}),
+    "RUNNING": frozenset({"SUCCEEDED", "FAILED", "QUEUED", "DEAD_LETTERED", "TIMED_OUT", "CANCELLED"}),
+    "FAILED": frozenset({"QUEUED"}),
+    "TIMED_OUT": frozenset({"QUEUED"}),
+    "DEAD_LETTERED": frozenset({"QUEUED"}),
+    # Terminal, no outgoing edges: SUCCEEDED, DENIED, BLOCKED, REJECTED, CANCELLED.
+}
 _PRIORITY_RANK = case(
     (AgentExecution.priority == "CRITICAL", 0),
     (AgentExecution.priority == "HIGH", 1),
@@ -92,6 +116,20 @@ def _checksum(version: AgentVersion) -> str:
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
 
+def _validate_schema(payload: dict, schema: dict, *, what: str) -> None:
+    """§7.2 — validates an execution's input/output contract against the
+    agent definition's JSON Schema. Raises ``VALIDATION_ERROR`` (a
+    non-retryable code — see ``ExecutionWorkerService._fail_or_retry``) on
+    mismatch; a malformed schema itself is also a validation error rather
+    than a 500, since an admin can fix it the same way."""
+    try:
+        jsonschema.validate(instance=payload, schema=schema)
+    except jsonschema.ValidationError as exc:
+        raise IdentityError(ErrorCode.VALIDATION_ERROR, f"{what} does not match the agent's contract: {exc.message}")
+    except jsonschema.SchemaError as exc:
+        raise IdentityError(ErrorCode.VALIDATION_ERROR, f"The agent's {what} schema is invalid: {exc.message}")
+
+
 def _record_event(db: Session, event: AuthorizationAuditEvent, actor: User | None, *,
                   organization_id: uuid.UUID, agent_id: uuid.UUID | None = None,
                   deployment_id: uuid.UUID | None = None,
@@ -107,6 +145,23 @@ def _record_event(db: Session, event: AuthorizationAuditEvent, actor: User | Non
         organization_id=organization_id, agent_id=agent_id, deployment_id=deployment_id,
         execution_id=execution_id, event_type=event.value, severity=severity, payload=meta,
     ))
+
+
+def _set_execution_status(execution: AgentExecution, to_status: str) -> None:
+    """§27 — the single choke point every status change goes through. An
+    illegal transition (e.g. resurrecting a SUCCEEDED execution, or
+    cancelling straight from DENIED) is a bug in the caller, not a
+    legitimate outcome, so this fails loudly rather than silently letting
+    the row drift into a state the documented machine doesn't recognize."""
+    if to_status == execution.status:
+        return
+    allowed = _EXECUTION_TRANSITIONS.get(execution.status, frozenset())
+    if to_status not in allowed:
+        raise IdentityError(
+            ErrorCode.INVALID_EXECUTION_TRANSITION,
+            f"Cannot move execution from {execution.status} to {to_status}.",
+        )
+    execution.status = to_status
 
 
 # --------------------------------------------------------------------------- #
@@ -682,6 +737,12 @@ class ModelGatewayService:
                 ErrorCode.MODEL_PROVIDER_UNAVAILABLE,
                 f"Model provider '{provider}' is not configured in this environment.",
             )
+        # Test/simulation hook only — lets the timeout enforcement in
+        # ExecutionWorkerService be exercised deterministically without a
+        # real slow provider. Never triggered by normal input.
+        simulated_delay = input_payload.get("__simulate_slow_seconds__") if isinstance(input_payload, dict) else None
+        if simulated_delay:
+            time.sleep(float(simulated_delay))
         text_in = json.dumps(input_payload, default=str)
         input_tokens = max(1, len(text_in) // 4)
         output_text = f"[{config.get('model', 'mock-model')}] processed {len(input_payload)} input field(s)."
@@ -700,12 +761,20 @@ class ModelGatewayService:
 # --------------------------------------------------------------------------- #
 class ToolGatewayService:
     """§43 — every tool call is validated against the agent's tool
-    assignment and constraints before it runs. Only the ``FUNCTION`` tool
-    type with the built-in ``echo`` action is actually executable in this
-    environment (no outbound network/DB access from tool calls is wired up);
-    every other tool type is fully modeled (registry, assignment,
-    constraints, authorization) but fails closed with
-    ``TOOL_ACTION_NOT_ALLOWED`` if invoked, matching §36 default deny."""
+    assignment and constraints (§23) before it runs. Only the ``FUNCTION``
+    tool type with the built-in ``EXECUTE``/``READ`` echo actions is
+    actually executable in this environment (no outbound network/DB access
+    from tool calls is wired up); every other tool type is fully modeled
+    (registry, assignment, constraints, authorization) but fails closed
+    with ``TOOL_ACTION_NOT_ALLOWED`` if invoked, matching §36 default deny.
+    Every attempted call — allowed, denied for constraint violation, or
+    denied for an unconnected tool type — is recorded as a ``ToolCall`` row
+    so it's auditable regardless of outcome."""
+
+    EXECUTABLE_ACTIONS = {"EXECUTE", "READ"}
+    # §22 — Read/Write/Execute/Delete/Export/Administrative. ``read_only``
+    # blocks everything but the read-ish actions.
+    WRITE_ACTIONS = {"WRITE", "DELETE", "EXPORT", "ADMINISTRATIVE"}
 
     def invoke(self, db: Session, execution: AgentExecution, agent: Agent,
               tool_name: str, action: str, params: dict) -> ToolCall:
@@ -723,10 +792,16 @@ class ToolGatewayService:
         if action not in (assignment.allowed_actions or []):
             raise IdentityError(ErrorCode.TOOL_ACTION_NOT_ALLOWED,
                                f"Action '{action}' is not permitted for tool '{tool_name}'.")
+
+        constraint_violation = self._check_constraints(db, execution, tool, assignment, action)
+
         started = _now()
         call = ToolCall(execution_id=execution.id, agent_id=agent.id, tool_id=tool.id, action=action,
                         input_summary=params, started_at=started)
-        if tool.tool_type == "FUNCTION" and action == "EXECUTE" and (assignment.constraints or {}).get("builtin") != False:
+        if constraint_violation:
+            call.status = "DENIED"
+            call.error_code = ErrorCode.TOOL_CONSTRAINT_VIOLATION
+        elif tool.tool_type == "FUNCTION" and action in self.EXECUTABLE_ACTIONS:
             call.status = "ALLOWED"
             call.output_summary = {"echo": params}
             call.cost = 0
@@ -738,9 +813,39 @@ class ToolGatewayService:
         db.add(call)
         db.flush()
         if call.status == "DENIED":
+            if constraint_violation:
+                raise IdentityError(ErrorCode.TOOL_CONSTRAINT_VIOLATION, constraint_violation)
             raise IdentityError(ErrorCode.TOOL_ACTION_NOT_ALLOWED,
                                f"Tool type '{tool.tool_type}' is not connected in this environment.")
         return call
+
+    def _check_constraints(self, db: Session, execution: AgentExecution, tool: Tool,
+                           assignment: AgentTool, action: str) -> str | None:
+        """Returns a violation message, or ``None`` if every constraint (§23)
+        passes."""
+        constraints = assignment.constraints or {}
+
+        if constraints.get("read_only") and action in self.WRITE_ACTIONS:
+            return f"Tool '{tool.name}' is read-only; action '{action}' is not permitted."
+
+        max_calls = constraints.get("maximum_calls_per_execution")
+        if max_calls is not None:
+            existing = db.execute(
+                select(func.count(ToolCall.id)).where(
+                    ToolCall.execution_id == execution.id, ToolCall.tool_id == tool.id,
+                    ToolCall.status == "ALLOWED",
+                )
+            ).scalar_one()
+            if existing >= max_calls:
+                return f"Tool '{tool.name}' call limit ({max_calls} per execution) already reached."
+
+        allowed_domains = constraints.get("allowed_domains")
+        if allowed_domains and tool.endpoint_reference:
+            domain = urlparse(tool.endpoint_reference).netloc or tool.endpoint_reference
+            if domain not in allowed_domains:
+                return f"Endpoint domain '{domain}' is not in the allowed list for '{tool.name}'."
+
+        return None
 
 
 # --------------------------------------------------------------------------- #
@@ -754,25 +859,73 @@ class PolicyResult:
         self.code = code
 
 
+def _estimate_tokens(input_payload: dict) -> int:
+    """Same rough heuristic ``ModelGatewayService`` uses post-hoc, applied
+    pre-flight so ``maximum_tokens`` can be enforced before a model is ever
+    invoked, not just recorded after the fact."""
+    return max(1, len(json.dumps(input_payload, default=str)) // 4)
+
+
 class RuntimePolicyService:
     def __init__(self, db: Session) -> None:
         self.db = db
 
-    def evaluate(self, agent: Agent, version: AgentVersion, deployment: AgentDeployment) -> PolicyResult:
+    def evaluate(self, agent: Agent, version: AgentVersion, deployment: AgentDeployment,
+                input_payload: dict | None = None, *,
+                exclude_execution_id: uuid.UUID | None = None) -> PolicyResult:
         limits = deployment.runtime_limits or {}
         policy = version.policy_snapshot or {}
 
+        # The execution being evaluated is already flushed (it needs an id
+        # for the approval/audit rows created below in request_execution),
+        # so every count here must exclude it — otherwise a request always
+        # counts against its own limit before it has even been decided.
+        def _exclude(stmt):
+            if exclude_execution_id is not None:
+                return stmt.where(AgentExecution.id != exclude_execution_id)
+            return stmt
+
         max_concurrent = limits.get("maximum_concurrent_executions")
         if max_concurrent is not None:
-            running = self.db.execute(
+            running = self.db.execute(_exclude(
                 select(func.count(AgentExecution.id)).where(
                     AgentExecution.deployment_id == deployment.id,
                     AgentExecution.status.in_(["QUEUED", "RUNNING", "SCHEDULED"]),
                 )
-            ).scalar_one()
+            )).scalar_one()
             if running >= max_concurrent:
                 return PolicyResult(False, False, "Deployment concurrency limit reached.",
                                    ErrorCode.RUNTIME_RATE_LIMITED)
+
+        max_per_minute = limits.get("maximum_executions_per_minute")
+        if max_per_minute is not None:
+            recent = self.db.execute(_exclude(
+                select(func.count(AgentExecution.id)).where(
+                    AgentExecution.deployment_id == deployment.id,
+                    AgentExecution.created_at >= _now() - timedelta(minutes=1),
+                )
+            )).scalar_one()
+            if recent >= max_per_minute:
+                return PolicyResult(False, False, "Deployment rate limit (executions/minute) reached.",
+                                   ErrorCode.RUNTIME_RATE_LIMITED)
+
+        max_cost = limits.get("maximum_cost")
+        if max_cost is not None:
+            spent_today = self.db.execute(_exclude(
+                select(func.coalesce(func.sum(AgentExecution.cost), 0)).where(
+                    AgentExecution.deployment_id == deployment.id,
+                    AgentExecution.created_at >= _now().replace(hour=0, minute=0, second=0, microsecond=0),
+                )
+            )).scalar_one()
+            if float(spent_today) >= float(max_cost):
+                return PolicyResult(False, False, "Deployment daily cost budget exhausted.",
+                                   ErrorCode.RUNTIME_BUDGET_EXCEEDED)
+
+        max_tokens = limits.get("maximum_tokens")
+        if max_tokens is not None and input_payload is not None:
+            if _estimate_tokens(input_payload) > max_tokens:
+                return PolicyResult(False, False, "Estimated input size exceeds the per-execution token limit.",
+                                   ErrorCode.RUNTIME_BUDGET_EXCEEDED)
 
         approved_models = policy.get("approved_models")
         model = (version.model_configuration or {}).get("model")
@@ -885,6 +1038,12 @@ class ExecutionRequestService:
         if version.status not in ("PUBLISHED", "DEPRECATED"):
             raise IdentityError(ErrorCode.AGENT_VERSION_NOT_PUBLISHED, "Agent version is not published.")
 
+        # §7.2 — the input contract is validated before an execution is even
+        # created; an invalid request never reaches the queue.
+        definition = self.db.get(AgentDefinition, version.definition_id)
+        if definition.input_schema:
+            _validate_schema(payload.get("input_payload", {}), definition.input_schema, what="input_payload")
+
         idempotency_key = payload.get("idempotency_key")
         request_hash = hashlib.sha256(
             json.dumps(payload.get("input_payload", {}), sort_keys=True, default=str).encode()
@@ -912,7 +1071,7 @@ class ExecutionRequestService:
             source="API",
         )
         if not decision.allowed:
-            execution.status = "DENIED"
+            _set_execution_status(execution, "DENIED")
             execution.decision = "DENY"
             execution.error_code = ErrorCode.RUNTIME_POLICY_DENIED
             execution.error_message = decision.reason
@@ -925,9 +1084,11 @@ class ExecutionRequestService:
             return execution
 
         # Runtime policy (§38, §46-§48).
-        policy_result = RuntimePolicyService(self.db).evaluate(agent, version, deployment)
+        policy_result = RuntimePolicyService(self.db).evaluate(
+            agent, version, deployment, input_payload=payload.get("input_payload", {}),
+            exclude_execution_id=execution.id)
         if not policy_result.allowed:
-            execution.status = "BLOCKED"
+            _set_execution_status(execution, "BLOCKED")
             execution.decision = "DENY"
             execution.error_code = policy_result.code
             execution.error_message = policy_result.reason
@@ -942,7 +1103,7 @@ class ExecutionRequestService:
         execution.risk_score = _risk_score(agent, deployment)
 
         if policy_result.requires_approval:
-            execution.status = "PENDING_APPROVAL"
+            _set_execution_status(execution, "PENDING_APPROVAL")
             execution.decision = "REQUIRE_APPROVAL"
             self.db.add(RuntimeApproval(
                 organization_id=actor.organization_id, agent_id=agent.id, agent_version_id=version.id,
@@ -956,7 +1117,7 @@ class ExecutionRequestService:
             self.db.refresh(execution)
             return execution
 
-        execution.status = "QUEUED"
+        _set_execution_status(execution, "QUEUED")
         execution.decision = "ALLOW"
         execution.queued_at = _now()
         if idempotency_key:
@@ -976,7 +1137,7 @@ class ExecutionRequestService:
         if execution.status in TERMINAL_EXECUTION_STATUSES:
             raise IdentityError(ErrorCode.EXECUTION_ALREADY_COMPLETED, "Execution has already completed.")
         if execution.status in ("QUEUED", "PENDING_APPROVAL", "CREATED", "AUTHORIZING", "SCHEDULED"):
-            execution.status = "CANCELLED"
+            _set_execution_status(execution, "CANCELLED")
             execution.completed_at = _now()
         execution.cancel_requested = True
         _record_event(self.db, AuthorizationAuditEvent.RUNTIME_EXECUTION_CANCELLED, actor,
@@ -991,7 +1152,7 @@ class ExecutionRequestService:
         if execution.status not in ("FAILED", "TIMED_OUT", "DEAD_LETTERED"):
             raise IdentityError(ErrorCode.INVALID_LIFECYCLE_TRANSITION,
                                "Only failed/timed-out/dead-lettered executions can be retried.")
-        execution.status = "QUEUED"
+        _set_execution_status(execution, "QUEUED")
         execution.queued_at = _now()
         execution.cancel_requested = False
         execution.error_code = None
@@ -1034,7 +1195,43 @@ class ExecutionWorkerService:
     def __init__(self, db: Session) -> None:
         self.db = db
 
+    def reap_expired_locks(self) -> int:
+        """§32 — recover from a worker that claimed an execution and then
+        never finished (crashed, killed, network partition): its
+        ``execution_locks`` lease is never renewed past ``expires_at``, so
+        the execution is stuck ``RUNNING`` forever unless something notices.
+        Runs the same fail-or-retry policy a normal failure would (requeue
+        if attempts remain, else DEAD_LETTERED), drops the stale lock, and
+        is called opportunistically at the top of every claim so no separate
+        sweeper process is required in this environment."""
+        stale = self.db.execute(select(ExecutionLock).where(ExecutionLock.expires_at < _now())).scalars().all()
+        reaped = 0
+        for lock in stale:
+            execution = self.db.get(AgentExecution, lock.execution_id)
+            if execution is not None and execution.status == "RUNNING":
+                attempt = self.db.execute(
+                    select(ExecutionAttempt).where(
+                        ExecutionAttempt.execution_id == execution.id,
+                        ExecutionAttempt.attempt_number == execution.attempt_count,
+                        ExecutionAttempt.status == "RUNNING",
+                    )
+                ).scalars().first()
+                if attempt is not None:
+                    # _fail_or_retry already emits the terminal audit/event
+                    # (DEAD_LETTERED/FAILED) when attempts are exhausted; a
+                    # requeue is silent, same as any other retry.
+                    self._fail_or_retry(
+                        execution, attempt, "WORKER_UNAVAILABLE",
+                        f"Worker '{lock.worker_id}' heartbeat expired without completing this attempt.",
+                    )
+                    reaped += 1
+            self.db.delete(lock)
+        if reaped or stale:
+            self.db.commit()
+        return reaped
+
     def claim_next(self, worker_id: str) -> AgentExecution | None:
+        self.reap_expired_locks()
         stmt = (
             select(AgentExecution)
             .where(AgentExecution.status == "QUEUED")
@@ -1045,7 +1242,7 @@ class ExecutionWorkerService:
         execution = self.db.execute(stmt).scalars().first()
         if execution is None:
             return None
-        execution.status = "RUNNING"
+        _set_execution_status(execution, "RUNNING")
         execution.started_at = _now()
         execution.attempt_count += 1
         self.db.add(ExecutionLock(
@@ -1077,10 +1274,12 @@ class ExecutionWorkerService:
             )
         ).scalars().one()
 
+    DEFAULT_TIMEOUT_SECONDS = 300
+
     def _execute(self, execution: AgentExecution, worker_id: str) -> None:
         attempt = self._current_attempt(execution)
         if execution.cancel_requested:
-            execution.status = "CANCELLED"
+            _set_execution_status(execution, "CANCELLED")
             execution.completed_at = _now()
             attempt.status = "CANCELLED"
             attempt.completed_at = _now()
@@ -1088,8 +1287,32 @@ class ExecutionWorkerService:
 
         agent = self.db.get(Agent, execution.agent_id)
         version = self.db.get(AgentVersion, execution.agent_version_id)
+        deployment = self.db.get(AgentDeployment, execution.deployment_id) if execution.deployment_id else None
+        timeout_seconds = ((deployment.runtime_limits or {}).get("maximum_execution_seconds")
+                          if deployment else None) or self.DEFAULT_TIMEOUT_SECONDS
         try:
-            output_payload, model_usage = ModelGatewayService().invoke(version, execution.input_payload)
+            # §36 — a hung model call must not hang the worker forever. Only
+            # the model invocation is time-boxed: it's pure (no DB access),
+            # unlike ToolGatewayService.invoke below, which writes through
+            # ``self.db`` and is not safe to run on a second thread against
+            # the same (non-thread-safe) SQLAlchemy session — a timed-out
+            # future is *abandoned*, not killed, so anything it touches
+            # keeps running concurrently with the thread that gave up on it.
+            # ThreadPoolExecutor (not signal.alarm) so this works cross-platform;
+            # ``shutdown(wait=False)`` so a timeout doesn't itself block.
+            pool = ThreadPoolExecutor(max_workers=1)
+            try:
+                future = pool.submit(ModelGatewayService().invoke, version, execution.input_payload)
+                try:
+                    output_payload, model_usage = future.result(timeout=timeout_seconds)
+                except FutureTimeoutError:
+                    raise ModelGatewayError(
+                        ErrorCode.EXECUTION_TIMED_OUT,
+                        f"Execution exceeded its {timeout_seconds}s time budget.",
+                    ) from None
+            finally:
+                pool.shutdown(wait=False)
+
             tool_usage = {"calls": 0}
             for call_request in execution.input_payload.get("tool_calls", []) if isinstance(
                 execution.input_payload, dict) else []:
@@ -1099,11 +1322,19 @@ class ExecutionWorkerService:
                 )
                 tool_usage["calls"] += 1
 
+            definition = self.db.get(AgentDefinition, version.definition_id)
+            if definition.output_schema:
+                # An invalid output is the agent's own contract violation,
+                # not the caller's — still non-retryable (retrying produces
+                # the same output for the same input against a deterministic
+                # mock model), so it reports as a normal execution failure.
+                _validate_schema(output_payload, definition.output_schema, what="output_payload")
+
             execution.output_payload = output_payload
             execution.model_usage = model_usage
             execution.tool_usage = tool_usage
             execution.cost = float(execution.cost or 0) + model_usage["total_tokens"] * 0.000002
-            execution.status = "SUCCEEDED"
+            _set_execution_status(execution, "SUCCEEDED")
             execution.completed_at = _now()
             execution.duration_ms = int((execution.completed_at - execution.started_at).total_seconds() * 1000)
             attempt.status = "SUCCEEDED"
@@ -1122,7 +1353,7 @@ class ExecutionWorkerService:
         deployment = self.db.get(AgentDeployment, execution.deployment_id) if execution.deployment_id else None
         max_attempts = ((deployment.runtime_limits or {}).get("maximum_retries", self.DEFAULT_MAX_ATTEMPTS)
                        if deployment else self.DEFAULT_MAX_ATTEMPTS) + 1
-        attempt.status = "FAILED"
+        attempt.status = "TIMED_OUT" if code == ErrorCode.EXECUTION_TIMED_OUT else "FAILED"
         attempt.error_code = code
         attempt.error_message = message
         attempt.completed_at = _now()
@@ -1131,12 +1362,20 @@ class ExecutionWorkerService:
         execution.error_code = code
         execution.error_message = message
         # Denials, policy failures and input errors are never retried (§34).
+        # A timeout *is* retryable (§34: "may retry only if retry policy
+        # allows" — the default policy allows it) — it just reports as
+        # TIMED_OUT rather than DEAD_LETTERED once attempts are exhausted,
+        # so the terminal reason stays distinguishable in the UI.
         non_retryable = {ErrorCode.RUNTIME_POLICY_DENIED, ErrorCode.MODEL_NOT_APPROVED,
                          ErrorCode.TOOL_ACTION_NOT_ALLOWED, ErrorCode.TOOL_NOT_ASSIGNED,
-                         ErrorCode.TOOL_NOT_FOUND, ErrorCode.VALIDATION_ERROR,
-                         ErrorCode.MODEL_PROVIDER_UNAVAILABLE}
+                         ErrorCode.TOOL_NOT_FOUND, ErrorCode.TOOL_CONSTRAINT_VIOLATION,
+                         ErrorCode.VALIDATION_ERROR, ErrorCode.MODEL_PROVIDER_UNAVAILABLE}
         if code in non_retryable or execution.attempt_count >= max_attempts:
-            execution.status = "DEAD_LETTERED" if execution.attempt_count >= max_attempts else "FAILED"
+            if code == ErrorCode.EXECUTION_TIMED_OUT:
+                _set_execution_status(execution, "TIMED_OUT")
+            else:
+                _set_execution_status(
+                    execution, "DEAD_LETTERED" if execution.attempt_count >= max_attempts else "FAILED")
             execution.completed_at = _now()
             _record_event(self.db, AuthorizationAuditEvent.RUNTIME_EXECUTION_DEAD_LETTERED
                          if execution.status == "DEAD_LETTERED"
@@ -1144,7 +1383,7 @@ class ExecutionWorkerService:
                          organization_id=execution.organization_id, agent_id=execution.agent_id,
                          execution_id=execution.id, severity="ERROR", meta={"code": code, "message": message})
         else:
-            execution.status = "QUEUED"
+            _set_execution_status(execution, "QUEUED")
             execution.queued_at = _now()
 
 
@@ -1181,11 +1420,11 @@ class RuntimeApprovalService:
             execution = self.db.get(AgentExecution, approval.execution_id)
             if execution and execution.status == "PENDING_APPROVAL":
                 if decision == "APPROVED":
-                    execution.status = "QUEUED"
+                    _set_execution_status(execution, "QUEUED")
                     execution.decision = "ALLOW"
                     execution.queued_at = _now()
                 else:
-                    execution.status = "REJECTED"
+                    _set_execution_status(execution, "REJECTED")
                     execution.decision = "DENY"
                     execution.completed_at = _now()
         if approval.requested_action == "DEPLOYMENT" and approval.deployment_id:
@@ -1255,11 +1494,13 @@ class HealthMonitoringService:
 # Kill switch (§60)
 # --------------------------------------------------------------------------- #
 class KillSwitchService:
-    """§60 — supports EXECUTION/AGENT/ORGANIZATION scopes; PROJECT and
-    PLATFORM are modeled in the trigger vocabulary but out of scope for a
-    tenant-scoped permission (``runtime.kill_switch.execute`` is granted
-    per-organization, so a platform-wide switch would need a separate
-    cross-tenant super-admin surface — tracked as a follow-up)."""
+    """§60 — EXECUTION/AGENT/ORGANIZATION scopes are tenant-scoped (gated by
+    the ordinary, per-organization ``runtime.kill_switch.execute``
+    permission); PROJECT is tenant-scoped to every agent under that
+    project; PLATFORM is cross-tenant and additionally requires the actor's
+    legacy role to be ``SUPER_ADMIN`` — a permission granted within one
+    organization must never be sufficient to halt every organization's
+    executions, so platform scope checks identity, not just the RBAC grant."""
 
     def __init__(self, db: Session) -> None:
         self.db = db
@@ -1267,17 +1508,21 @@ class KillSwitchService:
     def _cancel_executions(self, stmt) -> int:
         executions = self.db.execute(stmt).scalars().all()
         for execution in executions:
-            execution.status = "CANCELLED"
+            _set_execution_status(execution, "CANCELLED")
             execution.cancel_requested = True
             execution.completed_at = _now()
         return len(executions)
 
-    def activate(self, actor: User, scope: str, target_id: uuid.UUID, reason: str) -> dict:
+    def _suspend_deployments(self, stmt) -> None:
+        for deployment in self.db.execute(stmt).scalars():
+            deployment.status = "SUSPENDED"
+
+    def activate(self, actor: User, scope: str, target_id: uuid.UUID | None, reason: str) -> dict:
         cancelled = 0
         if scope == "EXECUTION":
             execution = ExecutionRequestService(self.db).get_or_404(actor, target_id)
             if execution.status not in TERMINAL_EXECUTION_STATUSES:
-                execution.status = "CANCELLED"
+                _set_execution_status(execution, "CANCELLED")
                 execution.cancel_requested = True
                 execution.completed_at = _now()
                 cancelled = 1
@@ -1288,15 +1533,40 @@ class KillSwitchService:
                 AgentExecution.agent_id == target_id,
                 AgentExecution.status.in_(ACTIVE_EXECUTION_STATUSES),
             ))
+        elif scope == "PROJECT":
+            project_agents = list(self.db.execute(
+                select(Agent).where(Agent.project_id == target_id,
+                                    Agent.organization_id == actor.organization_id)
+            ).scalars())
+            if not project_agents:
+                raise IdentityError(ErrorCode.VALIDATION_ERROR,
+                                   "No agents found under this project in your organization.")
+            agent_ids = [a.id for a in project_agents]
+            for project_agent in project_agents:
+                project_agent.lifecycle_status = "SUSPENDED"
+            cancelled = self._cancel_executions(select(AgentExecution).where(
+                AgentExecution.agent_id.in_(agent_ids),
+                AgentExecution.status.in_(ACTIVE_EXECUTION_STATUSES),
+            ))
+            self._suspend_deployments(select(AgentDeployment).where(
+                AgentDeployment.agent_id.in_(agent_ids), AgentDeployment.status == "ACTIVE",
+            ))
         elif scope == "ORGANIZATION":
             cancelled = self._cancel_executions(select(AgentExecution).where(
                 AgentExecution.organization_id == actor.organization_id,
                 AgentExecution.status.in_(ACTIVE_EXECUTION_STATUSES),
             ))
-            for deployment in self.db.execute(select(AgentDeployment).where(
+            self._suspend_deployments(select(AgentDeployment).where(
                 AgentDeployment.organization_id == actor.organization_id, AgentDeployment.status == "ACTIVE",
-            )).scalars():
-                deployment.status = "SUSPENDED"
+            ))
+        elif scope == "PLATFORM":
+            if actor.role != UserRole.SUPER_ADMIN:
+                raise IdentityError(ErrorCode.PERMISSION_DENIED,
+                                   "Platform-wide kill switch requires the SUPER_ADMIN role.")
+            cancelled = self._cancel_executions(select(AgentExecution).where(
+                AgentExecution.status.in_(ACTIVE_EXECUTION_STATUSES),
+            ))
+            self._suspend_deployments(select(AgentDeployment).where(AgentDeployment.status == "ACTIVE"))
         else:
             raise IdentityError(ErrorCode.VALIDATION_ERROR, f"Unsupported kill-switch scope: {scope}.")
 
@@ -1304,8 +1574,9 @@ class KillSwitchService:
                      organization_id=actor.organization_id,
                      agent_id=target_id if scope == "AGENT" else None,
                      execution_id=target_id if scope == "EXECUTION" else None,
-                     severity="CRITICAL", meta={"scope": scope, "target_id": str(target_id), "reason": reason,
-                                                "executions_cancelled": cancelled})
+                     severity="CRITICAL",
+                     meta={"scope": scope, "target_id": str(target_id) if target_id else "ALL", "reason": reason,
+                          "executions_cancelled": cancelled})
         self.db.commit()
         return {"scope": scope, "target_id": target_id, "executions_cancelled": cancelled}
 

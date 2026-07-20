@@ -64,6 +64,44 @@ versions track the roadmap phases rather than semver guarantees.
   capabilities-and-tools, gateways, runtime-policy-and-approvals,
   health-and-observability, operations-and-kill-switch, security.
 
+### Part 5.0 hardening — acceptance-criteria gap closure
+
+- **Fixed** runtime limits: `maximum_executions_per_minute` and
+  `maximum_cost` (rolling daily budget) are now enforced alongside
+  `maximum_concurrent_executions`; `maximum_tokens` is checked pre-flight.
+  Every count excludes the execution under evaluation — without that, a
+  request always counted against its own limit before being decided.
+- **Added** execution timeout enforcement (§36):
+  `maximum_execution_seconds` bounds the model call via
+  `ThreadPoolExecutor` + `future.result(timeout=)` (cross-platform, unlike
+  `signal.alarm`); exhausted retries after a timeout report `TIMED_OUT`.
+- **Added** `ExecutionWorkerService.reap_expired_locks` (§32): recovers
+  executions left `RUNNING` by a worker that never renewed its
+  `execution_locks` lease, called opportunistically before every claim;
+  `POST /runtime/workers/reap` for operator-triggered recovery.
+- **Added** tool constraint enforcement (§23): `read_only`,
+  `maximum_calls_per_execution` and `allowed_domains` are real checks in
+  the Tool Gateway now, not just stored JSONB.
+- **Added** kill-switch PROJECT and PLATFORM scopes (§60); PLATFORM
+  additionally requires the actor's role to be `SUPER_ADMIN` — the
+  ordinary per-organization permission grant is not sufficient on its own
+  for a cross-tenant action.
+- **Added** input/output JSON Schema contract validation (§7.2, new
+  `jsonschema` dependency): execution input is validated against the
+  agent definition's `input_schema` before an execution row is created;
+  output against `output_schema` before an attempt can report `SUCCEEDED`.
+- **Added** a central execution state-machine transition guard (§27):
+  every `AgentExecution.status` change goes through
+  `_set_execution_status`/`_EXECUTION_TRANSITIONS`, which rejects any
+  transition outside the documented machine instead of trusting every call
+  site.
+- **Added** 16 new backend tests (577 total green), including regression
+  coverage for two real bugs the new tests caught: a per-minute
+  rate-limit off-by-one, and a test-isolation leak in the worker-reaper
+  tests that could starve a later test's execution behind an orphaned
+  `QUEUED` row (the claim query is intentionally global/non-tenant-scoped
+  — see [docs/runtime/workers-and-queue.md](docs/runtime/workers-and-queue.md)).
+
 ## [Unreleased] — Phase 4.3 · Enterprise Authorization Platform
 
 ### Part 4.3.8 — Identity Governance & Administration (IGA)

@@ -425,7 +425,12 @@ assignment and a default-deny Tool Gateway (only `FUNCTION`/`echo` actually
 executes; every other tool type is fully authorized but fails closed),
 runtime **approvals** (mission-critical + production always gates), a live
 **dashboard** and **Operations Center**, and an **emergency kill switch**
-(execution/agent/organization scope). See [docs/runtime/](docs/runtime/)
+(execution/agent/project/organization/platform scope — platform is
+cross-tenant and requires `SUPER_ADMIN`). Runtime limits (concurrency,
+per-minute rate, daily cost budget, per-execution token estimate),
+execution timeouts, worker-crash recovery, tool-assignment constraints,
+input/output contract validation and the execution state machine are all
+enforced, not just modeled. See [docs/runtime/](docs/runtime/)
 for the full set — architecture, agent-lifecycle, versioning, deployments,
 executions, workers-and-queue, capabilities-and-tools, gateways,
 runtime-policy-and-approvals, health-and-observability,

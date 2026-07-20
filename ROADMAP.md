@@ -716,6 +716,55 @@ platform, over the existing agent registry and authorization gateway.
   agent → create/publish a version → deploy → run an execution to
   `SUCCEEDED`).
 
+#### Part 5.0 hardening — closing the acceptance-criteria gaps
+
+A follow-up pass against the SRS's acceptance criteria and Definition of
+Done, closing every item that was only partially met:
+
+- **Runtime limits fully enforced** (§46-§48): `maximum_executions_per_minute`
+  and `maximum_cost` (rolling daily budget) join the already-enforced
+  `maximum_concurrent_executions`; `maximum_tokens` is checked pre-flight
+  against an estimate of the input alone. Every count excludes the
+  execution being evaluated (it's already flushed when the check runs) —
+  without that exclusion, a request always counted against its own limit.
+- **Execution timeout** (§36): `maximum_execution_seconds` now actually
+  bounds the model call (`ThreadPoolExecutor` + `future.result(timeout=)`,
+  not `signal.alarm`, so it works cross-platform); exhausting retries after
+  a timeout reports `TIMED_OUT`, not a generic `DEAD_LETTERED`.
+- **Worker crash recovery** (§32): `ExecutionWorkerService.reap_expired_locks`
+  finds any `execution_locks` row past its `expires_at` (a worker that
+  claimed an execution and never finished), applies the normal retry
+  policy to the execution it was guarding, and drops the stale lock —
+  called opportunistically before every claim, plus a
+  `POST /runtime/workers/reap` endpoint for operator-triggered recovery.
+- **Tool constraints enforced** (§23): `read_only`,
+  `maximum_calls_per_execution` and `allowed_domains` are now real checks
+  in the Tool Gateway, not just stored JSONB.
+- **Kill switch PROJECT and PLATFORM scopes** (§60): PROJECT resolves
+  every agent under a project in the actor's org; PLATFORM is cross-tenant
+  and additionally requires the actor's role to be `SUPER_ADMIN` — a
+  permission scoped to one organization must never be enough, alone, to
+  halt every organization's executions.
+- **Input/output contract validation** (§7.2): execution input is
+  validated against the agent definition's `input_schema` before an
+  execution row is even created (`jsonschema`, new dependency); output is
+  validated against `output_schema` before an attempt is allowed to report
+  `SUCCEEDED`.
+- **Execution state machine, actually validated** (§27): every
+  `AgentExecution.status` assignment goes through one guarded helper
+  (`_set_execution_status` / `_EXECUTION_TRANSITIONS`) that rejects any
+  transition not in the documented machine, instead of trusting each call
+  site to only ever assign a legal value.
+- 16 new backend tests (577 total green) covering all of the above,
+  including two genuine bugs the new tests caught and fixed: an off-by-one
+  in the per-minute rate limit (a request counted against its own limit
+  before being decided) and a test-isolation leak where a manually
+  reaped-and-requeued execution could be claimed by an unrelated later
+  test ahead of its own (the global, non-tenant-scoped claim query is
+  correct production behavior — see
+  [docs/runtime/workers-and-queue.md](docs/runtime/workers-and-queue.md) —
+  but requires tests not to leave orphaned `QUEUED` rows behind).
+
 Next: production readiness (MFA, OAuth/SSO, observability).
 
 ## Future (Phase 4+)
