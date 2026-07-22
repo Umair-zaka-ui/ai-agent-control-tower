@@ -32,13 +32,19 @@ try to mutate a published version's snapshot fields.
 
 ## Secrets (§45)
 
-`agent_deployments.secret_references` is JSONB expected to hold reference
-strings (`{"secret_reference": "vault://production/openai/api-key"}`), never
-raw credential values — there is no code path in this module that writes a
-literal secret into any table, and the Model Gateway's `MOCK` adapter never
-needs one (see [gateways.md](gateways.md)). A real provider adapter would
-resolve the reference through a `SecretsResolver` at invocation time, never
-storing the decrypted value beyond that call.
+`agent_deployments.secret_references` is JSONB holding reference strings
+(`{"secret_reference": "vault://production/openai/api-key"}`), never raw
+credential values. This is enforced, not just conventional:
+`_validate_secret_references` (`services.py`), called from
+`DeploymentService.create`, rejects any value that isn't a
+`scheme://path`-shaped string — a bare string, number, or raw credential
+pasted into the field raises `SECRET_REFERENCE_INVALID` (422) before the
+deployment row is ever written. There is no code path in this module that
+writes a literal secret into any table, and the Model Gateway's `MOCK`
+adapter never needs one (see [gateways.md](gateways.md)). A real provider
+adapter would resolve the reference through a `SecretsResolver` at
+invocation time, never storing the decrypted value beyond that call — that
+resolver itself doesn't exist yet since no non-`MOCK` provider is wired up.
 
 ## Contract validation & state integrity
 

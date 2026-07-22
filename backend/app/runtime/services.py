@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -38,6 +39,7 @@ from app.authorization.middleware.gateway import AuthorizationGateway
 from app.authorization.services import AuthorizationAuditService
 from app.core.enums import UserRole
 from app.identity.errors import ErrorCode, IdentityError
+from app.identity.models.department import Department, Team
 from app.models.agent import Agent
 from app.models.organization_hierarchy import Project
 from app.models.runtime import (
@@ -62,8 +64,15 @@ from app.models.user import User
 # --------------------------------------------------------------------------- #
 # Shared helpers
 # --------------------------------------------------------------------------- #
-AGENT_LIFECYCLE = ("DRAFT", "VALIDATING", "VALIDATED", "APPROVED", "ACTIVE",
-                   "SUSPENDED", "DEPRECATED", "ARCHIVED", "RETIRED")
+# Phase 5.1 SRS §20 — the full 13-state registry lifecycle (supersedes the
+# Phase 5.0 8-state version); the transition matrix itself lives in
+# app.runtime.registry.services.AgentLifecycleService, which imports this
+# constant back rather than redefining it (this module is the one every
+# registry submodule already depends on, so the constant lives at the base
+# of that dependency, not at the top).
+AGENT_LIFECYCLE = ("DRAFT", "REGISTERED", "VALIDATING", "VALIDATION_FAILED", "VALIDATED",
+                   "PENDING_APPROVAL", "REJECTED", "APPROVED", "ACTIVE", "SUSPENDED",
+                   "DEPRECATED", "ARCHIVED", "RETIRED")
 VERSION_LIFECYCLE = ("DRAFT", "VALIDATING", "READY_FOR_REVIEW", "APPROVED",
                      "PUBLISHED", "DEPRECATED", "REVOKED")
 DEPLOYMENT_LIFECYCLE = ("CREATED", "PENDING_APPROVAL", "SCHEDULED", "DEPLOYING",
@@ -103,6 +112,50 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+_RESERVED_SLUGS = {"new", "admin", "api", "null", "undefined", "self", "system"}
+_SLUG_INVALID_CHARS = re.compile(r"[^a-z0-9-]+")
+_SLUG_CONSECUTIVE_HYPHENS = re.compile(r"-{2,}")
+
+
+def _generate_slug(name: str) -> str:
+    """SRS 5.1 §34 — lowercase, letters/numbers/hyphens only, no consecutive
+    hyphens, begins with a letter or number, reserved names prohibited."""
+    slug = _SLUG_INVALID_CHARS.sub("-", name.strip().lower())
+    slug = _SLUG_CONSECUTIVE_HYPHENS.sub("-", slug).strip("-")[:140]
+    if not slug or not slug[0].isalnum():
+        slug = f"agent-{slug}" if slug else "agent"
+    if slug in _RESERVED_SLUGS:
+        slug = f"{slug}-agent"
+    return slug
+
+
+def _unique_slug(db: Session, organization_id: uuid.UUID, base_slug: str) -> str:
+    slug = base_slug
+    suffix = 2
+    while db.execute(
+        select(Agent.id).where(Agent.organization_id == organization_id, Agent.slug == slug)
+    ).first() is not None:
+        slug = f"{base_slug}-{suffix}"[:150]
+        suffix += 1
+    return slug
+
+
+def _derive_org_hierarchy(db: Session, project: Project) -> dict:
+    """SRS 5.1 §6.1 — business_unit_id/department_id/team_id are denormalized
+    onto the agent for fast filtering (§47); when not given explicitly they
+    default to the selected project's team -> department -> business unit
+    chain."""
+    team = db.get(Team, project.team_id)
+    if team is None:
+        return {}
+    department = db.get(Department, team.department_id)
+    return {
+        "team_id": team.id,
+        "department_id": department.id if department else None,
+        "business_unit_id": department.business_unit_id if department else None,
+    }
+
+
 def _checksum(version: AgentVersion) -> str:
     canonical = {
         "configuration_snapshot": version.configuration_snapshot,
@@ -130,7 +183,25 @@ def _validate_schema(payload: dict, schema: dict, *, what: str) -> None:
         raise IdentityError(ErrorCode.VALIDATION_ERROR, f"The agent's {what} schema is invalid: {exc.message}")
 
 
-def _record_event(db: Session, event: AuthorizationAuditEvent, actor: User | None, *,
+def _validate_secret_references(secret_references: dict) -> None:
+    """§45 — ``secret_references`` must hold reference strings
+    (``"vault://production/openai/api-key"``), never raw credential values.
+    Every value must parse as ``scheme://path``; anything else (a bare
+    string, a number, an empty scheme) is rejected outright rather than
+    silently persisted, since a raw secret pasted into this field would
+    otherwise sit unencrypted in the deployment row."""
+    for key, value in secret_references.items():
+        if not isinstance(value, str):
+            raise IdentityError(ErrorCode.SECRET_REFERENCE_INVALID,
+                               f"secret_references['{key}'] must be a reference string, not {type(value).__name__}.")
+        parsed = urlparse(value)
+        if not parsed.scheme or not (parsed.netloc or parsed.path):
+            raise IdentityError(ErrorCode.SECRET_REFERENCE_INVALID,
+                               f"secret_references['{key}'] must be a 'scheme://...' reference "
+                               "(e.g. 'vault://production/openai/api-key'), not a raw value.")
+
+
+def _record_event(db: Session, event: AuthorizationAuditEvent, actor: "User | Agent | None", *,
                   organization_id: uuid.UUID, agent_id: uuid.UUID | None = None,
                   deployment_id: uuid.UUID | None = None,
                   execution_id: uuid.UUID | None = None,
@@ -188,23 +259,52 @@ class AgentRegistryService:
         return list(self.db.execute(stmt.order_by(Agent.created_at.desc())).scalars())
 
     def register(self, actor: User, payload: dict) -> Agent:
+        """Creates the initial DRAFT row (SRS 5.1 §19.1) — distinct from the
+        ``register`` *lifecycle action* (DRAFT -> REGISTERED), which is
+        ``AgentLifecycleService.register`` in ``registry/services.py``."""
+        from app.runtime.registry.validation import check_url_for_embedded_credentials
+
         definition_payload = payload.pop("definition")
         if payload.get("project_id") is not None:
             project = self.db.get(Project, payload["project_id"])
             if project is None:
                 raise IdentityError(ErrorCode.VALIDATION_ERROR, "project_id does not exist.")
+            derived = _derive_org_hierarchy(self.db, project)
+            for field, value in derived.items():
+                payload.setdefault(field, value)
+
+        for field in ("documentation_url", "repository_url"):
+            findings = check_url_for_embedded_credentials(payload.get(field), field)
+            if findings:
+                raise IdentityError(ErrorCode.AGENT_ENTRYPOINT_INVALID, findings[0].message)
+
+        slug = payload.get("slug") or _generate_slug(payload["name"])
+        payload["slug"] = _unique_slug(self.db, actor.organization_id, slug)
+
+        if payload.get("external_reference"):
+            conflict = self.db.execute(
+                select(Agent.id).where(Agent.organization_id == actor.organization_id,
+                                       Agent.external_reference == payload["external_reference"])
+            ).first()
+            if conflict:
+                raise IdentityError(ErrorCode.AGENT_EXTERNAL_REFERENCE_CONFLICT,
+                                   "external_reference is already registered in this organization.")
+
         agent = Agent(
             organization_id=actor.organization_id,
             agent_type=payload.get("agent_type", "ASSISTANT"),
             api_key_hash="",  # runtime-registered agents authenticate as users, not via API key
             lifecycle_status="DRAFT",
-            **{k: v for k, v in payload.items() if k != "agent_type"},
+            created_by=actor.id, updated_by=actor.id,
+            extra_metadata=payload.pop("metadata", None) or {},
+            **{k: v for k, v in payload.items() if k not in ("agent_type", "metadata")},
         )
         self.db.add(agent)
         self.db.flush()
         definition = AgentDefinition(
             agent_id=agent.id,
             extra_metadata=definition_payload.pop("metadata", None),
+            created_by=actor.id, updated_by=actor.id,
             **definition_payload,
         )
         self.db.add(definition)
@@ -217,63 +317,46 @@ class AgentRegistryService:
         return agent
 
     def update(self, actor: User, agent_id: uuid.UUID, payload: dict) -> Agent:
+        """SRS 5.1 §53 — optimistic concurrency: the caller must supply the
+        ``row_version`` they last read; a mismatch (someone else edited the
+        row first) raises ``AGENT_CONCURRENT_MODIFICATION`` before anything
+        is written. §19.1/§7 — only editable in ``EDITABLE_STATES``."""
+        from app.runtime.registry.services import EDITABLE_STATES
+        from app.runtime.registry.validation import check_url_for_embedded_credentials
+        from sqlalchemy.orm.exc import StaleDataError
+
         agent = self.get_or_404(actor, agent_id)
+        if agent.lifecycle_status not in EDITABLE_STATES:
+            raise IdentityError(ErrorCode.AGENT_NOT_EDITABLE,
+                               f"Agent cannot be edited while {agent.lifecycle_status}.")
+        row_version = payload.pop("row_version", None)
+        if row_version is not None and row_version != agent.row_version:
+            raise IdentityError(ErrorCode.AGENT_CONCURRENT_MODIFICATION,
+                               "This agent was modified by someone else — reload and retry.")
+
+        for field in ("documentation_url", "repository_url"):
+            if field in payload:
+                findings = check_url_for_embedded_credentials(payload[field], field)
+                if findings:
+                    raise IdentityError(ErrorCode.AGENT_ENTRYPOINT_INVALID, findings[0].message)
+
+        metadata = payload.pop("metadata", None)
+        if metadata is not None:
+            agent.extra_metadata = metadata
         for key, value in payload.items():
             setattr(agent, key, value)
-        self.db.commit()
+        agent.updated_by = actor.id
+        _record_event(self.db, AuthorizationAuditEvent.RUNTIME_AGENT_UPDATED, actor,
+                     organization_id=agent.organization_id, agent_id=agent.id,
+                     meta={"fields": list(payload.keys())})
+        try:
+            self.db.commit()
+        except StaleDataError as exc:
+            self.db.rollback()
+            raise IdentityError(ErrorCode.AGENT_CONCURRENT_MODIFICATION,
+                               "This agent was modified by someone else — reload and retry.") from exc
         self.db.refresh(agent)
         return agent
-
-    def _transition(self, actor: User, agent_id: uuid.UUID, *, allowed_from: set[str],
-                    to: str, event: AuthorizationAuditEvent) -> Agent:
-        agent = self.get_or_404(actor, agent_id)
-        if agent.lifecycle_status not in allowed_from:
-            raise IdentityError(
-                ErrorCode.INVALID_LIFECYCLE_TRANSITION,
-                f"Cannot move agent from {agent.lifecycle_status} to {to}.",
-            )
-        agent.lifecycle_status = to
-        if to in ("ARCHIVED", "RETIRED"):
-            agent.archived_at = _now()
-        _record_event(self.db, event, actor, organization_id=actor.organization_id,
-                     agent_id=agent.id, meta={"agent_id": str(agent.id), "to": to})
-        self.db.commit()
-        self.db.refresh(agent)
-        return agent
-
-    def validate(self, actor: User, agent_id: uuid.UUID) -> Agent:
-        agent = self.get_or_404(actor, agent_id)
-        has_definition = self.db.execute(
-            select(AgentDefinition.id).where(AgentDefinition.agent_id == agent.id).limit(1)
-        ).first()
-        if has_definition is None:
-            raise IdentityError(ErrorCode.VALIDATION_ERROR, "Agent has no definition.")
-        return self._transition(actor, agent_id, allowed_from={"DRAFT"}, to="VALIDATED",
-                                event=AuthorizationAuditEvent.RUNTIME_AGENT_REGISTERED)
-
-    def approve(self, actor: User, agent_id: uuid.UUID) -> Agent:
-        return self._transition(actor, agent_id, allowed_from={"VALIDATED"}, to="APPROVED",
-                                event=AuthorizationAuditEvent.RUNTIME_AGENT_ACTIVATED)
-
-    def activate(self, actor: User, agent_id: uuid.UUID) -> Agent:
-        return self._transition(actor, agent_id, allowed_from={"APPROVED", "SUSPENDED"}, to="ACTIVE",
-                                event=AuthorizationAuditEvent.RUNTIME_AGENT_ACTIVATED)
-
-    def suspend(self, actor: User, agent_id: uuid.UUID) -> Agent:
-        return self._transition(actor, agent_id, allowed_from={"ACTIVE"}, to="SUSPENDED",
-                                event=AuthorizationAuditEvent.RUNTIME_AGENT_SUSPENDED)
-
-    def deprecate(self, actor: User, agent_id: uuid.UUID) -> Agent:
-        return self._transition(actor, agent_id, allowed_from={"ACTIVE", "SUSPENDED"}, to="DEPRECATED",
-                                event=AuthorizationAuditEvent.RUNTIME_AGENT_SUSPENDED)
-
-    def archive(self, actor: User, agent_id: uuid.UUID) -> Agent:
-        return self._transition(actor, agent_id, allowed_from={"DEPRECATED", "SUSPENDED", "ACTIVE"},
-                                to="ARCHIVED", event=AuthorizationAuditEvent.RUNTIME_AGENT_ARCHIVED)
-
-    def retire(self, actor: User, agent_id: uuid.UUID) -> Agent:
-        return self._transition(actor, agent_id, allowed_from=set(AGENT_LIFECYCLE) - {"RETIRED"},
-                                to="RETIRED", event=AuthorizationAuditEvent.RUNTIME_AGENT_RETIRED)
 
 
 # --------------------------------------------------------------------------- #
@@ -439,10 +522,10 @@ class DeploymentService:
             stmt = stmt.where(AgentDeployment.status == status)
         return list(self.db.execute(stmt.order_by(AgentDeployment.updated_at.desc())).scalars())
 
-    def active_for_agent(self, actor: User, agent_id: uuid.UUID,
+    def active_for_agent(self, principal: User | Agent, agent_id: uuid.UUID,
                          environment: str | None = None) -> AgentDeployment | None:
         stmt = (select(AgentDeployment)
-               .where(AgentDeployment.organization_id == actor.organization_id,
+               .where(AgentDeployment.organization_id == principal.organization_id,
                       AgentDeployment.agent_id == agent_id, AgentDeployment.status == "ACTIVE"))
         if environment:
             stmt = stmt.where(AgentDeployment.environment == environment)
@@ -452,6 +535,7 @@ class DeploymentService:
         if version.status != "PUBLISHED":
             raise IdentityError(ErrorCode.AGENT_VERSION_NOT_PUBLISHED,
                                "Only published versions can be deployed.")
+        _validate_secret_references(payload.get("secret_references") or {})
         deployment = AgentDeployment(
             agent_id=agent.id, agent_version_id=version.id, organization_id=actor.organization_id,
             **payload,
@@ -952,9 +1036,10 @@ class IdempotencyService:
     def __init__(self, db: Session) -> None:
         self.db = db
 
-    def check(self, actor: User, agent_id: uuid.UUID, key: str, request_hash: str) -> AgentExecution | None:
+    def check(self, principal: User | Agent, agent_id: uuid.UUID, key: str,
+             request_hash: str) -> AgentExecution | None:
         record = self.db.execute(select(IdempotencyRecord).where(
-            IdempotencyRecord.organization_id == actor.organization_id,
+            IdempotencyRecord.organization_id == principal.organization_id,
             IdempotencyRecord.agent_id == agent_id, IdempotencyRecord.idempotency_key == key,
         )).scalars().first()
         if record is None:
@@ -968,10 +1053,10 @@ class IdempotencyService:
                                "Idempotency key reused with a different request payload.")
         return self.db.get(AgentExecution, record.execution_id)
 
-    def store(self, actor: User, agent_id: uuid.UUID, key: str, request_hash: str,
+    def store(self, principal: User | Agent, agent_id: uuid.UUID, key: str, request_hash: str,
              execution_id: uuid.UUID, ttl_hours: int = 24) -> None:
         self.db.add(IdempotencyRecord(
-            organization_id=actor.organization_id, identity_id=actor.id, agent_id=agent_id,
+            organization_id=principal.organization_id, identity_id=principal.id, agent_id=agent_id,
             idempotency_key=key, request_hash=request_hash, execution_id=execution_id,
             expires_at=_now() + timedelta(hours=ttl_hours),
         ))
@@ -1019,6 +1104,49 @@ class ExecutionRequestService:
         agent = self.db.get(Agent, payload["agent_id"])
         if agent is None or agent.organization_id != actor.organization_id:
             raise IdentityError(ErrorCode.AGENT_NOT_FOUND, "Agent not found.")
+
+        def authorize(deployment: AgentDeployment):
+            # RBAC/ABAC (§4.4, §24) — the same gateway every enforcement
+            # point uses; its own docstring names "agent runtime" as a caller.
+            return AuthorizationGateway(self.db).authorize(
+                actor, "runtime.execution.create", resource_type="agent", resource_id=agent.id,
+                context={"environment": deployment.environment, "criticality": agent.criticality},
+                source="API",
+            )
+
+        return self._request_execution(
+            agent, payload, principal=actor, trigger_type="API",
+            authorize=authorize, worker_id=f"inline-{actor.id}")
+
+    def request_execution_as_agent(self, agent: Agent, payload: dict) -> AgentExecution:
+        """§29, §31 — an agent triggering its own next run (e.g. a webhook or
+        a tool re-invoking the same agent), authenticated by its own API key
+        rather than a human session. Deliberately self-only: an agent may
+        request an execution of *itself*, never of another agent — arbitrary
+        agent-to-agent chaining is multi-agent orchestration, explicitly
+        deferred (see docs/runtime/overview.md's "What's deliberately not
+        here")."""
+        target_id = payload.get("agent_id")
+        if target_id is not None and uuid.UUID(str(target_id)) != agent.id:
+            raise IdentityError(ErrorCode.PERMISSION_DENIED,
+                               "An agent may only request executions of itself.")
+        payload = {**payload, "agent_id": agent.id}
+
+        def authorize(deployment: AgentDeployment):
+            # §29, §31 — the agent-principal ABAC layer, not the user RBAC
+            # path: an agent has no RBAC role of its own to check.
+            return AuthorizationGateway(self.db).authorize_agent(
+                agent, "runtime.execution.create",
+                ai_context={"environment": deployment.environment, "trigger": "self",
+                           "criticality": agent.criticality},
+            )
+
+        return self._request_execution(
+            agent, payload, principal=agent, trigger_type="AGENT",
+            authorize=authorize, worker_id=f"inline-agent-{agent.id}")
+
+    def _request_execution(self, agent: Agent, payload: dict, *, principal: User | Agent,
+                           trigger_type: str, authorize, worker_id: str) -> AgentExecution:
         if agent.lifecycle_status == "SUSPENDED":
             raise IdentityError(ErrorCode.AGENT_SUSPENDED, "Agent is suspended.")
         if agent.lifecycle_status not in ("ACTIVE",):
@@ -1026,8 +1154,8 @@ class ExecutionRequestService:
 
         deployment_id = payload.get("deployment_id")
         deployment = (self.db.get(AgentDeployment, deployment_id) if deployment_id
-                     else DeploymentService(self.db).active_for_agent(actor, agent.id))
-        if deployment is None or deployment.organization_id != actor.organization_id:
+                     else DeploymentService(self.db).active_for_agent(principal, agent.id))
+        if deployment is None or deployment.organization_id != agent.organization_id:
             raise IdentityError(ErrorCode.DEPLOYMENT_NOT_FOUND, "No active deployment for this agent.")
         if deployment.status != "ACTIVE":
             raise IdentityError(ErrorCode.DEPLOYMENT_NOT_ACTIVE, "Deployment is not active.")
@@ -1049,13 +1177,13 @@ class ExecutionRequestService:
             json.dumps(payload.get("input_payload", {}), sort_keys=True, default=str).encode()
         ).hexdigest()
         if idempotency_key:
-            existing = IdempotencyService(self.db).check(actor, agent.id, idempotency_key, request_hash)
+            existing = IdempotencyService(self.db).check(principal, agent.id, idempotency_key, request_hash)
             if existing is not None:
                 return existing
 
         execution = AgentExecution(
-            organization_id=actor.organization_id, agent_id=agent.id, agent_version_id=version.id,
-            deployment_id=deployment.id, trigger_type="API", triggered_by_identity_id=actor.id,
+            organization_id=agent.organization_id, agent_id=agent.id, agent_version_id=version.id,
+            deployment_id=deployment.id, trigger_type=trigger_type, triggered_by_identity_id=principal.id,
             correlation_id=payload.get("correlation_id"), idempotency_key=idempotency_key,
             input_payload=payload.get("input_payload", {}), priority=payload.get("priority", "NORMAL"),
             status="AUTHORIZING",
@@ -1063,21 +1191,15 @@ class ExecutionRequestService:
         self.db.add(execution)
         self.db.flush()
 
-        # RBAC/ABAC (§4.4, §24) — the same gateway every enforcement point uses;
-        # its own docstring names "agent runtime" as a caller.
-        decision = AuthorizationGateway(self.db).authorize(
-            actor, "runtime.execution.create", resource_type="agent", resource_id=agent.id,
-            context={"environment": deployment.environment, "criticality": agent.criticality},
-            source="API",
-        )
+        decision = authorize(deployment)
         if not decision.allowed:
             _set_execution_status(execution, "DENIED")
             execution.decision = "DENY"
             execution.error_code = ErrorCode.RUNTIME_POLICY_DENIED
             execution.error_message = decision.reason
             execution.completed_at = _now()
-            _record_event(self.db, AuthorizationAuditEvent.RUNTIME_EXECUTION_DENIED, actor,
-                         organization_id=actor.organization_id, agent_id=agent.id,
+            _record_event(self.db, AuthorizationAuditEvent.RUNTIME_EXECUTION_DENIED, principal,
+                         organization_id=agent.organization_id, agent_id=agent.id,
                          execution_id=execution.id, severity="WARNING", meta={"reason": decision.reason})
             self.db.commit()
             self.db.refresh(execution)
@@ -1093,8 +1215,8 @@ class ExecutionRequestService:
             execution.error_code = policy_result.code
             execution.error_message = policy_result.reason
             execution.completed_at = _now()
-            _record_event(self.db, AuthorizationAuditEvent.RUNTIME_LIMIT_EXCEEDED, actor,
-                         organization_id=actor.organization_id, agent_id=agent.id,
+            _record_event(self.db, AuthorizationAuditEvent.RUNTIME_LIMIT_EXCEEDED, principal,
+                         organization_id=agent.organization_id, agent_id=agent.id,
                          execution_id=execution.id, severity="WARNING", meta={"reason": policy_result.reason})
             self.db.commit()
             self.db.refresh(execution)
@@ -1106,13 +1228,13 @@ class ExecutionRequestService:
             _set_execution_status(execution, "PENDING_APPROVAL")
             execution.decision = "REQUIRE_APPROVAL"
             self.db.add(RuntimeApproval(
-                organization_id=actor.organization_id, agent_id=agent.id, agent_version_id=version.id,
+                organization_id=agent.organization_id, agent_id=agent.id, agent_version_id=version.id,
                 deployment_id=deployment.id, execution_id=execution.id, requested_action="EXECUTION",
                 risk_score=execution.risk_score, reason="Runtime policy requires human approval.",
-                requested_by=actor.id,
+                requested_by=principal.id,
             ))
-            _record_event(self.db, AuthorizationAuditEvent.RUNTIME_EXECUTION_APPROVAL_REQUIRED, actor,
-                         organization_id=actor.organization_id, agent_id=agent.id, execution_id=execution.id)
+            _record_event(self.db, AuthorizationAuditEvent.RUNTIME_EXECUTION_APPROVAL_REQUIRED, principal,
+                         organization_id=agent.organization_id, agent_id=agent.id, execution_id=execution.id)
             self.db.commit()
             self.db.refresh(execution)
             return execution
@@ -1121,14 +1243,14 @@ class ExecutionRequestService:
         execution.decision = "ALLOW"
         execution.queued_at = _now()
         if idempotency_key:
-            IdempotencyService(self.db).store(actor, agent.id, idempotency_key, request_hash, execution.id)
-        _record_event(self.db, AuthorizationAuditEvent.RUNTIME_EXECUTION_CREATED, actor,
-                     organization_id=actor.organization_id, agent_id=agent.id, execution_id=execution.id)
+            IdempotencyService(self.db).store(principal, agent.id, idempotency_key, request_hash, execution.id)
+        _record_event(self.db, AuthorizationAuditEvent.RUNTIME_EXECUTION_CREATED, principal,
+                     organization_id=agent.organization_id, agent_id=agent.id, execution_id=execution.id)
         self.db.commit()
         self.db.refresh(execution)
 
         # Eager queue (dev mode, §30) — see module docstring.
-        ExecutionWorkerService(self.db).run_once(f"inline-{actor.id}")
+        ExecutionWorkerService(self.db).run_once(worker_id)
         self.db.refresh(execution)
         return execution
 

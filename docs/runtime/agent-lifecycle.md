@@ -3,6 +3,16 @@
 `/runtime/agents` · requires `runtime.agent.view`; mutations require the
 matching `runtime.agent.*` permission (§67).
 
+> **Superseded by Phase 5.1.** The 8-state lifecycle and endpoint table
+> originally documented here (`DRAFT → VALIDATING → VALIDATED → APPROVED →
+> ACTIVE → {SUSPENDED, DEPRECATED, ARCHIVED} → RETIRED`, with `validate`/
+> `approve`/`deprecate` each borrowing a neighboring transition's audit
+> event) has been replaced by the full 13-state registry lifecycle — see
+> [registry/lifecycle.md](registry/lifecycle.md) for the current state
+> machine, and [registry/overview.md](registry/overview.md) for the whole
+> Phase 5.1 registry. This file's registration/criticality/tenant-isolation
+> notes below still apply unchanged.
+
 ## Registration
 
 `POST /api/v1/runtime/agents` creates the `agents` row (with
@@ -10,34 +20,9 @@ matching `runtime.agent.*` permission (§67).
 name, description, framework, entrypoint, schemas and system instructions.
 Definitions are versioned independently of `agent_versions`: a new
 `AgentDefinition` can be created and later referenced by a version, but
-most agents only ever need the one created at registration.
-
-## Lifecycle state machine (§10)
-
-```
-DRAFT → VALIDATING → VALIDATED → APPROVED → ACTIVE
-                                              ├─→ SUSPENDED ─┐
-                                              ├─→ DEPRECATED │
-                                              └─→ ARCHIVED ──┼─→ RETIRED
-                                                              ┘
-```
-
-Implemented as synchronous transitions in `AgentRegistryService` — this
-environment has no long-running validation job, so `validate()` runs its
-checks (a definition exists) and moves `DRAFT → VALIDATED` in the same
-request rather than passing through an async `VALIDATING` step. Every
-transition is audited (`RUNTIME_AGENT_*` events, both
-`AuthorizationAudit` and `runtime_events`).
-
-| Endpoint | From | To |
-|---|---|---|
-| `POST /agents/{id}/validate` | DRAFT | VALIDATED |
-| `POST /agents/{id}/approve` | VALIDATED | APPROVED |
-| `POST /agents/{id}/activate` | APPROVED or SUSPENDED | ACTIVE |
-| `POST /agents/{id}/suspend` | ACTIVE | SUSPENDED |
-| `POST /agents/{id}/deprecate` | ACTIVE or SUSPENDED | DEPRECATED |
-| `POST /agents/{id}/archive` | DEPRECATED, SUSPENDED or ACTIVE | ARCHIVED |
-| `POST /agents/{id}/retire` | anything but RETIRED | RETIRED (sets `archived_at`) |
+most agents only ever need the one created at registration. Phase 5.1
+extends the registration payload considerably — see
+[registry/registration.md](registry/registration.md).
 
 Only `ACTIVE` agents can have executions requested against them
 (`AGENT_NOT_ACTIVE`); `SUSPENDED` agents are explicitly rejected

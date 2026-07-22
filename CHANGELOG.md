@@ -4,6 +4,70 @@ All notable changes to the AI Agent Control Tower are documented here. The forma
 based on [Keep a Changelog](https://keepachangelog.com/); the project is pre-1.0 and
 versions track the roadmap phases rather than semver guarantees.
 
+## [Unreleased] — Phase 5.1 · Enterprise Agent Registry
+
+### Part 5.1 — Enterprise Agent Registry, Definitions & Lifecycle
+
+- **Added** migration `0024_agent_registry`: additive registry columns on
+  `agents` (org-hierarchy scoping, mandatory-identity pointer, ownership
+  roles, tags/metadata, `row_version` optimistic concurrency) and
+  `agent_definitions` (requirement declarations); new tables
+  `agent_ownership_history`, `agent_lifecycle_events`,
+  `agent_validation_runs`, `agent_duplicate_matches`, `agent_import_jobs`/
+  `agent_import_items`, `agent_export_jobs`, `agent_migration_records`; a
+  one-identity-per-agent unique constraint on `agent_identities`.
+- **Added** the full 13-state registry lifecycle (§18-§21), replacing
+  Phase 5.0's collapsed 8-state one — `register`, `submit-for-approval`,
+  `reject`, `resume`, `restore` are new actions; every transition gets its
+  own dedicated audit event and a structured `agent_lifecycle_events` row.
+- **Added** accountable ownership with transfer + immutable history, and
+  mandatory machine-identity association/creation/rotation with the
+  eligibility enforcement (active, unexpired, DB-uniqueness) Phase 5.0
+  never checked.
+- **Added** the validation-report engine (§25-§31): metadata/organization/
+  ownership/identity/definition/risk rules, JSON Schema DoS guards
+  (size/depth limits), entrypoint format validation per type, sample-payload
+  testing.
+- **Added** duplicate detection (§32, §33, §64): exact + `difflib`
+  similarity matching, reviewer decisions, confirmed duplicates block
+  registration.
+- **Added** JSON/YAML/CSV bulk import (§39-§42, always lands as DRAFT) and
+  export (§43-§44, secrets always excluded via an allowlist, CSV
+  formula-injection neutralized) with job/item tracking, run synchronously
+  inline (no background worker in this environment, same as the execution
+  queue).
+- **Added** legacy-agent classification (§70-§73) for rows created under
+  Phase 5.0's simpler registry.
+- **Added** ~25 new `runtime.agent.*` permissions and the frontend
+  10-step registration wizard, 12-tab agent detail page, duplicate-review
+  page, and import/export pages. See
+  [docs/runtime/registry/](docs/runtime/registry/) for the full set.
+
+### Part 5.1 hardening — acceptance-criteria gap closure
+
+- **Fixed** `AgentDefinitionRead` (`app/runtime/schemas.py`) — missing
+  `framework_version`, `runtime_language`, `capability_declarations`,
+  `tool_declarations`, and the six `*_requirements` fields, causing a hard
+  `TypeError` every time the frontend's Definition tab rendered.
+- **Added** the legacy-migration frontend page (`MigrationPage.tsx`,
+  `/runtime/migration`) — the classification service and API existed with
+  no UI to trigger or review it.
+- **Added** registration-wizard draft autosave (§22.6): persists to
+  `localStorage` on every change, restores with a dismissible banner on
+  return, clears on successful submit; fixed the wizard's form `<Label>`s
+  to be properly associated with their inputs (`htmlFor`/`id`) along the
+  way.
+- **Added** performance tests (`test_agent_registry_perf.py`, §31):
+  bulk-registration/search throughput and duplicate detection against a
+  50+ agent pool, following the existing timing-reported convention.
+- **Added** frontend test coverage for all 5 registry pages (23 tests) —
+  previously untested.
+- **Removed** dead Phase 5.0 schemas superseded by the registry
+  (`AgentRegisterRequest`, `AgentUpdateRequest`, `AgentRuntimeRead`,
+  `AgentDefinitionCreate`).
+- Backend **636** green (incl. 2 new perf tests); frontend **290** green;
+  clean typecheck and build.
+
 ## [Unreleased] — Phase 5.0 · Agent Runtime & Lifecycle Management
 
 ### Part 5.0 — Agent Runtime & Lifecycle Management

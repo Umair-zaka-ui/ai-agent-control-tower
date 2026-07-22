@@ -16,6 +16,9 @@ const SECTIONS: { label: string; to: string; permission: string }[] = [
   { label: 'Tools', to: ROUTES.RUNTIME_TOOLS, permission: PERMISSIONS.RUNTIME_AGENT_VIEW },
   { label: 'Approvals', to: ROUTES.RUNTIME_APPROVALS, permission: PERMISSIONS.RUNTIME_APPROVAL_REVIEW },
   { label: 'Operations', to: ROUTES.RUNTIME_OPERATIONS, permission: PERMISSIONS.RUNTIME_HEALTH_VIEW },
+  { label: 'Import', to: ROUTES.RUNTIME_IMPORT, permission: PERMISSIONS.RUNTIME_AGENT_IMPORT },
+  { label: 'Export', to: ROUTES.RUNTIME_EXPORT, permission: PERMISSIONS.RUNTIME_AGENT_EXPORT },
+  { label: 'Migration', to: ROUTES.RUNTIME_MIGRATION, permission: PERMISSIONS.RUNTIME_AGENT_IMPORT },
 ]
 
 export function RuntimeNav() {

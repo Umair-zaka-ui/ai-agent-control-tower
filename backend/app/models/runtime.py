@@ -47,17 +47,35 @@ class AgentDefinition(Base, UUIDPrimaryKeyMixin):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     framework: Mapped[str] = mapped_column(String(50), nullable=False, default="CUSTOM")
+    framework_version: Mapped[str | None] = mapped_column(String(50), nullable=True)
     entrypoint_type: Mapped[str] = mapped_column(String(30), nullable=False, default="FUNCTION")
     entrypoint: Mapped[str] = mapped_column(String(500), nullable=False)
+    runtime_language: Mapped[str | None] = mapped_column(String(50), nullable=True)
     system_instructions: Mapped[str | None] = mapped_column(Text, nullable=True)
     configuration_schema: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     input_schema: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     output_schema: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # Phase 5.1 SRS §7 requirement declarations — intent, not enforcement;
+    # nothing in the runtime resolves these against real infrastructure yet
+    # (see docs/runtime/registry/agent-definitions.md).
+    capability_declarations: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    tool_declarations: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    model_requirements: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    memory_requirements: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    data_requirements: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    network_requirements: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    secret_requirements: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    runtime_requirements: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     # "metadata" is reserved by SQLAlchemy's declarative base; the DB column
     # keeps the SRS name via `name=`.
     extra_metadata: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
 
 

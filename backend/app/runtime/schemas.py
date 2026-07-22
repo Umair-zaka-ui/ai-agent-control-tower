@@ -7,7 +7,6 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-_CRITICALITY = Field(default="MEDIUM", pattern="^(LOW|MEDIUM|HIGH|MISSION_CRITICAL)$")
 _ENVIRONMENT = Field(pattern="^(DEVELOPMENT|TEST|STAGING|PRODUCTION|SANDBOX)$")
 _STRATEGY = Field(default="RECREATE", pattern="^(RECREATE|ROLLING|CANARY|BLUE_GREEN)$")
 _PRIORITY = Field(default="NORMAL", pattern="^(LOW|NORMAL|HIGH|CRITICAL)$")
@@ -16,19 +15,6 @@ _PRIORITY = Field(default="NORMAL", pattern="^(LOW|NORMAL|HIGH|CRITICAL)$")
 # --------------------------------------------------------------------------- #
 # Agent definitions (§7.2)
 # --------------------------------------------------------------------------- #
-class AgentDefinitionCreate(BaseModel):
-    name: str = Field(min_length=1, max_length=255)
-    description: str | None = None
-    framework: str = Field(default="CUSTOM", max_length=50)
-    entrypoint_type: str = Field(default="FUNCTION", max_length=30)
-    entrypoint: str = Field(min_length=1, max_length=500)
-    system_instructions: str | None = None
-    configuration_schema: dict | None = None
-    input_schema: dict | None = None
-    output_schema: dict | None = None
-    metadata: dict | None = None
-
-
 class AgentDefinitionRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -37,63 +23,24 @@ class AgentDefinitionRead(BaseModel):
     name: str
     description: str | None
     framework: str
+    framework_version: str | None
     entrypoint_type: str
     entrypoint: str
+    runtime_language: str | None
     system_instructions: str | None
     configuration_schema: dict | None
     input_schema: dict | None
     output_schema: dict | None
+    capability_declarations: list
+    tool_declarations: list
+    model_requirements: dict
+    memory_requirements: dict
+    data_requirements: dict
+    network_requirements: dict
+    secret_requirements: dict
+    runtime_requirements: dict
     metadata: dict | None = Field(validation_alias="extra_metadata")
     created_at: datetime
-
-
-# --------------------------------------------------------------------------- #
-# Agents (§7.1)
-# --------------------------------------------------------------------------- #
-class AgentRegisterRequest(BaseModel):
-    name: str = Field(min_length=1, max_length=255)
-    description: str | None = None
-    agent_type: str = Field(default="ASSISTANT", max_length=100)
-    slug: str | None = Field(default=None, max_length=150)
-    project_id: uuid.UUID | None = None
-    owner_type: str | None = Field(default=None, max_length=30)
-    owner_id: uuid.UUID | None = None
-    criticality: str = _CRITICALITY
-    data_classification: str = Field(default="INTERNAL", max_length=30)
-    default_environment: str = Field(default="DEVELOPMENT", max_length=20)
-    definition: AgentDefinitionCreate
-
-
-class AgentUpdateRequest(BaseModel):
-    name: str | None = Field(default=None, min_length=1, max_length=255)
-    description: str | None = None
-    criticality: str | None = Field(default=None, pattern="^(LOW|MEDIUM|HIGH|MISSION_CRITICAL)$")
-    data_classification: str | None = Field(default=None, max_length=30)
-    default_environment: str | None = Field(default=None, max_length=20)
-    owner_type: str | None = Field(default=None, max_length=30)
-    owner_id: uuid.UUID | None = None
-
-
-class AgentRuntimeRead(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: uuid.UUID
-    organization_id: uuid.UUID
-    name: str
-    slug: str | None
-    description: str | None
-    agent_type: str
-    status: str
-    lifecycle_status: str
-    criticality: str
-    data_classification: str
-    default_environment: str
-    project_id: uuid.UUID | None
-    owner_type: str | None
-    owner_id: uuid.UUID | None
-    created_at: datetime
-    updated_at: datetime
-    archived_at: datetime | None
 
 
 # --------------------------------------------------------------------------- #
@@ -193,6 +140,18 @@ class HeartbeatSubmit(BaseModel):
 # --------------------------------------------------------------------------- #
 class ExecutionCreate(BaseModel):
     agent_id: uuid.UUID
+    deployment_id: uuid.UUID | None = None
+    input_payload: dict = Field(default_factory=dict)
+    idempotency_key: str | None = Field(default=None, max_length=150)
+    correlation_id: str | None = Field(default=None, max_length=100)
+    priority: str = _PRIORITY
+
+
+class AgentSelfExecutionCreate(BaseModel):
+    """§29, §31 — an agent (API-key authenticated) requesting an execution
+    of itself. No ``agent_id`` field: the target is always the authenticated
+    agent, never a request-supplied value."""
+
     deployment_id: uuid.UUID | None = None
     input_payload: dict = Field(default_factory=dict)
     idempotency_key: str | None = Field(default=None, max_length=150)

@@ -9,7 +9,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -20,6 +20,11 @@ from app.models.mixins import TimestampMixin, UUIDPrimaryKeyMixin
 
 class AgentIdentity(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "agent_identities"
+    # Phase 5.1 SRS §11.1 — mandatory 1:1 machine identity: one identity can't
+    # silently attach to two agents.
+    __table_args__ = (
+        UniqueConstraint("agent_id", name="uq_agent_identities_agent"),
+    )
 
     agent_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

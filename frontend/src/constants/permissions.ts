@@ -92,6 +92,24 @@ export const PERMISSIONS = {
   RUNTIME_COST_VIEW: 'runtime.cost.view',
   RUNTIME_APPROVAL_REVIEW: 'runtime.approval.review',
   RUNTIME_KILL_SWITCH: 'runtime.kill_switch.execute',
+  /** Enterprise Agent Registry (Phase 5.1 §57). */
+  RUNTIME_AGENT_REGISTER: 'runtime.agent.register',
+  RUNTIME_AGENT_SUBMIT: 'runtime.agent.submit',
+  RUNTIME_AGENT_REJECT: 'runtime.agent.reject',
+  RUNTIME_AGENT_RESUME: 'runtime.agent.resume',
+  RUNTIME_AGENT_DEPRECATE: 'runtime.agent.deprecate',
+  RUNTIME_AGENT_ARCHIVE: 'runtime.agent.archive',
+  RUNTIME_AGENT_RESTORE: 'runtime.agent.restore',
+  RUNTIME_AGENT_IDENTITY_ASSOCIATE: 'runtime.agent.identity.associate',
+  RUNTIME_AGENT_IDENTITY_CREATE: 'runtime.agent.identity.create',
+  RUNTIME_AGENT_IDENTITY_REPLACE: 'runtime.agent.identity.replace',
+  RUNTIME_AGENT_OWNERSHIP_VIEW: 'runtime.agent.ownership.view',
+  RUNTIME_AGENT_OWNERSHIP_TRANSFER: 'runtime.agent.ownership.transfer',
+  RUNTIME_AGENT_VALIDATION_VIEW: 'runtime.agent.validation.view',
+  RUNTIME_AGENT_DUPLICATE_REVIEW: 'runtime.agent.duplicate.review',
+  RUNTIME_AGENT_IMPORT: 'runtime.agent.import',
+  RUNTIME_AGENT_EXPORT: 'runtime.agent.export',
+  RUNTIME_AGENT_AUDIT_VIEW: 'runtime.agent.audit.view',
 } as const
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS]

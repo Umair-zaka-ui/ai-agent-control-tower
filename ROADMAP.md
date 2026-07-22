@@ -765,6 +765,52 @@ Done, closing every item that was only partially met:
   [docs/runtime/workers-and-queue.md](docs/runtime/workers-and-queue.md) —
   but requires tests not to leave orphaned `QUEUED` rows behind).
 
+Next: 5.1 Enterprise Agent Registry.
+
+### Part 5.1 — Enterprise Agent Registry, Definitions & Lifecycle ✅
+
+The registry gate every agent must pass before it can version, deploy or
+execute:
+
+- **Full 13-state lifecycle** (§18-§21), replacing Phase 5.0's collapsed
+  8-state one: `DRAFT → REGISTERED → VALIDATING → {VALIDATED,
+  VALIDATION_FAILED} → PENDING_APPROVAL → {APPROVED, REJECTED} → ACTIVE →
+  {SUSPENDED, DEPRECATED} → {ARCHIVED, RETIRED}`, with a dedicated audit
+  event per action instead of borrowing a neighbor's.
+- **Accountable ownership** (§12, §13): business/technical/compliance
+  owner, transfer with cross-tenant scope checks, an immutable
+  `agent_ownership_history` ledger.
+- **Mandatory machine identity** (§11): `agent_identities` gains a
+  one-per-agent unique constraint and real eligibility enforcement
+  (active, unexpired) — both stored but never checked in Phase 5.0.
+- **Validation-report engine** (§25-§31): metadata/organization/ownership/
+  identity/definition/risk rules, JSON Schema DoS guards (size/depth
+  limits jsonschema doesn't enforce on its own), entrypoint format
+  validation per type, sample-payload testing.
+- **Duplicate detection** (§32, §33, §64): exact-match + `difflib`
+  similarity scoring, reviewer decisions, confirmed duplicates block
+  registration.
+- **JSON/YAML/CSV import & export** (§39-§45): imports always land as
+  DRAFT; exports always exclude secrets (allowlist, not denylist) and
+  neutralize CSV formula injection; both run synchronously inline (no
+  background worker in this environment, same "eager" trick the execution
+  queue already uses).
+- **Legacy migration classification** (§70-§73) for agents created under
+  Phase 5.0's simpler registry.
+- **Optimistic concurrency** (§53): `row_version`, both a client-visible
+  check and SQLAlchemy's native `version_id_col` as defense-in-depth.
+- Frontend: a 10-step registration wizard (with draft autosave), the agent
+  detail page reworked into 12 tabs (Overview/Definition/Ownership/
+  Identity/Contracts/Risk & Data/Capabilities/Tools/Validation/Lifecycle/
+  Audit/Settings), a duplicate-review page, import/export pages, and a
+  legacy-migration page.
+- Migration `0024_agent_registry`; ~25 new `runtime.agent.*` permissions;
+  41 new backend tests incl. 2 performance tests (636 total green) plus
+  the existing 593 updated for the new lifecycle; 290 frontend tests
+  green (23 new, covering all 5 registry pages); clean typecheck and
+  build. See [docs/runtime/registry/](docs/runtime/registry/) for the
+  full set.
+
 Next: production readiness (MFA, OAuth/SSO, observability).
 
 ## Future (Phase 4+)

@@ -14,6 +14,16 @@ from app.models.abac import (
 from app.models.access_review import AccessReviewCampaign, AccessReviewItem
 from app.models.agent import Agent
 from app.models.agent_action import AgentAction
+from app.models.agent_registry import (
+    AgentDuplicateMatch,
+    AgentExportJob,
+    AgentImportItem,
+    AgentImportJob,
+    AgentLifecycleEvent,
+    AgentMigrationRecord,
+    AgentOwnershipHistory,
+    AgentValidationRun,
+)
 from app.models.api_key import AgentApiKey
 from app.models.approval import Approval, ApprovalComment
 from app.models.audit_log import AuditLog
@@ -130,4 +140,12 @@ __all__ = [
     "DeploymentHealth",
     "IdempotencyRecord",
     "RuntimeApproval",
+    "AgentOwnershipHistory",
+    "AgentLifecycleEvent",
+    "AgentValidationRun",
+    "AgentDuplicateMatch",
+    "AgentImportJob",
+    "AgentImportItem",
+    "AgentExportJob",
+    "AgentMigrationRecord",
 ]

@@ -104,9 +104,14 @@ import {
   CapabilitiesPage as RuntimeCapabilitiesPage,
   DeploymentDetailPage as RuntimeDeploymentDetailPage,
   DeploymentsPage as RuntimeDeploymentsPage,
+  DuplicateReviewPage as RuntimeDuplicateReviewPage,
   ExecutionDetailPage as RuntimeExecutionDetailPage,
   ExecutionsPage as RuntimeExecutionsPage,
+  ExportPage as RuntimeExportPage,
+  ImportPage as RuntimeImportPage,
+  MigrationPage as RuntimeMigrationPage,
   OperationsPage as RuntimeOperationsPage,
+  RegistrationWizardPage as RuntimeRegistrationWizardPage,
   RuntimeDashboardPage,
   ToolsPage as RuntimeToolsPage,
 } from '@/modules/runtime'
@@ -282,7 +287,12 @@ export function AppRoutes() {
           {/* Agent Runtime & Lifecycle Management (Phase 5.0 §69) */}
           <Route path={ROUTES.RUNTIME_DASHBOARD} element={<RuntimeDashboardPage />} />
           <Route path={ROUTES.RUNTIME_AGENTS} element={<RuntimeAgentsPage />} />
+          <Route path={ROUTES.RUNTIME_AGENT_NEW} element={<RuntimeRegistrationWizardPage />} />
           <Route path={ROUTES.RUNTIME_AGENT_DETAIL} element={<RuntimeAgentDetailPage />} />
+          <Route path={ROUTES.RUNTIME_AGENT_DUPLICATES} element={<RuntimeDuplicateReviewPage />} />
+          <Route path={ROUTES.RUNTIME_IMPORT} element={<RuntimeImportPage />} />
+          <Route path={ROUTES.RUNTIME_EXPORT} element={<RuntimeExportPage />} />
+          <Route path={ROUTES.RUNTIME_MIGRATION} element={<RuntimeMigrationPage />} />
           <Route path={ROUTES.RUNTIME_DEPLOYMENTS} element={<RuntimeDeploymentsPage />} />
           <Route path={ROUTES.RUNTIME_DEPLOYMENT_DETAIL} element={<RuntimeDeploymentDetailPage />} />
           <Route path={ROUTES.RUNTIME_EXECUTIONS} element={<RuntimeExecutionsPage />} />

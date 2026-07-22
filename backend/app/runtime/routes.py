@@ -4,24 +4,55 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.deps import require_permission
+from app.api.deps import get_current_agent, require_permission
+from app.models.agent import Agent
 from app.core.database import get_db
 from app.identity.errors import ErrorCode, IdentityError
 from app.models.runtime import AgentDefinition, ExecutionAttempt, RuntimeEvent, ToolCall
 from app.models.user import User
+from app.runtime.registry.duplicates import AgentDuplicateDetectionService
+from app.runtime.registry.identity import AgentIdentityAssociationService
+from app.runtime.registry.imports_exports import AgentExportService, AgentImportService
+from app.runtime.registry.migration import AgentMigrationService
+from app.runtime.registry.ownership import AgentOwnershipService
+from app.runtime.registry.schemas import (
+    AgentIdentityRead,
+    AgentLifecycleActionRequest,
+    AgentOwnershipRead,
+    AgentRegistrationCreate,
+    AgentRegistryRead,
+    AgentRegistryUpdate,
+    DuplicateMatchRead,
+    DuplicateReviewRequest,
+    ExportJobRead,
+    ExportRequest,
+    IdentityAssociateRequest,
+    IdentityCreateAndAssociateRequest,
+    AgentLifecycleEventRead,
+    IdentityReplaceRequest,
+    ImportItemRead,
+    ImportJobRead,
+    ImportRequest,
+    MigrationRecordRead,
+    OwnershipHistoryRead,
+    OwnershipTransferRequest,
+    SchemaTestRequest,
+    SchemaTestResponse,
+    ValidationRunRead,
+)
+from app.runtime.registry.services import AgentLifecycleService, AgentSearchService
+from app.runtime.registry.validation import validate_sample_payload
 from app.runtime.schemas import (
     AgentCapabilityAssign,
     AgentCapabilityRead,
     AgentDefinitionRead,
-    AgentRegisterRequest,
-    AgentRuntimeRead,
+    AgentSelfExecutionCreate,
     AgentToolAssign,
     AgentToolRead,
-    AgentUpdateRequest,
     AgentVersionCreate,
     AgentVersionRead,
     CapabilityCreate,
@@ -89,6 +120,24 @@ _TELEMETRY = "runtime.telemetry.view"
 _COST = "runtime.cost.view"
 _APPROVAL = "runtime.approval.review"
 _KILL_SWITCH = "runtime.kill_switch.execute"
+# Enterprise Agent Registry (Phase 5.1 §57).
+_REGISTER = "runtime.agent.register"
+_SUBMIT = "runtime.agent.submit"
+_REJECT = "runtime.agent.reject"
+_RESUME = "runtime.agent.resume"
+_DEPRECATE = "runtime.agent.deprecate"
+_ARCHIVE = "runtime.agent.archive"
+_RESTORE = "runtime.agent.restore"
+_IDENTITY_ASSOCIATE = "runtime.agent.identity.associate"
+_IDENTITY_CREATE = "runtime.agent.identity.create"
+_IDENTITY_REPLACE = "runtime.agent.identity.replace"
+_OWNERSHIP_VIEW = "runtime.agent.ownership.view"
+_OWNERSHIP_TRANSFER = "runtime.agent.ownership.transfer"
+_VALIDATION_VIEW = "runtime.agent.validation.view"
+_DUPLICATE_REVIEW = "runtime.agent.duplicate.review"
+_IMPORT = "runtime.agent.import"
+_EXPORT = "runtime.agent.export"
+_AUDIT_VIEW = "runtime.agent.audit.view"
 
 
 # --------------------------------------------------------------------------- #
@@ -100,27 +149,56 @@ def dashboard(actor: User = Depends(require_permission(_VIEW)), db: Session = De
 
 
 # --------------------------------------------------------------------------- #
-# Agent registry (§16, §66)
+# Agent registry (Phase 5.1 §16, §22, §36-§38, §54, §66)
 # --------------------------------------------------------------------------- #
-@router.get("/agents", response_model=list[AgentRuntimeRead])
-def list_agents(lifecycle_status: str | None = Query(default=None), criticality: str | None = Query(default=None),
+def _lifecycle_ctx(actor: User, request: Request, reason: str | None) -> dict:
+    return {"reason": reason, "request_id": getattr(request.state, "request_id", None),
+           "correlation_id": getattr(request.state, "request_id", None)}
+
+
+@router.get("/agents", response_model=list[AgentRegistryRead])
+def list_agents(query: str | None = Query(default=None), project_id: uuid.UUID | None = Query(default=None),
+                owner_id: uuid.UUID | None = Query(default=None), status_filter: str | None = Query(
+                    default=None, alias="status"), agent_type: str | None = Query(default=None),
+                framework: str | None = Query(default=None), criticality: str | None = Query(default=None),
+                risk_level: str | None = Query(default=None),
+                data_classification: str | None = Query(default=None),
+                autonomy_level: str | None = Query(default=None), tag: list[str] | None = Query(default=None),
+                view: str | None = Query(default=None), page: int = Query(default=1, ge=1),
+                page_size: int = Query(default=50, ge=1, le=500),
+                sort: str = Query(default="-created_at"),
                 actor: User = Depends(require_permission(_VIEW)), db: Session = Depends(get_db)):
-    return AgentRegistryService(db).list(actor, lifecycle_status=lifecycle_status, criticality=criticality)
+    """§36-§38, §56 — search/filter/inventory-views. ``view`` selects one of
+    the named SRS §37 views (e.g. ``ACTIVE``, ``HIGH_RISK``, ``MY_AGENTS``,
+    ``ORPHANED``, ``RECENTLY_UPDATED``); explicit filters are ignored when a
+    view is given."""
+    search = AgentSearchService(db)
+    if view:
+        rows, _total = search.view(actor, view, page=page, page_size=page_size)
+        return rows
+    rows, _total = search.search(
+        actor, query=query, project_id=project_id, owner_id=owner_id, status=status_filter,
+        agent_type=agent_type, framework=framework, criticality=criticality, risk_level=risk_level,
+        data_classification=data_classification, autonomy_level=autonomy_level, tags=tag,
+        page=page, page_size=page_size, sort=sort,
+    )
+    return rows
 
 
-@router.post("/agents", response_model=AgentRuntimeRead, status_code=status.HTTP_201_CREATED)
-def register_agent(payload: AgentRegisterRequest, actor: User = Depends(require_permission(_CREATE)),
+@router.post("/agents", response_model=AgentRegistryRead, status_code=status.HTTP_201_CREATED)
+def register_agent(payload: AgentRegistrationCreate, actor: User = Depends(require_permission(_CREATE)),
                    db: Session = Depends(get_db)):
     return AgentRegistryService(db).register(actor, payload.model_dump())
 
 
-@router.get("/agents/{agent_id}", response_model=AgentRuntimeRead)
+@router.get("/agents/{agent_id}", response_model=AgentRegistryRead)
 def get_agent(agent_id: uuid.UUID, actor: User = Depends(require_permission(_VIEW)), db: Session = Depends(get_db)):
     return AgentRegistryService(db).get_or_404(actor, agent_id)
 
 
-@router.put("/agents/{agent_id}", response_model=AgentRuntimeRead)
-def update_agent(agent_id: uuid.UUID, payload: AgentUpdateRequest,
+@router.put("/agents/{agent_id}", response_model=AgentRegistryRead)
+@router.patch("/agents/{agent_id}", response_model=AgentRegistryRead)
+def update_agent(agent_id: uuid.UUID, payload: AgentRegistryUpdate,
                  actor: User = Depends(require_permission(_UPDATE)), db: Session = Depends(get_db)):
     return AgentRegistryService(db).update(actor, agent_id, payload.model_dump(exclude_unset=True))
 
@@ -138,6 +216,7 @@ def delete_agent(agent_id: uuid.UUID, actor: User = Depends(require_permission(_
 
 
 @router.get("/agents/{agent_id}/definitions", response_model=list[AgentDefinitionRead])
+@router.get("/agents/{agent_id}/definition", response_model=list[AgentDefinitionRead])
 def list_definitions(agent_id: uuid.UUID, actor: User = Depends(require_permission(_VIEW)),
                      db: Session = Depends(get_db)):
     AgentRegistryService(db).get_or_404(actor, agent_id)
@@ -146,46 +225,362 @@ def list_definitions(agent_id: uuid.UUID, actor: User = Depends(require_permissi
     return list(db.execute(stmt).scalars())
 
 
-@router.post("/agents/{agent_id}/validate", response_model=AgentRuntimeRead)
-def validate_agent(agent_id: uuid.UUID, actor: User = Depends(require_permission(_VALIDATE)),
-                   db: Session = Depends(get_db)):
-    return AgentRegistryService(db).validate(actor, agent_id)
+# --- Lifecycle actions (§19, §20, §54) --- #
+@router.post("/agents/{agent_id}/register", response_model=AgentRegistryRead)
+def register_lifecycle_action(agent_id: uuid.UUID, request: Request,
+                              payload: AgentLifecycleActionRequest = AgentLifecycleActionRequest(),
+                              actor: User = Depends(require_permission(_REGISTER)), db: Session = Depends(get_db)):
+    agent = AgentRegistryService(db).get_or_404(actor, agent_id)
+    return AgentLifecycleService(db).register(actor, agent, **_lifecycle_ctx(actor, request, payload.reason))
 
 
-@router.post("/agents/{agent_id}/approve", response_model=AgentRuntimeRead)
-def approve_agent(agent_id: uuid.UUID, actor: User = Depends(require_permission(_APPROVE)),
+@router.post("/agents/{agent_id}/validate", response_model=AgentRegistryRead)
+def validate_agent(agent_id: uuid.UUID, request: Request,
+                   payload: AgentLifecycleActionRequest = AgentLifecycleActionRequest(),
+                   actor: User = Depends(require_permission(_VALIDATE)), db: Session = Depends(get_db)):
+    agent = AgentRegistryService(db).get_or_404(actor, agent_id)
+    agent, _run = AgentLifecycleService(db).start_validation(
+        actor, agent, **_lifecycle_ctx(actor, request, payload.reason))
+    return agent
+
+
+@router.post("/agents/{agent_id}/submit-for-approval", response_model=AgentRegistryRead)
+def submit_for_approval(agent_id: uuid.UUID, request: Request,
+                        payload: AgentLifecycleActionRequest = AgentLifecycleActionRequest(),
+                        actor: User = Depends(require_permission(_SUBMIT)), db: Session = Depends(get_db)):
+    agent = AgentRegistryService(db).get_or_404(actor, agent_id)
+    return AgentLifecycleService(db).submit_for_approval(
+        actor, agent, **_lifecycle_ctx(actor, request, payload.reason))
+
+
+@router.post("/agents/{agent_id}/approve", response_model=AgentRegistryRead)
+def approve_agent(agent_id: uuid.UUID, request: Request,
+                  payload: AgentLifecycleActionRequest = AgentLifecycleActionRequest(),
+                  actor: User = Depends(require_permission(_APPROVE)), db: Session = Depends(get_db)):
+    agent = AgentRegistryService(db).get_or_404(actor, agent_id)
+    return AgentLifecycleService(db).approve(actor, agent, **_lifecycle_ctx(actor, request, payload.reason))
+
+
+@router.post("/agents/{agent_id}/reject", response_model=AgentRegistryRead)
+def reject_agent(agent_id: uuid.UUID, request: Request, payload: AgentLifecycleActionRequest,
+                 actor: User = Depends(require_permission(_REJECT)), db: Session = Depends(get_db)):
+    agent = AgentRegistryService(db).get_or_404(actor, agent_id)
+    ctx = _lifecycle_ctx(actor, request, payload.reason)
+    ctx.pop("reason")
+    return AgentLifecycleService(db).reject(actor, agent, reason=payload.reason or "", **ctx)
+
+
+@router.post("/agents/{agent_id}/activate", response_model=AgentRegistryRead)
+def activate_agent(agent_id: uuid.UUID, request: Request,
+                   payload: AgentLifecycleActionRequest = AgentLifecycleActionRequest(),
+                   actor: User = Depends(require_permission(_ACTIVATE)), db: Session = Depends(get_db)):
+    agent = AgentRegistryService(db).get_or_404(actor, agent_id)
+    return AgentLifecycleService(db).activate(actor, agent, **_lifecycle_ctx(actor, request, payload.reason))
+
+
+@router.post("/agents/{agent_id}/suspend", response_model=AgentRegistryRead)
+def suspend_agent(agent_id: uuid.UUID, request: Request,
+                  payload: AgentLifecycleActionRequest = AgentLifecycleActionRequest(),
+                  actor: User = Depends(require_permission(_SUSPEND)), db: Session = Depends(get_db)):
+    agent = AgentRegistryService(db).get_or_404(actor, agent_id)
+    return AgentLifecycleService(db).suspend(actor, agent, **_lifecycle_ctx(actor, request, payload.reason))
+
+
+@router.post("/agents/{agent_id}/resume", response_model=AgentRegistryRead)
+def resume_agent(agent_id: uuid.UUID, request: Request,
+                 payload: AgentLifecycleActionRequest = AgentLifecycleActionRequest(),
+                 actor: User = Depends(require_permission(_RESUME)), db: Session = Depends(get_db)):
+    agent = AgentRegistryService(db).get_or_404(actor, agent_id)
+    return AgentLifecycleService(db).resume(actor, agent, **_lifecycle_ctx(actor, request, payload.reason))
+
+
+@router.post("/agents/{agent_id}/deprecate", response_model=AgentRegistryRead)
+def deprecate_agent(agent_id: uuid.UUID, request: Request,
+                    payload: AgentLifecycleActionRequest = AgentLifecycleActionRequest(),
+                    actor: User = Depends(require_permission(_DEPRECATE)), db: Session = Depends(get_db)):
+    agent = AgentRegistryService(db).get_or_404(actor, agent_id)
+    return AgentLifecycleService(db).deprecate(actor, agent, **_lifecycle_ctx(actor, request, payload.reason))
+
+
+@router.post("/agents/{agent_id}/archive", response_model=AgentRegistryRead)
+def archive_agent(agent_id: uuid.UUID, request: Request,
+                  payload: AgentLifecycleActionRequest = AgentLifecycleActionRequest(),
+                  actor: User = Depends(require_permission(_ARCHIVE)), db: Session = Depends(get_db)):
+    agent = AgentRegistryService(db).get_or_404(actor, agent_id)
+    return AgentLifecycleService(db).archive(actor, agent, **_lifecycle_ctx(actor, request, payload.reason))
+
+
+@router.post("/agents/{agent_id}/restore", response_model=AgentRegistryRead)
+def restore_agent(agent_id: uuid.UUID, request: Request,
+                  payload: AgentLifecycleActionRequest = AgentLifecycleActionRequest(),
+                  actor: User = Depends(require_permission(_RESTORE)), db: Session = Depends(get_db)):
+    """§20 — ARCHIVED -> DRAFT, 'only when restoration is authorized':
+    gated behind its own ``runtime.agent.restore`` permission, deliberately
+    separate from every other lifecycle action's permission."""
+    agent = AgentRegistryService(db).get_or_404(actor, agent_id)
+    return AgentLifecycleService(db).restore(actor, agent, **_lifecycle_ctx(actor, request, payload.reason))
+
+
+@router.post("/agents/{agent_id}/retire", response_model=AgentRegistryRead)
+def retire_agent(agent_id: uuid.UUID, request: Request,
+                 payload: AgentLifecycleActionRequest = AgentLifecycleActionRequest(),
+                 actor: User = Depends(require_permission(_RETIRE)), db: Session = Depends(get_db)):
+    agent = AgentRegistryService(db).get_or_404(actor, agent_id)
+    return AgentLifecycleService(db).retire(actor, agent, **_lifecycle_ctx(actor, request, payload.reason))
+
+
+# --------------------------------------------------------------------------- #
+# Ownership (§12, §13, §54)
+# --------------------------------------------------------------------------- #
+@router.get("/agents/{agent_id}/ownership", response_model=AgentOwnershipRead)
+def get_ownership(agent_id: uuid.UUID, actor: User = Depends(require_permission(_OWNERSHIP_VIEW)),
                   db: Session = Depends(get_db)):
-    return AgentRegistryService(db).approve(actor, agent_id)
+    agent = AgentRegistryService(db).get_or_404(actor, agent_id)
+    return AgentOwnershipRead(owner_type=agent.owner_type, owner_id=agent.owner_id,
+                              technical_owner_id=agent.technical_owner_id,
+                              compliance_owner_id=agent.compliance_owner_id)
 
 
-@router.post("/agents/{agent_id}/activate", response_model=AgentRuntimeRead)
-def activate_agent(agent_id: uuid.UUID, actor: User = Depends(require_permission(_ACTIVATE)),
-                   db: Session = Depends(get_db)):
-    return AgentRegistryService(db).activate(actor, agent_id)
+@router.post("/agents/{agent_id}/ownership/transfer", response_model=AgentRegistryRead)
+def transfer_ownership(agent_id: uuid.UUID, payload: OwnershipTransferRequest,
+                       actor: User = Depends(require_permission(_OWNERSHIP_TRANSFER)),
+                       db: Session = Depends(get_db)):
+    agent = AgentRegistryService(db).get_or_404(actor, agent_id)
+    return AgentOwnershipService(db).transfer(
+        actor, agent, owner_role=payload.owner_role, new_owner_type=payload.new_owner_type,
+        new_owner_id=payload.new_owner_id, reason=payload.reason)
 
 
-@router.post("/agents/{agent_id}/suspend", response_model=AgentRuntimeRead)
-def suspend_agent(agent_id: uuid.UUID, actor: User = Depends(require_permission(_SUSPEND)),
-                  db: Session = Depends(get_db)):
-    return AgentRegistryService(db).suspend(actor, agent_id)
+@router.get("/agents/{agent_id}/ownership/history", response_model=list[OwnershipHistoryRead])
+def ownership_history(agent_id: uuid.UUID, actor: User = Depends(require_permission(_OWNERSHIP_VIEW)),
+                      db: Session = Depends(get_db)):
+    AgentRegistryService(db).get_or_404(actor, agent_id)
+    return AgentOwnershipService(db).history(agent_id)
 
 
-@router.post("/agents/{agent_id}/deprecate", response_model=AgentRuntimeRead)
-def deprecate_agent(agent_id: uuid.UUID, actor: User = Depends(require_permission(_SUSPEND)),
-                    db: Session = Depends(get_db)):
-    return AgentRegistryService(db).deprecate(actor, agent_id)
-
-
-@router.post("/agents/{agent_id}/archive", response_model=AgentRuntimeRead)
-def archive_agent(agent_id: uuid.UUID, actor: User = Depends(require_permission(_RETIRE)),
-                  db: Session = Depends(get_db)):
-    return AgentRegistryService(db).archive(actor, agent_id)
-
-
-@router.post("/agents/{agent_id}/retire", response_model=AgentRuntimeRead)
-def retire_agent(agent_id: uuid.UUID, actor: User = Depends(require_permission(_RETIRE)),
+# --------------------------------------------------------------------------- #
+# Machine identity (§11, §54)
+# --------------------------------------------------------------------------- #
+@router.get("/agents/{agent_id}/identity", response_model=AgentIdentityRead | None)
+def get_identity(agent_id: uuid.UUID, actor: User = Depends(require_permission(_VIEW)),
                  db: Session = Depends(get_db)):
-    return AgentRegistryService(db).retire(actor, agent_id)
+    from app.identity.models.agent_identity import AgentIdentity
+
+    agent = AgentRegistryService(db).get_or_404(actor, agent_id)
+    if agent.identity_id is None:
+        return None
+    return db.get(AgentIdentity, agent.identity_id)
+
+
+@router.post("/agents/{agent_id}/identity/associate", response_model=AgentRegistryRead)
+def associate_identity(agent_id: uuid.UUID, payload: IdentityAssociateRequest,
+                       actor: User = Depends(require_permission(_IDENTITY_ASSOCIATE)),
+                       db: Session = Depends(get_db)):
+    agent = AgentRegistryService(db).get_or_404(actor, agent_id)
+    return AgentIdentityAssociationService(db).associate(actor, agent, payload.identity_id)
+
+
+@router.post("/agents/{agent_id}/identity/create-and-associate", response_model=AgentRegistryRead)
+def create_and_associate_identity(agent_id: uuid.UUID, payload: IdentityCreateAndAssociateRequest,
+                                  actor: User = Depends(require_permission(_IDENTITY_CREATE)),
+                                  db: Session = Depends(get_db)):
+    agent = AgentRegistryService(db).get_or_404(actor, agent_id)
+    return AgentIdentityAssociationService(db).create_and_associate(
+        actor, agent, client_id=payload.client_id, credential_type=payload.credential_type,
+        expires_at=payload.expires_at)
+
+
+@router.post("/agents/{agent_id}/identity/replace", response_model=AgentRegistryRead)
+def replace_identity(agent_id: uuid.UUID, payload: IdentityReplaceRequest,
+                     actor: User = Depends(require_permission(_IDENTITY_REPLACE)),
+                     db: Session = Depends(get_db)):
+    agent = AgentRegistryService(db).get_or_404(actor, agent_id)
+    return AgentIdentityAssociationService(db).replace(
+        actor, agent, client_id=payload.client_id, credential_type=payload.credential_type,
+        expires_at=payload.expires_at, reason=payload.reason)
+
+
+# --------------------------------------------------------------------------- #
+# Validation (§25-§30, §54)
+# --------------------------------------------------------------------------- #
+@router.get("/agents/{agent_id}/validations", response_model=list[ValidationRunRead])
+def list_validations(agent_id: uuid.UUID, actor: User = Depends(require_permission(_VALIDATION_VIEW)),
+                     db: Session = Depends(get_db)):
+    from app.models.agent_registry import AgentValidationRun
+
+    AgentRegistryService(db).get_or_404(actor, agent_id)
+    stmt = select(AgentValidationRun).where(AgentValidationRun.agent_id == agent_id).order_by(
+        AgentValidationRun.created_at.desc())
+    return list(db.execute(stmt).scalars())
+
+
+@router.get("/agents/{agent_id}/validations/{validation_id}", response_model=ValidationRunRead)
+def get_validation(agent_id: uuid.UUID, validation_id: uuid.UUID,
+                   actor: User = Depends(require_permission(_VALIDATION_VIEW)), db: Session = Depends(get_db)):
+    from app.models.agent_registry import AgentValidationRun
+
+    AgentRegistryService(db).get_or_404(actor, agent_id)
+    run = db.get(AgentValidationRun, validation_id)
+    if run is None or run.agent_id != agent_id:
+        raise IdentityError(ErrorCode.VALIDATION_ERROR, "Validation run not found.")
+    return run
+
+
+@router.post("/agents/{agent_id}/validations/run", response_model=ValidationRunRead)
+def run_validation(agent_id: uuid.UUID, request: Request,
+                   actor: User = Depends(require_permission(_VALIDATE)), db: Session = Depends(get_db)):
+    """Alias for the ``/validate`` lifecycle action that returns the
+    validation report itself rather than the agent (SRS §54's
+    ``POST .../validations/run``)."""
+    agent = AgentRegistryService(db).get_or_404(actor, agent_id)
+    _agent, run = AgentLifecycleService(db).start_validation(actor, agent, **_lifecycle_ctx(actor, request, None))
+    return run
+
+
+@router.post("/agents/{agent_id}/schemas/test", response_model=SchemaTestResponse)
+def test_schema(agent_id: uuid.UUID, payload: SchemaTestRequest,
+                actor: User = Depends(require_permission(_VIEW)), db: Session = Depends(get_db)):
+    """SRS §30 — sample-payload testing against the agent's current
+    definition contracts."""
+    AgentRegistryService(db).get_or_404(actor, agent_id)
+    stmt = select(AgentDefinition).where(AgentDefinition.agent_id == agent_id).order_by(
+        AgentDefinition.created_at.desc()).limit(1)
+    definition = db.execute(stmt).scalar_one_or_none()
+    if definition is None:
+        raise IdentityError(ErrorCode.AGENT_DEFINITION_REQUIRED, "Agent has no definition.")
+    schema = {"INPUT": definition.input_schema, "OUTPUT": definition.output_schema,
+             "CONFIGURATION": definition.configuration_schema}.get(payload.schema_type) or {}
+    errors = validate_sample_payload(schema, payload.payload)
+    return SchemaTestResponse(valid=not errors, errors=errors)
+
+
+# --------------------------------------------------------------------------- #
+# Duplicate detection (§32, §33, §54, §64)
+# --------------------------------------------------------------------------- #
+@router.post("/agents/{agent_id}/duplicate-check", response_model=list[DuplicateMatchRead])
+def duplicate_check(agent_id: uuid.UUID, actor: User = Depends(require_permission(_UPDATE)),
+                    db: Session = Depends(get_db)):
+    agent = AgentRegistryService(db).get_or_404(actor, agent_id)
+    return AgentDuplicateDetectionService(db).check(actor, agent)
+
+
+@router.get("/agents/{agent_id}/duplicate-matches", response_model=list[DuplicateMatchRead])
+def duplicate_matches(agent_id: uuid.UUID, actor: User = Depends(require_permission(_VIEW)),
+                      db: Session = Depends(get_db)):
+    AgentRegistryService(db).get_or_404(actor, agent_id)
+    return AgentDuplicateDetectionService(db).list_matches(agent_id)
+
+
+@router.post("/agents/{agent_id}/duplicate-matches/{match_id}/review", response_model=DuplicateMatchRead)
+def review_duplicate(agent_id: uuid.UUID, match_id: uuid.UUID, payload: DuplicateReviewRequest,
+                     actor: User = Depends(require_permission(_DUPLICATE_REVIEW)), db: Session = Depends(get_db)):
+    AgentRegistryService(db).get_or_404(actor, agent_id)
+    return AgentDuplicateDetectionService(db).review(
+        actor, match_id, decision=payload.review_decision, reason=payload.review_reason)
+
+
+# --------------------------------------------------------------------------- #
+# Lifecycle & audit history (§21, §38 Lifecycle/Audit tabs)
+# --------------------------------------------------------------------------- #
+@router.get("/agents/{agent_id}/lifecycle-events", response_model=list[AgentLifecycleEventRead])
+def agent_lifecycle_events(agent_id: uuid.UUID, actor: User = Depends(require_permission(_AUDIT_VIEW)),
+                          db: Session = Depends(get_db)):
+    from app.models.agent_registry import AgentLifecycleEvent
+
+    AgentRegistryService(db).get_or_404(actor, agent_id)
+    stmt = select(AgentLifecycleEvent).where(AgentLifecycleEvent.agent_id == agent_id).order_by(
+        AgentLifecycleEvent.created_at.desc())
+    return list(db.execute(stmt).scalars())
+
+
+@router.get("/agents/{agent_id}/events", response_model=list[RuntimeEventRead])
+def agent_runtime_events(agent_id: uuid.UUID, actor: User = Depends(require_permission(_AUDIT_VIEW)),
+                        db: Session = Depends(get_db)):
+    AgentRegistryService(db).get_or_404(actor, agent_id)
+    stmt = select(RuntimeEvent).where(RuntimeEvent.agent_id == agent_id).order_by(RuntimeEvent.created_at.desc())
+    return list(db.execute(stmt).scalars())
+
+
+# --------------------------------------------------------------------------- #
+# Import / export (§39-§45, §54)
+# --------------------------------------------------------------------------- #
+@router.post("/agents/import", response_model=ImportJobRead)
+def import_agents(payload: ImportRequest, actor: User = Depends(require_permission(_IMPORT)),
+                  db: Session = Depends(get_db)):
+    return AgentImportService(db).run_job(actor, file_name=payload.file_name, fmt=payload.format,
+                                          mode=payload.mode, content=payload.content)
+
+
+@router.get("/agents/import/{job_id}", response_model=ImportJobRead)
+def get_import_job(job_id: uuid.UUID, actor: User = Depends(require_permission(_IMPORT)),
+                   db: Session = Depends(get_db)):
+    from app.models.agent_registry import AgentImportJob
+
+    job = db.get(AgentImportJob, job_id)
+    if job is None or job.organization_id != actor.organization_id:
+        raise IdentityError(ErrorCode.AGENT_IMPORT_INVALID, "Import job not found.")
+    return job
+
+
+@router.get("/agents/import/{job_id}/items", response_model=list[ImportItemRead])
+def get_import_items(job_id: uuid.UUID, actor: User = Depends(require_permission(_IMPORT)),
+                     db: Session = Depends(get_db)):
+    from app.models.agent_registry import AgentImportJob
+
+    job = db.get(AgentImportJob, job_id)
+    if job is None or job.organization_id != actor.organization_id:
+        raise IdentityError(ErrorCode.AGENT_IMPORT_INVALID, "Import job not found.")
+    return AgentImportService(db).list_items(job_id)
+
+
+@router.post("/agents/export", response_model=ExportJobRead)
+def export_agents(payload: ExportRequest, actor: User = Depends(require_permission(_EXPORT)),
+                  db: Session = Depends(get_db)):
+    return AgentExportService(db).run_job(actor, export_type=payload.export_type, fmt=payload.format,
+                                          filters=payload.filters)
+
+
+@router.get("/agents/export/{job_id}", response_model=ExportJobRead)
+def get_export_job(job_id: uuid.UUID, actor: User = Depends(require_permission(_EXPORT)),
+                   db: Session = Depends(get_db)):
+    from app.models.agent_registry import AgentExportJob
+
+    job = db.get(AgentExportJob, job_id)
+    if job is None or job.organization_id != actor.organization_id:
+        raise IdentityError(ErrorCode.AGENT_EXPORT_DENIED, "Export job not found.")
+    return job
+
+
+@router.get("/agents/export/{job_id}/download")
+def download_export(job_id: uuid.UUID, actor: User = Depends(require_permission(_EXPORT)),
+                    db: Session = Depends(get_db)):
+    from fastapi.responses import PlainTextResponse
+
+    from app.models.agent_registry import AgentExportJob
+
+    job = db.get(AgentExportJob, job_id)
+    if job is None or job.organization_id != actor.organization_id:
+        raise IdentityError(ErrorCode.AGENT_EXPORT_DENIED, "Export job not found.")
+    media_type = {"JSON": "application/json", "YAML": "application/yaml", "CSV": "text/csv"}.get(
+        job.format, "text/plain")
+    return PlainTextResponse(content=job.payload or "", media_type=media_type)
+
+
+# --------------------------------------------------------------------------- #
+# Legacy migration classification (§70-§73)
+# --------------------------------------------------------------------------- #
+@router.post("/agents/migration/classify", response_model=list[MigrationRecordRead])
+def classify_legacy_agents(actor: User = Depends(require_permission(_IMPORT)), db: Session = Depends(get_db)):
+    """§70-§71 — classifies every not-yet-classified agent in the caller's
+    organization (idempotent; re-running only classifies new/unclassified
+    rows) and opportunistically backfills derivable org-hierarchy columns."""
+    return AgentMigrationService(db).classify_all(actor)
+
+
+@router.get("/agents/migration/records", response_model=list[MigrationRecordRead])
+def list_migration_records(batch_id: str | None = Query(default=None),
+                           actor: User = Depends(require_permission(_IMPORT)), db: Session = Depends(get_db)):
+    return AgentMigrationService(db).list_records(actor, batch_id=batch_id)
 
 
 # --------------------------------------------------------------------------- #
@@ -320,6 +715,17 @@ def deployment_health(deployment_id: uuid.UUID, actor: User = Depends(require_pe
 def request_execution(payload: ExecutionCreate, actor: User = Depends(require_permission(_EXEC_CREATE)),
                       db: Session = Depends(get_db)):
     return ExecutionRequestService(db).request_execution(actor, payload.model_dump())
+
+
+@router.post("/executions/self", response_model=ExecutionRead, status_code=status.HTTP_201_CREATED)
+def request_self_execution(payload: AgentSelfExecutionCreate,
+                           agent: Agent = Depends(get_current_agent), db: Session = Depends(get_db)):
+    """§29, §31 — an agent (authenticated by its own API key, not a human
+    session) requesting an execution of itself. There is no ``agent_id`` in
+    the request body to spoof: the target is always the authenticated
+    agent. Authorized through ``AuthorizationGateway.authorize_agent``
+    (ABAC), not RBAC — an agent holds no roles of its own."""
+    return ExecutionRequestService(db).request_execution_as_agent(agent, payload.model_dump())
 
 
 @router.get("/executions", response_model=list[ExecutionRead])

@@ -6,11 +6,13 @@ and role-gating."""
 
 from __future__ import annotations
 
+import time
 import uuid
 from datetime import datetime, timedelta, timezone
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import delete
 
 PASSWORD = "T3st!Passw0rd#Ok"
 RT = "/api/v1/runtime"
@@ -44,6 +46,9 @@ def _invite_member(client: TestClient, admin: dict, *, role: str = "VIEWER") -> 
 def _register_agent(client: TestClient, admin: dict, *, criticality: str = "MEDIUM") -> dict:
     r = client.post(f"{RT}/agents", headers=admin["headers"], json={
         "name": f"Agent {uuid.uuid4().hex[:6]}", "agent_type": "ASSISTANT", "criticality": criticality,
+        "description": "A test agent.", "business_purpose": "Exercise the runtime in tests.",
+        "owner_type": "USER", "owner_id": admin["user_id"], "technical_owner_id": admin["user_id"],
+        "compliance_owner_id": admin["user_id"],
         "definition": {
             "name": "Definition", "framework": "CUSTOM", "entrypoint_type": "FUNCTION",
             "entrypoint": "agents.handler:run",
@@ -54,9 +59,26 @@ def _register_agent(client: TestClient, admin: dict, *, criticality: str = "MEDI
 
 
 def _activate_agent(client: TestClient, admin: dict, agent_id: str) -> dict:
-    for step in ("validate", "approve", "activate"):
-        r = client.post(f"{RT}/agents/{agent_id}/{step}", headers=admin["headers"])
-        assert r.status_code == 200, r.text
+    """Phase 5.1 §20 full lifecycle: DRAFT -> REGISTERED -> VALIDATING ->
+    VALIDATED -> PENDING_APPROVAL -> APPROVED -> ACTIVE. A machine identity
+    (§11) is required before ``activate``."""
+    r = client.post(f"{RT}/agents/{agent_id}/register", headers=admin["headers"])
+    assert r.status_code == 200, r.text
+    r = client.post(f"{RT}/agents/{agent_id}/validate", headers=admin["headers"])
+    assert r.status_code == 200, r.text
+    assert r.json()["lifecycle_status"] == "VALIDATED", r.text
+
+    r = client.post(f"{RT}/agents/{agent_id}/identity/create-and-associate", headers=admin["headers"], json={
+        "client_id": f"agent-identity-{uuid.uuid4().hex[:10]}",
+    })
+    assert r.status_code == 200, r.text
+
+    r = client.post(f"{RT}/agents/{agent_id}/submit-for-approval", headers=admin["headers"])
+    assert r.status_code == 200, r.text
+    r = client.post(f"{RT}/agents/{agent_id}/approve", headers=admin["headers"])
+    assert r.status_code == 200, r.text
+    r = client.post(f"{RT}/agents/{agent_id}/activate", headers=admin["headers"])
+    assert r.status_code == 200, r.text
     return r.json()
 
 
@@ -147,12 +169,14 @@ def test_agent_registration_and_lifecycle(client: TestClient) -> None:
     suspended = client.post(f"{RT}/agents/{agent['id']}/suspend", headers=org["headers"]).json()
     assert suspended["lifecycle_status"] == "SUSPENDED"
 
-    reactivated = client.post(f"{RT}/agents/{agent['id']}/activate", headers=org["headers"]).json()
+    # §20 — SUSPENDED -> ACTIVE is `resume`, a distinct verb/event from
+    # `activate` (APPROVED -> ACTIVE only).
+    reactivated = client.post(f"{RT}/agents/{agent['id']}/resume", headers=org["headers"]).json()
     assert reactivated["lifecycle_status"] == "ACTIVE"
 
     retired = client.post(f"{RT}/agents/{agent['id']}/retire", headers=org["headers"]).json()
     assert retired["lifecycle_status"] == "RETIRED"
-    assert retired["archived_at"] is not None
+    assert retired["retired_at"] is not None
 
 
 def test_agent_not_found_is_tenant_scoped(client: TestClient) -> None:
@@ -233,6 +257,33 @@ def test_deployment_requires_published_version(client: TestClient) -> None:
         "agent_version_id": draft_version["id"], "environment": "DEVELOPMENT",
     })
     assert r.status_code == 409, r.text  # DRAFT, not PUBLISHED
+
+
+def test_deployment_rejects_raw_secret_in_secret_references(client: TestClient) -> None:
+    """§45 — secret_references must hold 'scheme://...' reference strings,
+    never a raw credential value."""
+    org = _register_org(client)
+    agent = _register_agent(client, org)
+    _activate_agent(client, org, agent["id"])
+    version = _publish_version(client, org, agent["id"])
+    r = client.post(f"{RT}/deployments", headers=org["headers"], params={"agent_id": agent["id"]}, json={
+        "agent_version_id": version["id"], "environment": "DEVELOPMENT",
+        "secret_references": {"openai_api_key": "sk-live-not-a-reference"},
+    })
+    assert r.status_code == 422, r.text
+    assert r.json()["error"]["code"] == "SECRET_REFERENCE_INVALID"
+
+
+def test_deployment_accepts_scheme_shaped_secret_reference(client: TestClient) -> None:
+    org = _register_org(client)
+    agent = _register_agent(client, org)
+    _activate_agent(client, org, agent["id"])
+    version = _publish_version(client, org, agent["id"])
+    r = client.post(f"{RT}/deployments", headers=org["headers"], params={"agent_id": agent["id"]}, json={
+        "agent_version_id": version["id"], "environment": "DEVELOPMENT",
+        "secret_references": {"openai_api_key": "vault://production/openai/api-key"},
+    })
+    assert r.status_code == 201, r.text
 
 
 def test_deployment_rollback(client: TestClient) -> None:
@@ -668,6 +719,7 @@ def test_kill_switch_project_scope(client: TestClient, db_session) -> None:
 
     agent = client.post(f"{RT}/agents", headers=org["headers"], json={
         "name": "Project Agent", "project_id": str(project.id),
+        "description": "d", "business_purpose": "d", "owner_type": "USER", "owner_id": org["user_id"],
         "definition": {"name": "d", "entrypoint": "agents.x:y"},
     }).json()
     _activate_agent(client, org, agent["id"])
@@ -722,7 +774,8 @@ def test_kill_switch_platform_scope_reaches_other_organizations(client: TestClie
 def test_input_schema_rejects_invalid_payload(client: TestClient) -> None:
     org = _register_org(client)
     agent = client.post(f"{RT}/agents", headers=org["headers"], json={
-        "name": "Schema Agent",
+        "name": "Schema Agent", "description": "d", "business_purpose": "d",
+        "owner_type": "USER", "owner_id": org["user_id"],
         "definition": {
             "name": "d", "entrypoint": "agents.x:y",
             "input_schema": {"type": "object", "required": ["question"],
@@ -749,7 +802,8 @@ def test_input_schema_rejects_invalid_payload(client: TestClient) -> None:
 def test_output_schema_failure_fails_the_execution(client: TestClient) -> None:
     org = _register_org(client)
     agent = client.post(f"{RT}/agents", headers=org["headers"], json={
-        "name": "Output Schema Agent",
+        "name": "Output Schema Agent", "description": "d", "business_purpose": "d",
+        "owner_type": "USER", "owner_id": org["user_id"],
         "definition": {
             "name": "d", "entrypoint": "agents.x:y",
             "output_schema": {"type": "object", "required": ["a_field_the_mock_never_produces"]},
@@ -784,3 +838,278 @@ def test_illegal_execution_transition_is_rejected(client: TestClient, db_session
     with pytest.raises(IdentityError) as exc_info:
         _set_execution_status(row, "QUEUED")
     assert exc_info.value.code == "INVALID_EXECUTION_TRANSITION"
+
+
+# --------------------------------------------------------------------------- #
+# Agent-triggered self-execution (§29, §31)
+# --------------------------------------------------------------------------- #
+def _issue_api_key(client: TestClient, admin: dict, agent_id: str) -> str:
+    r = client.post(f"/agents/{agent_id}/generate-api-key", headers=admin["headers"], json={})
+    assert r.status_code == 201, r.text
+    return r.json()["api_key"]
+
+
+def test_agent_self_execution_succeeds(client: TestClient) -> None:
+    org = _register_org(client)
+    setup = _ready_agent(client, org)
+    api_key = _issue_api_key(client, org, setup["agent"]["id"])
+    agent_headers = {"Authorization": f"Bearer {api_key}"}
+
+    r = client.post(f"{RT}/executions/self", headers=agent_headers, json={"input_payload": {"q": "hi"}})
+    assert r.status_code == 201, r.text
+    execution = r.json()
+    assert execution["status"] == "SUCCEEDED"
+    assert execution["trigger_type"] == "AGENT"
+    assert execution["agent_id"] == setup["agent"]["id"]
+    assert execution["triggered_by_identity_id"] == setup["agent"]["id"]
+
+
+def test_agent_self_execution_requires_runtime_active(client: TestClient) -> None:
+    # The API key's own auth check only looks at the legacy Agent.status
+    # (ACTIVE by default) — a DRAFT agent (Phase 5's lifecycle_status)
+    # authenticates fine but must still be rejected by the runtime layer.
+    org = _register_org(client)
+    agent = _register_agent(client, org)
+    api_key = _issue_api_key(client, org, agent["id"])
+    agent_headers = {"Authorization": f"Bearer {api_key}"}
+
+    r = client.post(f"{RT}/executions/self", headers=agent_headers, json={"input_payload": {}})
+    assert r.status_code == 409, r.text
+    assert r.json()["error"]["code"] == "AGENT_NOT_ACTIVE"
+
+
+def test_agent_api_key_cannot_use_user_only_endpoint(client: TestClient) -> None:
+    org = _register_org(client)
+    setup = _ready_agent(client, org)
+    api_key = _issue_api_key(client, org, setup["agent"]["id"])
+    agent_headers = {"Authorization": f"Bearer {api_key}"}
+
+    r = client.post(f"{RT}/executions", headers=agent_headers, json={
+        "agent_id": setup["agent"]["id"], "input_payload": {},
+    })
+    assert r.status_code in (401, 403)
+
+
+def test_agent_api_key_revoked_denies_self_execution(client: TestClient) -> None:
+    org = _register_org(client)
+    setup = _ready_agent(client, org)
+    key_resp = client.post(f"/agents/{setup['agent']['id']}/generate-api-key", headers=org["headers"], json={})
+    key_id, api_key = key_resp.json()["id"], key_resp.json()["api_key"]
+    agent_headers = {"Authorization": f"Bearer {api_key}"}
+
+    r = client.post(f"/api-keys/{key_id}/revoke", headers=org["headers"])
+    assert r.status_code == 200, r.text
+
+    r = client.post(f"{RT}/executions/self", headers=agent_headers, json={"input_payload": {}})
+    assert r.status_code == 401
+
+
+# --------------------------------------------------------------------------- #
+# Security (§81.3)
+# --------------------------------------------------------------------------- #
+def test_cross_tenant_execution_lookup_denied(client: TestClient) -> None:
+    org_a = _register_org(client, "Sec Org A")
+    org_b = _register_org(client, "Sec Org B")
+    setup = _ready_agent(client, org_a)
+    execution = client.post(f"{RT}/executions", headers=org_a["headers"], json={
+        "agent_id": setup["agent"]["id"], "input_payload": {},
+    }).json()
+
+    r = client.get(f"{RT}/executions/{execution['id']}", headers=org_b["headers"])
+    assert r.status_code == 404
+
+
+def test_revoked_version_blocks_new_executions(client: TestClient) -> None:
+    org = _register_org(client)
+    setup = _ready_agent(client, org)
+    client.post(f"{RT}/agents/{setup['agent']['id']}/versions/{setup['version']['id']}/revoke",
+               headers=org["headers"])
+
+    r = client.post(f"{RT}/executions", headers=org["headers"], json={
+        "agent_id": setup["agent"]["id"], "input_payload": {},
+    })
+    assert r.status_code == 409
+    assert r.json()["error"]["code"] == "AGENT_VERSION_REVOKED"
+
+
+def test_approval_decision_cannot_be_replayed(client: TestClient) -> None:
+    org = _register_org(client)
+    setup = _ready_agent(client, org, criticality="MISSION_CRITICAL", environment="PRODUCTION")
+    execution = client.post(f"{RT}/executions", headers=org["headers"], json={
+        "agent_id": setup["agent"]["id"], "input_payload": {},
+    }).json()
+    assert execution["status"] == "PENDING_APPROVAL"
+
+    pending = client.get(f"{RT}/approvals", headers=org["headers"], params={"status": "PENDING"}).json()
+    approval = next(a for a in pending if a["execution_id"] == execution["id"])
+
+    first = client.post(f"{RT}/approvals/{approval['id']}/decide", headers=org["headers"],
+                        json={"decision": "APPROVED"})
+    assert first.status_code == 200
+
+    replay = client.post(f"{RT}/approvals/{approval['id']}/decide", headers=org["headers"],
+                         json={"decision": "APPROVED"})
+    assert replay.status_code == 409
+
+
+def test_idempotency_is_scoped_per_agent_not_shared(client: TestClient) -> None:
+    org = _register_org(client)
+    setup_a = _ready_agent(client, org)
+    setup_b = _ready_agent(client, org)
+    shared_key = f"shared-{uuid.uuid4().hex[:8]}"
+
+    r1 = client.post(f"{RT}/executions", headers=org["headers"], json={
+        "agent_id": setup_a["agent"]["id"], "input_payload": {}, "idempotency_key": shared_key,
+    })
+    r2 = client.post(f"{RT}/executions", headers=org["headers"], json={
+        "agent_id": setup_b["agent"]["id"], "input_payload": {}, "idempotency_key": shared_key,
+    })
+    assert r1.status_code == 201 and r2.status_code == 201
+    assert r1.json()["id"] != r2.json()["id"]  # same key, different agent -> independent
+
+
+def test_kill_switch_denied_without_permission(client: TestClient) -> None:
+    org = _register_org(client)
+    setup = _ready_agent(client, org)
+    execution = client.post(f"{RT}/executions", headers=org["headers"], json={
+        "agent_id": setup["agent"]["id"], "input_payload": {},
+    }).json()
+
+    viewer = _invite_member(client, org, role="VIEWER")
+    r = client.post(f"{RT}/kill-switch/executions/{execution['id']}", headers=viewer["headers"],
+                    json={"reason": "test"})
+    assert r.status_code == 403
+
+
+def test_malformed_model_configuration_rejected_at_validate(client: TestClient) -> None:
+    org = _register_org(client)
+    agent = _register_agent(client, org)
+    version = client.post(f"{RT}/agents/{agent['id']}/versions", headers=org["headers"], json={
+        "model_configuration": {},  # missing "provider"
+    }).json()
+
+    r = client.post(f"{RT}/agents/{agent['id']}/versions/{version['id']}/validate", headers=org["headers"])
+    assert r.status_code == 422
+    assert r.json()["error"]["code"] == "VALIDATION_ERROR"
+    assert "provider" in r.json()["error"]["message"]
+
+
+def test_unauthenticated_execution_request_rejected(client: TestClient) -> None:
+    r = client.post(f"{RT}/executions", json={"agent_id": str(uuid.uuid4()), "input_payload": {}})
+    assert r.status_code in (401, 403)
+
+
+# --------------------------------------------------------------------------- #
+# Resilience (§81.5): concurrent worker claims never double-process a row
+# --------------------------------------------------------------------------- #
+def test_concurrent_worker_claims_never_double_claim(client: TestClient, db_session) -> None:
+    import threading
+
+    from app.core.database import SessionLocal
+    from app.models.runtime import AgentExecution, ExecutionLock
+    from app.runtime.services import ExecutionWorkerService
+
+    org = _register_org(client)
+    setup = _ready_agent(client, org)
+
+    execution_count = 12
+    execution_ids: list[uuid.UUID] = []
+    for _ in range(execution_count):
+        execution = AgentExecution(
+            organization_id=uuid.UUID(org["organization_id"]), agent_id=uuid.UUID(setup["agent"]["id"]),
+            agent_version_id=uuid.UUID(setup["version"]["id"]), deployment_id=uuid.UUID(setup["deployment"]["id"]),
+            trigger_type="API", input_payload={}, status="QUEUED", queued_at=datetime.now(timezone.utc),
+        )
+        db_session.add(execution)
+        db_session.flush()
+        execution_ids.append(execution.id)
+    db_session.commit()
+
+    claimed_by: dict[uuid.UUID, list[str]] = {}
+    claim_lock = threading.Lock()
+    errors: list[Exception] = []
+
+    def worker(worker_id: str) -> None:
+        session = SessionLocal()
+        try:
+            svc = ExecutionWorkerService(session)
+            while True:
+                execution = svc.claim_next(worker_id)
+                if execution is None:
+                    session.commit()
+                    break
+                with claim_lock:
+                    claimed_by.setdefault(execution.id, []).append(worker_id)
+                session.commit()
+        except Exception as exc:  # noqa: BLE001 - surfaced via `errors` for the assertion below
+            errors.append(exc)
+        finally:
+            session.close()
+
+    threads = [threading.Thread(target=worker, args=(f"worker-{i}",)) for i in range(6)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=30)
+
+    assert not errors, errors
+    assert set(claimed_by.keys()) == set(execution_ids)
+    assert all(len(workers) == 1 for workers in claimed_by.values()), claimed_by
+
+    # Cleanup: leave nothing RUNNING behind for later tests / the shared DB.
+    for execution_id in execution_ids:
+        db_session.execute(delete(ExecutionLock).where(ExecutionLock.execution_id == execution_id))
+        row = db_session.get(AgentExecution, execution_id)
+        row.status = "CANCELLED"
+    db_session.commit()
+
+
+# --------------------------------------------------------------------------- #
+# Performance / throughput (§81.4) — batch execution volume within this
+# environment's synchronous inline worker (true multi-process load testing
+# needs dedicated infra outside a pytest suite; this proves correctness and
+# reasonable latency at moderate volume, not headline throughput numbers).
+# --------------------------------------------------------------------------- #
+def test_batch_execution_throughput(client: TestClient) -> None:
+    org = _register_org(client)
+    setup = _ready_agent(client, org)
+
+    batch_size = 25
+    started = time.monotonic()
+    results = [
+        client.post(f"{RT}/executions", headers=org["headers"], json={
+            "agent_id": setup["agent"]["id"], "input_payload": {"i": i},
+        }).json()
+        for i in range(batch_size)
+    ]
+    elapsed = time.monotonic() - started
+
+    assert all(r["status"] == "SUCCEEDED" for r in results)
+    assert len({r["id"] for r in results}) == batch_size  # every execution is distinct
+    assert elapsed < 30, f"{batch_size} sequential executions took {elapsed:.1f}s"
+
+
+def test_tool_call_burst_within_one_execution(client: TestClient) -> None:
+    org = _register_org(client)
+    setup = _ready_agent(client, org)
+    tool = client.post(f"{RT}/tools", headers=org["headers"], json={
+        "name": "burst_tool", "display_name": "Burst Tool", "tool_type": "FUNCTION",
+    }).json()
+    client.post(f"{RT}/agents/{setup['agent']['id']}/tools", headers=org["headers"], json={
+        "tool_id": tool["id"], "allowed_actions": ["EXECUTE"],
+    })
+
+    call_count = 10
+    r = client.post(f"{RT}/executions", headers=org["headers"], json={
+        "agent_id": setup["agent"]["id"],
+        "input_payload": {"tool_calls": [
+            {"tool_name": "burst_tool", "action": "EXECUTE", "params": {"n": i}} for i in range(call_count)
+        ]},
+    })
+    execution = r.json()
+    assert execution["status"] == "SUCCEEDED"
+    assert execution["tool_usage"]["calls"] == call_count
+
+    calls = client.get(f"{RT}/executions/{execution['id']}/tool-calls", headers=org["headers"]).json()
+    assert len(calls) == call_count
+    assert all(c["status"] == "ALLOWED" for c in calls)

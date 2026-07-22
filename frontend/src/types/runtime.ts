@@ -2,10 +2,18 @@
 import type { ID } from './common'
 import type { RiskLevel } from './governance'
 
+// Phase 5.1 §20 — the full 13-state registry lifecycle (supersedes the
+// Phase 5.0 8-state version, which had no REGISTERED/PENDING_APPROVAL/
+// REJECTED/VALIDATION_FAILED gate).
 export type AgentLifecycleStatus =
-  | 'DRAFT' | 'VALIDATING' | 'VALIDATED' | 'APPROVED' | 'ACTIVE'
+  | 'DRAFT' | 'REGISTERED' | 'VALIDATING' | 'VALIDATION_FAILED' | 'VALIDATED'
+  | 'PENDING_APPROVAL' | 'REJECTED' | 'APPROVED' | 'ACTIVE'
   | 'SUSPENDED' | 'DEPRECATED' | 'ARCHIVED' | 'RETIRED'
 export type Criticality = 'LOW' | 'MEDIUM' | 'HIGH' | 'MISSION_CRITICAL'
+export type AutonomyLevel =
+  | 'ASSISTIVE' | 'SUPERVISED' | 'SEMI_AUTONOMOUS' | 'AUTONOMOUS' | 'CRITICAL_AUTONOMOUS'
+export type DataClassification = 'PUBLIC' | 'INTERNAL' | 'CONFIDENTIAL' | 'RESTRICTED' | 'REGULATED'
+export type OwnerRole = 'BUSINESS_OWNER' | 'TECHNICAL_OWNER' | 'COMPLIANCE_OWNER' | 'SECURITY_OWNER' | 'DATA_OWNER'
 export type RuntimeEnvironment = 'DEVELOPMENT' | 'TEST' | 'STAGING' | 'PRODUCTION' | 'SANDBOX'
 export type VersionStatus =
   | 'DRAFT' | 'VALIDATING' | 'READY_FOR_REVIEW' | 'APPROVED' | 'PUBLISHED' | 'DEPRECATED' | 'REVOKED'
@@ -23,12 +31,22 @@ export interface AgentDefinition {
   name: string
   description: string | null
   framework: string
+  framework_version: string | null
   entrypoint_type: string
   entrypoint: string
+  runtime_language: string | null
   system_instructions: string | null
   configuration_schema: Record<string, unknown> | null
   input_schema: Record<string, unknown> | null
   output_schema: Record<string, unknown> | null
+  capability_declarations: string[]
+  tool_declarations: string[]
+  model_requirements: Record<string, unknown>
+  memory_requirements: Record<string, unknown>
+  data_requirements: Record<string, unknown>
+  network_requirements: Record<string, unknown>
+  secret_requirements: Record<string, unknown>
+  runtime_requirements: Record<string, unknown>
   metadata: Record<string, unknown> | null
   created_at: string
 }
@@ -37,20 +55,183 @@ export interface RuntimeAgent {
   id: ID
   organization_id: ID
   name: string
+  display_name: string | null
   slug: string | null
   description: string | null
+  business_purpose: string | null
   agent_type: string
   status: string
   lifecycle_status: AgentLifecycleStatus
   criticality: Criticality
+  risk_level: string
   data_classification: string
+  autonomy_level: AutonomyLevel
   default_environment: RuntimeEnvironment
   project_id: ID | null
+  business_unit_id: ID | null
+  department_id: ID | null
+  team_id: ID | null
+  identity_id: ID | null
   owner_type: string | null
   owner_id: ID | null
+  technical_owner_id: ID | null
+  compliance_owner_id: ID | null
+  support_contact: string | null
+  documentation_url: string | null
+  repository_url: string | null
+  tags: string[]
+  metadata: Record<string, unknown>
+  registration_source: string
+  external_reference: string | null
+  created_by: ID | null
+  updated_by: ID | null
+  row_version: number
   created_at: string
   updated_at: string
+  validated_at: string | null
+  approved_at: string | null
+  activated_at: string | null
+  suspended_at: string | null
   archived_at: string | null
+  retired_at: string | null
+}
+
+export interface AgentOwnershipHistoryEntry {
+  id: ID
+  agent_id: ID
+  owner_role: OwnerRole
+  previous_owner_type: string | null
+  previous_owner_id: ID | null
+  new_owner_type: string
+  new_owner_id: ID
+  reason: string
+  changed_by: ID
+  approved_by: ID | null
+  changed_at: string
+}
+
+export interface AgentIdentityRecord {
+  id: ID
+  agent_id: ID
+  client_id: string
+  credential_type: string
+  status: string
+  last_used_at: string | null
+  expires_at: string | null
+}
+
+export interface ValidationFinding {
+  code: string
+  field: string | null
+  message: string
+  severity: 'INFO' | 'WARNING' | 'ERROR' | 'BLOCKING'
+}
+
+export interface ValidationRun {
+  id: ID
+  agent_id: ID
+  status: 'RUNNING' | 'PASSED' | 'FAILED'
+  validator_version: string
+  summary: { passed: number; warnings: number; failed: number }
+  errors: ValidationFinding[]
+  warnings: ValidationFinding[]
+  checks: { name: string; passed: boolean }[]
+  started_at: string
+  completed_at: string | null
+  created_by: ID | null
+  created_at: string
+}
+
+export type DuplicateOutcome = 'POSSIBLE_DUPLICATE' | 'LIKELY_DUPLICATE' | 'CONFIRMED_DUPLICATE'
+export type DuplicateReviewDecision =
+  | 'CONFIRM_DUPLICATE' | 'NOT_DUPLICATE' | 'MERGE_REQUIRED' | 'JUSTIFIED_SEPARATE_AGENT'
+
+export interface DuplicateMatch {
+  id: ID
+  source_agent_id: ID
+  candidate_agent_id: ID
+  match_type: 'EXACT' | 'SIMILAR'
+  confidence_score: number
+  matching_fields: string[]
+  status: DuplicateOutcome
+  reviewed_by: ID | null
+  review_decision: DuplicateReviewDecision | null
+  review_reason: string | null
+  created_at: string
+  reviewed_at: string | null
+}
+
+export interface ImportJob {
+  id: ID
+  organization_id: ID
+  file_name: string
+  format: 'JSON' | 'YAML' | 'CSV'
+  mode: 'CREATE_ONLY' | 'UPDATE_DRAFTS' | 'UPSERT_NON_ACTIVE' | 'VALIDATE_ONLY'
+  status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED'
+  total_records: number
+  successful_records: number
+  failed_records: number
+  warning_records: number
+  created_by: ID | null
+  started_at: string | null
+  completed_at: string | null
+  created_at: string
+}
+
+export interface ImportItem {
+  id: ID
+  import_job_id: ID
+  record_identifier: string
+  status: 'CREATED' | 'UPDATED' | 'SKIPPED' | 'FAILED'
+  agent_id: ID | null
+  errors: { code: string; message: string }[]
+  warnings: { code: string; message: string }[]
+  created_at: string
+}
+
+export type ExportType = 'FULL_CONFIGURATION' | 'INVENTORY_SUMMARY' | 'COMPLIANCE_REPORT' | 'MIGRATION_PACKAGE'
+
+export interface ExportJob {
+  id: ID
+  organization_id: ID
+  export_type: ExportType
+  format: 'JSON' | 'YAML' | 'CSV'
+  filters: Record<string, unknown>
+  status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED'
+  record_count: number
+  storage_reference: string | null
+  expires_at: string | null
+  created_by: ID | null
+  created_at: string
+  completed_at: string | null
+}
+
+export interface MigrationRecord {
+  id: ID
+  agent_id: ID
+  migration_batch_id: string
+  legacy_source: string
+  legacy_id: string
+  migration_status: string
+  mapping_warnings: string[]
+  migrated_by: ID | null
+  migrated_at: string
+}
+
+export interface AgentLifecycleEventEntry {
+  id: ID
+  agent_id: ID
+  organization_id: ID
+  previous_status: string | null
+  new_status: string
+  reason: string | null
+  requested_by: ID
+  approved_by: ID | null
+  authorization_decision_id: ID | null
+  request_id: string
+  correlation_id: string
+  metadata: Record<string, unknown>
+  created_at: string
 }
 
 export interface AgentVersion {
