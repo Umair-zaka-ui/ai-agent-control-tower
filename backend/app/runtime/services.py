@@ -47,6 +47,7 @@ from app.models.runtime import (
     AgentDefinition,
     AgentDeployment,
     AgentExecution,
+    AgentReleaseChannel,
     AgentTool,
     AgentVersion,
     Capability,
@@ -74,7 +75,7 @@ AGENT_LIFECYCLE = ("DRAFT", "REGISTERED", "VALIDATING", "VALIDATION_FAILED", "VA
                    "PENDING_APPROVAL", "REJECTED", "APPROVED", "ACTIVE", "SUSPENDED",
                    "DEPRECATED", "ARCHIVED", "RETIRED")
 VERSION_LIFECYCLE = ("DRAFT", "VALIDATING", "READY_FOR_REVIEW", "APPROVED",
-                     "PUBLISHED", "DEPRECATED", "REVOKED")
+                     "PUBLISHED", "DEPRECATED", "REVOKED", "RETIRED")
 DEPLOYMENT_LIFECYCLE = ("CREATED", "PENDING_APPROVAL", "SCHEDULED", "DEPLOYING",
                         "HEALTH_CHECKING", "ACTIVE", "DEGRADED", "FAILED",
                         "SUSPENDED", "ROLLING_BACK", "RETIRED")
@@ -377,6 +378,11 @@ class AgentVersionService:
         return list(self.db.execute(stmt.order_by(AgentVersion.version.desc())).scalars())
 
     def create(self, actor: User, agent: Agent, payload: dict) -> AgentVersion:
+        from app.runtime.versioning.channels import ReleaseChannelService
+        from app.runtime.versioning.lineage import VersionLineageService
+        from app.runtime.versioning.semantic_version import SemanticVersionService
+        from app.runtime.versioning.status_history import record_status_change
+
         definition_id = payload.pop("definition_id", None)
         if definition_id is None:
             latest = self.db.execute(
@@ -400,9 +406,24 @@ class AgentVersionService:
             select(func.coalesce(func.max(AgentVersion.version), 0)).where(AgentVersion.agent_id == agent.id)
         ).scalar_one() or 0) + 1
 
+        # Phase 5.2 Part 1 §15-16 — semantic versioning rules: validated if
+        # supplied, auto-derived (monotonic patch bump) if not.
+        semver_service = SemanticVersionService(self.db)
+        semantic_version = payload.get("semantic_version")
+        if semantic_version:
+            semver_service.validate_new(agent.id, semantic_version)
+        else:
+            semantic_version = semver_service.next_default(agent.id)
+
+        # §9, §26 — release channel (defaults to the catalog's default, STABLE).
+        channel_service = ReleaseChannelService(self.db)
+        channel_service.ensure_seeded()
+        channel_name = payload.pop("release_channel", None)
+        channel = channel_service.get_by_name(channel_name) if channel_name else channel_service.default()
+
         version = AgentVersion(
             agent_id=agent.id, definition_id=definition_id, version=next_version,
-            semantic_version=payload.get("semantic_version", "0.1.0"),
+            semantic_version=semantic_version,
             configuration_snapshot=payload.get("model_configuration", {}) or {},
             prompt_snapshot=payload.get("prompt_snapshot"),
             model_configuration=payload.get("model_configuration", {}) or {},
@@ -410,11 +431,15 @@ class AgentVersionService:
             tools_snapshot=tools_snapshot,
             policy_snapshot=payload.get("policy_snapshot"),
             release_notes=payload.get("release_notes"),
+            release_channel_id=channel.id,
             created_by=actor.id, checksum="",
         )
         version.checksum = _checksum(version)
         self.db.add(version)
         self.db.flush()
+
+        # §17 — link to the agent's immediately-preceding version.
+        VersionLineageService(self.db).link_parent(agent.id, version)
 
         for capability_id in capability_ids:
             self.db.add(AgentCapability(agent_id=agent.id, agent_version_id=version.id,
@@ -423,6 +448,8 @@ class AgentVersionService:
             self.db.add(AgentTool(agent_id=agent.id, agent_version_id=version.id, tool_id=tool_id,
                                   allowed_actions=["EXECUTE"], status="REQUESTED"))
 
+        record_status_change(self.db, version.id, previous_status=None, new_status="DRAFT",
+                             changed_by=actor.id)
         _record_event(self.db, AuthorizationAuditEvent.RUNTIME_VERSION_CREATED, actor,
                      organization_id=actor.organization_id, agent_id=agent.id,
                      meta={"agent_id": str(agent.id), "version": next_version})
@@ -431,6 +458,8 @@ class AgentVersionService:
         return version
 
     def validate(self, actor: User, agent: Agent, version_id: uuid.UUID) -> AgentVersion:
+        from app.runtime.versioning.status_history import record_status_change
+
         version = self.get_or_404(actor, agent.id, version_id)
         if version.status != "DRAFT":
             raise IdentityError(ErrorCode.INVALID_LIFECYCLE_TRANSITION,
@@ -442,22 +471,32 @@ class AgentVersionService:
             errors.append("checksum mismatch — snapshot was modified after creation")
         if errors:
             raise IdentityError(ErrorCode.VALIDATION_ERROR, "; ".join(errors))
+        record_status_change(self.db, version.id, previous_status=version.status,
+                             new_status="READY_FOR_REVIEW", changed_by=actor.id)
         version.status = "READY_FOR_REVIEW"
         self.db.commit()
         self.db.refresh(version)
         return version
 
     def approve(self, actor: User, agent: Agent, version_id: uuid.UUID) -> AgentVersion:
+        from app.runtime.versioning.status_history import record_status_change
+
         version = self.get_or_404(actor, agent.id, version_id)
         if version.status != "READY_FOR_REVIEW":
             raise IdentityError(ErrorCode.INVALID_LIFECYCLE_TRANSITION,
                                "Only versions ready for review can be approved.")
+        record_status_change(self.db, version.id, previous_status=version.status,
+                             new_status="APPROVED", changed_by=actor.id)
         version.status = "APPROVED"
+        version.reviewed_by = actor.id
         self.db.commit()
         self.db.refresh(version)
         return version
 
     def publish(self, actor: User, agent: Agent, version_id: uuid.UUID) -> AgentVersion:
+        from app.runtime.versioning.snapshot import SnapshotBuilderService
+        from app.runtime.versioning.status_history import record_status_change
+
         version = self.get_or_404(actor, agent.id, version_id)
         if version.status != "APPROVED":
             raise IdentityError(ErrorCode.INVALID_LIFECYCLE_TRANSITION,
@@ -465,8 +504,33 @@ class AgentVersionService:
         if _checksum(version) != version.checksum:
             raise IdentityError(ErrorCode.AGENT_VERSION_IMMUTABLE,
                                "Checksum mismatch — version was tampered with.")
+        # §30's "cannot publish two active releases" is a release-process
+        # rule, not enforced as a hard block here: this platform's rollback
+        # and canary/blue-green deployment strategies (§15, §57) *require*
+        # multiple versions to be simultaneously PUBLISHED — a Deployment,
+        # not a Version's status, tracks which one is live in a given
+        # environment (see docs/runtime/deployments.md). Lineage still
+        # records supersession (below) so the "what replaced what" question
+        # always has an answer without blocking legitimate multi-version
+        # deployment topologies.
+        definition = self.db.get(AgentDefinition, version.definition_id)
+        channel = self.db.get(AgentReleaseChannel, version.release_channel_id) if version.release_channel_id else None
+        SnapshotBuilderService(self.db).build_and_store(agent, definition, version, release_channel=channel,
+                                                        publisher_id=actor.id)
+
+        record_status_change(self.db, version.id, previous_status=version.status,
+                             new_status="PUBLISHED", changed_by=actor.id)
         version.status = "PUBLISHED"
         version.published_at = _now()
+
+        # §18 — mark the direct predecessor superseded once this one
+        # publishes, if it's already been deprecated (informational pointer
+        # only; it does not resurrect or change the predecessor's status).
+        if version.parent_version_id is not None:
+            parent = self.db.get(AgentVersion, version.parent_version_id)
+            if parent is not None and parent.status == "DEPRECATED" and parent.superseded_by_id is None:
+                parent.superseded_by_id = version.id
+
         _record_event(self.db, AuthorizationAuditEvent.RUNTIME_VERSION_PUBLISHED, actor,
                      organization_id=actor.organization_id, agent_id=agent.id,
                      meta={"agent_id": str(agent.id), "version_id": str(version.id)})
@@ -475,9 +539,13 @@ class AgentVersionService:
         return version
 
     def deprecate(self, actor: User, agent: Agent, version_id: uuid.UUID) -> AgentVersion:
+        from app.runtime.versioning.status_history import record_status_change
+
         version = self.get_or_404(actor, agent.id, version_id)
         if version.status != "PUBLISHED":
             raise IdentityError(ErrorCode.INVALID_LIFECYCLE_TRANSITION, "Only published versions can be deprecated.")
+        record_status_change(self.db, version.id, previous_status=version.status,
+                             new_status="DEPRECATED", changed_by=actor.id)
         version.status = "DEPRECATED"
         version.deprecated_at = _now()
         _record_event(self.db, AuthorizationAuditEvent.RUNTIME_VERSION_DEPRECATED, actor,
@@ -487,12 +555,40 @@ class AgentVersionService:
         self.db.refresh(version)
         return version
 
-    def revoke(self, actor: User, agent: Agent, version_id: uuid.UUID) -> AgentVersion:
+    def revoke(self, actor: User, agent: Agent, version_id: uuid.UUID, *, reason: str | None = None) -> AgentVersion:
+        from app.runtime.versioning.status_history import record_status_change
+
         version = self.get_or_404(actor, agent.id, version_id)
-        if version.status in ("REVOKED",):
-            raise IdentityError(ErrorCode.INVALID_LIFECYCLE_TRANSITION, "Version already revoked.")
+        if version.status in ("REVOKED", "RETIRED"):
+            raise IdentityError(ErrorCode.INVALID_LIFECYCLE_TRANSITION,
+                               f"Version cannot be revoked while {version.status}.")
+        record_status_change(self.db, version.id, previous_status=version.status,
+                             new_status="REVOKED", changed_by=actor.id, reason=reason)
         version.status = "REVOKED"
+        version.revoked_reason = reason
         _record_event(self.db, AuthorizationAuditEvent.RUNTIME_VERSION_REVOKED, actor,
+                     organization_id=actor.organization_id, agent_id=agent.id,
+                     meta={"version_id": str(version.id)})
+        self.db.commit()
+        self.db.refresh(version)
+        return version
+
+    def retire(self, actor: User, agent: Agent, version_id: uuid.UUID) -> AgentVersion:
+        """Phase 5.2 Part 1 §24 — historical only; terminal. Reachable only
+        from DEPRECATED, matching §25's lifecycle diagram (there is no
+        Revoked -> Retired edge — REVOKED is its own terminal, emergency
+        state)."""
+        from app.runtime.versioning.status_history import record_status_change
+
+        version = self.get_or_404(actor, agent.id, version_id)
+        if version.status != "DEPRECATED":
+            raise IdentityError(ErrorCode.INVALID_LIFECYCLE_TRANSITION,
+                               "Only deprecated versions can be retired.")
+        record_status_change(self.db, version.id, previous_status=version.status,
+                             new_status="RETIRED", changed_by=actor.id)
+        version.status = "RETIRED"
+        version.retired_at = _now()
+        _record_event(self.db, AuthorizationAuditEvent.RUNTIME_VERSION_RETIRED, actor,
                      organization_id=actor.organization_id, agent_id=agent.id,
                      meta={"version_id": str(version.id)})
         self.db.commit()

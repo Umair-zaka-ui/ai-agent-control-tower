@@ -811,7 +811,43 @@ execute:
   build. See [docs/runtime/registry/](docs/runtime/registry/) for the
   full set.
 
-Next: production readiness (MFA, OAuth/SSO, observability).
+Next: 5.2 Enterprise Versioning & Release Management.
+
+### Part 5.2 Part 1 — Enterprise Versioning & Release Management Foundation ✅
+
+Extends Phase 5.0's already-immutable, checksummed `agent_versions` rather
+than forking a second version table:
+
+- **Enforced semantic versioning** (§15-16): auto-derived or validated
+  strictly-increasing MAJOR.MINOR.PATCH, replacing Phase 5.0's accept-any
+  string.
+- **Snapshot builder** (§10-14): one frozen, checksummed document per
+  version (registry identity + definition + runtime config + every
+  release-management attachment), built once, at publish — the true
+  immutability boundary.
+- **Version lineage** (§17-18): parent linking, supersession tracking, and
+  a settable rollback-target pointer (foundation only; executing a
+  rollback is still `DeploymentService`'s existing job).
+- **Release channels, artifacts, categorized notes** (§9, §26-28), and a
+  version status-history ledger (§19, §25) — all locked once PUBLISHED.
+- **New `RETIRED` terminal state** (DEPRECATED → RETIRED).
+- **Version comparison** (§3): a read-only structural diff between any two
+  versions of the same agent.
+- **Promotion readiness** (§3, §30): a read-only diagnostic evaluating the
+  SRS's full readiness checklist — advisory only, never a lifecycle gate.
+- **Deliberately not enforced**: the SRS's "cannot publish two active
+  releases" per channel — conflicts with this platform's existing
+  rollback/canary deployment strategies, which require multiple
+  simultaneously-PUBLISHED versions. See
+  [docs/runtime/versioning.md](docs/runtime/versioning.md) for the full
+  rationale and every other scope decision made in this part.
+- Migration `0025_agent_versioning`; 1 new `runtime.version.retire`
+  permission; 25 new backend tests (661 total green); 7 new frontend
+  tests (297 total green); clean typecheck and build.
+
+Next: production readiness (MFA, OAuth/SSO, observability), or Phase 5.2
+Parts 2-4 (compatibility analysis, detailed release APIs, real
+cryptographic signing, actual rollback/canary execution).
 
 ## Future (Phase 4+)
 

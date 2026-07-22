@@ -130,6 +130,7 @@ PERMISSION_CATALOG: dict[str, str] = {
     "runtime.version.publish": "Publish immutable agent versions",
     "runtime.version.deprecate": "Deprecate published agent versions",
     "runtime.version.revoke": "Revoke agent versions",
+    "runtime.version.retire": "Retire deprecated agent versions",
     "runtime.deployment.view": "View deployments and deployment health",
     "runtime.deployment.create": "Create deployments",
     "runtime.deployment.deploy": "Deploy, suspend, resume and retire deployments",

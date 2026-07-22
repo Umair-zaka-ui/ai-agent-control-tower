@@ -26,6 +26,7 @@ export const VERSION_STATUS_VARIANT: Record<string, BadgeProps['variant']> = {
   PUBLISHED: 'success',
   DEPRECATED: 'secondary',
   REVOKED: 'destructive',
+  RETIRED: 'secondary',
 }
 
 export const DEPLOYMENT_STATUS_VARIANT: Record<string, BadgeProps['variant']> = {

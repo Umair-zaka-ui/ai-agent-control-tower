@@ -48,7 +48,13 @@ class AgentDefinitionRead(BaseModel):
 # --------------------------------------------------------------------------- #
 class AgentVersionCreate(BaseModel):
     definition_id: uuid.UUID | None = None
-    semantic_version: str = Field(default="0.1.0", max_length=20)
+    # Phase 5.2 Part 1 §15-16 — omit to auto-derive (monotonic patch bump,
+    # or 0.1.0 for the agent's first version); if supplied, must be a valid,
+    # strictly-increasing, non-duplicate MAJOR.MINOR.PATCH value.
+    semantic_version: str | None = Field(default=None, max_length=20)
+    # §9, §26 — one of the agent_release_channels catalog names (defaults to
+    # the catalog default, STABLE).
+    release_channel: str | None = Field(default=None, max_length=30)
     prompt_snapshot: dict | None = None
     model_configuration: dict = Field(default_factory=dict)
     capability_ids: list[uuid.UUID] = Field(default_factory=list)
@@ -78,6 +84,18 @@ class AgentVersionRead(BaseModel):
     created_at: datetime
     published_at: datetime | None
     deprecated_at: datetime | None
+    # Phase 5.2 Part 1 — release-management foundation.
+    release_channel_id: uuid.UUID | None
+    compatibility_level: str
+    signature_id: str | None
+    snapshot_reference: str | None
+    parent_version_id: uuid.UUID | None
+    rollback_target_id: uuid.UUID | None
+    superseded_by_id: uuid.UUID | None
+    release_branch: str
+    reviewed_by: uuid.UUID | None
+    revoked_reason: str | None
+    retired_at: datetime | None
 
 
 # --------------------------------------------------------------------------- #

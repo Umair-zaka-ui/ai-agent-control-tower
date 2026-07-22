@@ -113,6 +113,157 @@ class AgentVersion(Base, UUIDPrimaryKeyMixin):
     )
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     deprecated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Phase 5.2 Part 1 (SRS 5.2 §7-8, §17-25) — release-management foundation.
+    # Compatibility *analysis* (§30) and real cryptographic signing are out of
+    # scope for this part (deferred to Part 3 / a future signing phase); these
+    # columns exist as the storage foundation those parts will populate.
+    release_channel_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agent_release_channels.id", ondelete="SET NULL"),
+        nullable=True, index=True,
+    )
+    compatibility_level: Mapped[str] = mapped_column(String(20), nullable=False, default="UNKNOWN")
+    signature_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    snapshot_reference: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    parent_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agent_versions.id", ondelete="SET NULL"), nullable=True, index=True,
+    )
+    rollback_target_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agent_versions.id", ondelete="SET NULL"), nullable=True,
+    )
+    superseded_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agent_versions.id", ondelete="SET NULL"), nullable=True,
+    )
+    release_branch: Mapped[str] = mapped_column(String(100), nullable=False, default="main")
+    reviewed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    revoked_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AgentReleaseChannel(Base, UUIDPrimaryKeyMixin):
+    """Phase 5.2 Part 1 §9, §26 — global release-channel catalog (STABLE,
+    BETA, CANARY, INTERNAL, seeded by migration 0025)."""
+
+    __tablename__ = "agent_release_channels"
+
+    name: Mapped[str] = mapped_column(String(30), nullable=False, unique=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class AgentVersionSnapshot(Base, UUIDPrimaryKeyMixin):
+    """Phase 5.2 Part 1 §10-14 — the complete frozen snapshot document for one
+    version (registry metadata + definition + release metadata + everything),
+    one row per version. Never updated once created — a new version gets a
+    new snapshot row, never a mutated one."""
+
+    __tablename__ = "agent_version_snapshots"
+
+    agent_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agent_versions.id", ondelete="CASCADE"),
+        nullable=False, unique=True, index=True,
+    )
+    snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    checksum: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class AgentReleaseMetadata(Base, UUIDPrimaryKeyMixin):
+    """Phase 5.2 Part 1 §26, §28 — release naming, justification and window,
+    one row per version."""
+
+    __tablename__ = "agent_release_metadata"
+
+    agent_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agent_versions.id", ondelete="CASCADE"),
+        nullable=False, unique=True, index=True,
+    )
+    release_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    release_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    business_justification: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # MAJOR / MINOR / PATCH / HOTFIX
+    change_category: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    release_window_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    release_window_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    support_end_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    approval_ticket: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    source_branch: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    commit_reference: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    build_reference: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    risk_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    documentation_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class AgentReleaseArtifact(Base, UUIDPrimaryKeyMixin):
+    """Phase 5.2 Part 1 §27 — an artifact reference attached to a version
+    (OCI image digest, git commit SHA, build pipeline ID, model/prompt
+    package identifier, config bundle, SBOM or signature reference). Many
+    per version; references only — no binaries are embedded or stored here."""
+
+    __tablename__ = "agent_release_artifacts"
+
+    agent_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agent_versions.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    # OCI_IMAGE_DIGEST / GIT_COMMIT_SHA / BUILD_PIPELINE_ID / MODEL_PACKAGE /
+    # PROMPT_PACKAGE / CONFIG_BUNDLE / SBOM_REFERENCE / SIGNATURE_REFERENCE
+    artifact_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    reference: Mapped[str] = mapped_column(String(500), nullable=False)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class AgentReleaseNote(Base, UUIDPrimaryKeyMixin):
+    """Phase 5.2 Part 1 §28 — one structured, categorized release-note entry.
+    Distinct from ``AgentVersion.release_notes`` (a free-text summary field);
+    many of these per version."""
+
+    __tablename__ = "agent_release_notes"
+
+    agent_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agent_versions.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    # ADDED / CHANGED / FIXED / REMOVED / SECURITY / DEPRECATED
+    category: Mapped[str] = mapped_column(String(20), nullable=False, default="CHANGED")
+    note: Mapped[str] = mapped_column(Text, nullable=False)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class AgentVersionStatusHistory(Base, UUIDPrimaryKeyMixin):
+    """Phase 5.2 Part 1 §19, §25 — an immutable ledger of every lifecycle
+    transition a version goes through, mirroring ``AgentLifecycleEvent`` for
+    the registry (Phase 5.1)."""
+
+    __tablename__ = "agent_version_status_history"
+
+    agent_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agent_versions.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    previous_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    new_status: Mapped[str] = mapped_column(String(20), nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    changed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
 
 
 class AgentDeployment(Base, UUIDPrimaryKeyMixin):

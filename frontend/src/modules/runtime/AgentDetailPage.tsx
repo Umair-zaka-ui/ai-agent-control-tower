@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  Archive, Bot, CheckCircle2, Copy, FileCode2, GitBranch, KeyRound, Loader2, Pause, PlayCircle, Plus,
-  RotateCcw, Rocket, ScrollText, ShieldCheck, Sparkles, UserCog, Wrench, XCircle,
+  Archive, Bot, CheckCircle2, ChevronDown, ChevronRight, Copy, FileCode2, GitBranch, KeyRound, Loader2,
+  Pause, PlayCircle, Plus, RotateCcw, Rocket, ScrollText, ShieldCheck, Sparkles, UserCog, Wrench, XCircle,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -14,13 +14,23 @@ import {
 } from '@/components/ui'
 import { ROUTES } from '@/constants/routes'
 import { runtimeService } from '@/services'
-import type { ID, OwnerRole, RuntimeEnvironment } from '@/types'
+import type {
+  AgentVersion, ID, OwnerRole, ReleaseArtifactType, ReleaseNoteCategory, RuntimeEnvironment,
+} from '@/types'
 import { RuntimeNav } from './components/RuntimeNav'
 import {
   AGENT_LIFECYCLE_VARIANT, CRITICALITY_VARIANT, formatDate, VERSION_STATUS_VARIANT,
 } from './utils'
 
 const ENVIRONMENTS: RuntimeEnvironment[] = ['DEVELOPMENT', 'TEST', 'STAGING', 'PRODUCTION', 'SANDBOX']
+const ARTIFACT_TYPES: ReleaseArtifactType[] = [
+  'OCI_IMAGE_DIGEST', 'GIT_COMMIT_SHA', 'BUILD_PIPELINE_ID', 'MODEL_PACKAGE',
+  'PROMPT_PACKAGE', 'CONFIG_BUNDLE', 'SBOM_REFERENCE', 'SIGNATURE_REFERENCE',
+]
+const NOTE_CATEGORIES: ReleaseNoteCategory[] = ['ADDED', 'CHANGED', 'FIXED', 'REMOVED', 'SECURITY', 'DEPRECATED']
+// Phase 5.2 Part 1 §14, §21 — release metadata/artifacts/notes are frozen
+// into the snapshot at publish; matches the backend's `ensure_not_locked`.
+const RELEASE_LOCKED_STATUSES = ['PUBLISHED', 'DEPRECATED', 'REVOKED', 'RETIRED']
 
 const TABS = [
   'Overview', 'Definition', 'Ownership', 'Identity', 'Contracts', 'Risk & Data',
@@ -134,8 +144,11 @@ function OverviewTab({ agentId, onError, onChanged }: {
   const qc = useQueryClient()
   const agent = useQuery({ queryKey: ['runtime-agent', agentId], queryFn: () => runtimeService.agent(agentId) })
   const versions = useQuery({ queryKey: ['runtime-versions', agentId], queryFn: () => runtimeService.versions(agentId) })
+  const channels = useQuery({ queryKey: ['runtime-release-channels'], queryFn: () => runtimeService.releaseChannels() })
+  const channelName = (id: ID | null) => channels.data?.find((c) => c.id === id)?.name ?? '—'
   const [deployEnv, setDeployEnv] = useState<Record<string, RuntimeEnvironment>>({})
   const [rejectReason, setRejectReason] = useState('')
+  const [expandedVersionId, setExpandedVersionId] = useState<ID | null>(null)
 
   const invalidateVersions = () => void qc.invalidateQueries({ queryKey: ['runtime-versions', agentId] })
 
@@ -162,11 +175,13 @@ function OverviewTab({ agentId, onError, onChanged }: {
     onError,
   })
   const versionAction = useMutation({
-    mutationFn: ({ versionId, action }: { versionId: ID; action: 'validate' | 'approve' | 'publish' | 'deprecate' | 'revoke' }) => {
+    mutationFn: ({ versionId, action }: {
+      versionId: ID; action: 'validate' | 'approve' | 'publish' | 'deprecate' | 'revoke' | 'retire'
+    }) => {
       const fn = {
         validate: runtimeService.validateVersion, approve: runtimeService.approveVersion,
         publish: runtimeService.publishVersion, deprecate: runtimeService.deprecateVersion,
-        revoke: runtimeService.revokeVersion,
+        revoke: runtimeService.revokeVersion, retire: runtimeService.retireVersion,
       }[action]
       return fn(agentId, versionId)
     },
@@ -274,6 +289,7 @@ function OverviewTab({ agentId, onError, onChanged }: {
                 <TableRow>
                   <TableHead>Version</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Channel</TableHead>
                   <TableHead>Checksum</TableHead>
                   <TableHead>Created</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
@@ -281,60 +297,318 @@ function OverviewTab({ agentId, onError, onChanged }: {
               </TableHeader>
               <TableBody>
                 {(versions.data ?? []).map((v) => (
-                  <TableRow key={v.id}>
-                    <TableCell className="font-medium">v{v.version} <span className="text-muted-foreground">({v.semantic_version})</span></TableCell>
-                    <TableCell><Badge variant={VERSION_STATUS_VARIANT[v.status]}>{v.status}</Badge></TableCell>
-                    <TableCell className="font-mono text-xs text-muted-foreground">{v.checksum.slice(0, 12)}…</TableCell>
-                    <TableCell className="whitespace-nowrap text-muted-foreground">{formatDate(v.created_at)}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex flex-wrap justify-end gap-2">
-                        {v.status === 'DRAFT' && (
-                          <Button size="sm" variant="outline" disabled={versionAction.isPending}
-                                  onClick={() => versionAction.mutate({ versionId: v.id, action: 'validate' })}>
-                            Validate
+                  <Fragment key={v.id}>
+                    <TableRow>
+                      <TableCell className="font-medium">v{v.version} <span className="text-muted-foreground">({v.semantic_version})</span></TableCell>
+                      <TableCell><Badge variant={VERSION_STATUS_VARIANT[v.status]}>{v.status}</Badge></TableCell>
+                      <TableCell><Badge variant="outline">{channelName(v.release_channel_id)}</Badge></TableCell>
+                      <TableCell className="font-mono text-xs text-muted-foreground">{v.checksum.slice(0, 12)}…</TableCell>
+                      <TableCell className="whitespace-nowrap text-muted-foreground">{formatDate(v.created_at)}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex flex-wrap justify-end gap-2">
+                          <Button size="sm" variant="ghost"
+                                  onClick={() => setExpandedVersionId(expandedVersionId === v.id ? null : v.id)}>
+                            {expandedVersionId === v.id ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                            Details
                           </Button>
-                        )}
-                        {v.status === 'READY_FOR_REVIEW' && (
-                          <Button size="sm" variant="outline" disabled={versionAction.isPending}
-                                  onClick={() => versionAction.mutate({ versionId: v.id, action: 'approve' })}>
-                            Approve
-                          </Button>
-                        )}
-                        {v.status === 'APPROVED' && (
-                          <Button size="sm" variant="outline" disabled={versionAction.isPending}
-                                  onClick={() => versionAction.mutate({ versionId: v.id, action: 'publish' })}>
-                            Publish
-                          </Button>
-                        )}
-                        {v.status === 'PUBLISHED' && (
-                          <>
-                            <Select className="w-32" aria-label="Environment" value={deployEnv[v.id] ?? 'DEVELOPMENT'}
-                                    options={ENVIRONMENTS.map((e) => ({ value: e, label: e }))}
-                                    onChange={(e) => setDeployEnv((prev) => ({ ...prev, [v.id]: e.target.value as RuntimeEnvironment }))} />
-                            <Button size="sm" disabled={deployVersion.isPending} onClick={() => deployVersion.mutate(v.id)}>
-                              <Rocket className="h-3.5 w-3.5" /> Deploy
-                            </Button>
+                          {v.status === 'DRAFT' && (
                             <Button size="sm" variant="outline" disabled={versionAction.isPending}
-                                    onClick={() => versionAction.mutate({ versionId: v.id, action: 'deprecate' })}>
-                              Deprecate
+                                    onClick={() => versionAction.mutate({ versionId: v.id, action: 'validate' })}>
+                              Validate
                             </Button>
-                          </>
-                        )}
-                        {!['REVOKED', 'DRAFT'].includes(v.status) && (
-                          <Button size="sm" variant="destructive" disabled={versionAction.isPending}
-                                  onClick={() => versionAction.mutate({ versionId: v.id, action: 'revoke' })}>
-                            Revoke
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
+                          )}
+                          {v.status === 'READY_FOR_REVIEW' && (
+                            <Button size="sm" variant="outline" disabled={versionAction.isPending}
+                                    onClick={() => versionAction.mutate({ versionId: v.id, action: 'approve' })}>
+                              Approve
+                            </Button>
+                          )}
+                          {v.status === 'APPROVED' && (
+                            <Button size="sm" variant="outline" disabled={versionAction.isPending}
+                                    onClick={() => versionAction.mutate({ versionId: v.id, action: 'publish' })}>
+                              Publish
+                            </Button>
+                          )}
+                          {v.status === 'PUBLISHED' && (
+                            <>
+                              <Select className="w-32" aria-label="Environment" value={deployEnv[v.id] ?? 'DEVELOPMENT'}
+                                      options={ENVIRONMENTS.map((e) => ({ value: e, label: e }))}
+                                      onChange={(e) => setDeployEnv((prev) => ({ ...prev, [v.id]: e.target.value as RuntimeEnvironment }))} />
+                              <Button size="sm" disabled={deployVersion.isPending} onClick={() => deployVersion.mutate(v.id)}>
+                                <Rocket className="h-3.5 w-3.5" /> Deploy
+                              </Button>
+                              <Button size="sm" variant="outline" disabled={versionAction.isPending}
+                                      onClick={() => versionAction.mutate({ versionId: v.id, action: 'deprecate' })}>
+                                Deprecate
+                              </Button>
+                            </>
+                          )}
+                          {v.status === 'DEPRECATED' && (
+                            <Button size="sm" variant="outline" disabled={versionAction.isPending}
+                                    onClick={() => versionAction.mutate({ versionId: v.id, action: 'retire' })}>
+                              Retire
+                            </Button>
+                          )}
+                          {!['REVOKED', 'RETIRED', 'DRAFT'].includes(v.status) && (
+                            <Button size="sm" variant="destructive" disabled={versionAction.isPending}
+                                    onClick={() => versionAction.mutate({ versionId: v.id, action: 'revoke' })}>
+                              Revoke
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                    {expandedVersionId === v.id && (
+                      <TableRow>
+                        <TableCell colSpan={6} className="p-0">
+                          <VersionDetailsPanel agentId={agentId} version={v} allVersions={versions.data ?? []}
+                                              onError={onError} />
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </Fragment>
                 ))}
               </TableBody>
             </Table>
           )}
         </CardContent>
       </Card>
+    </div>
+  )
+}
+
+// --------------------------------------------------------------------------- //
+// Version release details (Phase 5.2 Part 1 — snapshot, lineage, release
+// metadata, artifacts, notes, status history)
+// --------------------------------------------------------------------------- //
+function VersionDetailsPanel({ agentId, version, allVersions, onError }: {
+  agentId: ID; version: AgentVersion; allVersions: AgentVersion[]; onError: (e: unknown) => void
+}) {
+  const qc = useQueryClient()
+  const versionId = version.id
+  const [compareTargetId, setCompareTargetId] = useState('')
+  const locked = RELEASE_LOCKED_STATUSES.includes(version.status)
+
+  const snapshot = useQuery({
+    queryKey: ['runtime-version-snapshot', versionId], queryFn: () => runtimeService.versionSnapshot(agentId, versionId),
+  })
+  const history = useQuery({
+    queryKey: ['runtime-version-history', versionId], queryFn: () => runtimeService.versionStatusHistory(agentId, versionId),
+  })
+  const releaseMeta = useQuery({
+    queryKey: ['runtime-version-release-metadata', versionId],
+    queryFn: () => runtimeService.releaseMetadata(agentId, versionId),
+  })
+  const artifacts = useQuery({
+    queryKey: ['runtime-version-artifacts', versionId], queryFn: () => runtimeService.releaseArtifacts(agentId, versionId),
+  })
+  const notes = useQuery({
+    queryKey: ['runtime-version-notes', versionId], queryFn: () => runtimeService.releaseNotes(agentId, versionId),
+  })
+  const readiness = useQuery({
+    queryKey: ['runtime-version-readiness', versionId], queryFn: () => runtimeService.versionReadiness(agentId, versionId),
+  })
+  const comparison = useQuery({
+    queryKey: ['runtime-version-compare', versionId, compareTargetId],
+    queryFn: () => runtimeService.compareVersions(agentId, versionId, compareTargetId),
+    enabled: !!compareTargetId,
+  })
+
+  const [releaseName, setReleaseName] = useState(releaseMeta.data?.release_name ?? '')
+  const [artifactType, setArtifactType] = useState<ReleaseArtifactType>('GIT_COMMIT_SHA')
+  const [artifactRef, setArtifactRef] = useState('')
+  const [noteCategory, setNoteCategory] = useState<ReleaseNoteCategory>('CHANGED')
+  const [noteText, setNoteText] = useState('')
+  const [rollbackTarget, setRollbackTargetId] = useState('')
+
+  const saveReleaseName = useMutation({
+    mutationFn: () => runtimeService.upsertReleaseMetadata(agentId, versionId, { release_name: releaseName }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['runtime-version-release-metadata', versionId] })
+      toast.success('Release metadata saved')
+    },
+    onError,
+  })
+  const addArtifact = useMutation({
+    mutationFn: () => runtimeService.addReleaseArtifact(agentId, versionId, {
+      artifact_type: artifactType, reference: artifactRef,
+    }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['runtime-version-artifacts', versionId] })
+      setArtifactRef(''); toast.success('Artifact added')
+    },
+    onError,
+  })
+  const addNote = useMutation({
+    mutationFn: () => runtimeService.addReleaseNote(agentId, versionId, { category: noteCategory, note: noteText }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['runtime-version-notes', versionId] })
+      setNoteText(''); toast.success('Note added')
+    },
+    onError,
+  })
+  const setRollbackTarget = useMutation({
+    mutationFn: () => runtimeService.setRollbackTarget(agentId, versionId, rollbackTarget),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['runtime-versions', agentId] })
+      toast.success('Rollback target set')
+    },
+    onError,
+  })
+
+  return (
+    <div className="grid gap-4 border-t border-border bg-muted/20 p-4 text-xs sm:grid-cols-2">
+      <div className="space-y-2">
+        <h4 className="font-medium text-foreground">Lineage</h4>
+        <dl className="space-y-1 text-muted-foreground">
+          <div>Parent version: <span className="font-mono">{version.parent_version_id ?? '—'}</span></div>
+          <div>Rollback target: <span className="font-mono">{version.rollback_target_id ?? '—'}</span></div>
+          <div>Superseded by: <span className="font-mono">{version.superseded_by_id ?? '—'}</span></div>
+        </dl>
+        <div className="flex gap-2 pt-1">
+          <Input className="h-8" placeholder="Target version ID" value={rollbackTarget}
+                 onChange={(e) => setRollbackTargetId(e.target.value)} />
+          <Button size="sm" variant="outline" disabled={!rollbackTarget.trim() || setRollbackTarget.isPending}
+                  onClick={() => setRollbackTarget.mutate()}>
+            Set target
+          </Button>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <h4 className="font-medium text-foreground">Snapshot</h4>
+        {snapshot.data ? (
+          <p className="font-mono text-muted-foreground">{snapshot.data.checksum.slice(0, 32)}…</p>
+        ) : (
+          <p className="text-muted-foreground">Not built yet — built at publish.</p>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <h4 className="font-medium text-foreground">Release metadata</h4>
+        {!locked ? (
+          <div className="flex gap-2">
+            <Input className="h-8" placeholder="Release name" value={releaseName}
+                   onChange={(e) => setReleaseName(e.target.value)} />
+            <Button size="sm" variant="outline" disabled={saveReleaseName.isPending}
+                    onClick={() => saveReleaseName.mutate()}>
+              Save
+            </Button>
+          </div>
+        ) : (
+          <p className="text-muted-foreground">{releaseMeta.data?.release_name ?? '—'}</p>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <h4 className="font-medium text-foreground">Artifacts</h4>
+        <ul className="space-y-1 text-muted-foreground">
+          {(artifacts.data ?? []).map((a) => <li key={a.id}>{a.artifact_type}: {a.reference}</li>)}
+          {(artifacts.data ?? []).length === 0 && <li>—</li>}
+        </ul>
+        {!locked && (
+          <div className="flex gap-2">
+            <Select className="h-8 w-40" aria-label="Artifact type" value={artifactType}
+                    options={ARTIFACT_TYPES.map((t) => ({ value: t, label: t }))}
+                    onChange={(e) => setArtifactType(e.target.value as ReleaseArtifactType)} />
+            <Input className="h-8" placeholder="Reference" value={artifactRef}
+                   onChange={(e) => setArtifactRef(e.target.value)} />
+            <Button size="sm" variant="outline" disabled={!artifactRef.trim() || addArtifact.isPending}
+                    onClick={() => addArtifact.mutate()}>
+              Add
+            </Button>
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-2 sm:col-span-2">
+        <h4 className="font-medium text-foreground">Release notes</h4>
+        <ul className="space-y-1 text-muted-foreground">
+          {(notes.data ?? []).map((n) => <li key={n.id}><strong className="text-foreground">{n.category}</strong>: {n.note}</li>)}
+          {(notes.data ?? []).length === 0 && <li>—</li>}
+        </ul>
+        {!locked && (
+          <div className="flex gap-2">
+            <Select className="h-8 w-40" aria-label="Note category" value={noteCategory}
+                    options={NOTE_CATEGORIES.map((c) => ({ value: c, label: c }))}
+                    onChange={(e) => setNoteCategory(e.target.value as ReleaseNoteCategory)} />
+            <Input className="h-8 flex-1" placeholder="Note" value={noteText}
+                   onChange={(e) => setNoteText(e.target.value)} />
+            <Button size="sm" variant="outline" disabled={!noteText.trim() || addNote.isPending}
+                    onClick={() => addNote.mutate()}>
+              Add
+            </Button>
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-2 sm:col-span-2">
+        <h4 className="font-medium text-foreground">Status history</h4>
+        <ul className="space-y-1 text-muted-foreground">
+          {(history.data ?? []).map((h) => (
+            <li key={h.id}>
+              {h.previous_status ?? '—'} → <strong className="text-foreground">{h.new_status}</strong>
+              {' · '}{formatDate(h.created_at)}{h.reason ? ` · ${h.reason}` : ''}
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="space-y-2">
+        <h4 className="font-medium text-foreground">Promotion readiness</h4>
+        {readiness.isLoading ? (
+          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+        ) : (
+          <>
+            <Badge variant={readiness.data?.ready ? 'success' : 'warning'}>
+              {readiness.data?.ready ? 'Ready' : 'Not ready'}
+            </Badge>
+            <ul className="space-y-1 pt-1 text-muted-foreground">
+              {(readiness.data?.checks ?? []).map((c) => (
+                <li key={c.name} className="flex items-start gap-1.5">
+                  <span className={
+                    c.skipped ? 'text-muted-foreground' : c.passed ? 'text-success' : 'text-destructive'
+                  }>
+                    {c.skipped ? '–' : c.passed ? '✓' : '✗'}
+                  </span>
+                  <span>{c.name.replace(/_/g, ' ')}: {c.message}</span>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </div>
+
+      <div className="space-y-2 sm:col-span-2">
+        <h4 className="font-medium text-foreground">Compare with another version</h4>
+        <Select className="h-8 w-56" aria-label="Compare with" value={compareTargetId}
+                placeholder="Choose a version…"
+                options={allVersions.filter((v) => v.id !== versionId).map((v) => ({
+                  value: v.id, label: `v${v.version} (${v.semantic_version})`,
+                }))}
+                onChange={(e) => setCompareTargetId(e.target.value)} />
+        {comparison.data && (
+          comparison.data.identical ? (
+            <p className="text-muted-foreground">No differences.</p>
+          ) : (
+            <dl className="space-y-1 text-muted-foreground">
+              {Object.entries(comparison.data.scalar_changes).map(([field, change]) => (
+                <div key={field}>{field}: <span className="font-mono">{String(change.from)}</span> → <span className="font-mono">{String(change.to)}</span></div>
+              ))}
+              {Object.entries(comparison.data.configuration_changes).map(([field, diff]) => (
+                <div key={field}>
+                  {field}: {Object.keys(diff.added).length} added, {Object.keys(diff.removed).length} removed,{' '}
+                  {Object.keys(diff.changed).length} changed
+                </div>
+              ))}
+              {comparison.data.artifacts_added.length > 0 && <div>+{comparison.data.artifacts_added.length} artifact(s)</div>}
+              {comparison.data.artifacts_removed.length > 0 && <div>-{comparison.data.artifacts_removed.length} artifact(s)</div>}
+              {comparison.data.notes_added.length > 0 && <div>+{comparison.data.notes_added.length} note(s)</div>}
+              {comparison.data.notes_removed.length > 0 && <div>-{comparison.data.notes_removed.length} note(s)</div>}
+            </dl>
+          )
+        )}
+      </div>
     </div>
   )
 }

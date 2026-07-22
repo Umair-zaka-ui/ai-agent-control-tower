@@ -7,6 +7,7 @@ import type {
   AgentTool,
   AgentVersion,
   Capability,
+  ChangeCategory,
   Deployment,
   DeploymentHealth,
   DuplicateMatch,
@@ -20,6 +21,12 @@ import type {
   MigrationRecord,
   AgentOwnershipHistoryEntry,
   OwnerRole,
+  ReleaseArtifact,
+  ReleaseArtifactType,
+  ReleaseChannel,
+  ReleaseMetadata,
+  ReleaseNote,
+  ReleaseNoteCategory,
   RuntimeAgent,
   RuntimeApproval,
   RuntimeDashboard,
@@ -27,6 +34,10 @@ import type {
   RuntimeTool,
   ToolCall,
   ValidationRun,
+  VersionComparison,
+  VersionReadiness,
+  VersionSnapshot,
+  VersionStatusHistoryEntry,
   WorkerStatus,
 } from '@/types'
 import { apiClient } from './apiClient'
@@ -329,6 +340,7 @@ export const runtimeService = {
   },
   async createVersion(agentId: ID, payload: {
     semantic_version?: string
+    release_channel?: string
     model_configuration: Record<string, unknown>
     prompt_snapshot?: Record<string, unknown>
     capability_ids?: ID[]
@@ -359,9 +371,94 @@ export const runtimeService = {
       `${BASE}/agents/${agentId}/versions/${versionId}/deprecate`)
     return data
   },
-  async revokeVersion(agentId: ID, versionId: ID): Promise<AgentVersion> {
+  async revokeVersion(agentId: ID, versionId: ID, reason?: string): Promise<AgentVersion> {
     const { data } = await apiClient.post<AgentVersion>(
-      `${BASE}/agents/${agentId}/versions/${versionId}/revoke`)
+      `${BASE}/agents/${agentId}/versions/${versionId}/revoke`, { reason })
+    return data
+  },
+  async retireVersion(agentId: ID, versionId: ID): Promise<AgentVersion> {
+    const { data } = await apiClient.post<AgentVersion>(
+      `${BASE}/agents/${agentId}/versions/${versionId}/retire`)
+    return data
+  },
+
+  // --- Version release management (Phase 5.2 Part 1) --- //
+  async versionSnapshot(agentId: ID, versionId: ID): Promise<VersionSnapshot | null> {
+    const { data } = await apiClient.get<VersionSnapshot | null>(
+      `${BASE}/agents/${agentId}/versions/${versionId}/snapshot`)
+    return data
+  },
+  async versionStatusHistory(agentId: ID, versionId: ID): Promise<VersionStatusHistoryEntry[]> {
+    const { data } = await apiClient.get<VersionStatusHistoryEntry[]>(
+      `${BASE}/agents/${agentId}/versions/${versionId}/status-history`)
+    return data
+  },
+  async setRollbackTarget(agentId: ID, versionId: ID, targetVersionId: ID): Promise<AgentVersion> {
+    const { data } = await apiClient.post<AgentVersion>(
+      `${BASE}/agents/${agentId}/versions/${versionId}/rollback-target`,
+      { target_version_id: targetVersionId })
+    return data
+  },
+  async releaseMetadata(agentId: ID, versionId: ID): Promise<ReleaseMetadata | null> {
+    const { data } = await apiClient.get<ReleaseMetadata | null>(
+      `${BASE}/agents/${agentId}/versions/${versionId}/release-metadata`)
+    return data
+  },
+  async upsertReleaseMetadata(agentId: ID, versionId: ID, payload: {
+    release_name?: string
+    release_description?: string
+    business_justification?: string
+    change_category?: ChangeCategory
+    release_window_start?: string
+    release_window_end?: string
+    support_end_date?: string
+    approval_ticket?: string
+    source_branch?: string
+    commit_reference?: string
+    build_reference?: string
+    risk_score?: number
+    documentation_url?: string
+  }): Promise<ReleaseMetadata> {
+    const { data } = await apiClient.post<ReleaseMetadata>(
+      `${BASE}/agents/${agentId}/versions/${versionId}/release-metadata`, payload)
+    return data
+  },
+  async releaseArtifacts(agentId: ID, versionId: ID): Promise<ReleaseArtifact[]> {
+    const { data } = await apiClient.get<ReleaseArtifact[]>(
+      `${BASE}/agents/${agentId}/versions/${versionId}/artifacts`)
+    return data
+  },
+  async addReleaseArtifact(agentId: ID, versionId: ID, payload: {
+    artifact_type: ReleaseArtifactType; reference: string
+  }): Promise<ReleaseArtifact> {
+    const { data } = await apiClient.post<ReleaseArtifact>(
+      `${BASE}/agents/${agentId}/versions/${versionId}/artifacts`, payload)
+    return data
+  },
+  async releaseNotes(agentId: ID, versionId: ID): Promise<ReleaseNote[]> {
+    const { data } = await apiClient.get<ReleaseNote[]>(
+      `${BASE}/agents/${agentId}/versions/${versionId}/notes`)
+    return data
+  },
+  async addReleaseNote(agentId: ID, versionId: ID, payload: {
+    category: ReleaseNoteCategory; note: string
+  }): Promise<ReleaseNote> {
+    const { data } = await apiClient.post<ReleaseNote>(
+      `${BASE}/agents/${agentId}/versions/${versionId}/notes`, payload)
+    return data
+  },
+  async releaseChannels(): Promise<ReleaseChannel[]> {
+    const { data } = await apiClient.get<ReleaseChannel[]>(`${BASE}/release-channels`)
+    return data
+  },
+  async compareVersions(agentId: ID, versionId: ID, otherVersionId: ID): Promise<VersionComparison> {
+    const { data } = await apiClient.get<VersionComparison>(
+      `${BASE}/agents/${agentId}/versions/${versionId}/compare/${otherVersionId}`)
+    return data
+  },
+  async versionReadiness(agentId: ID, versionId: ID): Promise<VersionReadiness> {
+    const { data } = await apiClient.get<VersionReadiness>(
+      `${BASE}/agents/${agentId}/versions/${versionId}/readiness`)
     return data
   },
 

@@ -454,6 +454,21 @@ migration/classification page, optimistic concurrency (`row_version`), and
 a registration wizard with draft autosave. See
 [docs/runtime/registry/](docs/runtime/registry/) for the full set.
 
+### Enterprise Versioning & Release Management (Phase 5.2 Part 1)
+
+Every agent version is an immutable, checksummed release artifact: enforced
+**semantic versioning** (auto-derived or validated, strictly increasing), a
+**snapshot builder** that freezes the complete release document (identity,
+definition, runtime config, release metadata/artifacts/notes) at publish
+time, **version lineage** (parent linking, supersession tracking, a
+settable rollback-target pointer), a global **release-channel** catalog,
+categorized **release notes** and **artifact references**, a version
+**status-history** ledger, a new `RETIRED` terminal lifecycle state,
+**version comparison** (a structural diff between any two versions), and
+a **promotion-readiness** diagnostic (advisory, never a lifecycle gate).
+See [docs/runtime/versioning.md](docs/runtime/versioning.md) for the full
+set, including the deliberate scope decisions made against the SRS.
+
 **Users** (password `DemoPass!2026`):
 
 | Email                  | Role       |

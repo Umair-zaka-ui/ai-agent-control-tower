@@ -4,6 +4,49 @@ All notable changes to the AI Agent Control Tower are documented here. The forma
 based on [Keep a Changelog](https://keepachangelog.com/); the project is pre-1.0 and
 versions track the roadmap phases rather than semver guarantees.
 
+## [Unreleased] — Phase 5.2 Part 1 · Enterprise Versioning & Release Management Foundation
+
+- **Added** migration `0025_agent_versioning`: additive release-management
+  columns on `agent_versions` (release channel, compatibility/signature
+  placeholders, lineage pointers, retirement) and six new tables —
+  `agent_release_channels` (seeded catalog), `agent_version_snapshots`
+  (the frozen, complete release document), `agent_release_metadata`,
+  `agent_release_artifacts`, `agent_release_notes`, and
+  `agent_version_status_history`.
+- **Added** enforced semantic versioning (§15-16): auto-derived or
+  validated strictly-increasing `MAJOR.MINOR.PATCH`, replacing Phase 5.0's
+  unvalidated string field.
+- **Added** the snapshot builder (§10-14): one frozen, checksummed document
+  per version — registry identity, definition, runtime config, and every
+  release-management attachment — built exactly once, at publish.
+- **Added** version lineage (§17-18): parent-version linking, supersession
+  tracking, and a settable rollback-target pointer (foundation only —
+  executing a rollback remains `DeploymentService`'s existing job).
+- **Added** release channels (§9, §26), categorized release notes and
+  artifact references (§27-28), and the version status-history ledger
+  (§19, §25) — all gated by the same immutability rule once a version is
+  PUBLISHED.
+- **Added** the `RETIRED` terminal lifecycle state and `retire` action
+  (DEPRECATED → RETIRED), reachable only from DEPRECATED, matching the SRS
+  lifecycle diagram.
+- **Added** version comparison (§3): a read-only structural diff between
+  any two versions of the same agent — scalar fields, key-level JSONB
+  config diffs, and artifact/note set differences.
+- **Added** promotion readiness (§3, §30): a read-only diagnostic endpoint
+  evaluating the SRS's full "Version Readiness" checklist (snapshot
+  creation, validation, metadata, ownership, registry status, blocking
+  governance findings, artifacts, approval) — advisory only, never a gate
+  on the lifecycle actions themselves.
+- **Deliberately not enforced**: the SRS's "cannot publish two active
+  releases" — this platform's existing rollback/canary deployment
+  strategies require multiple simultaneously-PUBLISHED versions; see
+  [docs/runtime/versioning.md](docs/runtime/versioning.md) for the full
+  rationale. Compatibility *analysis* and real cryptographic signing are
+  out of scope (explicitly deferred by the SRS to a later part).
+- 25 new backend tests (`tests/authorization/test_agent_versioning.py`);
+  7 new frontend tests. Backend **661** green, frontend **297** green;
+  clean typecheck and build.
+
 ## [Unreleased] — Phase 5.1 · Enterprise Agent Registry
 
 ### Part 5.1 — Enterprise Agent Registry, Definitions & Lifecycle
