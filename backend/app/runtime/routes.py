@@ -9,10 +9,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_agent, require_permission
+from app.authorization.enums import AuthorizationAuditEvent
 from app.models.agent import Agent
 from app.core.database import get_db
 from app.identity.errors import ErrorCode, IdentityError
-from app.models.runtime import AgentDefinition, ExecutionAttempt, RuntimeEvent, ToolCall
+from app.models.runtime import AgentDefinition, AgentVersionSnapshot, ExecutionAttempt, RuntimeEvent, ToolCall
 from app.models.user import User
 from app.runtime.registry.duplicates import AgentDuplicateDetectionService
 from app.runtime.registry.identity import AgentIdentityAssociationService
@@ -86,7 +87,31 @@ from app.runtime.services import (
     RuntimeApprovalService,
     RuntimeDashboardService,
     ToolRegistryService,
+    _record_event,
 )
+from app.runtime.versioning.artifacts import ReleaseArtifactService
+from app.runtime.versioning.channels import ReleaseChannelService
+from app.runtime.versioning.compare import VersionComparisonService
+from app.runtime.versioning.lineage import VersionLineageService
+from app.runtime.versioning.notes import ReleaseNoteService
+from app.runtime.versioning.readiness import VersionReadinessService
+from app.runtime.versioning.release_metadata import ReleaseMetadataService
+from app.runtime.versioning.schemas import (
+    ReleaseArtifactCreate,
+    ReleaseArtifactRead,
+    ReleaseChannelRead,
+    ReleaseMetadataRead,
+    ReleaseMetadataUpsert,
+    ReleaseNoteCreate,
+    ReleaseNoteRead,
+    RevokeVersionRequest,
+    RollbackTargetRequest,
+    VersionComparisonRead,
+    VersionReadinessRead,
+    VersionSnapshotRead,
+    VersionStatusHistoryRead,
+)
+from app.runtime.versioning.status_history import list_status_history
 
 router = APIRouter(prefix="/api/v1/runtime", tags=["runtime"])
 
@@ -104,6 +129,7 @@ _VERSION_CREATE = "runtime.version.create"
 _VERSION_PUBLISH = "runtime.version.publish"
 _VERSION_DEPRECATE = "runtime.version.deprecate"
 _VERSION_REVOKE = "runtime.version.revoke"
+_VERSION_RETIRE = "runtime.version.retire"
 _DEPLOY_VIEW = "runtime.deployment.view"
 _DEPLOY_CREATE = "runtime.deployment.create"
 _DEPLOY_ACTION = "runtime.deployment.deploy"
@@ -637,9 +663,137 @@ def deprecate_version(agent_id: uuid.UUID, version_id: uuid.UUID,
 
 @router.post("/agents/{agent_id}/versions/{version_id}/revoke", response_model=AgentVersionRead)
 def revoke_version(agent_id: uuid.UUID, version_id: uuid.UUID,
+                   payload: RevokeVersionRequest = RevokeVersionRequest(),
                    actor: User = Depends(require_permission(_VERSION_REVOKE)), db: Session = Depends(get_db)):
     agent = AgentRegistryService(db).get_or_404(actor, agent_id)
-    return AgentVersionService(db).revoke(actor, agent, version_id)
+    return AgentVersionService(db).revoke(actor, agent, version_id, reason=payload.reason)
+
+
+@router.post("/agents/{agent_id}/versions/{version_id}/retire", response_model=AgentVersionRead)
+def retire_version(agent_id: uuid.UUID, version_id: uuid.UUID,
+                   actor: User = Depends(require_permission(_VERSION_RETIRE)), db: Session = Depends(get_db)):
+    agent = AgentRegistryService(db).get_or_404(actor, agent_id)
+    return AgentVersionService(db).retire(actor, agent, version_id)
+
+
+# --------------------------------------------------------------------------- #
+# Version release management (Phase 5.2 Part 1 — snapshot, lineage, release
+# metadata, artifacts, notes, status history, release channels)
+# --------------------------------------------------------------------------- #
+@router.get("/agents/{agent_id}/versions/{version_id}/snapshot", response_model=VersionSnapshotRead | None)
+def get_version_snapshot(agent_id: uuid.UUID, version_id: uuid.UUID,
+                         actor: User = Depends(require_permission(_VERSION_VIEW)), db: Session = Depends(get_db)):
+    AgentRegistryService(db).get_or_404(actor, agent_id)
+    AgentVersionService(db).get_or_404(actor, agent_id, version_id)
+    return db.execute(
+        select(AgentVersionSnapshot).where(AgentVersionSnapshot.agent_version_id == version_id)
+    ).scalar_one_or_none()
+
+
+@router.get("/agents/{agent_id}/versions/{version_id}/status-history", response_model=list[VersionStatusHistoryRead])
+def get_version_status_history(agent_id: uuid.UUID, version_id: uuid.UUID,
+                               actor: User = Depends(require_permission(_VERSION_VIEW)),
+                               db: Session = Depends(get_db)):
+    AgentRegistryService(db).get_or_404(actor, agent_id)
+    AgentVersionService(db).get_or_404(actor, agent_id, version_id)
+    return list_status_history(db, version_id)
+
+
+@router.post("/agents/{agent_id}/versions/{version_id}/rollback-target", response_model=AgentVersionRead)
+def set_version_rollback_target(agent_id: uuid.UUID, version_id: uuid.UUID, payload: RollbackTargetRequest,
+                                actor: User = Depends(require_permission(_VERSION_CREATE)),
+                                db: Session = Depends(get_db)):
+    agent = AgentRegistryService(db).get_or_404(actor, agent_id)
+    version = AgentVersionService(db).get_or_404(actor, agent_id, version_id)
+    version = VersionLineageService(db).set_rollback_target(version, payload.target_version_id)
+    _record_event(db, AuthorizationAuditEvent.RUNTIME_VERSION_ROLLBACK_TARGET_SET, actor,
+                 organization_id=actor.organization_id, agent_id=agent.id,
+                 meta={"version_id": str(version_id), "target_version_id": str(payload.target_version_id)})
+    db.commit()
+    db.refresh(version)
+    return version
+
+
+@router.get("/agents/{agent_id}/versions/{version_id}/release-metadata", response_model=ReleaseMetadataRead | None)
+def get_release_metadata(agent_id: uuid.UUID, version_id: uuid.UUID,
+                         actor: User = Depends(require_permission(_VERSION_VIEW)), db: Session = Depends(get_db)):
+    AgentRegistryService(db).get_or_404(actor, agent_id)
+    AgentVersionService(db).get_or_404(actor, agent_id, version_id)
+    return ReleaseMetadataService(db).get(version_id)
+
+
+@router.post("/agents/{agent_id}/versions/{version_id}/release-metadata", response_model=ReleaseMetadataRead)
+def upsert_release_metadata(agent_id: uuid.UUID, version_id: uuid.UUID, payload: ReleaseMetadataUpsert,
+                            actor: User = Depends(require_permission(_VERSION_CREATE)),
+                            db: Session = Depends(get_db)):
+    agent = AgentRegistryService(db).get_or_404(actor, agent_id)
+    version = AgentVersionService(db).get_or_404(actor, agent_id, version_id)
+    return ReleaseMetadataService(db).upsert(actor, agent.id, version, payload.model_dump(exclude_unset=True))
+
+
+@router.get("/agents/{agent_id}/versions/{version_id}/artifacts", response_model=list[ReleaseArtifactRead])
+def list_release_artifacts(agent_id: uuid.UUID, version_id: uuid.UUID,
+                           actor: User = Depends(require_permission(_VERSION_VIEW)), db: Session = Depends(get_db)):
+    AgentRegistryService(db).get_or_404(actor, agent_id)
+    AgentVersionService(db).get_or_404(actor, agent_id, version_id)
+    return ReleaseArtifactService(db).list(version_id)
+
+
+@router.post("/agents/{agent_id}/versions/{version_id}/artifacts", response_model=ReleaseArtifactRead,
+            status_code=status.HTTP_201_CREATED)
+def add_release_artifact(agent_id: uuid.UUID, version_id: uuid.UUID, payload: ReleaseArtifactCreate,
+                         actor: User = Depends(require_permission(_VERSION_CREATE)), db: Session = Depends(get_db)):
+    agent = AgentRegistryService(db).get_or_404(actor, agent_id)
+    version = AgentVersionService(db).get_or_404(actor, agent_id, version_id)
+    return ReleaseArtifactService(db).add(actor, agent.id, version, artifact_type=payload.artifact_type,
+                                          reference=payload.reference)
+
+
+@router.get("/agents/{agent_id}/versions/{version_id}/notes", response_model=list[ReleaseNoteRead])
+def list_release_notes(agent_id: uuid.UUID, version_id: uuid.UUID,
+                       actor: User = Depends(require_permission(_VERSION_VIEW)), db: Session = Depends(get_db)):
+    AgentRegistryService(db).get_or_404(actor, agent_id)
+    AgentVersionService(db).get_or_404(actor, agent_id, version_id)
+    return ReleaseNoteService(db).list(version_id)
+
+
+@router.post("/agents/{agent_id}/versions/{version_id}/notes", response_model=ReleaseNoteRead,
+            status_code=status.HTTP_201_CREATED)
+def add_release_note(agent_id: uuid.UUID, version_id: uuid.UUID, payload: ReleaseNoteCreate,
+                     actor: User = Depends(require_permission(_VERSION_CREATE)), db: Session = Depends(get_db)):
+    agent = AgentRegistryService(db).get_or_404(actor, agent_id)
+    version = AgentVersionService(db).get_or_404(actor, agent_id, version_id)
+    return ReleaseNoteService(db).add(actor, agent.id, version, category=payload.category, note=payload.note)
+
+
+@router.get("/release-channels", response_model=list[ReleaseChannelRead])
+def list_release_channels(actor: User = Depends(require_permission(_VERSION_VIEW)), db: Session = Depends(get_db)):
+    service = ReleaseChannelService(db)
+    service.ensure_seeded()
+    db.commit()
+    return service.list()
+
+
+@router.get("/agents/{agent_id}/versions/{version_id}/compare/{other_version_id}",
+           response_model=VersionComparisonRead)
+def compare_versions(agent_id: uuid.UUID, version_id: uuid.UUID, other_version_id: uuid.UUID,
+                     actor: User = Depends(require_permission(_VERSION_VIEW)), db: Session = Depends(get_db)):
+    """SRS §3 — version comparison; works regardless of either version's
+    lifecycle status."""
+    AgentRegistryService(db).get_or_404(actor, agent_id)
+    version_a = AgentVersionService(db).get_or_404(actor, agent_id, version_id)
+    version_b = AgentVersionService(db).get_or_404(actor, agent_id, other_version_id)
+    return VersionComparisonService(db).compare(version_a, version_b)
+
+
+@router.get("/agents/{agent_id}/versions/{version_id}/readiness", response_model=VersionReadinessRead)
+def version_readiness(agent_id: uuid.UUID, version_id: uuid.UUID,
+                      actor: User = Depends(require_permission(_VERSION_VIEW)), db: Session = Depends(get_db)):
+    """SRS §3, §30 — promotion readiness: a read-only diagnostic checklist,
+    never a gate enforced by the lifecycle actions themselves."""
+    agent = AgentRegistryService(db).get_or_404(actor, agent_id)
+    version = AgentVersionService(db).get_or_404(actor, agent_id, version_id)
+    return VersionReadinessService(db).check(agent, version)
 
 
 # --------------------------------------------------------------------------- #

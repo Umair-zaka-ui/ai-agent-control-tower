@@ -17,6 +17,12 @@ export type OwnerRole = 'BUSINESS_OWNER' | 'TECHNICAL_OWNER' | 'COMPLIANCE_OWNER
 export type RuntimeEnvironment = 'DEVELOPMENT' | 'TEST' | 'STAGING' | 'PRODUCTION' | 'SANDBOX'
 export type VersionStatus =
   | 'DRAFT' | 'VALIDATING' | 'READY_FOR_REVIEW' | 'APPROVED' | 'PUBLISHED' | 'DEPRECATED' | 'REVOKED'
+  | 'RETIRED'
+export type ReleaseArtifactType =
+  | 'OCI_IMAGE_DIGEST' | 'GIT_COMMIT_SHA' | 'BUILD_PIPELINE_ID' | 'MODEL_PACKAGE'
+  | 'PROMPT_PACKAGE' | 'CONFIG_BUNDLE' | 'SBOM_REFERENCE' | 'SIGNATURE_REFERENCE'
+export type ReleaseNoteCategory = 'ADDED' | 'CHANGED' | 'FIXED' | 'REMOVED' | 'SECURITY' | 'DEPRECATED'
+export type ChangeCategory = 'MAJOR' | 'MINOR' | 'PATCH' | 'HOTFIX'
 export type DeploymentStatus =
   | 'CREATED' | 'PENDING_APPROVAL' | 'SCHEDULED' | 'DEPLOYING' | 'HEALTH_CHECKING'
   | 'ACTIVE' | 'DEGRADED' | 'FAILED' | 'SUSPENDED' | 'ROLLING_BACK' | 'RETIRED'
@@ -253,6 +259,111 @@ export interface AgentVersion {
   created_at: string
   published_at: string | null
   deprecated_at: string | null
+  // Phase 5.2 Part 1 — release-management foundation.
+  release_channel_id: ID | null
+  compatibility_level: string
+  signature_id: string | null
+  snapshot_reference: string | null
+  parent_version_id: ID | null
+  rollback_target_id: ID | null
+  superseded_by_id: ID | null
+  release_branch: string
+  reviewed_by: ID | null
+  revoked_reason: string | null
+  retired_at: string | null
+}
+
+export interface ReleaseChannel {
+  id: ID
+  name: string
+  description: string | null
+  is_default: boolean
+  created_at: string
+}
+
+export interface VersionSnapshot {
+  id: ID
+  agent_version_id: ID
+  snapshot: Record<string, unknown>
+  checksum: string
+  created_at: string
+}
+
+export interface ReleaseMetadata {
+  id: ID
+  agent_version_id: ID
+  release_name: string | null
+  release_description: string | null
+  business_justification: string | null
+  change_category: ChangeCategory | null
+  release_window_start: string | null
+  release_window_end: string | null
+  support_end_date: string | null
+  approval_ticket: string | null
+  source_branch: string | null
+  commit_reference: string | null
+  build_reference: string | null
+  risk_score: number | null
+  documentation_url: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ReleaseArtifact {
+  id: ID
+  agent_version_id: ID
+  artifact_type: ReleaseArtifactType
+  reference: string
+  created_by: ID | null
+  created_at: string
+}
+
+export interface ReleaseNote {
+  id: ID
+  agent_version_id: ID
+  category: ReleaseNoteCategory
+  note: string
+  created_by: ID | null
+  created_at: string
+}
+
+export interface VersionStatusHistoryEntry {
+  id: ID
+  agent_version_id: ID
+  previous_status: VersionStatus | null
+  new_status: VersionStatus
+  reason: string | null
+  changed_by: ID | null
+  created_at: string
+}
+
+export interface VersionComparison {
+  version_a: { id: ID; version: number; semantic_version: string }
+  version_b: { id: ID; version: number; semantic_version: string }
+  scalar_changes: Record<string, { from: unknown; to: unknown }>
+  configuration_changes: Record<string, {
+    added: Record<string, unknown>
+    removed: Record<string, unknown>
+    changed: Record<string, { from: unknown; to: unknown }>
+  }>
+  list_changes: Record<string, { added: string[]; removed: string[] }>
+  artifacts_added: { artifact_type: string; reference: string }[]
+  artifacts_removed: { artifact_type: string; reference: string }[]
+  notes_added: { category: string; note: string }[]
+  notes_removed: { category: string; note: string }[]
+  identical: boolean
+}
+
+export interface ReadinessCheck {
+  name: string
+  passed: boolean
+  message: string
+  skipped: boolean
+}
+
+export interface VersionReadiness {
+  ready: boolean
+  checks: ReadinessCheck[]
 }
 
 export interface Deployment {
