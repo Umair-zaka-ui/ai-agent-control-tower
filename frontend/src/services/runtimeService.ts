@@ -2,24 +2,104 @@ import type {
   AgentCapability,
   AgentDefinition,
   AgentExecution,
+  AgentIdentityRecord,
+  AgentLifecycleEventEntry,
   AgentTool,
   AgentVersion,
   Capability,
   Deployment,
   DeploymentHealth,
+  DuplicateMatch,
+  DuplicateReviewDecision,
   ExecutionAttempt,
+  ExportJob,
+  ExportType,
   ID,
+  ImportItem,
+  ImportJob,
+  MigrationRecord,
+  AgentOwnershipHistoryEntry,
+  OwnerRole,
   RuntimeAgent,
   RuntimeApproval,
   RuntimeDashboard,
   RuntimeEvent,
   RuntimeTool,
   ToolCall,
+  ValidationRun,
   WorkerStatus,
 } from '@/types'
 import { apiClient } from './apiClient'
 
 const BASE = '/api/v1/runtime'
+
+export interface AgentSearchFilters {
+  query?: string
+  project_id?: ID
+  owner_id?: ID
+  status?: string
+  agent_type?: string
+  framework?: string
+  criticality?: string
+  risk_level?: string
+  data_classification?: string
+  autonomy_level?: string
+  tag?: string[]
+  view?: string
+  page?: number
+  page_size?: number
+  sort?: string
+}
+
+export interface AgentRegistrationPayload {
+  name: string
+  display_name?: string
+  description?: string
+  business_purpose?: string
+  agent_type?: string
+  tags?: string[]
+  external_reference?: string
+  documentation_url?: string
+  repository_url?: string
+  project_id?: ID
+  business_unit_id?: ID
+  department_id?: ID
+  team_id?: ID
+  owner_type?: string
+  owner_id?: ID
+  technical_owner_id?: ID
+  compliance_owner_id?: ID
+  support_contact?: string
+  identity_id?: ID
+  definition: {
+    name: string
+    description?: string
+    framework?: string
+    framework_version?: string
+    entrypoint_type?: string
+    entrypoint: string
+    runtime_language?: string
+    system_instructions?: string
+    configuration_schema?: Record<string, unknown>
+    input_schema?: Record<string, unknown>
+    output_schema?: Record<string, unknown>
+    capability_declarations?: string[]
+    tool_declarations?: string[]
+    model_requirements?: Record<string, unknown>
+    memory_requirements?: Record<string, unknown>
+    data_requirements?: Record<string, unknown>
+    network_requirements?: Record<string, unknown>
+    secret_requirements?: Record<string, unknown>
+    runtime_requirements?: Record<string, unknown>
+    metadata?: Record<string, unknown>
+  }
+  criticality?: string
+  risk_level?: string
+  data_classification?: string
+  autonomy_level?: string
+  default_environment?: string
+  metadata?: Record<string, unknown>
+}
 
 /**
  * Agent Runtime & Lifecycle Management API (Phase 5.0 §66, mounted at
@@ -34,11 +114,14 @@ export const runtimeService = {
     return data
   },
 
-  // --- Agent registry (§16, §66) --- //
-  async agents(filters: { lifecycle_status?: string; criticality?: string } = {}): Promise<RuntimeAgent[]> {
+  // --- Agent registry (Phase 5.1 §16, §36-§38, §54, §56, §66) --- //
+  async agents(filters: AgentSearchFilters = {}): Promise<RuntimeAgent[]> {
     const q = new URLSearchParams()
-    if (filters.lifecycle_status) q.set('lifecycle_status', filters.lifecycle_status)
-    if (filters.criticality) q.set('criticality', filters.criticality)
+    for (const [key, value] of Object.entries(filters)) {
+      if (value === undefined || value === null || value === '') continue
+      if (Array.isArray(value)) { for (const v of value) q.append(key, v); continue }
+      q.set(key, String(value))
+    }
     const suffix = q.toString() ? `?${q}` : ''
     const { data } = await apiClient.get<RuntimeAgent[]>(`${BASE}/agents${suffix}`)
     return data
@@ -47,27 +130,12 @@ export const runtimeService = {
     const { data } = await apiClient.get<RuntimeAgent>(`${BASE}/agents/${id}`)
     return data
   },
-  async registerAgent(payload: {
-    name: string
-    description?: string
-    agent_type?: string
-    criticality?: string
-    data_classification?: string
-    default_environment?: string
-    definition: {
-      name: string
-      description?: string
-      framework?: string
-      entrypoint_type?: string
-      entrypoint: string
-      system_instructions?: string
-    }
-  }): Promise<RuntimeAgent> {
+  async registerAgent(payload: AgentRegistrationPayload): Promise<RuntimeAgent> {
     const { data } = await apiClient.post<RuntimeAgent>(`${BASE}/agents`, payload)
     return data
   },
-  async updateAgent(id: ID, payload: Record<string, unknown>): Promise<RuntimeAgent> {
-    const { data } = await apiClient.put<RuntimeAgent>(`${BASE}/agents/${id}`, payload)
+  async updateAgent(id: ID, payload: Record<string, unknown> & { row_version: number }): Promise<RuntimeAgent> {
+    const { data } = await apiClient.patch<RuntimeAgent>(`${BASE}/agents/${id}`, payload)
     return data
   },
   async deleteAgent(id: ID): Promise<void> {
@@ -77,12 +145,26 @@ export const runtimeService = {
     const { data } = await apiClient.get<AgentDefinition[]>(`${BASE}/agents/${id}/definitions`)
     return data
   },
+
+  // --- Lifecycle actions (§19, §20, §54) --- //
+  async registerLifecycleAction(id: ID, reason?: string): Promise<RuntimeAgent> {
+    const { data } = await apiClient.post<RuntimeAgent>(`${BASE}/agents/${id}/register`, { reason })
+    return data
+  },
   async validateAgent(id: ID): Promise<RuntimeAgent> {
     const { data } = await apiClient.post<RuntimeAgent>(`${BASE}/agents/${id}/validate`)
     return data
   },
+  async submitForApproval(id: ID): Promise<RuntimeAgent> {
+    const { data } = await apiClient.post<RuntimeAgent>(`${BASE}/agents/${id}/submit-for-approval`)
+    return data
+  },
   async approveAgent(id: ID): Promise<RuntimeAgent> {
     const { data } = await apiClient.post<RuntimeAgent>(`${BASE}/agents/${id}/approve`)
+    return data
+  },
+  async rejectAgent(id: ID, reason: string): Promise<RuntimeAgent> {
+    const { data } = await apiClient.post<RuntimeAgent>(`${BASE}/agents/${id}/reject`, { reason })
     return data
   },
   async activateAgent(id: ID): Promise<RuntimeAgent> {
@@ -93,6 +175,10 @@ export const runtimeService = {
     const { data } = await apiClient.post<RuntimeAgent>(`${BASE}/agents/${id}/suspend`)
     return data
   },
+  async resumeAgent(id: ID): Promise<RuntimeAgent> {
+    const { data } = await apiClient.post<RuntimeAgent>(`${BASE}/agents/${id}/resume`)
+    return data
+  },
   async deprecateAgent(id: ID): Promise<RuntimeAgent> {
     const { data } = await apiClient.post<RuntimeAgent>(`${BASE}/agents/${id}/deprecate`)
     return data
@@ -101,8 +187,134 @@ export const runtimeService = {
     const { data } = await apiClient.post<RuntimeAgent>(`${BASE}/agents/${id}/archive`)
     return data
   },
+  async restoreAgent(id: ID): Promise<RuntimeAgent> {
+    const { data } = await apiClient.post<RuntimeAgent>(`${BASE}/agents/${id}/restore`)
+    return data
+  },
   async retireAgent(id: ID): Promise<RuntimeAgent> {
     const { data } = await apiClient.post<RuntimeAgent>(`${BASE}/agents/${id}/retire`)
+    return data
+  },
+
+  // --- Ownership (§12, §13, §54) --- //
+  async getOwnership(id: ID): Promise<{
+    owner_type: string | null; owner_id: ID | null
+    technical_owner_id: ID | null; compliance_owner_id: ID | null
+  }> {
+    const { data } = await apiClient.get(`${BASE}/agents/${id}/ownership`)
+    return data
+  },
+  async transferOwnership(id: ID, payload: {
+    owner_role: OwnerRole; new_owner_type: string; new_owner_id: ID; reason: string
+  }): Promise<RuntimeAgent> {
+    const { data } = await apiClient.post<RuntimeAgent>(`${BASE}/agents/${id}/ownership/transfer`, payload)
+    return data
+  },
+  async ownershipHistory(id: ID): Promise<AgentOwnershipHistoryEntry[]> {
+    const { data } = await apiClient.get<AgentOwnershipHistoryEntry[]>(`${BASE}/agents/${id}/ownership/history`)
+    return data
+  },
+
+  // --- Machine identity (§11, §54) --- //
+  async getIdentity(id: ID): Promise<AgentIdentityRecord | null> {
+    const { data } = await apiClient.get<AgentIdentityRecord | null>(`${BASE}/agents/${id}/identity`)
+    return data
+  },
+  async associateIdentity(id: ID, identity_id: ID): Promise<RuntimeAgent> {
+    const { data } = await apiClient.post<RuntimeAgent>(`${BASE}/agents/${id}/identity/associate`, { identity_id })
+    return data
+  },
+  async createAndAssociateIdentity(id: ID, payload: {
+    client_id: string; credential_type?: string; expires_at?: string
+  }): Promise<RuntimeAgent> {
+    const { data } = await apiClient.post<RuntimeAgent>(
+      `${BASE}/agents/${id}/identity/create-and-associate`, payload)
+    return data
+  },
+  async replaceIdentity(id: ID, payload: {
+    client_id: string; credential_type?: string; expires_at?: string; reason: string
+  }): Promise<RuntimeAgent> {
+    const { data } = await apiClient.post<RuntimeAgent>(`${BASE}/agents/${id}/identity/replace`, payload)
+    return data
+  },
+
+  // --- Validation (§25-§30, §54) --- //
+  async validations(id: ID): Promise<ValidationRun[]> {
+    const { data } = await apiClient.get<ValidationRun[]>(`${BASE}/agents/${id}/validations`)
+    return data
+  },
+  async testSchema(id: ID, payload: {
+    schema_type: 'INPUT' | 'OUTPUT' | 'CONFIGURATION'; payload: Record<string, unknown>
+  }): Promise<{ valid: boolean; errors: string[] }> {
+    const { data } = await apiClient.post(`${BASE}/agents/${id}/schemas/test`, payload)
+    return data
+  },
+
+  // --- Duplicate detection (§32, §33, §54, §64) --- //
+  async duplicateCheck(id: ID): Promise<DuplicateMatch[]> {
+    const { data } = await apiClient.post<DuplicateMatch[]>(`${BASE}/agents/${id}/duplicate-check`)
+    return data
+  },
+  async duplicateMatches(id: ID): Promise<DuplicateMatch[]> {
+    const { data } = await apiClient.get<DuplicateMatch[]>(`${BASE}/agents/${id}/duplicate-matches`)
+    return data
+  },
+  async reviewDuplicate(agentId: ID, matchId: ID, payload: {
+    review_decision: DuplicateReviewDecision; review_reason: string
+  }): Promise<DuplicateMatch> {
+    const { data } = await apiClient.post<DuplicateMatch>(
+      `${BASE}/agents/${agentId}/duplicate-matches/${matchId}/review`, payload)
+    return data
+  },
+
+  // --- Import / export (§39-§45, §54) --- //
+  async importAgents(payload: {
+    file_name: string; format: 'JSON' | 'YAML' | 'CSV'
+    mode: 'CREATE_ONLY' | 'UPDATE_DRAFTS' | 'UPSERT_NON_ACTIVE' | 'VALIDATE_ONLY'; content: string
+  }): Promise<ImportJob> {
+    const { data } = await apiClient.post<ImportJob>(`${BASE}/agents/import`, payload)
+    return data
+  },
+  async importJob(jobId: ID): Promise<ImportJob> {
+    const { data } = await apiClient.get<ImportJob>(`${BASE}/agents/import/${jobId}`)
+    return data
+  },
+  async importItems(jobId: ID): Promise<ImportItem[]> {
+    const { data } = await apiClient.get<ImportItem[]>(`${BASE}/agents/import/${jobId}/items`)
+    return data
+  },
+  async exportAgents(payload: {
+    export_type: ExportType; format: 'JSON' | 'YAML' | 'CSV'; filters?: Record<string, unknown>
+  }): Promise<ExportJob> {
+    const { data } = await apiClient.post<ExportJob>(`${BASE}/agents/export`, payload)
+    return data
+  },
+  async exportJob(jobId: ID): Promise<ExportJob> {
+    const { data } = await apiClient.get<ExportJob>(`${BASE}/agents/export/${jobId}`)
+    return data
+  },
+  exportDownloadUrl(jobId: ID): string {
+    return `${BASE}/agents/export/${jobId}/download`
+  },
+
+  // --- Legacy migration classification (§70-§73) --- //
+  async classifyLegacyAgents(): Promise<MigrationRecord[]> {
+    const { data } = await apiClient.post<MigrationRecord[]>(`${BASE}/agents/migration/classify`)
+    return data
+  },
+  async migrationRecords(batchId?: string): Promise<MigrationRecord[]> {
+    const suffix = batchId ? `?batch_id=${encodeURIComponent(batchId)}` : ''
+    const { data } = await apiClient.get<MigrationRecord[]>(`${BASE}/agents/migration/records${suffix}`)
+    return data
+  },
+
+  // --- Lifecycle & audit history (§21, §38 Lifecycle/Audit tabs) --- //
+  async agentLifecycleEvents(id: ID): Promise<AgentLifecycleEventEntry[]> {
+    const { data } = await apiClient.get<AgentLifecycleEventEntry[]>(`${BASE}/agents/${id}/lifecycle-events`)
+    return data
+  },
+  async agentEvents(id: ID): Promise<RuntimeEvent[]> {
+    const { data } = await apiClient.get<RuntimeEvent[]>(`${BASE}/agents/${id}/events`)
     return data
   },
 
@@ -361,6 +573,14 @@ export const runtimeService = {
   },
   async killOrganization(id: ID, reason: string): Promise<{ executions_cancelled: number }> {
     const { data } = await apiClient.post(`${BASE}/kill-switch/organizations/${id}`, { reason })
+    return data
+  },
+  async killProject(id: ID, reason: string): Promise<{ executions_cancelled: number }> {
+    const { data } = await apiClient.post(`${BASE}/kill-switch/projects/${id}`, { reason })
+    return data
+  },
+  async killPlatform(reason: string): Promise<{ executions_cancelled: number }> {
+    const { data } = await apiClient.post(`${BASE}/kill-switch/platform`, { reason })
     return data
   },
 }

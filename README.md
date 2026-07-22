@@ -436,6 +436,24 @@ executions, workers-and-queue, capabilities-and-tools, gateways,
 runtime-policy-and-approvals, health-and-observability,
 operations-and-kill-switch and security.
 
+### Enterprise Agent Registry (Phase 5.1)
+
+The registry gate every agent must pass before it can version, deploy or
+execute: **accountable ownership** (business/technical/compliance owner,
+with an immutable transfer history), a **mandatory machine identity**
+(one per agent, DB-enforced), org-hierarchy scoping (business unit/
+department/team, derived from project when not given explicitly), a
+**13-state lifecycle** (register → validate → submit-for-approval →
+approve/reject → activate/suspend/resume → deprecate/archive/restore →
+retire, each transition its own audited event), a **validation-report
+engine** (metadata/ownership/identity/definition/risk rules, JSON Schema
+DoS guards, entrypoint format checks), **duplicate detection** (exact +
+similarity, reviewer decisions), **JSON/YAML/CSV import & export** (imports
+always land as DRAFT; exports always exclude secrets), a legacy-agent
+migration/classification page, optimistic concurrency (`row_version`), and
+a registration wizard with draft autosave. See
+[docs/runtime/registry/](docs/runtime/registry/) for the full set.
+
 **Users** (password `DemoPass!2026`):
 
 | Email                  | Role       |

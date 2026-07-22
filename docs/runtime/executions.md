@@ -86,6 +86,32 @@ payload is rejected outright rather than silently running the new payload
 under the old key. Records expire after 24h
 (`IdempotencyService.store(..., ttl_hours=24)`).
 
+## Agent-triggered self-execution (§29, §31)
+
+`POST /api/v1/runtime/executions/self` is the second, narrower entry point
+into the same Runtime Gateway: an *agent*, authenticated by its own API key
+rather than a human/service session, requesting an execution of **itself**
+(e.g. a webhook callback or a tool re-invoking the agent that owns it). The
+request body has no `agent_id` field — there is nothing to spoof — the
+target is always the calling agent, resolved from `get_current_agent`.
+
+`ExecutionRequestService.request_execution_as_agent` shares the exact same
+pipeline as `request_execution` (deployment resolution, input-contract
+validation, idempotency, policy evaluation, approval, queueing — see the
+state-machine walk above), factored into a common `_request_execution`
+helper parameterized on `principal: User | Agent`. The one real difference
+is authorization: a human/API request goes through
+`AuthorizationGateway.authorize` (RBAC + ABAC), while a self-execution
+request goes through `AuthorizationGateway.authorize_agent` (ABAC only — an
+agent holds no RBAC role of its own to check), with `trigger_type=AGENT` on
+the resulting execution row so it's distinguishable in the audit trail and
+Execution Detail page from human- or API-triggered runs.
+
+This is deliberately **self-only**: an agent may request an execution of
+itself, never of another agent. Arbitrary agent-to-agent chaining is
+multi-agent orchestration, which is explicitly out of scope for this phase
+(see "What's deliberately not here" in [overview.md](overview.md)).
+
 ## Cancellation, retry, replay
 
 - **Cancel** (`POST /executions/{id}/cancel`) — a queued/pending/

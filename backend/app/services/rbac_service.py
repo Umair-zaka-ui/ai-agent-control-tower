@@ -146,6 +146,24 @@ PERMISSION_CATALOG: dict[str, str] = {
     "runtime.cost.view": "View runtime cost and token usage",
     "runtime.approval.review": "Approve or reject runtime approval requests",
     "runtime.kill_switch.execute": "Activate the runtime kill switch at any scope",
+    # Enterprise Agent Registry (Phase 5.1 §57).
+    "runtime.agent.register": "Move a draft agent into the REGISTERED lifecycle state",
+    "runtime.agent.submit": "Submit a validated agent for approval",
+    "runtime.agent.reject": "Reject an agent's registration",
+    "runtime.agent.resume": "Resume a suspended agent",
+    "runtime.agent.deprecate": "Deprecate an active or suspended agent",
+    "runtime.agent.archive": "Archive an agent",
+    "runtime.agent.restore": "Restore an archived agent back to draft",
+    "runtime.agent.identity.associate": "Associate an existing eligible machine identity with an agent",
+    "runtime.agent.identity.create": "Create and associate a new machine identity for an agent",
+    "runtime.agent.identity.replace": "Replace an agent's machine identity",
+    "runtime.agent.ownership.view": "View agent ownership and ownership history",
+    "runtime.agent.ownership.transfer": "Transfer agent ownership roles",
+    "runtime.agent.validation.view": "View agent validation runs and reports",
+    "runtime.agent.duplicate.review": "Review and decide on detected duplicate agents",
+    "runtime.agent.import": "Bulk-import agent registrations",
+    "runtime.agent.export": "Export agent registrations",
+    "runtime.agent.audit.view": "View agent registry audit and lifecycle history",
 }
 
 _ALL = set(PERMISSION_CATALOG)

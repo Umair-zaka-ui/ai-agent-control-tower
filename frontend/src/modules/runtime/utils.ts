@@ -4,8 +4,12 @@ import { formatDateTime } from '@/utils/format'
 /** Shared status → badge-variant maps for the runtime pages. */
 export const AGENT_LIFECYCLE_VARIANT: Record<string, BadgeProps['variant']> = {
   DRAFT: 'secondary',
+  REGISTERED: 'default',
   VALIDATING: 'default',
+  VALIDATION_FAILED: 'destructive',
   VALIDATED: 'default',
+  PENDING_APPROVAL: 'warning',
+  REJECTED: 'destructive',
   APPROVED: 'default',
   ACTIVE: 'success',
   SUSPENDED: 'warning',

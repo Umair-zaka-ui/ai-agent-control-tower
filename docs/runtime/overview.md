@@ -2,6 +2,13 @@
 
 Phase 5.0 · mounted at `/api/v1/runtime` · frontend at `/runtime`.
 
+> **Phase 5.1 note**: the agent registry described in this doc set (§7.1,
+> the 8-state lifecycle in [agent-lifecycle.md](agent-lifecycle.md)) has
+> since been superseded by the full enterprise registry — accountable
+> ownership, mandatory machine identity, a 13-state lifecycle, validation
+> reports, duplicate detection, and import/export. See
+> [registry/overview.md](registry/overview.md).
+
 Phases 1-4 governed identities, permissions, policies, approvals and audit.
 Phase 5 is the execution layer: register, version, deploy, execute, suspend,
 monitor and retire real AI agents as managed enterprise workloads, under the
@@ -49,3 +56,7 @@ these being added later.
   actually execute in this environment; everything else is fully modeled
   (registry, assignment, authorization) but fails closed if invoked. See
   [gateways.md](gateways.md).
+- Agents can also trigger their own next run via `POST
+  /runtime/executions/self`, authenticated by API key rather than a human
+  session and authorized through ABAC alone (self-only, no agent-to-agent
+  chaining). See [executions.md](executions.md).

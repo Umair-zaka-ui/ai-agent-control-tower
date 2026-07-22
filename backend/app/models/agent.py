@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -22,6 +22,10 @@ if TYPE_CHECKING:
 
 class Agent(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "agents"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "slug", name="uq_agents_org_slug"),
+        UniqueConstraint("organization_id", "external_reference", name="uq_agents_org_external_ref"),
+    )
 
     organization_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -74,6 +78,56 @@ class Agent(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     )
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # --- Phase 5.1: enterprise agent registry (SRS 5.1 §6.1) ---
+    # ``risk_level`` (Phase 3, above) already covers SRS §15's declared risk
+    # classification (LOW/MEDIUM/HIGH/CRITICAL — "MODERATE" in the SRS maps to
+    # the existing "MEDIUM"); not duplicated here.
+    business_unit_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("business_units.id", ondelete="SET NULL"), nullable=True
+    )
+    department_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("departments.id", ondelete="SET NULL"), nullable=True
+    )
+    team_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("teams.id", ondelete="SET NULL"), nullable=True
+    )
+    identity_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agent_identities.id", ondelete="SET NULL"), nullable=True
+    )
+    display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    business_purpose: Mapped[str | None] = mapped_column(Text, nullable=True)
+    autonomy_level: Mapped[str] = mapped_column(String(30), nullable=False, default="ASSISTIVE")
+    technical_owner_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    compliance_owner_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    support_contact: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    documentation_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    repository_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    tags: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
+    # "metadata" is reserved by SQLAlchemy's declarative base; the DB column
+    # keeps the SRS name via `name=` (same pattern as AgentDefinition).
+    extra_metadata: Mapped[dict] = mapped_column("metadata", JSONB, nullable=False, default=dict)
+    registration_source: Mapped[str] = mapped_column(String(30), nullable=False, default="MANUAL")
+    external_reference: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    validated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    suspended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Optimistic concurrency (SRS 5.1 §53): a stale UPDATE raises
+    # SQLAlchemy's ``StaleDataError``, caught at the service layer and
+    # translated to ``AGENT_CONCURRENT_MODIFICATION``.
+    row_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
     organization: Mapped["Organization"] = relationship(back_populates="agents")
     permissions: Mapped[list["Permission"]] = relationship(
         back_populates="agent", cascade="all, delete-orphan"
@@ -81,3 +135,8 @@ class Agent(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     api_keys: Mapped[list["AgentApiKey"]] = relationship(
         back_populates="agent", cascade="all, delete-orphan"
     )
+
+    # Default ``version_id_generator`` (True) auto-increments ``row_version``
+    # on every UPDATE and raises ``StaleDataError`` if the row changed
+    # underneath the caller — no manual increment needed in service code.
+    __mapper_args__ = {"version_id_col": row_version}

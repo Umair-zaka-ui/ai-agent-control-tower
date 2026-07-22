@@ -9,33 +9,58 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui'
 import { ROUTES } from '@/constants/routes'
+import { ROLES } from '@/constants/roles'
 import { useAuth } from '@/hooks/useAuth'
 import { runtimeService } from '@/services'
 import { RuntimeNav } from './components/RuntimeNav'
 import { formatDate } from './utils'
 
+const ACTIVE_EXECUTION_STATUSES = new Set(['CREATED', 'AUTHORIZING', 'PENDING_APPROVAL', 'QUEUED', 'SCHEDULED', 'RUNNING'])
+
 /** Phase 5.0 §75, §60, §66 — operations center: worker/platform health and
  * the emergency kill switch. Kill-switch activation requires elevated
- * permission and is always confirmed before firing (§60). */
+ * permission and is always confirmed before firing (§60). Every scope the
+ * backend `KillSwitchService` supports (EXECUTION, AGENT, PROJECT,
+ * ORGANIZATION, PLATFORM) has a control here. */
 export function OperationsPage() {
   const { user } = useAuth()
   const organizationId = user?.organization_id
+  const isSuperAdmin = user?.role === ROLES.SUPER_ADMIN
   const [reason, setReason] = useState('')
   const [agentId, setAgentId] = useState('')
+  const [executionId, setExecutionId] = useState('')
+  const [projectId, setProjectId] = useState('')
 
   const health = useQuery({ queryKey: ['runtime-health'], queryFn: () => runtimeService.platformHealth() })
   const workers = useQuery({ queryKey: ['runtime-workers'], queryFn: () => runtimeService.workers(), refetchInterval: 15000 })
   const agents = useQuery({ queryKey: ['runtime-agents'], queryFn: () => runtimeService.agents() })
+  const executions = useQuery({ queryKey: ['runtime-executions'], queryFn: () => runtimeService.executions({ limit: 100 }) })
+  const activeExecutions = (executions.data ?? []).filter((e) => ACTIVE_EXECUTION_STATUSES.has(e.status))
 
   const onError = (e: unknown) => toast.error((e as { message?: string }).message ?? 'Operation failed')
 
+  const killExecution = useMutation({
+    mutationFn: () => runtimeService.killExecution(executionId, reason),
+    onSuccess: (r) => toast.success(`Kill switch activated — ${r.executions_cancelled} execution(s) cancelled`),
+    onError,
+  })
   const killAgent = useMutation({
     mutationFn: () => runtimeService.killAgent(agentId, reason),
     onSuccess: (r) => toast.success(`Kill switch activated — ${r.executions_cancelled} execution(s) cancelled`),
     onError,
   })
+  const killProject = useMutation({
+    mutationFn: () => runtimeService.killProject(projectId, reason),
+    onSuccess: (r) => toast.success(`Kill switch activated — ${r.executions_cancelled} execution(s) cancelled`),
+    onError,
+  })
   const killOrg = useMutation({
     mutationFn: () => runtimeService.killOrganization(organizationId ?? '', reason),
+    onSuccess: (r) => toast.success(`Kill switch activated — ${r.executions_cancelled} execution(s) cancelled`),
+    onError,
+  })
+  const killPlatform = useMutation({
+    mutationFn: () => runtimeService.killPlatform(reason),
     onSuccess: (r) => toast.success(`Kill switch activated — ${r.executions_cancelled} execution(s) cancelled`),
     onError,
   })
@@ -114,6 +139,17 @@ export function OperationsPage() {
           </p>
           <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason (required)"
                  aria-label="Kill switch reason" />
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Select className="w-56" aria-label="Execution to cancel" value={executionId} placeholder="Select an active execution…"
+                    options={activeExecutions.map((e) => ({ value: e.id, label: `${e.id.slice(0, 8)}… · ${e.status}` }))}
+                    onChange={(ev) => setExecutionId(ev.target.value)} />
+            <Button variant="destructive" size="sm" disabled={!executionId || killExecution.isPending}
+                    onClick={() => confirmAndRun('Cancel this single execution.', () => killExecution.mutate())}>
+              Kill execution
+            </Button>
+          </div>
+
           <div className="flex flex-wrap items-center gap-2">
             <Select className="w-56" aria-label="Agent to suspend" value={agentId} placeholder="Select an agent…"
                     options={(agents.data ?? []).map((a) => ({ value: a.id, label: a.name }))}
@@ -122,10 +158,28 @@ export function OperationsPage() {
                     onClick={() => confirmAndRun('Suspend this agent and cancel its active executions.', () => killAgent.mutate())}>
               Kill agent
             </Button>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Input className="w-56" value={projectId} onChange={(e) => setProjectId(e.target.value)}
+                   placeholder="Project ID" aria-label="Project to suspend" />
+            <Button variant="destructive" size="sm" disabled={!projectId || killProject.isPending}
+                    onClick={() => confirmAndRun('Suspend every agent and cancel every active execution in this project.', () => killProject.mutate())}>
+              Kill project
+            </Button>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
             <Button variant="destructive" size="sm" disabled={killOrg.isPending}
                     onClick={() => confirmAndRun('Suspend every active deployment and cancel every active execution in this organization.', () => killOrg.mutate())}>
               Kill entire organization
             </Button>
+            {isSuperAdmin && (
+              <Button variant="destructive" size="sm" disabled={killPlatform.isPending}
+                      onClick={() => confirmAndRun('Suspend every active deployment and cancel every active execution across ALL organizations on the platform.', () => killPlatform.mutate())}>
+                Kill entire platform
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>

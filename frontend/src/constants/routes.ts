@@ -92,7 +92,12 @@ export const ROUTES = {
   /** Agent Runtime & Lifecycle Management (Phase 5.0 §69). */
   RUNTIME_DASHBOARD: '/runtime',
   RUNTIME_AGENTS: '/runtime/agents',
+  RUNTIME_AGENT_NEW: '/runtime/agents/new',
   RUNTIME_AGENT_DETAIL: '/runtime/agents/:id',
+  RUNTIME_AGENT_DUPLICATES: '/runtime/agents/:id/duplicates',
+  RUNTIME_IMPORT: '/runtime/import',
+  RUNTIME_EXPORT: '/runtime/export',
+  RUNTIME_MIGRATION: '/runtime/migration',
   RUNTIME_DEPLOYMENTS: '/runtime/deployments',
   RUNTIME_DEPLOYMENT_DETAIL: '/runtime/deployments/:id',
   RUNTIME_EXECUTIONS: '/runtime/executions',
