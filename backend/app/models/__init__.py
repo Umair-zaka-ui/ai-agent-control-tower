@@ -62,6 +62,7 @@ from app.models.runtime import (
     AgentReleaseNote,
     AgentTool,
     AgentVersion,
+    AgentVersionCompatibilityFinding,
     AgentVersionSnapshot,
     AgentVersionStatusHistory,
     Capability,
@@ -160,4 +161,5 @@ __all__ = [
     "AgentReleaseArtifact",
     "AgentReleaseNote",
     "AgentVersionStatusHistory",
+    "AgentVersionCompatibilityFinding",
 ]

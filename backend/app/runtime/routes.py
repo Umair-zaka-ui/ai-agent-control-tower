@@ -92,11 +92,14 @@ from app.runtime.services import (
 from app.runtime.versioning.artifacts import ReleaseArtifactService
 from app.runtime.versioning.channels import ReleaseChannelService
 from app.runtime.versioning.compare import VersionComparisonService
+from app.runtime.versioning.compatibility import CompatibilityAnalysisService
 from app.runtime.versioning.lineage import VersionLineageService
 from app.runtime.versioning.notes import ReleaseNoteService
 from app.runtime.versioning.readiness import VersionReadinessService
 from app.runtime.versioning.release_metadata import ReleaseMetadataService
 from app.runtime.versioning.schemas import (
+    CompatibilityFindingRead,
+    CompatibilityReportRead,
     ReleaseArtifactCreate,
     ReleaseArtifactRead,
     ReleaseChannelRead,
@@ -794,6 +797,47 @@ def version_readiness(agent_id: uuid.UUID, version_id: uuid.UUID,
     agent = AgentRegistryService(db).get_or_404(actor, agent_id)
     version = AgentVersionService(db).get_or_404(actor, agent_id, version_id)
     return VersionReadinessService(db).check(agent, version)
+
+
+@router.get("/agents/{agent_id}/versions/{version_id}/compatibility", response_model=CompatibilityReportRead)
+def get_version_compatibility(agent_id: uuid.UUID, version_id: uuid.UUID,
+                              baseline_version_id: uuid.UUID | None = Query(default=None),
+                              actor: User = Depends(require_permission(_VERSION_VIEW)),
+                              db: Session = Depends(get_db)):
+    """Phase 5.2.6 — with no override, returns the last-persisted report
+    (read-only, no recomputation). An explicit ``baseline_version_id``
+    evaluates ephemerally against that baseline instead, without persisting
+    anything — e.g. to preview compatibility against the current occupant of
+    a release channel."""
+    AgentRegistryService(db).get_or_404(actor, agent_id)
+    AgentVersionService(db).get_or_404(actor, agent_id, version_id)
+    service = CompatibilityAnalysisService(db)
+    if baseline_version_id is not None:
+        return service.analyze(version_id, agent_id=agent_id, baseline_id=baseline_version_id, persist=False)
+    return service.get_report(version_id)
+
+
+@router.post("/agents/{agent_id}/versions/{version_id}/compatibility/analyze",
+             response_model=CompatibilityReportRead)
+def analyze_version_compatibility(agent_id: uuid.UUID, version_id: uuid.UUID,
+                                  baseline_version_id: uuid.UUID | None = Query(default=None),
+                                  actor: User = Depends(require_permission(_VERSION_VIEW)),
+                                  db: Session = Depends(get_db)):
+    """Recomputes and persists — useful after the analyzer improves, and for
+    versions published before this phase existed."""
+    AgentRegistryService(db).get_or_404(actor, agent_id)
+    AgentVersionService(db).get_or_404(actor, agent_id, version_id)
+    return CompatibilityAnalysisService(db).analyze(version_id, agent_id=agent_id, baseline_id=baseline_version_id)
+
+
+@router.get("/agents/{agent_id}/versions/{version_id}/compatibility/findings",
+           response_model=list[CompatibilityFindingRead])
+def list_version_compatibility_findings(agent_id: uuid.UUID, version_id: uuid.UUID,
+                                        actor: User = Depends(require_permission(_VERSION_VIEW)),
+                                        db: Session = Depends(get_db)):
+    AgentRegistryService(db).get_or_404(actor, agent_id)
+    AgentVersionService(db).get_or_404(actor, agent_id, version_id)
+    return CompatibilityAnalysisService(db).list_findings(version_id)
 
 
 # --------------------------------------------------------------------------- #

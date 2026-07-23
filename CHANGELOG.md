@@ -4,6 +4,43 @@ All notable changes to the AI Agent Control Tower are documented here. The forma
 based on [Keep a Changelog](https://keepachangelog.com/); the project is pre-1.0 and
 versions track the roadmap phases rather than semver guarantees.
 
+## [Unreleased] — Phase 5.2.6 · Compatibility & Breaking-Change Detection
+
+- **Added** `CompatibilityAnalysisService` (`app/runtime/versioning/compatibility.py`):
+  classifies a candidate version against a resolved baseline into
+  `COMPATIBLE`/`BACKWARD_COMPATIBLE`/`BREAKING`/`UNKNOWN` — input/output
+  contract (JSON Schema diff on `AgentDefinition.input_schema`/
+  `output_schema`), tool/capability bindings, model provider/config
+  changes, a numeric resource-limit heuristic, policy tightening
+  (`approved_models`, `prohibited_environments`,
+  `requires_approval_environments`), and prompt/metadata changes.
+- **Added** migration `0026_version_compatibility`: `agent_versions` gains
+  `compatibility_baseline_id`/`compatibility_analyzed_at`; new table
+  `agent_version_compatibility_findings` (one row per detected change,
+  replaced wholesale on re-analysis, never accumulated).
+- **Added** automatic compatibility analysis right after `publish()`'s own
+  commit succeeds — failure-tolerant: an analyzer exception is logged and
+  swallowed, never blocking publication. Also available on demand via
+  `POST .../versions/{id}/compatibility/analyze` (recomputes and persists;
+  backfills versions published before this phase existed).
+- **Added** three routes: `GET`/`POST .../versions/{id}/compatibility`,
+  `GET .../versions/{id}/compatibility/findings` — all reuse
+  `runtime.version.view` (no new permission).
+- **Replaced** `VersionReadinessService`'s `compatibility_analysis` check
+  — no longer always `skipped: true`; now a real evaluation that warns
+  (doesn't fail) on a correctly major-bumped breaking change and fails
+  only on genuine semver/compatibility inconsistency, still never gating
+  any lifecycle action.
+- **Deliberate SRS deviation**: semver/compatibility-level inconsistency
+  is reported (`semver_consistent: false`, a failed readiness check), not
+  enforced as a `publish()` blocker — preserves Part 1's advisory-only
+  boundary for comparison/readiness; see
+  [docs/runtime/versioning.md](docs/runtime/versioning.md).
+- 35 new backend tests (`tests/runtime/test_version_compatibility.py`,
+  16 pure/database-free classification tests + 19 integration/API tests).
+  Backend **696** green (661 + 35); frontend untouched by this
+  backend-only phase, still **297** green.
+
 ## [Unreleased] — Phase 5.2 Part 1 · Enterprise Versioning & Release Management Foundation
 
 - **Added** migration `0025_agent_versioning`: additive release-management

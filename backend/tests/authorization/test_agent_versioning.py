@@ -429,15 +429,21 @@ def test_readiness_flags_missing_metadata_and_artifacts(client: TestClient) -> N
     assert checks["approval_prerequisites_satisfied"] is False
 
 
-def test_readiness_compatibility_check_is_always_reported_as_skipped(client: TestClient) -> None:
+def test_readiness_compatibility_check_is_informational_before_analysis(client: TestClient) -> None:
+    """Phase 5.2.6 superseded the Part 1 stub (this check used to always
+    report ``skipped: true`` with "deferred to Part 3"). Compatibility is
+    now only actually computed at publish time (see
+    ``test_version_compatibility.py``), so a still-DRAFT version — never
+    analyzed — reports informationally rather than failing, and is never
+    ``skipped`` again."""
     org = _register_org(client)
     agent = _register_agent(client, org)
     version = _create_version(client, org, agent["id"])
 
     r = client.get(f"{RT}/agents/{agent['id']}/versions/{version['id']}/readiness", headers=org["headers"])
     compat = next(c for c in r.json()["checks"] if c["name"] == "compatibility_analysis")
-    assert compat["skipped"] is True
-    assert compat["passed"] is True  # deferred, never blocks readiness
+    assert compat["skipped"] is False
+    assert compat["passed"] is True  # not yet analyzed, informational only — never blocks readiness
 
 
 def test_readiness_all_checks_pass_for_a_fully_prepared_active_agent(client: TestClient) -> None:

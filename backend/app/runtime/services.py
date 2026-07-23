@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 import time
 import uuid
@@ -61,6 +62,8 @@ from app.models.runtime import (
     ToolCall,
 )
 from app.models.user import User
+
+logger = logging.getLogger(__name__)
 
 # --------------------------------------------------------------------------- #
 # Shared helpers
@@ -536,6 +539,20 @@ class AgentVersionService:
                      meta={"agent_id": str(agent.id), "version_id": str(version.id)})
         self.db.commit()
         self.db.refresh(version)
+
+        # Phase 5.2.6 — compatibility analysis is advisory (see
+        # docs/runtime/versioning.md); the publish itself is already durably
+        # committed above, so a bug in the analyzer can only fail its own
+        # best-effort follow-up, never make a version unpublishable.
+        try:
+            from app.runtime.versioning.compatibility import CompatibilityAnalysisService
+
+            CompatibilityAnalysisService(self.db).analyze(version.id)
+            self.db.refresh(version)
+        except Exception:
+            self.db.rollback()
+            logger.exception("Compatibility analysis failed for version %s during publish.", version.id)
+
         return version
 
     def deprecate(self, actor: User, agent: Agent, version_id: uuid.UUID) -> AgentVersion:
