@@ -1,8 +1,8 @@
 # REPO_STATE.md
 
-**Purpose**: a factual, verified state document for `ai-agent-control-tower`. Every claim below was extracted directly from the codebase, the live local Postgres database (after `alembic upgrade head` to `0025_agent_versioning`), the running FastAPI app object, or `git` — not from memory, changelog prose, or inference. Where something could not be mechanically verified, it is marked **UNVERIFIED**.
+**Purpose**: a factual, verified state document for `ai-agent-control-tower`. Every claim below was extracted directly from the codebase, the live local Postgres database (after `alembic upgrade head` to `0027_version_signing`), the running FastAPI app object, or `git` — not from memory, changelog prose, or inference. Where something could not be mechanically verified, it is marked **UNVERIFIED**.
 
-**Generated**: 2026-07-23, on branch `main` at commit `8092be1ac5b07ce1744ace5b7d0615835ed2c219` (2026-07-22 22:20:54 +0500), with uncommitted working-tree changes for Phase 5.2 Part 1 (see `git status` note in §8).
+**Generated**: 2026-07-23, initial version on branch `main` at commit `8092be1ac5b07ce1744ace5b7d0615835ed2c219`. **Fully regenerated** the same day after Phase 5.2 Part 1, Phase 5.2.6, and Phase 5.2.4 all shipped — now reflects `main` at commit `9ddb46d` ("Merge Phase 5.2.4: Cryptographic Signing, Provenance & Portable Attestation", 2026-07-23 07:24:47 +0500), working tree clean. §2, §3, §5, §6, and §8 were re-derived from the live system in this pass (not patched in place, unlike the two intermediate partial updates that preceded it).
 
 **Verification methods used**:
 - Directory tree: `find` (depth 4, pruned `node_modules`/`__pycache__`/`.git`/`.venv`/`dist`/`.pytest_cache`).
@@ -10,7 +10,7 @@
 - Migration chain: `alembic history` + `alembic current` + `ls backend/migrations/versions/`.
 - API surface: introspection of the live `app.main:app` FastAPI object (`app.routes`), extracting each route's HTTP methods, path, and — where present — the RBAC permission code captured in `require_permission(code)`'s closure.
 - Implemented modules: AST-parsed (`ast.parse`) every non-`__init__.py` file under `backend/app/`, extracting the module docstring's first line and every top-level class/public-function name — not a manual read, so nothing was skipped or summarized from memory.
-- Tests: full suite actually executed (`pytest -q`, `vitest run`) at generation time, not carried forward from an earlier run.
+- Tests: backend suite actually executed (`pytest -q`) at generation time, not carried forward from an earlier run. Frontend (`vitest run`) was **not** re-run in this pass — Phase 5.2.6 and Phase 5.2.4 are both backend-only, so its last actually-executed count (297 passed) is carried forward, explicitly flagged as such rather than silently re-asserted as freshly run.
 - Branches: `git branch -a --sort=-committerdate` with `--format` adding ISO committer dates (the bare command has no date column; dates were explicitly requested).
 
 ---
@@ -184,7 +184,12 @@ backend
       0023_agent_runtime.py
       0024_agent_registry.py
       0025_agent_versioning.py
+      0026_version_compatibility.py
+      0027_version_signing.py
   requirements.txt
+  scripts
+    __init__.py
+    recompute_checksums.py
   tests
     __init__.py
     authorization
@@ -220,6 +225,12 @@ backend
       recovery
       registration
       unit
+    runtime
+      conftest.py
+      test_attestation.py
+      test_canonical.py
+      test_version_compatibility.py
+      test_version_signing.py
     test_agents_part32.py
     test_analytics_part36.py
     test_approvals_part34.py
@@ -562,7 +573,9 @@ scripts
 
 ## 2. Database Schema
 
-**92 tables**, extracted via live `sqlalchemy.inspect()` against the local Postgres database after running every migration through `0025_agent_versioning` (head). This reflects exactly what the migration chain produces — cross-checked spot-wise against the SQLAlchemy model definitions in `backend/app/models/` and `backend/app/identity/models/` during construction of this document. `alembic_version` (Alembic's own bookkeeping table, one column, no app data) is included below for completeness since it is a real table in the database.
+**97 tables**, extracted via live `sqlalchemy.inspect()` against the local Postgres database after running every migration through `0027_version_signing` (head). This reflects exactly what the migration chain produces. `alembic_version` (Alembic's own bookkeeping table, one column, no app data) is included below for completeness since it is a real table in the database.
+
+**Phase 5.2.6/5.2.4 update**: re-extracted this session (previously 92 tables at `0025_agent_versioning`). 5 new tables: `agent_version_compatibility_findings` (5.2.6), `signing_keys`, `signing_key_versions`, `agent_version_signatures`, `agent_version_provenance` (5.2.4). `agent_versions` gained `compatibility_baseline_id`/`compatibility_analyzed_at` (5.2.6) and `checksum_algorithm`/`signed_at`/`manifest_digest` (5.2.4), plus `checksum` widened from `VARCHAR(64)` to `VARCHAR(80)`. `agent_version_snapshots` gained `checksum_algorithm` and the same `checksum` widening.
 
 For each table: every column with its Postgres type, nullability and default; primary key; foreign keys (with `ondelete` behavior); unique constraints; and indexes (including the unique ones, which Postgres also surfaces as indexes).
 
@@ -765,7 +778,7 @@ Unique constraints:
 Indexes:
   - ix_agent_api_keys_agent_id: ['agent_id']
   - ix_agent_api_keys_key_hash: ['key_hash']
-  - uq_agent_api_keys_key_hash UNIQUE: ['key_hash']
+  - uq_agent_api_keys_key_hash: ['key_hash'] (unique)
 
 #### agent_capabilities
 Columns:
@@ -964,8 +977,8 @@ Unique constraints:
 Indexes:
   - ix_agent_identities_agent_id: ['agent_id']
   - ix_agent_identities_client_id: ['client_id']
-  - uq_agent_identities_agent UNIQUE: ['agent_id']
-  - uq_agent_identities_client_id UNIQUE: ['client_id']
+  - uq_agent_identities_agent: ['agent_id'] (unique)
+  - uq_agent_identities_client_id: ['client_id'] (unique)
 
 #### agent_import_items
 Columns:
@@ -1091,7 +1104,7 @@ Primary key: ['id'] (name=agent_release_channels_pkey)
 Unique constraints:
   - agent_release_channels_name_key: ['name']
 Indexes:
-  - agent_release_channels_name_key UNIQUE: ['name']
+  - agent_release_channels_name_key: ['name'] (unique)
 
 #### agent_release_metadata
 Columns:
@@ -1118,7 +1131,7 @@ Foreign keys:
 Unique constraints:
   - agent_release_metadata_agent_version_id_key: ['agent_version_id']
 Indexes:
-  - agent_release_metadata_agent_version_id_key UNIQUE: ['agent_version_id']
+  - agent_release_metadata_agent_version_id_key: ['agent_version_id'] (unique)
   - ix_agent_release_metadata_version: ['agent_version_id']
 
 #### agent_release_notes
@@ -1179,20 +1192,87 @@ Foreign keys:
 Indexes:
   - ix_agent_validation_runs_agent: ['agent_id']
 
+#### agent_version_compatibility_findings
+Columns:
+  - id: UUID NOT NULL
+  - agent_version_id: UUID NOT NULL
+  - baseline_version_id: UUID NULL
+  - category: VARCHAR(40) NOT NULL
+  - path: VARCHAR(255) NOT NULL
+  - change_type: VARCHAR(20) NOT NULL
+  - materiality: VARCHAR(20) NOT NULL
+  - baseline_value: TEXT NULL
+  - candidate_value: TEXT NULL
+  - description: TEXT NOT NULL
+  - created_at: TIMESTAMP NOT NULL DEFAULT now()
+Primary key: ['id'] (name=agent_version_compatibility_findings_pkey)
+Foreign keys:
+  - ['agent_version_id'] -> agent_versions.['id'] (name=agent_version_compatibility_findings_agent_version_id_fkey, ondelete=CASCADE)
+  - ['baseline_version_id'] -> agent_versions.['id'] (name=agent_version_compatibility_findings_baseline_version_id_fkey, ondelete=SET NULL)
+Indexes:
+  - ix_version_compat_findings_version: ['agent_version_id']
+
+#### agent_version_provenance
+Columns:
+  - id: UUID NOT NULL
+  - agent_version_id: UUID NOT NULL
+  - actor_id: UUID NOT NULL
+  - actor_type: VARCHAR(32) NOT NULL DEFAULT 'USER'::character varying
+  - source_repository: TEXT NULL
+  - source_commit: VARCHAR(64) NULL
+  - source_ref: VARCHAR(255) NULL
+  - build_environment: VARCHAR(128) NULL
+  - builder_identity: TEXT NOT NULL
+  - source_ip: VARCHAR(45) NULL
+  - correlation_id: UUID NULL
+  - attestation_document: JSONB NOT NULL DEFAULT '{}'::jsonb
+  - created_at: TIMESTAMP NOT NULL DEFAULT now()
+Primary key: ['id'] (name=agent_version_provenance_pkey)
+Foreign keys:
+  - ['agent_version_id'] -> agent_versions.['id'] (name=agent_version_provenance_agent_version_id_fkey, ondelete=CASCADE)
+Unique constraints:
+  - agent_version_provenance_agent_version_id_key: ['agent_version_id']
+Indexes:
+  - agent_version_provenance_agent_version_id_key: ['agent_version_id'] (unique)
+  - ix_agent_version_provenance_version: ['agent_version_id']
+
+#### agent_version_signatures
+Columns:
+  - id: UUID NOT NULL
+  - agent_version_id: UUID NOT NULL
+  - manifest_digest: VARCHAR(80) NOT NULL
+  - signature: BYTEA NOT NULL
+  - algorithm: VARCHAR(32) NOT NULL
+  - signing_key_id: UUID NOT NULL
+  - signing_key_version: INTEGER NOT NULL
+  - signature_type: VARCHAR(32) NOT NULL DEFAULT 'PUBLISHER'::character varying
+  - dsse_envelope: JSONB NOT NULL DEFAULT '{}'::jsonb
+  - verification_status: VARCHAR(20) NOT NULL DEFAULT 'UNVERIFIED'::character varying
+  - signed_at: TIMESTAMP NOT NULL DEFAULT now()
+  - signed_by: UUID NULL
+Primary key: ['id'] (name=agent_version_signatures_pkey)
+Foreign keys:
+  - ['agent_version_id'] -> agent_versions.['id'] (name=agent_version_signatures_agent_version_id_fkey, ondelete=CASCADE)
+  - ['signed_by'] -> users.['id'] (name=agent_version_signatures_signed_by_fkey, ondelete=SET NULL)
+  - ['signing_key_id'] -> signing_keys.['id'] (name=agent_version_signatures_signing_key_id_fkey, ondelete=RESTRICT)
+Indexes:
+  - ix_agent_version_signatures_version: ['agent_version_id']
+
 #### agent_version_snapshots
 Columns:
   - id: UUID NOT NULL
   - agent_version_id: UUID NOT NULL
   - snapshot: JSONB NOT NULL DEFAULT '{}'::jsonb
-  - checksum: VARCHAR(64) NOT NULL
+  - checksum: VARCHAR(80) NOT NULL
   - created_at: TIMESTAMP NOT NULL DEFAULT now()
+  - checksum_algorithm: VARCHAR(20) NOT NULL DEFAULT 'legacy-sha256'::character varying
 Primary key: ['id'] (name=agent_version_snapshots_pkey)
 Foreign keys:
   - ['agent_version_id'] -> agent_versions.['id'] (name=agent_version_snapshots_agent_version_id_fkey, ondelete=CASCADE)
 Unique constraints:
   - agent_version_snapshots_agent_version_id_key: ['agent_version_id']
 Indexes:
-  - agent_version_snapshots_agent_version_id_key UNIQUE: ['agent_version_id']
+  - agent_version_snapshots_agent_version_id_key: ['agent_version_id'] (unique)
   - ix_agent_version_snapshots_version: ['agent_version_id']
 
 #### agent_version_status_history
@@ -1224,7 +1304,7 @@ Columns:
   - capabilities_snapshot: JSONB NOT NULL DEFAULT '[]'::jsonb
   - tools_snapshot: JSONB NOT NULL DEFAULT '[]'::jsonb
   - policy_snapshot: JSONB NULL
-  - checksum: VARCHAR(64) NOT NULL
+  - checksum: VARCHAR(80) NOT NULL
   - release_notes: TEXT NULL
   - created_by: UUID NULL
   - created_at: TIMESTAMP NOT NULL DEFAULT now()
@@ -1241,10 +1321,16 @@ Columns:
   - reviewed_by: UUID NULL
   - revoked_reason: TEXT NULL
   - retired_at: TIMESTAMP NULL
+  - compatibility_baseline_id: UUID NULL
+  - compatibility_analyzed_at: TIMESTAMP NULL
+  - checksum_algorithm: VARCHAR(20) NOT NULL DEFAULT 'legacy-sha256'::character varying
+  - signed_at: TIMESTAMP NULL
+  - manifest_digest: VARCHAR(80) NULL
 Primary key: ['id'] (name=agent_versions_pkey)
 Foreign keys:
   - ['agent_id'] -> agents.['id'] (name=agent_versions_agent_id_fkey, ondelete=CASCADE)
   - ['definition_id'] -> agent_definitions.['id'] (name=agent_versions_definition_id_fkey, ondelete=RESTRICT)
+  - ['compatibility_baseline_id'] -> agent_versions.['id'] (name=fk_agent_versions_compatibility_baseline, ondelete=SET NULL)
   - ['parent_version_id'] -> agent_versions.['id'] (name=fk_agent_versions_parent_version, ondelete=SET NULL)
   - ['release_channel_id'] -> agent_release_channels.['id'] (name=fk_agent_versions_release_channel, ondelete=SET NULL)
   - ['rollback_target_id'] -> agent_versions.['id'] (name=fk_agent_versions_rollback_target, ondelete=SET NULL)
@@ -1253,10 +1339,11 @@ Unique constraints:
   - uq_agent_versions_agent_version: ['agent_id', 'version']
 Indexes:
   - ix_agent_versions_agent: ['agent_id']
+  - ix_agent_versions_compatibility_baseline: ['compatibility_baseline_id']
   - ix_agent_versions_parent_version: ['parent_version_id']
   - ix_agent_versions_release_channel: ['release_channel_id']
   - ix_agent_versions_status: ['status']
-  - uq_agent_versions_agent_version UNIQUE: ['agent_id', 'version']
+  - uq_agent_versions_agent_version: ['agent_id', 'version'] (unique)
 
 #### agents
 Columns:
@@ -1344,8 +1431,8 @@ Indexes:
   - ix_agents_tags_gin: ['tags']
   - ix_agents_team: ['team_id']
   - ix_agents_updated_at: ['updated_at']
-  - uq_agents_org_external_ref UNIQUE: ['organization_id', 'external_reference']
-  - uq_agents_org_slug UNIQUE: ['organization_id', 'slug']
+  - uq_agents_org_external_ref: ['organization_id', 'external_reference'] (unique)
+  - uq_agents_org_slug: ['organization_id', 'slug'] (unique)
 
 #### alembic_version
 Columns:
@@ -1396,7 +1483,7 @@ Indexes:
   - ix_approvals_assigned_to_user_id: ['assigned_to_user_id']
   - ix_approvals_organization_id: ['organization_id']
   - ix_approvals_priority: ['priority']
-  - uq_approvals_agent_action_id UNIQUE: ['agent_action_id']
+  - uq_approvals_agent_action_id: ['agent_action_id'] (unique)
 
 #### attribute_definitions
 Columns:
@@ -1416,7 +1503,7 @@ Primary key: ['id'] (name=attribute_definitions_pkey)
 Unique constraints:
   - uq_attribute_definitions_name: ['name']
 Indexes:
-  - uq_attribute_definitions_name UNIQUE: ['name']
+  - uq_attribute_definitions_name: ['name'] (unique)
 
 #### audit_logs
 Columns:
@@ -1469,7 +1556,7 @@ Indexes:
   - ix_auth_devices_fingerprint: ['fingerprint']
   - ix_auth_devices_status: ['status']
   - ix_auth_devices_user_id: ['user_id']
-  - uq_auth_devices_user_fingerprint UNIQUE: ['user_id', 'fingerprint']
+  - uq_auth_devices_user_fingerprint: ['user_id', 'fingerprint'] (unique)
 
 #### auth_sessions
 Columns:
@@ -1593,7 +1680,7 @@ Unique constraints:
   - uq_business_unit_org_name: ['organization_id', 'name']
 Indexes:
   - ix_business_units_org: ['organization_id']
-  - uq_business_unit_org_name UNIQUE: ['organization_id', 'name']
+  - uq_business_unit_org_name: ['organization_id', 'name'] (unique)
 
 #### capabilities
 Columns:
@@ -1612,7 +1699,7 @@ Primary key: ['id'] (name=capabilities_pkey)
 Unique constraints:
   - uq_capabilities_name: ['name']
 Indexes:
-  - uq_capabilities_name UNIQUE: ['name']
+  - uq_capabilities_name: ['name'] (unique)
 
 #### compliance_reports
 Columns:
@@ -1703,7 +1790,7 @@ Unique constraints:
 Indexes:
   - ix_email_verifications_token_hash: ['verification_token_hash']
   - ix_email_verifications_user_id: ['user_id']
-  - uq_email_verifications_token_hash UNIQUE: ['verification_token_hash']
+  - uq_email_verifications_token_hash: ['verification_token_hash'] (unique)
 
 #### execution_attempts
 Columns:
@@ -1738,7 +1825,7 @@ Foreign keys:
 Unique constraints:
   - uq_execution_locks_execution: ['execution_id']
 Indexes:
-  - uq_execution_locks_execution UNIQUE: ['execution_id']
+  - uq_execution_locks_execution: ['execution_id'] (unique)
 
 #### external_clients
 Columns:
@@ -1760,7 +1847,7 @@ Unique constraints:
 Indexes:
   - ix_external_clients_client_id: ['client_id']
   - ix_external_clients_organization_id: ['organization_id']
-  - uq_external_clients_client_id UNIQUE: ['client_id']
+  - uq_external_clients_client_id: ['client_id'] (unique)
 
 #### governance_findings
 Columns:
@@ -1805,7 +1892,7 @@ Unique constraints:
 Indexes:
   - ix_governance_risk_scores_band: ['band']
   - ix_governance_risk_scores_org: ['organization_id']
-  - uq_governance_risk_identity UNIQUE: ['organization_id', 'identity_id']
+  - uq_governance_risk_identity: ['organization_id', 'identity_id'] (unique)
 
 #### idempotency_records
 Columns:
@@ -1826,7 +1913,7 @@ Foreign keys:
 Unique constraints:
   - uq_idempotency_key: ['organization_id', 'agent_id', 'idempotency_key']
 Indexes:
-  - uq_idempotency_key UNIQUE: ['organization_id', 'agent_id', 'idempotency_key']
+  - uq_idempotency_key: ['organization_id', 'agent_id', 'idempotency_key'] (unique)
 
 #### identity_protection_rules
 Columns:
@@ -1903,8 +1990,8 @@ Indexes:
   - ix_invitations_organization_id: ['organization_id']
   - ix_invitations_status: ['status']
   - ix_invitations_token_hash: ['token_hash']
-  - uq_invitations_pending_email UNIQUE: ['organization_id', None]
-  - uq_invitations_token_hash UNIQUE: ['token_hash']
+  - uq_invitations_pending_email: ['organization_id', None] (unique)
+  - uq_invitations_token_hash: ['token_hash'] (unique)
 
 #### login_history
 Columns:
@@ -1947,7 +2034,7 @@ Primary key: ['id'] (name=organizations_pkey)
 Foreign keys:
   - ['owner_id'] -> users.['id'] (name=fk_organizations_owner_id, ondelete=SET NULL)
 Indexes:
-  - ix_organizations_slug UNIQUE: ['slug']
+  - ix_organizations_slug: ['slug'] (unique)
 
 #### ownership_history
 Columns:
@@ -2002,7 +2089,7 @@ Indexes:
   - ix_password_reset_requests_token_hash: ['token_hash']
   - ix_password_reset_requests_user_id: ['user_id']
   - ix_password_reset_requests_user_status: ['user_id', 'status']
-  - uq_password_reset_requests_token_hash UNIQUE: ['token_hash']
+  - uq_password_reset_requests_token_hash: ['token_hash'] (unique)
 
 #### permission_cache
 Columns:
@@ -2018,7 +2105,7 @@ Unique constraints:
   - uq_permission_cache_identity: ['identity_id']
 Indexes:
   - ix_permission_cache_org: ['organization_id']
-  - uq_permission_cache_identity UNIQUE: ['identity_id']
+  - uq_permission_cache_identity: ['identity_id'] (unique)
 
 #### permission_groups
 Columns:
@@ -2032,7 +2119,7 @@ Unique constraints:
   - uq_permission_group_name: ['name']
 Indexes:
   - ix_permission_groups_name: ['name']
-  - uq_permission_group_name UNIQUE: ['name']
+  - uq_permission_group_name: ['name'] (unique)
 
 #### permission_versions
 Columns:
@@ -2044,7 +2131,7 @@ Primary key: ['id'] (name=permission_versions_pkey)
 Unique constraints:
   - uq_permission_version_org: ['organization_id']
 Indexes:
-  - uq_permission_version_org UNIQUE: ['organization_id']
+  - uq_permission_version_org: ['organization_id'] (unique)
 
 #### permissions
 Columns:
@@ -2065,7 +2152,7 @@ Unique constraints:
 Indexes:
   - ix_permissions_agent_id: ['agent_id']
   - ix_permissions_organization_id: ['organization_id']
-  - uq_permission_agent_resource_action UNIQUE: ['agent_id', 'resource', 'action']
+  - uq_permission_agent_resource_action: ['agent_id', 'resource', 'action'] (unique)
 
 #### policies
 Columns:
@@ -2134,7 +2221,7 @@ Unique constraints:
   - uq_project_team_name: ['team_id', 'name']
 Indexes:
   - ix_projects_team: ['team_id']
-  - uq_project_team_name UNIQUE: ['team_id', 'name']
+  - uq_project_team_name: ['team_id', 'name'] (unique)
 
 #### rate_limit_hits
 Columns:
@@ -2165,7 +2252,7 @@ Indexes:
   - ix_rbac_permissions_code: ['code']
   - ix_rbac_permissions_group_id: ['group_id']
   - ix_rbac_permissions_resource_type: ['resource_type']
-  - uq_rbac_permissions_code UNIQUE: ['code']
+  - uq_rbac_permissions_code: ['code'] (unique)
 
 #### refresh_tokens
 Columns:
@@ -2187,7 +2274,7 @@ Indexes:
   - ix_refresh_tokens_family_id: ['family_id']
   - ix_refresh_tokens_session_id: ['session_id']
   - ix_refresh_tokens_token_hash: ['token_hash']
-  - uq_refresh_tokens_token_hash UNIQUE: ['token_hash']
+  - uq_refresh_tokens_token_hash: ['token_hash'] (unique)
 
 #### remediation_actions
 Columns:
@@ -2271,7 +2358,7 @@ Unique constraints:
 Indexes:
   - ix_resource_ownership_lookup: ['resource_type', 'resource_id']
   - ix_resource_ownership_org: ['organization_id']
-  - uq_resource_ownership UNIQUE: ['resource_type', 'resource_id']
+  - uq_resource_ownership: ['resource_type', 'resource_id'] (unique)
 
 #### resource_shares
 Columns:
@@ -2315,7 +2402,7 @@ Indexes:
   - ix_resources_lookup: ['resource_type', 'resource_id']
   - ix_resources_org: ['organization_id']
   - ix_resources_owner: ['owner_id']
-  - uq_resources_type_id UNIQUE: ['resource_type', 'resource_id']
+  - uq_resources_type_id: ['resource_type', 'resource_id'] (unique)
 
 #### role_hierarchy
 Columns:
@@ -2332,7 +2419,7 @@ Unique constraints:
 Indexes:
   - ix_role_hierarchy_child: ['child_role_id']
   - ix_role_hierarchy_parent: ['parent_role_id']
-  - uq_role_hierarchy_edge UNIQUE: ['parent_role_id', 'child_role_id']
+  - uq_role_hierarchy_edge: ['parent_role_id', 'child_role_id'] (unique)
 
 #### role_permissions
 Columns:
@@ -2350,7 +2437,7 @@ Unique constraints:
 Indexes:
   - ix_role_permissions_permission_id: ['permission_id']
   - ix_role_permissions_role_id: ['role_id']
-  - uq_role_permission UNIQUE: ['role_id', 'permission_id']
+  - uq_role_permission: ['role_id', 'permission_id'] (unique)
 
 #### roles
 Columns:
@@ -2378,7 +2465,7 @@ Unique constraints:
 Indexes:
   - ix_roles_organization_id: ['organization_id']
   - ix_roles_status: ['status']
-  - uq_role_org_name UNIQUE: ['organization_id', 'name']
+  - uq_role_org_name: ['organization_id', 'name'] (unique)
 
 #### runtime_approvals
 Columns:
@@ -2479,6 +2566,42 @@ Foreign keys:
   - ['owner_id'] -> users.['id'] (name=service_accounts_owner_id_fkey, ondelete=SET NULL)
 Indexes:
   - ix_service_accounts_organization_id: ['organization_id']
+
+#### signing_key_versions
+Columns:
+  - id: UUID NOT NULL
+  - signing_key_id: UUID NOT NULL
+  - version: INTEGER NOT NULL
+  - public_key_pem: TEXT NOT NULL
+  - created_at: TIMESTAMP NOT NULL DEFAULT now()
+  - retired_at: TIMESTAMP NULL
+Primary key: ['id'] (name=signing_key_versions_pkey)
+Foreign keys:
+  - ['signing_key_id'] -> signing_keys.['id'] (name=signing_key_versions_signing_key_id_fkey, ondelete=CASCADE)
+Unique constraints:
+  - uq_signing_key_versions_key_version: ['signing_key_id', 'version']
+Indexes:
+  - ix_signing_key_versions_key: ['signing_key_id']
+  - uq_signing_key_versions_key_version: ['signing_key_id', 'version'] (unique)
+
+#### signing_keys
+Columns:
+  - id: UUID NOT NULL
+  - key_id: VARCHAR(128) NOT NULL
+  - provider: VARCHAR(32) NOT NULL DEFAULT 'LOCAL'::character varying
+  - algorithm: VARCHAR(32) NOT NULL DEFAULT 'ED25519'::character varying
+  - current_version: INTEGER NOT NULL DEFAULT 1
+  - status: VARCHAR(20) NOT NULL DEFAULT 'ACTIVE'::character varying
+  - public_key_pem: TEXT NOT NULL
+  - revoked_at: TIMESTAMP NULL
+  - revocation_reason: TEXT NULL
+  - created_at: TIMESTAMP NOT NULL DEFAULT now()
+  - updated_at: TIMESTAMP NOT NULL DEFAULT now()
+Primary key: ['id'] (name=signing_keys_pkey)
+Unique constraints:
+  - signing_keys_key_id_key: ['key_id']
+Indexes:
+  - signing_keys_key_id_key: ['key_id'] (unique)
 
 #### sod_rules
 Columns:
@@ -2597,7 +2720,7 @@ Unique constraints:
   - uq_user_profiles_user_id: ['user_id']
 Indexes:
   - ix_user_profiles_user_id: ['user_id']
-  - uq_user_profiles_user_id UNIQUE: ['user_id']
+  - uq_user_profiles_user_id: ['user_id'] (unique)
 
 #### user_roles
 Columns:
@@ -2629,7 +2752,7 @@ Indexes:
   - ix_user_roles_role_id: ['role_id']
   - ix_user_roles_scope: ['scope']
   - ix_user_roles_user_id: ['user_id']
-  - uq_user_role_scope UNIQUE: ['user_id', 'role_id', 'scope', 'organization_id', 'department_id', 'team_id', 'project_id', 'resource_type', 'resource_id']
+  - uq_user_role_scope: ['user_id', 'role_id', 'scope', 'organization_id', 'department_id', 'team_id', 'project_id', 'resource_type', 'resource_id'] (unique)
 
 #### users
 Columns:
@@ -2654,17 +2777,13 @@ Foreign keys:
   - ['organization_id'] -> organizations.['id'] (name=users_organization_id_fkey, ondelete=CASCADE)
 Indexes:
   - ix_users_department_id: ['department_id']
-  - ix_users_email UNIQUE: ['email']
+  - ix_users_email: ['email'] (unique)
   - ix_users_organization_id: ['organization_id']
   - ix_users_password_expires_at: ['password_expires_at']
 
 ## 3. Migration Chain
 
-All 25 Alembic revisions in `backend/migrations/versions/`, in chain order (oldest → newest), verified via `alembic history` and `ls`. **Current head at the time of the last full regeneration: `0025_agent_versioning`** (verified via `alembic current` against the live database).
-
-> **Phase 5.2.6 update**: a 26th revision, `0026_version_compatibility` (revises `0025_agent_versioning`), was added — adds `agent_versions.compatibility_baseline_id`/`compatibility_analyzed_at` and the new `agent_version_compatibility_findings` table. Verified this session: `alembic upgrade head` → `0026_version_compatibility` applies cleanly; `alembic downgrade -1` → back to `0025_agent_versioning` cleanly; re-upgraded to head before running tests. **Current head is now `0026_version_compatibility`.** The row-by-row table below was not regenerated to add row 26 (that would require re-running the full mechanical dump per §11's protocol) — see the row 25 entry for the last mechanically-verified state.
->
-> **Phase 5.2.4 update**: a 27th revision, `0027_version_signing` (revises `0026_version_compatibility`), was added — widens both checksum columns to `VARCHAR(80)`, adds `checksum_algorithm` to `agent_versions`/`agent_version_snapshots`, adds `agent_versions.signed_at`/`manifest_digest`, and creates `signing_keys`, `signing_key_versions`, `agent_version_signatures`, `agent_version_provenance`. Verified this session: `alembic upgrade head` → `0027_version_signing` applies cleanly; `alembic downgrade -1` → back to `0026_version_compatibility` cleanly; re-upgraded to head before running tests. **Current head is now `0027_version_signing`.**
+All 27 Alembic revisions in `backend/migrations/versions/`, in chain order (oldest → newest), verified via `alembic history` and `ls` this session. **Current head: `0027_version_signing`** (verified via `alembic current` against the live database; `alembic upgrade head` / `downgrade -1` / `upgrade head` all re-verified clean this session for both of the two newest revisions).
 
 | # | Revision file | Description (from the migration's own docstring) |
 |---|---|---|
@@ -2692,11 +2811,15 @@ All 25 Alembic revisions in `backend/migrations/versions/`, in chain order (olde
 | 22 | `0022_governance_iga.py` | Phase 4.3.8 - Identity Governance & Administration (IGA). |
 | 23 | `0023_agent_runtime.py` | Phase 5.0 - Enterprise AI Agent Runtime & Lifecycle Management. |
 | 24 | `0024_agent_registry.py` | Phase 5.1 - Enterprise Agent Registry, Definitions & Lifecycle. |
-| 25 | `0025_agent_versioning.py` | Phase 5.2 Part 1 - Enterprise Immutable Agent Versioning & Release Management. **(head)** |
+| 25 | `0025_agent_versioning.py` | Phase 5.2 Part 1 - Enterprise Immutable Agent Versioning & Release Management. |
+| 26 | `0026_version_compatibility.py` | Phase 5.2.6 - Compatibility & Breaking-Change Detection. |
+| 27 | `0027_version_signing.py` | Phase 5.2.4 - Cryptographic Signing, Provenance & Portable Attestation. **(head)** |
 
 ## 4. Implemented Modules
 
-**226 non-`__init__.py` Python files** under `backend/app/`, AST-parsed for their module docstring (first line shown) and every top-level class/public function. Grouped by domain (backend directory structure). Frontend module structure is summarized separately at the end of this section (file-count only — the frontend was not AST-parsed since the exhaustive symbol-level inventory the user asked for was scoped to "modules" in the module/class/function sense, which is the backend's organizing unit; the frontend's `src/modules/*` React component tree does not have an equivalent exported-symbol convention).
+**233 non-`__init__.py` Python files** under `backend/app/` (226 at the last full count, `0025_agent_versioning`; +7 this session — `versioning/attestation.py`, `canonical.py`, `compatibility.py`, `keys.py`, `signing/base.py`, `signing/local.py`, `signing/registry.py`; `signing/__init__.py` excluded per this section's own non-`__init__.py` rule), AST-parsed for their module docstring (first line shown) and every top-level class/public function. Grouped by domain (backend directory structure). Frontend module structure is summarized separately at the end of this section (file-count only — the frontend was not AST-parsed since the exhaustive symbol-level inventory the user asked for was scoped to "modules" in the module/class/function sense, which is the backend's organizing unit; the frontend's `src/modules/*` React component tree does not have an equivalent exported-symbol convention).
+
+**Out of this section's stated scope** (`backend/app/` only): `backend/scripts/recompute_checksums.py` (Phase 5.2.4's audited legacy-checksum-migration script) and its `backend/scripts/__init__.py` live under `backend/scripts/`, a sibling of `backend/app/`, not under it — noted here for completeness rather than silently expanding the count above.
 
 ### api
 
@@ -3366,11 +3489,26 @@ All 25 Alembic revisions in `backend/migrations/versions/`, in chain order (olde
 **`backend/app/runtime/versioning/artifacts.py`** — Phase 5.2 Part 1 SRS §27 — release artifact references.
 - Classes: `ReleaseArtifactService`
 
+**`backend/app/runtime/versioning/attestation.py`** — Phase 5.2.4 SRS ACT-VER-FR-060..071 — portable attestation & DSSE signing.
+- Classes: `AttestationService`
+- Functions: `pae,compute_manifest_digest,build_attestation`
+
+**`backend/app/runtime/versioning/canonical.py`** — Phase 5.2.4 SRS ACT-VER-FR-025, FR-040..FR-047 — canonical serialization.
+- Classes: `CanonicalizationError`
+- Functions: `canonicalize,digest_bytes,digest,verify_digest,stringify_floats`
+
 **`backend/app/runtime/versioning/channels.py`** — Phase 5.2 Part 1 SRS §9, §26 — release channel catalog.
 - Classes: `ReleaseChannelService`
 
 **`backend/app/runtime/versioning/compare.py`** — Phase 5.2 Part 1 SRS §3 — version comparison.
 - Classes: `VersionComparisonService`
+
+**`backend/app/runtime/versioning/compatibility.py`** — Phase 5.2.6 SRS ACT-VER-FR-100..108 — compatibility & breaking-change detection.
+- Classes: `Finding,CompatibilityAnalysisService`
+- Functions: `declared_increment,expected_increment_for,is_semver_consistent,compare_input_contract,compare_output_contract,compare_tool_bindings,compare_capabilities,compare_model_configuration,compare_policy,compare_prompt_and_metadata,detect_breaking,overall_level,classify_change`
+
+**`backend/app/runtime/versioning/keys.py`** — Phase 5.2.4 SRS ACT-VER-FR-060..071 — signing key lifecycle.
+- Classes: `SigningKeyService`
 
 **`backend/app/runtime/versioning/lineage.py`** — Phase 5.2 Part 1 SRS §17-18 — version lineage.
 - Classes: `VersionLineageService`
@@ -3388,15 +3526,24 @@ All 25 Alembic revisions in `backend/migrations/versions/`, in chain order (olde
 - Classes: `ReleaseMetadataService`
 
 **`backend/app/runtime/versioning/schemas.py`** — Pydantic schemas for the Phase 5.2 Part 1 versioning foundation.
-- Classes: `ReleaseChannelRead,VersionSnapshotRead,ReleaseMetadataUpsert,ReleaseMetadataRead,ReleaseArtifactCreate,ReleaseArtifactRead,ReleaseNoteCreate,ReleaseNoteRead,VersionStatusHistoryRead,RollbackTargetRequest,RevokeVersionRequest,VersionComparisonRead,ReadinessCheckRead,VersionReadinessRead`
+- Classes: `ReleaseChannelRead,VersionSnapshotRead,ReleaseMetadataUpsert,ReleaseMetadataRead,ReleaseArtifactCreate,ReleaseArtifactRead,ReleaseNoteCreate,ReleaseNoteRead,VersionStatusHistoryRead,RollbackTargetRequest,RevokeVersionRequest,VersionComparisonRead,ReadinessCheckRead,VersionReadinessRead,CompatibilityFindingRead,CompatibilityReportFinding,CompatibilitySummary,CompatibilityReportRead,SignatureRead,ProvenanceRead,AttestationRead,SigningKeyRead,RevokeSigningKeyRequest,SignatureVerificationCheck,VerificationResultRead` *(class list extended by Phase 5.2.6 and Phase 5.2.4; docstring unchanged)*
 
 **`backend/app/runtime/versioning/semantic_version.py`** — Phase 5.2 Part 1 SRS §15-16 — semantic versioning rules.
 - Classes: `SemanticVersionService`
 - Functions: `parse_semver`
 
+**`backend/app/runtime/versioning/signing/base.py`** — Phase 5.2.4 SRS ACT-VER-FR-060..071 — the signing provider contract.
+- Classes: `SignatureResult,KeyRotationResult,SigningProvider`
+
+**`backend/app/runtime/versioning/signing/local.py`** — Phase 5.2.4 SRS ACT-VER-FR-060..071 — local, file-based Ed25519 signing.
+- Classes: `LocalKeyProvider`
+
+**`backend/app/runtime/versioning/signing/registry.py`** — Phase 5.2.4 SRS ACT-VER-FR-060..071 — signing provider selection.
+- Functions: `get_signing_provider`
+
 **`backend/app/runtime/versioning/snapshot.py`** — Phase 5.2 Part 1 SRS §10-14 — the snapshot builder.
 - Classes: `SnapshotBuilderService`
-- Functions: `build_snapshot,checksum_of`
+- Functions: `build_snapshot,checksum_of` *(plus `_legacy_checksum_of`, private, added by Phase 5.2.4)*
 
 **`backend/app/runtime/versioning/status_history.py`** — Phase 5.2 Part 1 SRS §19, §25 — the version lifecycle transition ledger.
 - Functions: `record_status_change,list_status_history`
@@ -3526,11 +3673,11 @@ Modules (`frontend/src/modules/*`, `.ts`/`.tsx` file count excluding tests):
 
 ## 5. API Surface
 
-Extracted by importing the live `app.main:app` FastAPI object and iterating `app.routes` — every method, path, and (where the endpoint depends on `require_permission(code)`) the exact permission code, read out of that dependency's closure. This is the actual routing table the server would serve, not a manual transcription of 36 separate router files. `/docs`, `/openapi.json`, `/redoc` (FastAPI/Swagger-internal, not application routes) are excluded from the count and table below. A permission of `—` means the route has no `require_permission` dependency (either public — e.g. `/auth/login`, `/auth/register` — or gated by a different mechanism, e.g. API-key auth via `get_current_agent`, or session/JWT auth alone via `get_current_user` with no RBAC check).
+Extracted by importing the live `app.main:app` FastAPI object and iterating `app.routes` — every method, path, and (where the endpoint depends on `require_permission(code)`) the exact permission code, read out of that dependency's closure. This is the actual routing table the server would serve. `/docs`, `/openapi.json`, `/redoc` are excluded from the count and table below. A permission of `—` means the route has no `require_permission` dependency (either public, or gated by a different mechanism — e.g. API-key auth via `get_current_agent`, or session/JWT auth alone via `get_current_user` with no RBAC check).
 
-Grouped by top-level path prefix for readability (444 raw route entries total; 440 after excluding the 4 framework-internal ones).
+Grouped by top-level path prefix for readability. Re-extracted this session (previously 440 at `0025_agent_versioning`; 11 new routes across Phase 5.2.6 (3: compatibility/analyze/findings) and Phase 5.2.4 (8: signatures/provenance/attestation/verify/countersign/signing-keys×3)).
 
-Total application routes (excluding /docs, /openapi.json, /redoc): **440**
+Total application routes (excluding /docs, /openapi.json, /redoc): **452**
 
 #### `/agent-actions`
 
@@ -3959,10 +4106,16 @@ Total application routes (excluding /docs, /openapi.json, /redoc): **440**
 | POST | `/api/v1/runtime/agents/{agent_id}/versions/{version_id}/approve` | `runtime.agent.approve` | `app.runtime.routes::approve_version` |
 | GET | `/api/v1/runtime/agents/{agent_id}/versions/{version_id}/artifacts` | `runtime.version.view` | `app.runtime.routes::list_release_artifacts` |
 | POST | `/api/v1/runtime/agents/{agent_id}/versions/{version_id}/artifacts` | `runtime.version.create` | `app.runtime.routes::add_release_artifact` |
+| GET | `/api/v1/runtime/agents/{agent_id}/versions/{version_id}/attestation` | `runtime.version.view` | `app.runtime.routes::get_version_attestation` |
 | GET | `/api/v1/runtime/agents/{agent_id}/versions/{version_id}/compare/{other_version_id}` | `runtime.version.view` | `app.runtime.routes::compare_versions` |
+| GET | `/api/v1/runtime/agents/{agent_id}/versions/{version_id}/compatibility` | `runtime.version.view` | `app.runtime.routes::get_version_compatibility` |
+| POST | `/api/v1/runtime/agents/{agent_id}/versions/{version_id}/compatibility/analyze` | `runtime.version.view` | `app.runtime.routes::analyze_version_compatibility` |
+| GET | `/api/v1/runtime/agents/{agent_id}/versions/{version_id}/compatibility/findings` | `runtime.version.view` | `app.runtime.routes::list_version_compatibility_findings` |
+| POST | `/api/v1/runtime/agents/{agent_id}/versions/{version_id}/countersign` | `runtime.agent.approve` | `app.runtime.routes::countersign_version` |
 | POST | `/api/v1/runtime/agents/{agent_id}/versions/{version_id}/deprecate` | `runtime.version.deprecate` | `app.runtime.routes::deprecate_version` |
 | GET | `/api/v1/runtime/agents/{agent_id}/versions/{version_id}/notes` | `runtime.version.view` | `app.runtime.routes::list_release_notes` |
 | POST | `/api/v1/runtime/agents/{agent_id}/versions/{version_id}/notes` | `runtime.version.create` | `app.runtime.routes::add_release_note` |
+| GET | `/api/v1/runtime/agents/{agent_id}/versions/{version_id}/provenance` | `runtime.version.view` | `app.runtime.routes::get_version_provenance` |
 | POST | `/api/v1/runtime/agents/{agent_id}/versions/{version_id}/publish` | `runtime.version.publish` | `app.runtime.routes::publish_version` |
 | GET | `/api/v1/runtime/agents/{agent_id}/versions/{version_id}/readiness` | `runtime.version.view` | `app.runtime.routes::version_readiness` |
 | GET | `/api/v1/runtime/agents/{agent_id}/versions/{version_id}/release-metadata` | `runtime.version.view` | `app.runtime.routes::get_release_metadata` |
@@ -3970,9 +4123,11 @@ Total application routes (excluding /docs, /openapi.json, /redoc): **440**
 | POST | `/api/v1/runtime/agents/{agent_id}/versions/{version_id}/retire` | `runtime.version.retire` | `app.runtime.routes::retire_version` |
 | POST | `/api/v1/runtime/agents/{agent_id}/versions/{version_id}/revoke` | `runtime.version.revoke` | `app.runtime.routes::revoke_version` |
 | POST | `/api/v1/runtime/agents/{agent_id}/versions/{version_id}/rollback-target` | `runtime.version.create` | `app.runtime.routes::set_version_rollback_target` |
+| GET | `/api/v1/runtime/agents/{agent_id}/versions/{version_id}/signatures` | `runtime.version.view` | `app.runtime.routes::list_version_signatures` |
 | GET | `/api/v1/runtime/agents/{agent_id}/versions/{version_id}/snapshot` | `runtime.version.view` | `app.runtime.routes::get_version_snapshot` |
 | GET | `/api/v1/runtime/agents/{agent_id}/versions/{version_id}/status-history` | `runtime.version.view` | `app.runtime.routes::get_version_status_history` |
 | POST | `/api/v1/runtime/agents/{agent_id}/versions/{version_id}/validate` | `runtime.version.create` | `app.runtime.routes::validate_version` |
+| POST | `/api/v1/runtime/agents/{agent_id}/versions/{version_id}/verify` | `runtime.version.view` | `app.runtime.routes::verify_version` |
 | GET | `/api/v1/runtime/approvals` | `runtime.approval.review` | `app.runtime.routes::list_approvals` |
 | POST | `/api/v1/runtime/approvals/{approval_id}/decide` | `runtime.approval.review` | `app.runtime.routes::decide_approval` |
 | GET | `/api/v1/runtime/capabilities` | `runtime.agent.view` | `app.runtime.routes::list_capabilities` |
@@ -4005,6 +4160,9 @@ Total application routes (excluding /docs, /openapi.json, /redoc): **440**
 | POST | `/api/v1/runtime/kill-switch/platform` | `runtime.kill_switch.execute` | `app.runtime.routes::kill_platform` |
 | POST | `/api/v1/runtime/kill-switch/projects/{project_id}` | `runtime.kill_switch.execute` | `app.runtime.routes::kill_project` |
 | GET | `/api/v1/runtime/release-channels` | `runtime.version.view` | `app.runtime.routes::list_release_channels` |
+| GET | `/api/v1/runtime/signing-keys` | `runtime.signing.view` | `app.runtime.routes::list_signing_keys` |
+| POST | `/api/v1/runtime/signing-keys/{key_id}/revoke` | `runtime.signing.manage` | `app.runtime.routes::revoke_signing_key` |
+| POST | `/api/v1/runtime/signing-keys/{key_id}/rotate` | `runtime.signing.manage` | `app.runtime.routes::rotate_signing_key` |
 | GET | `/api/v1/runtime/tools` | `runtime.agent.view` | `app.runtime.routes::list_tools` |
 | POST | `/api/v1/runtime/tools` | `runtime.tool.manage` | `app.runtime.routes::create_tool` |
 | GET | `/api/v1/runtime/workers` | `runtime.health.view` | `app.runtime.routes::list_workers` |
@@ -4128,7 +4286,8 @@ Total application routes (excluding /docs, /openapi.json, /redoc): **440**
 | GET | `/policies/templates` | `—` | `app.api.routes.policies::list_policy_templates` |
 | DELETE | `/policies/{policy_id}` | `policy.delete` | `app.api.routes.policies::delete_policy` |
 | GET | `/policies/{policy_id}` | `policy.view` | `app.api.routes.policies::get_policy` |
-| PATCH,PUT | `/policies/{policy_id}` | `policy.edit` | `app.api.routes.policies::update_policy` |
+| PATCH | `/policies/{policy_id}` | `policy.edit` | `app.api.routes.policies::update_policy` |
+| PUT | `/policies/{policy_id}` | `policy.edit` | `app.api.routes.policies::update_policy` |
 | GET | `/policies/{policy_id}/audit` | `policy.view` | `app.api.routes.policies::policy_audit` |
 | PATCH | `/policies/{policy_id}/disable` | `policy.edit` | `app.api.routes.policies::disable_policy` |
 | PATCH | `/policies/{policy_id}/enable` | `policy.edit` | `app.api.routes.policies::enable_policy` |
@@ -4159,13 +4318,11 @@ Total application routes (excluding /docs, /openapi.json, /redoc): **440**
 
 ## 6. Phase 5.2 Status
 
-Verified against the current codebase (models, live schema, service files, route table) at generation time — not carried forward from any earlier summary.
-
-> **Partial update (Phase 5.2.6)**: only the 5.2.6 row below, plus the matching lines in §9 and §11, were re-verified and patched in place after Phase 5.2.6 shipped. Sections 2, 3, 5, and the rest of §6 were **not** mechanically re-run for this update (no schema/route/module-inventory change outside what's already reflected in Phase 5.2.6's own row) — this document's own update protocol (§11) calls for a full regeneration at the end of every sub-phase; that full regeneration did not happen here, only this targeted correction of the specific claims Phase 5.2.6 made stale.
+Verified against the current codebase (models, live schema, service files, route table) this session — full re-verification, all rows, not carried forward from any earlier summary. Phase 5.2 is now **fully implemented** across all seven sub-phases.
 
 | Sub-phase | Status | Evidence |
 |---|---|---|
-| **5.2.1 Version Core & Immutability** | **IMPLEMENTED** | `agent_versions` table (92-table live schema, §2); `AgentVersion` model class in `backend/app/models/runtime.py`; `AgentVersionService` (create/validate/approve/publish/deprecate/revoke/retire) in `backend/app/runtime/services.py`; `VERSION_LIFECYCLE = ("DRAFT","VALIDATING","READY_FOR_REVIEW","APPROVED","PUBLISHED","DEPRECATED","REVOKED","RETIRED")` (same file); `agent_version_status_history` table + `backend/app/runtime/versioning/status_history.py` records every transition. |
+| **5.2.1 Version Core & Immutability** | **IMPLEMENTED** | `agent_versions` table (97-table live schema, §2); `AgentVersion` model class in `backend/app/models/runtime.py`; `AgentVersionService` (create/validate/approve/publish/deprecate/revoke/retire) in `backend/app/runtime/services.py`; `VERSION_LIFECYCLE = ("DRAFT","VALIDATING","READY_FOR_REVIEW","APPROVED","PUBLISHED","DEPRECATED","REVOKED","RETIRED")` (same file, unchanged by 5.2.6/5.2.4 — verified); `agent_version_status_history` table + `backend/app/runtime/versioning/status_history.py` records every transition. |
 | **5.2.2 Configuration Snapshots** | **IMPLEMENTED** | Per-field snapshots on `agent_versions` (`configuration_snapshot`, `prompt_snapshot`, `model_configuration`, `capabilities_snapshot`, `tools_snapshot`, `policy_snapshot` — Phase 5.0) plus the complete frozen document in `agent_version_snapshots.snapshot` (JSONB), built by `SnapshotBuilderService.build_and_store` / `build_snapshot()` in `backend/app/runtime/versioning/snapshot.py`, called once at `publish()`. |
 | **5.2.3 Content Addressing & Checksums** | **IMPLEMENTED** (canonical-sha256 as of Phase 5.2.4) | `agent_versions.checksum`/`agent_version_snapshots.checksum` now `sha256:<hex>` via `app/runtime/versioning/canonical.py::digest()`, algorithm tracked per-row in `checksum_algorithm` (`'legacy-sha256'` for pre-5.2.4 rows, `'canonical-sha256'` for new ones; migration `0027_version_signing`). Not "content-addressed storage" in the sense of a CAS/object store — checksums are integrity hashes stored as a column, not used as lookup keys. |
 | **5.2.4 Signing & Provenance** | **IMPLEMENTED** | `AttestationService` (`app/runtime/versioning/attestation.py`) signs an in-toto Statement v1 / DSSE-enveloped document over each version's manifest digest via a pluggable `SigningProvider` (`app/runtime/versioning/signing/`, `LocalKeyProvider` — Ed25519 — the only implementation today). Wired into `publish()` fail-closed (signing failure aborts publication, unlike 5.2.6's advisory analysis). New tables `signing_keys`, `signing_key_versions`, `agent_version_signatures`, `agent_version_provenance` (migration `0027_version_signing`); `agent_versions.signature_id` (previously always null) now wired to the primary signature's id. Key rotation/revocation supported; verification is internal-only (`ACT-VER-FR-070` public endpoint deliberately deferred — see docs/runtime/versioning.md's Known Deviations). 8 new routes, 2 new permissions (`runtime.signing.view`/`.manage`). 47 new tests (`backend/tests/runtime/test_canonical.py`, `test_version_signing.py`, `test_attestation.py`). |
@@ -4184,10 +4341,10 @@ Verified against the current codebase (models, live schema, service files, route
 | Timestamp mixin | `TimestampMixin` — `created_at`/`updated_at`, server-side `func.now()`, `onupdate` on the latter | `backend/app/models/mixins.py` |
 | Error envelope | `ErrorCode` (string-constant class) + `IdentityError(code, message)` exception, handled by a registered FastAPI exception handler producing `{"success": false, "error": {"code", "message"}, "request_id"}` | `backend/app/identity/errors.py` — used well beyond the identity module itself (e.g. every `app/runtime/*` file imports `ErrorCode`/`IdentityError` from here) |
 | Service pattern (dominant) | One `XService` class per aggregate, `__init__(self, db: Session)`, a `get_or_404` method, direct SQLAlchemy queries — no repository indirection | e.g. `AgentVersionService` in `backend/app/runtime/services.py`, `AgentLifecycleService` in `backend/app/runtime/registry/services.py` |
-| Repository pattern (minority) | Explicit `XRepository` classes wrapping queries, used underneath services | Only in `backend/app/identity/repositories/*.py` (`BaseRepository` generic base in `base.py`) and `backend/app/authorization/repositories.py` (Phase 4.3.1 core only) — **not** used in the later authorization submodules (`abac/`, `admin/`, `hierarchy/`, `resources/`), governance, or runtime/registry/versioning, which query directly from services. This is an inconsistency across phases, not a documented rule (see §10). |
-| Permission naming | Dot-notation `domain.resource.action` strings (e.g. `runtime.version.retire`, `agent.view`, `policy.edit`), centrally cataloged | `PERMISSION_CATALOG: dict[str, str]` in `backend/app/services/rbac_service.py`; `require_permission(code)` dependency in `backend/app/api/deps.py:129` |
-| Backend test framework | pytest, real Postgres (not sqlite/mocks) via `SessionLocal()`; `client`/`db_session`/`admin` fixtures | `backend/tests/authorization/conftest.py`; hermetic defaults (notifications/rate-limit/envelope off) via autouse fixtures in `backend/tests/conftest.py` |
-| Backend test layout | `backend/tests/{authorization,identity}/` plus flat `test_*.py` files at `backend/tests/` root for the original Phase 1-3 surface | verified via `find backend/tests -maxdepth 2 -type d` |
+| Repository pattern (minority) | Explicit `XRepository` classes wrapping queries, used underneath services | Only in `backend/app/identity/repositories/*.py` (`BaseRepository` generic base in `base.py`) and `backend/app/authorization/repositories.py` (Phase 4.3.1 core only) — **not** used in the later authorization submodules (`abac/`, `admin/`, `hierarchy/`, `resources/`), governance, or runtime/registry/versioning (including 5.2.6's `compatibility.py`, 5.2.4's `attestation.py`/`keys.py`, re-verified this session), which query directly from services. This is an inconsistency across phases, not a documented rule (see §10). |
+| Permission naming | Dot-notation `domain.resource.action` strings (e.g. `runtime.version.retire`, `runtime.signing.manage`, `agent.view`, `policy.edit`), centrally cataloged | `PERMISSION_CATALOG: dict[str, str]` in `backend/app/services/rbac_service.py`; `require_permission(code)` dependency in `backend/app/api/deps.py:129` |
+| Backend test framework | pytest, real Postgres (not sqlite/mocks) via `SessionLocal()`; `client`/`db_session`/`admin` fixtures | `backend/tests/authorization/conftest.py`, `backend/tests/runtime/conftest.py` (the latter also carries an autouse fixture isolating each test onto its own signing key_id — see §10 #16); hermetic defaults (notifications/rate-limit/envelope off) via autouse fixtures in `backend/tests/conftest.py` |
+| Backend test layout | `backend/tests/{authorization,identity,runtime}/` plus flat `test_*.py` files at `backend/tests/` root for the original Phase 1-3 surface | `runtime/` added this session (Phase 5.2.6/5.2.4: `test_version_compatibility.py`, `test_canonical.py`, `test_version_signing.py`, `test_attestation.py`); verified via `find backend/tests -maxdepth 2 -type d` |
 | Frontend test framework | Vitest, `jsdom` environment, `@testing-library/react` + `user-event`, cleanup via `afterEach` | `frontend/vitest.config.ts`, `frontend/src/test/setup.ts` |
 | Frontend test layout | `frontend/src/modules/<domain>/tests/*.test.tsx` co-located per module (not a top-level `tests/` dir) | verified via `find frontend/src/modules -iname "*.test.*"` (this session) |
 | Frontend structure | One module dir per backend domain (`frontend/src/modules/<domain>/`), one service file per domain (`frontend/src/services/<domain>Service.ts`), shared Radix-based primitives in `frontend/src/components/ui/` | `frontend/src/modules/*`, `frontend/src/services/*.ts` |
@@ -4198,11 +4355,14 @@ Verified against the current codebase (models, live schema, service files, route
 
 ## 8. Branch History
 
-Output of `git branch -a --sort=-committerdate`, with committer dates added via `--format` (the bare command has no date column; dates were requested). Names and dates only — 25 local branches, each mirrored by an `origin/*` remote-tracking branch at the same commit/date (shown once below; the `origin/<name>` counterpart is identical).
+Output of `git branch --sort=-committerdate`, with committer dates added via `--format`. Names and dates only — 30 local branches, re-verified this session (was 25 at the last full count); each mirrored by an `origin/*` remote-tracking branch at the same commit/date (shown once below; the `origin/<name>` counterpart is identical). 5 new branches since the last full count: `feat/5.2.4-signing-provenance`, `feat/5.2.6-compatibility`, `feature/phase-5.2-part1-versioning-foundation` (all merged into `main` via local `--no-ff` merges, per the git-log evidence below), plus 2 more that existed but weren't reflected in that stale count.
 
 | Branch | Committer date |
 |---|---|
-| `main` | 2026-07-22 22:20:54 +0500 |
+| `main` | 2026-07-23 07:24:47 +0500 |
+| `feat/5.2.4-signing-provenance` | 2026-07-23 07:24:19 +0500 |
+| `feat/5.2.6-compatibility` | 2026-07-23 06:27:39 +0500 |
+| `feature/phase-5.2-part1-versioning-foundation` | 2026-07-23 01:56:36 +0500 |
 | `feature/phase-5.1-agent-registry-hardening` | 2026-07-22 22:19:01 +0500 |
 | `feat/phase-5.0-hardening` | 2026-07-20 18:35:58 +0500 |
 | `feat/phase-5.0-agent-runtime` | 2026-07-20 16:16:04 +0500 |
@@ -4230,7 +4390,7 @@ Output of `git branch -a --sort=-committerdate`, with committer dates added via 
 | `feat/audit-compliance-center-part-3.5` | 2026-07-01 04:18:00 +0500 |
 | `feat/approval-workbench-part-3.4` | 2026-06-30 02:53:28 +0500 |
 
-Current branch: `main`. Working tree is **not clean** — Phase 5.2 Part 1 changes (versioning models/services/routes/tests/docs) are present but uncommitted on top of `8092be1` (verified via `git status --porcelain`).
+Current branch: `main`, at `9ddb46d` ("Merge Phase 5.2.4: Cryptographic Signing, Provenance & Portable Attestation"). Working tree is clean except for this document's own in-progress regeneration (verified via `git status --porcelain`).
 
 ---
 
@@ -4238,7 +4398,7 @@ Current branch: `main`. Working tree is **not clean** — Phase 5.2 Part 1 chang
 
 Every item below was mechanically verified at generation time (grep with an explicit exit-code check, or an actual test run), not inferred.
 
-1. **Zero `TODO`/`FIXME`/`XXX`/`HACK:` markers** anywhere in `backend/app` or `frontend/src` (`grep -rn` both returned no matches).
+1. **Zero real `TODO`/`FIXME`/`XXX`/`HACK:` markers** anywhere in `backend/app` or `frontend/src`. Re-verified this session: `grep -rn` now returns exactly one hit — `backend/app/runtime/versioning/canonical.py:24`, the substring `XXXX` inside `` \uXXXX `` (documentation prose describing JSON's Unicode-escape syntax, not a marker) — confirmed benign by inspection, not a real TODO-style marker.
 2. **Zero `NotImplementedError`** anywhere in `backend/app`.
 3. **Zero pytest `skip`/`xfail` markers** in `backend/tests`.
 4. **Duplicate OpenAPI `operationId` warning**: `update_policy` in `backend/app/api/routes/policies.py:137` is registered via `@router.api_route("/{policy_id}", methods=["PUT", "PATCH"])` — both methods share one function, so FastAPI's OpenAPI generator emits a `UserWarning: Duplicate Operation ID` every time the schema is built (reproduced during this session's test run). Cosmetic — both HTTP methods work correctly (`test_response_envelope.py::test_openapi_schema_is_not_enveloped` passes) — but would break strict OpenAPI-codegen tooling pointed at this schema.
@@ -4247,7 +4407,7 @@ Every item below was mechanically verified at generation time (grep with an expl
 7. **CAPTCHA is a placeholder.** `CaptchaService.verify()` (`backend/app/identity/protection/policy.py:89`) has no real Turnstile/reCAPTCHA/hCaptcha integration.
 8. **Analytics cost figures are deterministic estimates**, not real provider billing data (`backend/app/services/analytics_service.py:64`, "Estimated unit costs (USD)... deterministic placeholders").
 9. ~~Phase 5.2 cryptographic signing is unimplemented~~ — shipped in Phase 5.2.4 (see §6, row 5.2.4) and is no longer a gap. Two narrower deviations remain, both deliberate and documented in `docs/runtime/versioning.md`'s Known Deviations: (a) the local signing provider necessarily loads private key bytes into process memory to sign (`ACT-VER-NFR-002`), closing when Azure Key Vault lands; (b) there is no public/unauthenticated verification endpoint (`ACT-VER-FR-070`), closing if/when external verification is actually needed.
-10. **No "release package" entity.** The SRS for Phase 5.2 Part 1 lists "release packages" as in-scope; this codebase treats the frozen `agent_version_snapshots.snapshot` document as that bundle rather than introducing a separately-named table — documented as a deliberate equivalence in `docs/runtime/versioning.md`, not a gap in functionality, but worth flagging since no artifact literally named "release package" exists.
+10. **No "release package" entity, literally named.** The SRS for Phase 5.2 Part 1 lists "release packages" as in-scope; this codebase treats the frozen `agent_version_snapshots.snapshot` document — and, as of Phase 5.2.4, the signed in-toto attestation built over it (`agent_version_provenance.attestation_document`) — as that bundle rather than introducing a separately-named table. The attestation document is a closer functional analog than the bare snapshot was (self-contained, portable, cryptographically signed), but still no artifact literally named "release package" exists — documented as a deliberate equivalence in `docs/runtime/versioning.md`, not a gap in functionality.
 11. **Multi-agent orchestration and several other large feature areas do not exist in any form**: a visual workflow builder, distributed event streaming at hyperscale, automated model optimization, reinforcement learning, autonomous agent creation, a marketplace, multi-cloud federation, a Kubernetes operator, GPU scheduling. Explicitly out of scope per `docs/runtime/overview.md`'s "What's deliberately not here."
 12. **Actual rollback/canary/traffic-shift execution does not exist.** `AgentVersion.rollback_target_id` (Phase 5.2 Part 1) is a settable pointer only; nothing reads it to perform a rollback. `DeploymentService.rollback` (Phase 5.0, `backend/app/runtime/services.py`) is the only thing that changes what's actually deployed, and is a full redeploy to a target version, not a traffic-shifting rollback.
 13. **Frontend production bundle is a single ~1.65 MB chunk** (431 KB gzip) — Vite's build output flags this as exceeding its 500 KB warning threshold; no route-level code-splitting has been applied (reproduced this session via `npm run build`).
@@ -4273,12 +4433,17 @@ Decisions the SRS/roadmap documents don't specify, that the implementation settl
 11. **Password hashing migrated bcrypt → argon2id** (Phase 4.2.2.1); bcrypt is retained solely to verify and auto-upgrade pre-existing hashes on next login. `backend/requirements.txt` comment; `backend/app/core/security.py`.
 12. **The response envelope and rate limiting are off by default in the entire test suite**, turned on only by the specific tests that assert their behavior (`_no_response_envelope`, `_no_rate_limit` autouse fixtures in `backend/tests/conftest.py`) — a hermetic-testing decision, not an SRS requirement.
 13. **Semantic versions with no explicit value auto-derive** (patch-bump from the agent's current highest version, or `0.1.0` for the first) rather than defaulting to a fixed string — closes a gap where Phase 5.0 defaulted every version to `"0.1.0"` unconditionally, which would have made the new duplicate-rejection rule reject the second version of every agent. `backend/app/runtime/versioning/semantic_version.py`.
+14. **Compatibility analysis (Phase 5.2.6) is advisory and failure-tolerant; signing (Phase 5.2.4) is fail-closed and mandatory** — a deliberate, opposite asymmetry between two features that both hook `publish()`. A bug in the compatibility analyzer is logged and swallowed after `publish()`'s own commit (an advisory diagnostic must never block a release). A bug in the signer raises out of `publish()` entirely before anything commits (an unsigned published version is an integrity hole, `ACT-VER-NFR-004`). `backend/app/runtime/services.py::AgentVersionService.publish`, both code paths adjacent with contrasting comments.
+15. **Canonical serialization (`canonical.py`) never silently guesses a portable representation for a float or an unsupported type — it raises.** The old checksum routines used `json.dumps(..., default=str)`, which is exactly the kind of hidden, language-specific behavior a signature's integrity guarantee cannot tolerate; producers must explicitly opt in via `stringify_floats()`. This surfaced and fixed a real, previously-silent bug: `build_snapshot()` embedded raw `datetime` objects for three release-metadata fields, relying on `default=str`'s non-portable formatting. `backend/app/runtime/versioning/canonical.py` module docstring.
+16. **`signing_keys` is a single global catalog, not per-organization** — the same pattern as release channels (#9 above) and for the same reason (no SRS bullet asked for per-tenant keys, and a shared vocabulary is simpler to operate). A concrete consequence, discovered and fixed during this work: revoking "the" key is process-wide, not scoped to one tenant/test — `backend/tests/runtime/conftest.py`'s autouse `_isolated_signing_key` fixture exists specifically because an early test run revoked the shared key and the (real, committed) corruption persisted across separate test invocations until manually repaired.
+17. **`agent_versions.signature_id` was wired to the primary signature's id, not dropped**, even though Phase 5.2 Part 1 left it permanently null. The column's own name ("the id of *the* signature") maps naturally onto "the primary one," matching the existing `snapshot_reference` denormalization pattern already on the same row. `backend/app/runtime/versioning/attestation.py::AttestationService.build_and_sign`.
+18. **The countersign endpoint reuses `runtime.agent.approve` rather than introducing `runtime.version.approve`.** No permission by that literal name exists in `PERMISSION_CATALOG`; `runtime.agent.approve` already gates the conceptually identical action (`approve_version`, the DRAFT/READY_FOR_REVIEW→APPROVED transition) — reusing it avoided a same-meaning synonym. `backend/app/runtime/routes.py::countersign_version`.
 
 ---
 
 ## 11. Update Protocol
 
-This file must be regenerated at the end of every Phase 5.2 sub-phase (5.2.2 through 5.2.7, and any further sub-phases added later). On each regeneration:
+Phase 5.2 is now complete — all seven sub-phases (5.2.1 through 5.2.7) are **IMPLEMENTED** per §6, re-verified in full this session (previously only 5.2.6 and 5.2.4's rows had been patched in place; §2/§3/§5/§6/§8 are now genuinely re-derived from the live system, closing that gap). This file must be regenerated at the end of every subsequent phase/sub-phase this codebase adds next (Phase 5.3 or whatever follows). On each regeneration:
 
 - **§2 (Database Schema), §3 (Migration Chain), §5 (API Surface), and §6 (Phase 5.2 Status) must be re-derived from the live system** — re-run `alembic upgrade head` then live `sqlalchemy.inspect()` for §2; `alembic history`/`current` for §3; a fresh import-and-introspect of `app.main:app` for §5; and re-check every piece of evidence cited in §6 (file existence, grep results) — never edited by hand or carried forward from the previous version of this document.
 - §1, §4, §7, §9, and §10 should also be re-verified (directory tree, AST module scan, conventions, gap greps, and any new deliberate decisions), since new sub-phases are expected to add files, close gaps, and make new decisions.
