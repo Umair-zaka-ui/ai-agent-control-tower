@@ -137,6 +137,12 @@ class AgentVersion(Base, UUIDPrimaryKeyMixin):
     reviewed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     revoked_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Phase 5.2.6 — which baseline `compatibility_level` was computed against,
+    # and when (see app/runtime/versioning/compatibility.py).
+    compatibility_baseline_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agent_versions.id", ondelete="SET NULL"), nullable=True, index=True,
+    )
+    compatibility_analyzed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class AgentReleaseChannel(Base, UUIDPrimaryKeyMixin):
@@ -261,6 +267,37 @@ class AgentVersionStatusHistory(Base, UUIDPrimaryKeyMixin):
     new_status: Mapped[str] = mapped_column(String(20), nullable=False)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     changed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class AgentVersionCompatibilityFinding(Base, UUIDPrimaryKeyMixin):
+    """Phase 5.2.6 SRS ACT-VER-FR-100..108 — one detected change between a
+    version and its resolved baseline (see
+    app/runtime/versioning/compatibility.py). Many per version; replaced
+    wholesale (not accumulated) each time analysis re-runs for that version."""
+
+    __tablename__ = "agent_version_compatibility_findings"
+
+    agent_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agent_versions.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    baseline_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agent_versions.id", ondelete="SET NULL"), nullable=True,
+    )
+    # INPUT_CONTRACT / OUTPUT_CONTRACT / TOOL_BINDING / CAPABILITY / MODEL_CONFIG /
+    # RESOURCE_LIMIT / POLICY / PROMPT / METADATA
+    category: Mapped[str] = mapped_column(String(40), nullable=False)
+    path: Mapped[str] = mapped_column(String(255), nullable=False)
+    # ADDED / REMOVED / MODIFIED
+    change_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    # BREAKING / BACKWARD_COMPATIBLE / COMPATIBLE
+    materiality: Mapped[str] = mapped_column(String(20), nullable=False)
+    baseline_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    candidate_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

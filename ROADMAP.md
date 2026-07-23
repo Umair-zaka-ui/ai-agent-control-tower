@@ -845,9 +845,41 @@ than forking a second version table:
   permission; 25 new backend tests (661 total green); 7 new frontend
   tests (297 total green); clean typecheck and build.
 
-Next: production readiness (MFA, OAuth/SSO, observability), or Phase 5.2
-Parts 2-4 (compatibility analysis, detailed release APIs, real
-cryptographic signing, actual rollback/canary execution).
+### Part 5.2.6 — Compatibility & Breaking-Change Detection ✅
+
+Makes the `compatibility_level` column Part 1 reserved (but never
+computed) real:
+
+- **Compatibility classification** (ACT-VER-FR-100..108): a candidate
+  version vs. a resolved baseline into `COMPATIBLE` /
+  `BACKWARD_COMPATIBLE` / `BREAKING` / `UNKNOWN` — input/output contract
+  (JSON Schema diff), tool/capability bindings, model provider/config,
+  resource limits (heuristic), policy tightening, prompt/metadata. One
+  breaking finding makes the whole version `BREAKING`.
+- **Baseline resolution**: explicit override → `parent_version_id` →
+  highest `PUBLISHED` predecessor → `UNKNOWN` if none exist.
+- **Findings table** (`agent_version_compatibility_findings`, migration
+  `0026_version_compatibility`): one row per detected change, consequence-
+  oriented description, replaced (not accumulated) on re-analysis.
+- **Semver-consistency check**: declared MAJOR/MINOR/PATCH increment vs.
+  the detected level's expected minimum — **reported, not enforced**;
+  publication never blocks on it (see
+  [docs/runtime/versioning.md](docs/runtime/versioning.md) for why this
+  deliberately deviates from the SRS's "reject on inconsistency").
+- **Readiness's `compatibility_analysis` check is real** — no longer
+  `skipped: true`; warns (doesn't fail) on a correctly major-bumped
+  breaking change, fails only on a genuine inconsistency, and — like every
+  readiness check — never gates a lifecycle action.
+- Triggered automatically as a failure-tolerant follow-up right after
+  `publish()`; also on demand via `POST .../compatibility/analyze`
+  (backfills versions published before this phase existed).
+- Migration `0026_version_compatibility`; no new permission (reuses
+  `runtime.version.view`); 35 new backend tests (696 total green); backend
+  only — frontend untouched, still 297 green.
+
+Next: production readiness (MFA, OAuth/SSO, observability), or the rest of
+Phase 5.2 (detailed release APIs, real cryptographic signing, actual
+rollback/canary execution).
 
 ## Future (Phase 4+)
 

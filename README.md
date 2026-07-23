@@ -469,6 +469,17 @@ a **promotion-readiness** diagnostic (advisory, never a lifecycle gate).
 See [docs/runtime/versioning.md](docs/runtime/versioning.md) for the full
 set, including the deliberate scope decisions made against the SRS.
 
+**Compatibility & breaking-change detection (Phase 5.2.6)** — the
+`compatibility_level` column Part 1 reserved is now real: every publish
+automatically classifies the new version against its resolved baseline as
+`COMPATIBLE` / `BACKWARD_COMPATIBLE` / `BREAKING` / `UNKNOWN` (input/output
+contract, tool/capability bindings, model config, resource limits, policy
+tightening), records one finding per detected change, and checks the
+declared semantic-version increment against what was actually detected —
+reported as advisory, never a `publish()` blocker. See the "Compatibility &
+breaking-change detection" section of
+[docs/runtime/versioning.md](docs/runtime/versioning.md).
+
 **Users** (password `DemoPass!2026`):
 
 | Email                  | Role       |

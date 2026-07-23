@@ -87,6 +87,8 @@ class AgentVersionRead(BaseModel):
     # Phase 5.2 Part 1 — release-management foundation.
     release_channel_id: uuid.UUID | None
     compatibility_level: str
+    compatibility_baseline_id: uuid.UUID | None
+    compatibility_analyzed_at: datetime | None
     signature_id: str | None
     snapshot_reference: str | None
     parent_version_id: uuid.UUID | None

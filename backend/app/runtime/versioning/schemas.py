@@ -147,3 +147,56 @@ class ReadinessCheckRead(BaseModel):
 class VersionReadinessRead(BaseModel):
     ready: bool
     checks: list[ReadinessCheckRead]
+
+
+# --------------------------------------------------------------------------- #
+# Compatibility & breaking-change detection (Phase 5.2.6)
+# --------------------------------------------------------------------------- #
+class CompatibilityFindingRead(BaseModel):
+    """A persisted finding row — used by the standalone findings-list endpoint."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    agent_version_id: uuid.UUID
+    baseline_version_id: uuid.UUID | None
+    category: str
+    path: str
+    change_type: str
+    materiality: str
+    baseline_value: str | None
+    candidate_value: str | None
+    description: str
+    created_at: datetime
+
+
+class CompatibilityReportFinding(BaseModel):
+    """A finding as embedded in a compatibility report (§4.5) — no id/
+    timestamps, since an ephemeral (unpersisted) report has neither."""
+
+    category: str
+    path: str
+    change_type: str
+    materiality: str
+    baseline_value: str | None
+    candidate_value: str | None
+    description: str
+
+
+class CompatibilitySummary(BaseModel):
+    breaking: int
+    backward_compatible: int
+    compatible: int
+
+
+class CompatibilityReportRead(BaseModel):
+    candidate_version_id: uuid.UUID
+    baseline_version_id: uuid.UUID | None
+    compatibility_level: str
+    declared_semver: str
+    declared_increment: str | None
+    expected_increment: str | None
+    semver_consistent: bool
+    analyzed_at: datetime | None
+    summary: CompatibilitySummary
+    findings: list[CompatibilityReportFinding]

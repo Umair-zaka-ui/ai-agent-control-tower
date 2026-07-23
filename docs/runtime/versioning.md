@@ -9,9 +9,13 @@
 > Management foundation: enforced semantic versioning, release channels, the
 > snapshot builder, version lineage, release metadata/artifacts/notes, and
 > the status-history ledger. Compatibility *analysis* and real cryptographic
-> signing are explicitly out of scope for this part (see "What's deferred"
-> below) — the storage foundation for both exists (`compatibility_level`,
-> `signature_id`) but nothing computes or verifies them yet.
+> signing were out of scope for that part — the storage foundation for both
+> existed (`compatibility_level`, `signature_id`) but nothing computed or
+> verified them yet.
+>
+> **Phase 5.2.6 update**: compatibility analysis is no longer deferred — see
+> "Compatibility & breaking-change detection" below. Real cryptographic
+> signing (`signature_id`) remains foundation-only, unchanged from Part 1.
 
 ## Immutability & checksums (§11, §12)
 
@@ -202,7 +206,7 @@ what this change would alter" use case. The URL scopes both versions to
 one agent, so a version belonging to a different agent 404s rather than
 producing a cross-agent diff.
 
-## Promotion readiness (Phase 5.2 Part 1 §3, §30)
+## Promotion readiness (Phase 5.2 Part 1 §3, §30; Phase 5.2.6)
 
 `VersionReadinessService` (`app/runtime/versioning/readiness.py`) — a
 read-only diagnostic, `GET /agents/{id}/versions/{versionId}/readiness`,
@@ -214,9 +218,104 @@ purely advisory, e.g. for a release-management dashboard. Checks:
 (the same checks `validate()` runs), `metadata_complete`, `owners_assigned`,
 `registry_active`, `no_blocking_governance_findings` (reuses the Phase 5.1
 registry validation engine's latest run for the agent), `artifacts_present`,
-`compatibility_analysis` (always reported `skipped: true` — deferred to
-Part 3, so it can never fail a check this part doesn't implement), and
-`approval_prerequisites_satisfied`.
+`compatibility_analysis` (Phase 5.2.6 — see below; no longer `skipped: true`),
+and `approval_prerequisites_satisfied`.
+
+## Compatibility & breaking-change detection (Phase 5.2.6, ACT-VER-FR-100..108)
+
+`CompatibilityAnalysisService` (`app/runtime/versioning/compatibility.py`)
+classifies a candidate version against a resolved baseline into
+`COMPATIBLE` / `BACKWARD_COMPATIBLE` / `BREAKING` / `UNKNOWN`, stores the
+verdict on `agent_versions.compatibility_level` (reserved but dead since
+Part 1) plus the two columns this phase adds —
+`compatibility_baseline_id`, `compatibility_analyzed_at` — and records one
+`agent_version_compatibility_findings` row per detected change.
+
+**Trigger**: automatic, as a best-effort follow-up right after `publish()`'s
+own commit succeeds — a bug in the analyzer is logged and swallowed, never
+blocking publication (see "Advisory, not enforcement" below). Also available
+on demand via `POST .../compatibility/analyze` (recomputes and persists; the
+only way to backfill a version published before this phase existed).
+
+**Baseline resolution** (`resolve_baseline`), in order:
+
+1. An explicit `?baseline_version_id=` override, if supplied — validated to
+   belong to the same agent (`COMPATIBILITY_BASELINE_NOT_FOUND` otherwise).
+2. `parent_version_id` (set at creation — see "Version lineage" above),
+   regardless of that parent's lifecycle status.
+3. The highest-`version` `PUBLISHED` version of the same agent older than
+   the candidate.
+4. None of the above → `UNKNOWN`, with one explanatory finding — this is the
+   correct, expected result for an agent's first version, not an error.
+
+**Classification rules** (`classify_change` and its `compare_*` helpers) —
+one breaking finding makes the whole version `BREAKING` regardless of how
+many compatible/backward-compatible findings accompany it:
+
+| Category | BREAKING | BACKWARD_COMPATIBLE | COMPATIBLE |
+|---|---|---|---|
+| `INPUT_CONTRACT` | field removed; type narrowed; required field added with no default; optional → required | optional field added (with or without a default); type widened; required → optional | — |
+| `OUTPUT_CONTRACT` | field removed | field added; type widened | — |
+| `TOOL_BINDING` / `CAPABILITY` | entry removed | entry added | — |
+| `MODEL_CONFIG` | `provider`/`model` changed | — | sampling parameters (`temperature`, `top_p`, `top_k`, penalties) changed — behavioral drift, not a contract break; anything else unrecognized |
+| `RESOURCE_LIMIT` | numeric value reduced | numeric value increased | — |
+| `POLICY` | `approved_models` narrowed or introduced; an environment added to `prohibited_environments`/`requires_approval_environments` | `approved_models` widened or removed; an environment removed from either list | — |
+| `PROMPT` / `METADATA` | — | — | prompt content, release notes always compatible |
+
+Three data-source decisions, made explicit in `compatibility.py`'s module
+docstring since a wrong guess here would propagate into every future
+compatibility judgment:
+
+- **Input/output contract** reads `AgentDefinition.input_schema`/
+  `output_schema` (real JSON Schema, already used elsewhere in this codebase
+  to validate execution payloads) — not `AgentVersion.configuration_snapshot`,
+  which today is simply a copy of `model_configuration` with no "inputs"
+  substructure of its own.
+- **Resource limits** have no dedicated field anywhere in a version or its
+  snapshot (`AgentDeployment.runtime_limits` is per-environment, not
+  per-version, and isn't part of what a version snapshots). This module
+  scans `model_configuration` for numeric values whose key name looks like a
+  limit/quota (`max_*`/`*_limit`/`*_timeout`/`*_quota`/`*_cap`) — a
+  heuristic, excluding the sampling parameters below.
+- **Policy tightening** is scored only for the three `policy_snapshot` keys
+  `RuntimePolicyService.evaluate` (`app/runtime/services.py`) actually gives
+  meaning to (`approved_models`, `prohibited_environments`,
+  `requires_approval_environments`), not guessed at for arbitrary future keys.
+
+Like `VersionComparisonService` and `VersionReadinessService`, this reads
+directly from `AgentVersion`/`AgentDefinition` ORM columns, not the frozen
+`agent_version_snapshots.snapshot` document — those columns are exactly what
+the frozen document is built from, and reading them directly lets a
+still-DRAFT version be analyzed (e.g. via the readiness check) before
+anything has ever been published.
+
+**Semver consistency** — the declared `semantic_version` increment (major/
+minor/patch, computed from the same `parse_semver` Part 1 already ships) is
+compared against the detected level's expected minimum (`BREAKING` → major,
+`BACKWARD_COMPATIBLE` → minor, `COMPATIBLE` → patch; a larger declared bump
+always satisfies a smaller expectation).
+
+**Advisory, not enforcement — a deliberate SRS deviation.** The SRS frames a
+semver/compatibility mismatch as something publication should reject. This
+implementation does not: Part 1 already established that comparison and
+readiness never gate a lifecycle action (see "Promotion readiness" above and
+`docs/runtime/versioning.md`'s Part 1 history), and reversing that here for
+one specific check would be inconsistent and would break the existing
+publish-focused tests that assume `publish()` only checks status +
+checksum. Instead, an inconsistency is **reported**: as a
+`semver_consistent: false` field on the compatibility report, and as a
+failed (not blocking) `compatibility_analysis` readiness check. A correctly
+major-bumped `BREAKING` version reports as a passing-but-cautionary check
+(the message says so explicitly); only a genuine inconsistency fails the
+check — and even then, nothing stops `validate()`/`approve()`/`publish()`
+from proceeding.
+
+**API**: `GET .../versions/{id}/compatibility` (last-persisted report, or an
+ephemeral evaluation against an explicit `?baseline_version_id=` override —
+never persisted in that case), `POST .../versions/{id}/compatibility/analyze`
+(always recomputes and persists), `GET .../versions/{id}/compatibility/findings`
+(the persisted findings list). All three reuse `runtime.version.view` — no
+new permission was needed.
 
 ## Capability/tool references on a version
 
@@ -230,14 +329,13 @@ addition to — assigning a capability/tool directly to the agent (no
 
 ## What's deferred
 
-Per the SRS's own scope boundary (§3, §30): compatibility *analysis*
-(computing what `compatibility_level` should actually be) is explicitly
-"implemented in Part 3" — this part only reserves the column. Real
-cryptographic signing (verifying `signature_id`) is likewise foundation-only
-— nothing generates or checks a signature yet. Actually executing a
-rollback, canary rollout, or traffic shift belongs to deployments
-(Phase 5.0, already shipped) and future runtime work, not this versioning
-foundation.
+Real cryptographic signing (verifying `signature_id`) remains
+foundation-only — nothing generates or checks a signature yet (that's
+Phase 5.2.4, not this phase). Actually executing a rollback, canary
+rollout, or traffic shift belongs to deployments (Phase 5.0, already
+shipped) and future runtime work, not this versioning foundation.
+Compatibility *analysis* (Phase 5.2.6, above) is no longer deferred — the
+`compatibility_level` column is real and computed.
 
 ## What's deliberately not done
 

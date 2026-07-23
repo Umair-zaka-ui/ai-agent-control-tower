@@ -2,9 +2,16 @@
 
 A read-only diagnostic: evaluates §30's "Version Readiness" checklist and
 reports which conditions are (and aren't) met, without changing anything.
-Compatibility analysis is explicitly deferred to Part 3 (§30's own
-footnote) — that check is reported as skipped, never as a failure, so it
-can never block readiness on work this part doesn't do.
+
+Compatibility analysis (Phase 5.2.6, ACT-VER-FR-100..108) is now a real
+evaluation rather than the ``skipped: true`` stub Part 1 shipped — see
+``compatibility.py``. It stays purely advisory: a version whose compatibility
+hasn't been analyzed yet (nothing publishes it) or that has no resolvable
+baseline reports ``UNKNOWN`` informationally rather than failing, a correctly
+major-bumped ``BREAKING`` version warns without failing, and only a genuine
+semver/compatibility-level mismatch fails the check — none of which ever
+blocks any lifecycle action itself (readiness has never gated anything; see
+"Promotion readiness" in docs/runtime/versioning.md).
 """
 
 from __future__ import annotations
@@ -98,9 +105,35 @@ class VersionReadinessService:
            f"{artifact_count} artifact(s) attached." if artifact_count
            else "No release artifacts attached yet.")
 
-        # §30 "Compatibility analysis completes successfully (implemented in Part 3)".
-        add("compatibility_analysis", True,
-           "Deferred to Part 3 — not evaluated in this part.", skipped=True)
+        # §30 "Compatibility analysis completes successfully" — Phase 5.2.6.
+        from app.runtime.versioning.compatibility import (
+            declared_increment,
+            expected_increment_for,
+            is_semver_consistent,
+        )
+
+        level = version.compatibility_level
+        if version.compatibility_analyzed_at is None or level == "UNKNOWN":
+            add("compatibility_analysis", True,
+               "No compatibility baseline has been analyzed yet for this version (informational only).")
+        else:
+            baseline = (self.db.get(AgentVersion, version.compatibility_baseline_id)
+                       if version.compatibility_baseline_id else None)
+            expected_incr = expected_increment_for(level)
+            declared_incr = (declared_increment(baseline.semantic_version, version.semantic_version)
+                            if baseline else None)
+            consistent = is_semver_consistent(declared_incr, expected_incr) if baseline else True
+            if not consistent:
+                add("compatibility_analysis", False,
+                   f"The declared semantic-version increment ({declared_incr}) is inconsistent with the "
+                   f"detected {level} changes (expected at least a {expected_incr} bump).")
+            elif level == "BREAKING":
+                add("compatibility_analysis", True,
+                   "This version introduces BREAKING changes, correctly reflected in a major version bump — "
+                   "review downstream consumers carefully before promoting.")
+            else:
+                add("compatibility_analysis", True,
+                   f"Compatibility is {level} and the semantic-version increment is consistent.")
 
         # §30 "Approval prerequisites are satisfied".
         approved = version.status in ("APPROVED", "PUBLISHED", "DEPRECATED") or version.reviewed_by is not None
