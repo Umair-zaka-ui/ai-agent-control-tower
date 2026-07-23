@@ -22,6 +22,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    LargeBinary,
     Numeric,
     String,
     Text,
@@ -105,7 +106,10 @@ class AgentVersion(Base, UUIDPrimaryKeyMixin):
     capabilities_snapshot: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     tools_snapshot: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     policy_snapshot: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    checksum: Mapped[str] = mapped_column(String(64), nullable=False)
+    # Phase 5.2.4 — widened from 64 to fit the algorithm-prefixed
+    # "sha256:<64 hex>" canonical-sha256 format (71 chars); legacy rows'
+    # bare 64-char hex values fit unchanged.
+    checksum: Mapped[str] = mapped_column(String(80), nullable=False)
     release_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -143,6 +147,10 @@ class AgentVersion(Base, UUIDPrimaryKeyMixin):
         UUID(as_uuid=True), ForeignKey("agent_versions.id", ondelete="SET NULL"), nullable=True, index=True,
     )
     compatibility_analyzed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Phase 5.2.4 — signing & provenance (ACT-VER-FR-060..071).
+    checksum_algorithm: Mapped[str] = mapped_column(String(20), nullable=False, default="canonical-sha256")
+    signed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    manifest_digest: Mapped[str | None] = mapped_column(String(80), nullable=True)
 
 
 class AgentReleaseChannel(Base, UUIDPrimaryKeyMixin):
@@ -172,7 +180,9 @@ class AgentVersionSnapshot(Base, UUIDPrimaryKeyMixin):
         nullable=False, unique=True, index=True,
     )
     snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
-    checksum: Mapped[str] = mapped_column(String(64), nullable=False)
+    # Phase 5.2.4 — widened from 64 to fit "sha256:<64 hex>" (71 chars).
+    checksum: Mapped[str] = mapped_column(String(80), nullable=False)
+    checksum_algorithm: Mapped[str] = mapped_column(String(20), nullable=False, default="canonical-sha256")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -298,6 +308,119 @@ class AgentVersionCompatibilityFinding(Base, UUIDPrimaryKeyMixin):
     baseline_value: Mapped[str | None] = mapped_column(Text, nullable=True)
     candidate_value: Mapped[str | None] = mapped_column(Text, nullable=True)
     description: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class SigningKey(Base, UUIDPrimaryKeyMixin):
+    """Phase 5.2.4 SRS ACT-VER-FR-060..071 — the DB record of a signing
+    key's *identity and current public material* — never private key
+    material (see ``app/runtime/versioning/signing/base.py``'s
+    ``SigningProvider`` contract). One row per logical ``key_id``; rotation
+    bumps ``current_version`` and adds a ``SigningKeyVersion`` row rather
+    than replacing this one."""
+
+    __tablename__ = "signing_keys"
+
+    key_id: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
+    # LOCAL / AZURE_KEY_VAULT
+    provider: Mapped[str] = mapped_column(String(32), nullable=False, default="LOCAL")
+    # ED25519 / ECDSA_P256_SHA256
+    algorithm: Mapped[str] = mapped_column(String(32), nullable=False, default="ED25519")
+    current_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    # ACTIVE / ROTATED / REVOKED
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="ACTIVE")
+    public_key_pem: Mapped[str] = mapped_column(Text, nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revocation_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class SigningKeyVersion(Base, UUIDPrimaryKeyMixin):
+    """Phase 5.2.4 — historical public keys, so a signature made with a
+    rotated-out key version stays verifiable forever (``retired_at`` is
+    informational only; the row and its public key are never deleted)."""
+
+    __tablename__ = "signing_key_versions"
+    __table_args__ = (
+        UniqueConstraint("signing_key_id", "version", name="uq_signing_key_versions_key_version"),
+    )
+
+    signing_key_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("signing_keys.id", ondelete="CASCADE"), nullable=False, index=True,
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    public_key_pem: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AgentVersionSignature(Base, UUIDPrimaryKeyMixin):
+    """Phase 5.2.4 SRS ACT-VER-FR-060..071 — one signature over a version's
+    manifest digest. Multiple rows per version are permitted
+    (``ACT-VER-FR-069``) — the automatic ``PUBLISHER`` signature made at
+    publish time, plus any number of later ``COUNTERSIGN`` rows. Revoking
+    the signing key updates ``verification_status`` here; it never alters
+    ``signature`` or the version row (``ACT-VER-FR-066``) — the historical
+    fact that it was signed remains true, only its current trust status
+    changes."""
+
+    __tablename__ = "agent_version_signatures"
+
+    agent_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agent_versions.id", ondelete="CASCADE"), nullable=False, index=True,
+    )
+    manifest_digest: Mapped[str] = mapped_column(String(80), nullable=False)
+    signature: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    algorithm: Mapped[str] = mapped_column(String(32), nullable=False)
+    signing_key_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("signing_keys.id", ondelete="RESTRICT"), nullable=False,
+    )
+    signing_key_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    # PUBLISHER / COUNTERSIGN
+    signature_type: Mapped[str] = mapped_column(String(32), nullable=False, default="PUBLISHER")
+    dsse_envelope: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    # VALID / INVALID / KEY_REVOKED / UNVERIFIED
+    verification_status: Mapped[str] = mapped_column(String(20), nullable=False, default="UNVERIFIED")
+    signed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    signed_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True,
+    )
+
+
+class AgentVersionProvenance(Base, UUIDPrimaryKeyMixin):
+    """Phase 5.2.4 SRS ACT-VER-FR-060..071 — who/what/where produced a
+    version, one row per version. Distinct from ``AgentVersionSignature``
+    (the cryptographic proof) — this is the human-readable provenance
+    record the attestation's ``predicate.provenance`` section is built
+    from."""
+
+    __tablename__ = "agent_version_provenance"
+
+    agent_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agent_versions.id", ondelete="CASCADE"),
+        nullable=False, unique=True, index=True,
+    )
+    actor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    actor_type: Mapped[str] = mapped_column(String(32), nullable=False, default="USER")
+    source_repository: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_commit: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    source_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    build_environment: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    builder_identity: Mapped[str] = mapped_column(Text, nullable=False)
+    source_ip: Mapped[str | None] = mapped_column(String(45), nullable=True)
+    correlation_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    attestation_document: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

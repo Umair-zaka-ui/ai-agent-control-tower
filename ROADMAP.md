@@ -877,9 +877,41 @@ computed) real:
   `runtime.version.view`); 35 new backend tests (696 total green); backend
   only — frontend untouched, still 297 green.
 
-Next: production readiness (MFA, OAuth/SSO, observability), or the rest of
-Phase 5.2 (detailed release APIs, real cryptographic signing, actual
-rollback/canary execution).
+### Part 5.2.4 — Cryptographic Signing, Provenance & Portable Attestation ✅
+
+The final Phase 5.2 sub-phase — closes the platform's integrity story:
+
+- **Required refactor**: a single canonical serialization
+  (`app/runtime/versioning/canonical.py` — sorted keys, NFC strings, UTF-8,
+  no whitespace, floats rejected outright) now backs both checksum
+  routines, replacing `json.dumps`'s unspecified-across-languages defaults.
+  Legacy rows keep verifying via the original (renamed, deprecated)
+  routines, tracked per-row by a new `checksum_algorithm` column; the
+  migration itself never rewrites an existing checksum —
+  `scripts/recompute_checksums.py --dry-run`/live is the explicit, audited
+  upgrade path.
+- **Signing provider abstraction**: `SigningProvider` (local Ed25519 today;
+  Azure Key Vault a configuration change away) — private key material
+  never crosses the interface.
+- **Portable attestation**: an in-toto Statement v1 / DSSE-enveloped
+  document per published version, self-contained (no predicate field needs
+  a database lookup), signed over the DSSE Pre-Authentication Encoding.
+- **Fail-closed signing**: wired into `publish()` so a signing failure
+  aborts publication entirely — the opposite policy from 5.2.6's advisory
+  compatibility analysis, and deliberately so.
+- **Key rotation & revocation**: revoking a key marks affected signatures
+  `KEY_REVOKED` without touching the version record or signature bytes;
+  rotation keeps old key versions verifiable.
+- **Deliberately deferred**: a public/unauthenticated verification
+  endpoint (every route here is authenticated + org-scoped) and Azure Key
+  Vault itself — both documented as Known Deviations with closure
+  conditions in [docs/runtime/versioning.md](docs/runtime/versioning.md).
+- Migration `0027_version_signing`; 2 new permissions
+  (`runtime.signing.view`/`.manage`); 47 new backend tests (743 total
+  green); backend only — frontend untouched, still 297 green.
+
+Next: production readiness (MFA, OAuth/SSO, observability), or Phase 5.3
+(detailed release APIs, actual rollback/canary execution).
 
 ## Future (Phase 4+)
 

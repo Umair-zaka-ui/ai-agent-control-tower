@@ -79,9 +79,18 @@ def build_snapshot(agent: Agent, definition: AgentDefinition, version: AgentVers
                 "release_description": release_metadata.release_description,
                 "business_justification": release_metadata.business_justification,
                 "change_category": release_metadata.change_category,
-                "release_window_start": release_metadata.release_window_start,
-                "release_window_end": release_metadata.release_window_end,
-                "support_end_date": release_metadata.support_end_date,
+                # Phase 5.2.4 — ISO-8601 strings, not raw datetime objects: the
+                # old checksum_of() tolerated the latter via json.dumps(...,
+                # default=str), which silently used Python's non-portable
+                # str(datetime) formatting. canonical.py refuses to guess a
+                # portable representation for an unsupported type, so the
+                # producer (here) must hand it one.
+                "release_window_start": (release_metadata.release_window_start.isoformat()
+                                        if release_metadata.release_window_start else None),
+                "release_window_end": (release_metadata.release_window_end.isoformat()
+                                      if release_metadata.release_window_end else None),
+                "support_end_date": (release_metadata.support_end_date.isoformat()
+                                    if release_metadata.support_end_date else None),
                 "approval_ticket": release_metadata.approval_ticket,
                 "source_branch": release_metadata.source_branch,
                 "commit_reference": release_metadata.commit_reference,
@@ -97,9 +106,24 @@ def build_snapshot(agent: Agent, definition: AgentDefinition, version: AgentVers
     }
 
 
-def checksum_of(snapshot: dict) -> str:
+def _legacy_checksum_of(snapshot: dict) -> str:
+    """Deprecated (Phase 5.2.4) — the original snapshot-checksum routine.
+    Kept only to verify snapshot rows whose ``checksum_algorithm`` is still
+    ``'legacy-sha256'``; see ``app/runtime/services.py::_legacy_checksum``
+    for the equivalent on the version row itself."""
     blob = json.dumps(snapshot, sort_keys=True, default=str)
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+
+def checksum_of(snapshot: dict) -> str:
+    """Phase 5.2.4 — ``canonical-sha256`` digest of the frozen snapshot
+    document. Every value in ``snapshot`` must already be a portable,
+    JSON-native representation (ISO-8601 strings for dates — see
+    ``build_snapshot()`` above — no raw floats); ``canonical.py`` raises
+    rather than guessing a representation for anything else."""
+    from app.runtime.versioning import canonical
+
+    return canonical.digest(canonical.stringify_floats(snapshot))
 
 
 class SnapshotBuilderService:
@@ -123,7 +147,8 @@ class SnapshotBuilderService:
                                   release_metadata=release_metadata, artifacts=artifacts, notes=notes,
                                   publisher_id=publisher_id)
         checksum = checksum_of(document)
-        snapshot = AgentVersionSnapshot(agent_version_id=version.id, snapshot=document, checksum=checksum)
+        snapshot = AgentVersionSnapshot(agent_version_id=version.id, snapshot=document, checksum=checksum,
+                                        checksum_algorithm="canonical-sha256")
         self.db.add(snapshot)
         self.db.flush()
         version.snapshot_reference = f"snapshot:{snapshot.id}"

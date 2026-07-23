@@ -177,6 +177,18 @@ class Settings(BaseSettings):
     # --- Phase 2: agent API keys ---
     API_KEY_PREFIX: str = "agt_live_"
 
+    # --- Phase 5.2.4: cryptographic signing, provenance & attestation --------
+    # LOCAL is the only implementation today; Azure Key Vault comes at
+    # deployment (ACT-VER-NFR-002's closure condition — see
+    # docs/runtime/versioning.md's Known Deviations). Swapping is meant to be
+    # a config change here, not a rewrite — see
+    # app/runtime/versioning/signing/registry.py.
+    SIGNING_PROVIDER: str = "LOCAL"
+    # Gitignored; local dev/pre-production only. A keypair is auto-generated
+    # here on first use if absent (see signing/local.py).
+    SIGNING_KEY_PATH: str = "./.keys/"
+    SIGNING_DEFAULT_KEY_ID: str = "default"
+
     # --- Phase 2: email notifications (SMTP / Mailtrap for development) ---
     NOTIFICATIONS_ENABLED: bool = False
     SMTP_HOST: str = "sandbox.smtp.mailtrap.io"

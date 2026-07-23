@@ -160,8 +160,15 @@ def _derive_org_hierarchy(db: Session, project: Project) -> dict:
     }
 
 
-def _checksum(version: AgentVersion) -> str:
-    canonical = {
+def _legacy_checksum(version: AgentVersion) -> str:
+    """Deprecated (Phase 5.2.4) — Phase 5.0/5.2 Part 1's original checksum
+    routine. Kept only to verify rows whose ``checksum_algorithm`` is still
+    ``'legacy-sha256'``; never used to compute a new version's checksum.
+    Depends on ``json.dumps``'s default key-ordering/Unicode/whitespace
+    behavior, which is not a stable, cross-language contract — see
+    ``app/runtime/versioning/canonical.py``'s module docstring for why that
+    made this routine unfit for anything a signature would ever cover."""
+    canonical_dict = {
         "configuration_snapshot": version.configuration_snapshot,
         "prompt_snapshot": version.prompt_snapshot,
         "model_configuration": version.model_configuration,
@@ -169,8 +176,36 @@ def _checksum(version: AgentVersion) -> str:
         "tools_snapshot": version.tools_snapshot,
         "policy_snapshot": version.policy_snapshot,
     }
-    blob = json.dumps(canonical, sort_keys=True, default=str)
+    blob = json.dumps(canonical_dict, sort_keys=True, default=str)
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+
+def _checksum(version: AgentVersion) -> str:
+    """Phase 5.2.4 — ``canonical-sha256`` checksum of a version's per-field
+    snapshot columns. Every new version uses this (see ``create()`` setting
+    ``checksum_algorithm``); ``_legacy_checksum`` above remains only to
+    verify rows created before this phase shipped."""
+    from app.runtime.versioning import canonical
+
+    payload = canonical.stringify_floats({
+        "configuration_snapshot": version.configuration_snapshot,
+        "prompt_snapshot": version.prompt_snapshot,
+        "model_configuration": version.model_configuration,
+        "capabilities_snapshot": version.capabilities_snapshot,
+        "tools_snapshot": version.tools_snapshot,
+        "policy_snapshot": version.policy_snapshot,
+    })
+    return canonical.digest(payload)
+
+
+def _verify_checksum(version: AgentVersion) -> bool:
+    """Branches on ``checksum_algorithm`` so legacy rows verify with the
+    legacy routine and canonical-sha256 rows with the new one — the single
+    choke point every tamper check goes through (``validate()``,
+    ``publish()``, the readiness dry-run)."""
+    if version.checksum_algorithm == "legacy-sha256":
+        return _legacy_checksum(version) == version.checksum
+    return _checksum(version) == version.checksum
 
 
 def _validate_schema(payload: dict, schema: dict, *, what: str) -> None:
@@ -436,6 +471,10 @@ class AgentVersionService:
             release_notes=payload.get("release_notes"),
             release_channel_id=channel.id,
             created_by=actor.id, checksum="",
+            # Phase 5.2.4 — every new version is canonical-sha256; the column's
+            # server_default of 'legacy-sha256' exists only to backfill rows
+            # that existed before this phase, never to be the default for new ones.
+            checksum_algorithm="canonical-sha256",
         )
         version.checksum = _checksum(version)
         self.db.add(version)
@@ -470,7 +509,7 @@ class AgentVersionService:
         errors: list[str] = []
         if not version.model_configuration or not version.model_configuration.get("provider"):
             errors.append("model_configuration.provider is required")
-        if _checksum(version) != version.checksum:
+        if not _verify_checksum(version):
             errors.append("checksum mismatch — snapshot was modified after creation")
         if errors:
             raise IdentityError(ErrorCode.VALIDATION_ERROR, "; ".join(errors))
@@ -496,7 +535,9 @@ class AgentVersionService:
         self.db.refresh(version)
         return version
 
-    def publish(self, actor: User, agent: Agent, version_id: uuid.UUID) -> AgentVersion:
+    def publish(self, actor: User, agent: Agent, version_id: uuid.UUID, *,
+               correlation_id: str | None = None, source_ip: str | None = None) -> AgentVersion:
+        from app.runtime.versioning.attestation import AttestationService
         from app.runtime.versioning.snapshot import SnapshotBuilderService
         from app.runtime.versioning.status_history import record_status_change
 
@@ -504,7 +545,7 @@ class AgentVersionService:
         if version.status != "APPROVED":
             raise IdentityError(ErrorCode.INVALID_LIFECYCLE_TRANSITION,
                                "Only approved versions can be published.")
-        if _checksum(version) != version.checksum:
+        if not _verify_checksum(version):
             raise IdentityError(ErrorCode.AGENT_VERSION_IMMUTABLE,
                                "Checksum mismatch — version was tampered with.")
         # §30's "cannot publish two active releases" is a release-process
@@ -518,8 +559,8 @@ class AgentVersionService:
         # deployment topologies.
         definition = self.db.get(AgentDefinition, version.definition_id)
         channel = self.db.get(AgentReleaseChannel, version.release_channel_id) if version.release_channel_id else None
-        SnapshotBuilderService(self.db).build_and_store(agent, definition, version, release_channel=channel,
-                                                        publisher_id=actor.id)
+        snapshot = SnapshotBuilderService(self.db).build_and_store(agent, definition, version,
+                                                                   release_channel=channel, publisher_id=actor.id)
 
         record_status_change(self.db, version.id, previous_status=version.status,
                              new_status="PUBLISHED", changed_by=actor.id)
@@ -533,6 +574,19 @@ class AgentVersionService:
             parent = self.db.get(AgentVersion, version.parent_version_id)
             if parent is not None and parent.status == "DEPRECATED" and parent.superseded_by_id is None:
                 parent.superseded_by_id = version.id
+
+        # Phase 5.2.4 — sign the frozen snapshot. Deliberately NOT wrapped in
+        # try/except, unlike 5.2.6's advisory compatibility analysis below:
+        # an unsigned published version is an integrity hole
+        # (ACT-VER-NFR-004, fail-closed), so a signing failure must raise
+        # out of publish() entirely. Nothing above has been committed yet,
+        # so the exception propagating here means the whole transaction is
+        # discarded when the request's session closes — the version never
+        # reaches PUBLISHED. See docs/runtime/versioning.md for why this is
+        # the opposite policy from compatibility analysis's failure handling.
+        AttestationService(self.db).build_and_sign(agent, version, snapshot_digest=snapshot.checksum,
+                                                   publisher_id=actor.id, correlation_id=correlation_id,
+                                                   source_ip=source_ip)
 
         _record_event(self.db, AuthorizationAuditEvent.RUNTIME_VERSION_PUBLISHED, actor,
                      organization_id=actor.organization_id, agent_id=agent.id,

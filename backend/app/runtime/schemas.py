@@ -98,6 +98,10 @@ class AgentVersionRead(BaseModel):
     reviewed_by: uuid.UUID | None
     revoked_reason: str | None
     retired_at: datetime | None
+    # Phase 5.2.4 — signing & provenance.
+    checksum_algorithm: str
+    signed_at: datetime | None
+    manifest_digest: str | None
 
 
 # --------------------------------------------------------------------------- #

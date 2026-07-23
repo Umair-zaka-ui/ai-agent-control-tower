@@ -63,6 +63,8 @@ from app.models.runtime import (
     AgentTool,
     AgentVersion,
     AgentVersionCompatibilityFinding,
+    AgentVersionProvenance,
+    AgentVersionSignature,
     AgentVersionSnapshot,
     AgentVersionStatusHistory,
     Capability,
@@ -72,6 +74,8 @@ from app.models.runtime import (
     IdempotencyRecord,
     RuntimeApproval,
     RuntimeEvent,
+    SigningKey,
+    SigningKeyVersion,
     Tool,
     ToolCall,
 )
@@ -162,4 +166,8 @@ __all__ = [
     "AgentReleaseNote",
     "AgentVersionStatusHistory",
     "AgentVersionCompatibilityFinding",
+    "SigningKey",
+    "SigningKeyVersion",
+    "AgentVersionSignature",
+    "AgentVersionProvenance",
 ]

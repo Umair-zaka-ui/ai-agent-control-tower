@@ -201,7 +201,12 @@ def test_version_lifecycle_and_checksum(client: TestClient) -> None:
     version = r.json()
     assert version["status"] == "DRAFT"
     assert version["version"] == 1
-    assert len(version["checksum"]) == 64
+    # Phase 5.2.4 — canonical-sha256 checksums are algorithm-prefixed
+    # ("sha256:<64 hex>"), not bare 64-char hex; this test previously
+    # asserted the legacy bare-hex length, now superseded by the refactor
+    # (see docs/runtime/versioning.md's Phase 5.2.4 section).
+    assert version["checksum"].startswith("sha256:")
+    assert len(version["checksum"].split(":", 1)[1]) == 64
 
     r = client.post(f"{RT}/agents/{agent['id']}/versions/{version['id']}/publish", headers=org["headers"])
     assert r.status_code == 409, r.text  # must validate + approve first

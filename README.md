@@ -480,6 +480,19 @@ reported as advisory, never a `publish()` blocker. See the "Compatibility &
 breaking-change detection" section of
 [docs/runtime/versioning.md](docs/runtime/versioning.md).
 
+**Cryptographic signing, provenance & attestation (Phase 5.2.4)** — every
+publish now produces a real signature: a canonical, cross-language-stable
+serialization backs every checksum (replacing `json.dumps`'s
+unspecified-across-languages defaults), a pluggable signing provider
+(local Ed25519 today; Azure Key Vault a configuration change away) signs
+the frozen snapshot, and a self-contained in-toto Statement v1 / DSSE
+attestation document records exactly what was published and by whom — no
+database lookup needed to interpret it. Signing is fail-closed: unlike
+compatibility analysis, a signing failure aborts publication entirely. Key
+rotation and revocation are supported; verification is internal-only for
+now (deliberately deferred, not forgotten — see the "Known Deviations" in
+[docs/runtime/versioning.md](docs/runtime/versioning.md)).
+
 **Users** (password `DemoPass!2026`):
 
 | Email                  | Role       |
