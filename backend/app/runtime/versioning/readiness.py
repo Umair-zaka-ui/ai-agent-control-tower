@@ -36,7 +36,7 @@ class VersionReadinessService:
 
     def check(self, agent: Agent, version: AgentVersion) -> dict:
         from app.runtime.registry.validation import has_blocking_findings
-        from app.runtime.services import _checksum
+        from app.runtime.services import _verify_checksum
 
         checks: list[dict] = []
 
@@ -64,7 +64,7 @@ class VersionReadinessService:
         errors = []
         if not version.model_configuration or not version.model_configuration.get("provider"):
             errors.append("model_configuration.provider is required")
-        if _checksum(version) != version.checksum:
+        if not _verify_checksum(version):
             errors.append("checksum mismatch — snapshot was modified after creation")
         add("validation_passed", not errors, "; ".join(errors) or "model_configuration and checksum are valid.")
 

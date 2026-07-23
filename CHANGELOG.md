@@ -4,6 +4,72 @@ All notable changes to the AI Agent Control Tower are documented here. The forma
 based on [Keep a Changelog](https://keepachangelog.com/); the project is pre-1.0 and
 versions track the roadmap phases rather than semver guarantees.
 
+## [Unreleased] — Phase 5.2.4 · Cryptographic Signing, Provenance & Portable Attestation
+
+- **Added** `app/runtime/versioning/canonical.py` — the single canonical
+  serialization implementation (sorted keys by Unicode code point, NFC
+  string normalization, UTF-8, no whitespace, non-ASCII literal, floats
+  rejected outright) now shared by every checksum producer/verifier.
+  Refactored `_checksum()` (`services.py`) and `checksum_of()`
+  (`snapshot.py`) to delegate to it; the original routines are kept,
+  renamed `_legacy_checksum`/`_legacy_checksum_of` and marked deprecated,
+  to verify rows created before this phase.
+- **Added** `checksum_algorithm` on `agent_versions`/
+  `agent_version_snapshots` (migration `0027_version_signing`) —
+  `'legacy-sha256'` for existing rows (untouched by the migration itself),
+  `'canonical-sha256'` for new ones; verification branches on it. Both
+  `checksum` columns widened to fit the new `sha256:<hex>` prefixed format.
+  `backend/scripts/recompute_checksums.py` (with `--dry-run`) is the
+  explicit, audited way to upgrade legacy rows.
+- **Fixed** `build_snapshot()` embedding raw `datetime` objects for
+  `release_window_start`/`release_window_end`/`support_end_date`, silently
+  tolerated by the old checksum routine's `default=str`; now `.isoformat()`
+  strings, a precondition canonical.py's stricter typing surfaced.
+- **Added** `SigningProvider` abstraction (`app/runtime/versioning/signing/`)
+  — `LocalKeyProvider` (Ed25519, gitignored `.keys/`, auto-generates a dev
+  keypair on first use) is the only implementation; swapping to Azure Key
+  Vault at deployment is a configuration change, not a rewrite. Private key
+  material never crosses the interface.
+- **Added** `AttestationService` (`app/runtime/versioning/attestation.py`):
+  builds an in-toto Statement v1 predicate + DSSE envelope
+  (`application/vnd.in-toto+json`) per published version, signs the DSSE
+  Pre-Authentication Encoding (not the raw payload) via the configured
+  provider. Self-contained by design — every predicate claim is
+  interpretable from the document alone, no database lookup required.
+- **Added** signing to `publish()`, fail-closed — the opposite policy from
+  Phase 5.2.6's advisory compatibility analysis: a signing failure raises
+  out of `publish()` entirely, and the version never reaches `PUBLISHED`.
+- **Added** key rotation/revocation (`SigningKeyService`,
+  `app/runtime/versioning/keys.py`) — revocation marks affected signatures
+  `KEY_REVOKED` without altering the version record or signature bytes;
+  rotation keeps prior key versions retrievable so old signatures stay
+  verifiable.
+- **Wired** the previously-always-null `agent_versions.signature_id` to the
+  primary (`PUBLISHER`) signature's id, rather than dropping the column.
+- **Added** migration `0027_version_signing`: new tables `signing_keys`,
+  `signing_key_versions`, `agent_version_signatures`,
+  `agent_version_provenance`; `agent_versions` gains `signed_at`/
+  `manifest_digest`.
+- **Added** 8 routes (`.../signatures`, `.../provenance`,
+  `.../attestation`, `.../verify`, `.../countersign`, `/signing-keys`,
+  `/signing-keys/{id}/rotate`, `/signing-keys/{id}/revoke`) and 2 new
+  permissions (`runtime.signing.view`/`.manage`); the countersign endpoint
+  reuses the existing `runtime.agent.approve` rather than inventing a
+  `runtime.version.approve` synonym.
+- **Deliberately deferred** (see `docs/runtime/versioning.md`'s Known
+  Deviations): a public/unauthenticated verification endpoint
+  (`ACT-VER-FR-070`) — every route here is authenticated and
+  organization-scoped; Azure Key Vault as a second `SigningProvider`
+  (`ACT-VER-NFR-002`'s closure condition) — the local provider necessarily
+  loads private key bytes into process memory to sign, by construction.
+- Two pre-existing tests updated in place (asserted the legacy bare-64-hex
+  checksum length; now assert the new `sha256:<hex>` format) — the only
+  tests touched, per this phase's own one-exception rule.
+- 47 new backend tests (`tests/runtime/test_canonical.py`,
+  `test_version_signing.py`, `test_attestation.py`). Backend **743** green
+  (696 + 47); frontend untouched by this backend-only phase, still **297**
+  green.
+
 ## [Unreleased] — Phase 5.2.6 · Compatibility & Breaking-Change Detection
 
 - **Added** `CompatibilityAnalysisService` (`app/runtime/versioning/compatibility.py`):

@@ -167,7 +167,12 @@ def test_snapshot_is_built_only_at_publish(client: TestClient) -> None:
     assert r.status_code == 200
     snapshot = r.json()
     assert snapshot is not None
-    assert len(snapshot["checksum"]) == 64
+    # Phase 5.2.4 — canonical-sha256 checksums are algorithm-prefixed
+    # ("sha256:<64 hex>"), not bare 64-char hex; this test previously
+    # asserted the legacy bare-hex length, now superseded by the refactor
+    # (see docs/runtime/versioning.md's Phase 5.2.4 section).
+    assert snapshot["checksum"].startswith("sha256:")
+    assert len(snapshot["checksum"].split(":", 1)[1]) == 64
     assert snapshot["snapshot"]["identity"]["agent_id"] == agent["id"]
     assert snapshot["snapshot"]["release"]["semantic_version"] == published["semantic_version"]
 

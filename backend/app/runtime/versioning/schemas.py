@@ -200,3 +200,84 @@ class CompatibilityReportRead(BaseModel):
     analyzed_at: datetime | None
     summary: CompatibilitySummary
     findings: list[CompatibilityReportFinding]
+
+
+# --------------------------------------------------------------------------- #
+# Cryptographic signing, provenance & attestation (Phase 5.2.4)
+# --------------------------------------------------------------------------- #
+class SignatureRead(BaseModel):
+    """Signature metadata only — never the raw signature bytes or the full
+    DSSE envelope (see ``AttestationRead`` for that)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    agent_version_id: uuid.UUID
+    manifest_digest: str
+    algorithm: str
+    signing_key_id: uuid.UUID
+    signing_key_version: int
+    signature_type: str
+    verification_status: str
+    signed_at: datetime
+    signed_by: uuid.UUID | None
+
+
+class ProvenanceRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    agent_version_id: uuid.UUID
+    actor_id: uuid.UUID
+    actor_type: str
+    source_repository: str | None
+    source_commit: str | None
+    source_ref: str | None
+    build_environment: str | None
+    builder_identity: str
+    source_ip: str | None
+    correlation_id: uuid.UUID | None
+    created_at: datetime
+
+
+class AttestationRead(BaseModel):
+    """The in-toto Statement v1 document plus its DSSE envelope, for the
+    primary (``PUBLISHER``) signature — ``GET .../attestation``."""
+
+    document: dict
+    dsse_envelope: dict
+
+
+class SigningKeyRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    key_id: str
+    provider: str
+    algorithm: str
+    current_version: int
+    status: str
+    public_key_pem: str
+    revoked_at: datetime | None
+    revocation_reason: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class RevokeSigningKeyRequest(BaseModel):
+    reason: str | None = None
+
+
+class SignatureVerificationCheck(BaseModel):
+    signature_id: uuid.UUID
+    signature_type: str
+    passed: bool
+    signature_valid: bool
+    key_revoked: bool
+
+
+class VerificationResultRead(BaseModel):
+    version_id: uuid.UUID
+    valid: bool
+    snapshot_intact: bool
+    signatures: list[SignatureVerificationCheck]

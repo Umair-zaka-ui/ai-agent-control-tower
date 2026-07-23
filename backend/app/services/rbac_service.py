@@ -131,6 +131,8 @@ PERMISSION_CATALOG: dict[str, str] = {
     "runtime.version.deprecate": "Deprecate published agent versions",
     "runtime.version.revoke": "Revoke agent versions",
     "runtime.version.retire": "Retire deprecated agent versions",
+    "runtime.signing.view": "View signing keys, signatures, provenance and attestations",
+    "runtime.signing.manage": "Rotate and revoke signing keys",
     "runtime.deployment.view": "View deployments and deployment health",
     "runtime.deployment.create": "Create deployments",
     "runtime.deployment.deploy": "Deploy, suspend, resume and retire deployments",

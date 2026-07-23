@@ -1,4 +1,5 @@
-"""Fixtures for the Phase 5.2.6 compatibility-detection tests."""
+"""Fixtures for the ``tests/runtime/`` suite (Phase 5.2.6 compatibility
+detection, Phase 5.2.4 signing/provenance/attestation)."""
 
 from __future__ import annotations
 
@@ -22,6 +23,24 @@ def _seed_authorization_once() -> None:
         db.commit()
     finally:
         db.close()
+
+
+@pytest.fixture(autouse=True)
+def _isolated_signing_key(monkeypatch) -> None:
+    """Phase 5.2.4 — ``signing_keys`` has no organization scoping (matching
+    the SRS's own table definition, and Part 1's precedent of global, not
+    per-org, catalogs — e.g. release channels). That means rotating or
+    revoking "the" default key is process-wide, not scoped to one test's
+    org: without this fixture, one test revoking the shared key would
+    silently break every other test's ability to publish/sign — in this
+    same run, *and in every future run against the same database*, since
+    the revocation is a committed row, not something any per-test
+    transaction rolls back. Every test in this directory gets its own
+    private key_id instead, so no test can corrupt another's (or a future
+    run's) state."""
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "SIGNING_DEFAULT_KEY_ID", f"test-{uuid.uuid4().hex[:12]}")
 
 
 @pytest.fixture()

@@ -16,6 +16,10 @@ PyYAML==6.0.2        # agent registry import/export, YAML format (Phase 5.1 §39
 
 # --- Security / Auth ---
 python-jose[cryptography]==3.3.0
+# Already resolved transitively via python-jose[cryptography]; pinned
+# explicitly now that Phase 5.2.4 depends on it directly (Ed25519 signing —
+# app/runtime/versioning/signing/local.py) rather than only through jose.
+cryptography==49.0.0
 passlib==1.7.4
 argon2-cffi==23.1.0  # argon2id password hashing (SRS 4.2.2.1 §11)
 bcrypt==4.0.1        # retained: verifies pre-4.2.2.1 hashes, auto-upgraded to argon2id

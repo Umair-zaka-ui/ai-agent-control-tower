@@ -90,16 +90,20 @@ from app.runtime.services import (
     _record_event,
 )
 from app.runtime.versioning.artifacts import ReleaseArtifactService
+from app.runtime.versioning.attestation import AttestationService
 from app.runtime.versioning.channels import ReleaseChannelService
 from app.runtime.versioning.compare import VersionComparisonService
 from app.runtime.versioning.compatibility import CompatibilityAnalysisService
+from app.runtime.versioning.keys import SigningKeyService
 from app.runtime.versioning.lineage import VersionLineageService
 from app.runtime.versioning.notes import ReleaseNoteService
 from app.runtime.versioning.readiness import VersionReadinessService
 from app.runtime.versioning.release_metadata import ReleaseMetadataService
 from app.runtime.versioning.schemas import (
+    AttestationRead,
     CompatibilityFindingRead,
     CompatibilityReportRead,
+    ProvenanceRead,
     ReleaseArtifactCreate,
     ReleaseArtifactRead,
     ReleaseChannelRead,
@@ -107,8 +111,12 @@ from app.runtime.versioning.schemas import (
     ReleaseMetadataUpsert,
     ReleaseNoteCreate,
     ReleaseNoteRead,
+    RevokeSigningKeyRequest,
     RevokeVersionRequest,
     RollbackTargetRequest,
+    SignatureRead,
+    SigningKeyRead,
+    VerificationResultRead,
     VersionComparisonRead,
     VersionReadinessRead,
     VersionSnapshotRead,
@@ -133,6 +141,8 @@ _VERSION_PUBLISH = "runtime.version.publish"
 _VERSION_DEPRECATE = "runtime.version.deprecate"
 _VERSION_REVOKE = "runtime.version.revoke"
 _VERSION_RETIRE = "runtime.version.retire"
+_SIGNING_VIEW = "runtime.signing.view"
+_SIGNING_MANAGE = "runtime.signing.manage"
 _DEPLOY_VIEW = "runtime.deployment.view"
 _DEPLOY_CREATE = "runtime.deployment.create"
 _DEPLOY_ACTION = "runtime.deployment.deploy"
@@ -651,10 +661,12 @@ def approve_version(agent_id: uuid.UUID, version_id: uuid.UUID,
 
 
 @router.post("/agents/{agent_id}/versions/{version_id}/publish", response_model=AgentVersionRead)
-def publish_version(agent_id: uuid.UUID, version_id: uuid.UUID,
+def publish_version(agent_id: uuid.UUID, version_id: uuid.UUID, request: Request,
                     actor: User = Depends(require_permission(_VERSION_PUBLISH)), db: Session = Depends(get_db)):
     agent = AgentRegistryService(db).get_or_404(actor, agent_id)
-    return AgentVersionService(db).publish(actor, agent, version_id)
+    return AgentVersionService(db).publish(actor, agent, version_id,
+                                           correlation_id=request.headers.get("x-correlation-id"),
+                                           source_ip=request.client.host if request.client else None)
 
 
 @router.post("/agents/{agent_id}/versions/{version_id}/deprecate", response_model=AgentVersionRead)
@@ -838,6 +850,84 @@ def list_version_compatibility_findings(agent_id: uuid.UUID, version_id: uuid.UU
     AgentRegistryService(db).get_or_404(actor, agent_id)
     AgentVersionService(db).get_or_404(actor, agent_id, version_id)
     return CompatibilityAnalysisService(db).list_findings(version_id)
+
+
+# --------------------------------------------------------------------------- #
+# Cryptographic signing, provenance & attestation (Phase 5.2.4) — no public or
+# unauthenticated route here (ACT-VER-FR-070 deferred; see
+# docs/runtime/versioning.md's Known Deviations) — every endpoint below
+# requires authentication and is scoped to the caller's organization via
+# AgentRegistryService.get_or_404.
+# --------------------------------------------------------------------------- #
+@router.get("/agents/{agent_id}/versions/{version_id}/signatures", response_model=list[SignatureRead])
+def list_version_signatures(agent_id: uuid.UUID, version_id: uuid.UUID,
+                            actor: User = Depends(require_permission(_VERSION_VIEW)),
+                            db: Session = Depends(get_db)):
+    AgentRegistryService(db).get_or_404(actor, agent_id)
+    AgentVersionService(db).get_or_404(actor, agent_id, version_id)
+    return AttestationService(db).list_signatures(version_id)
+
+
+@router.get("/agents/{agent_id}/versions/{version_id}/provenance", response_model=ProvenanceRead | None)
+def get_version_provenance(agent_id: uuid.UUID, version_id: uuid.UUID,
+                           actor: User = Depends(require_permission(_VERSION_VIEW)),
+                           db: Session = Depends(get_db)):
+    AgentRegistryService(db).get_or_404(actor, agent_id)
+    AgentVersionService(db).get_or_404(actor, agent_id, version_id)
+    return AttestationService(db).get_provenance(version_id)
+
+
+@router.get("/agents/{agent_id}/versions/{version_id}/attestation", response_model=AttestationRead)
+def get_version_attestation(agent_id: uuid.UUID, version_id: uuid.UUID,
+                            actor: User = Depends(require_permission(_VERSION_VIEW)),
+                            db: Session = Depends(get_db)):
+    AgentRegistryService(db).get_or_404(actor, agent_id)
+    version = AgentVersionService(db).get_or_404(actor, agent_id, version_id)
+    return AttestationService(db).get_attestation(version)
+
+
+@router.post("/agents/{agent_id}/versions/{version_id}/verify", response_model=VerificationResultRead)
+def verify_version(agent_id: uuid.UUID, version_id: uuid.UUID,
+                   actor: User = Depends(require_permission(_VERSION_VIEW)), db: Session = Depends(get_db)):
+    """Independently re-verifies every signature over this version plus
+    whether the frozen snapshot still matches what was signed — never
+    trusts the persisted ``verification_status`` alone."""
+    AgentRegistryService(db).get_or_404(actor, agent_id)
+    version = AgentVersionService(db).get_or_404(actor, agent_id, version_id)
+    return AttestationService(db).verify(version)
+
+
+@router.post("/agents/{agent_id}/versions/{version_id}/countersign", response_model=SignatureRead,
+            status_code=status.HTTP_201_CREATED)
+def countersign_version(agent_id: uuid.UUID, version_id: uuid.UUID,
+                        actor: User = Depends(require_permission(_APPROVE)), db: Session = Depends(get_db)):
+    """Adds an additional, independent signature over the same payload the
+    ``PUBLISHER`` signature covers (``ACT-VER-FR-069``). Gated by
+    ``runtime.agent.approve`` — the permission that already governs
+    approving a version (``_APPROVE`` — see ``approve_version`` above); no
+    separate ``runtime.version.approve`` code exists in this codebase, and
+    inventing a synonym for one that already gates the same action would
+    only add catalog bloat."""
+    AgentRegistryService(db).get_or_404(actor, agent_id)
+    version = AgentVersionService(db).get_or_404(actor, agent_id, version_id)
+    return AttestationService(db).countersign(version, actor_id=actor.id)
+
+
+@router.get("/signing-keys", response_model=list[SigningKeyRead])
+def list_signing_keys(actor: User = Depends(require_permission(_SIGNING_VIEW)), db: Session = Depends(get_db)):
+    return SigningKeyService(db).list()
+
+
+@router.post("/signing-keys/{key_id}/rotate", response_model=SigningKeyRead)
+def rotate_signing_key(key_id: str, actor: User = Depends(require_permission(_SIGNING_MANAGE)),
+                       db: Session = Depends(get_db)):
+    return SigningKeyService(db).rotate(key_id)
+
+
+@router.post("/signing-keys/{key_id}/revoke", response_model=SigningKeyRead)
+def revoke_signing_key(key_id: str, payload: RevokeSigningKeyRequest = RevokeSigningKeyRequest(),
+                       actor: User = Depends(require_permission(_SIGNING_MANAGE)), db: Session = Depends(get_db)):
+    return SigningKeyService(db).revoke(key_id, reason=payload.reason)
 
 
 # --------------------------------------------------------------------------- #

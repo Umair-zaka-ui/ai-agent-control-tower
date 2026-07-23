@@ -14,8 +14,15 @@
 > verified them yet.
 >
 > **Phase 5.2.6 update**: compatibility analysis is no longer deferred — see
-> "Compatibility & breaking-change detection" below. Real cryptographic
-> signing (`signature_id`) remains foundation-only, unchanged from Part 1.
+> "Compatibility & breaking-change detection" below.
+>
+> **Phase 5.2.4 update**: real cryptographic signing, provenance and
+> portable attestation are no longer foundation-only either — see
+> "Cryptographic signing, provenance & attestation" below. This phase also
+> required a canonical-serialization refactor of the checksum routines
+> themselves (see "Canonical serialization" below) — the one place in this
+> phase's governing principle where shipped Part 1/5.2.6 behavior changed,
+> deliberately and by design.
 
 ## Immutability & checksums (§11, §12)
 
@@ -317,6 +324,285 @@ never persisted in that case), `POST .../versions/{id}/compatibility/analyze`
 (the persisted findings list). All three reuse `runtime.version.view` — no
 new permission was needed.
 
+## Canonical serialization (Phase 5.2.4, ACT-VER-FR-025, FR-040..FR-047)
+
+`app/runtime/versioning/canonical.py` is the single source of truth for
+turning a Python object into the exact bytes that get hashed and signed.
+Before this phase, `_checksum()` (`services.py`) and `checksum_of()`
+(`snapshot.py`) both hashed `json.dumps(..., sort_keys=True, default=str)`
+output — correct as long as the same process wrote and verified, but not a
+stable, cross-language contract: Python's `json.dumps` defaults for
+Unicode representation and (via `default=str`) arbitrary-type stringification
+aren't specified anywhere a second implementation could reproduce them. A
+signature over a non-reproducible digest is worthless — the moment an
+external auditor, or a second implementation in another language,
+recomputes the digest with different serialization, verification fails on
+an artifact that was never tampered with, and the failure is silent and
+looks like tampering.
+
+**The rules** (a second-language implementation must reproduce every one):
+
+| Rule | Specification |
+|---|---|
+| Key ordering | Lexicographic by Unicode code point, recursively, at every depth |
+| Unicode normalization | NFC, applied to every string key and value |
+| Encoding | UTF-8, no BOM |
+| Whitespace | None — `,` and `:` separators exactly |
+| Non-ASCII | Emitted literally, never `\uXXXX`-escaped |
+| Floats | Rejected — `CanonicalizationError`. See below. |
+| Integers | No leading zeros or `+` (already true of every Python `int`) |
+| Booleans / null | `true` / `false` / `null` |
+| Nested containers | Every rule above applies recursively; list order is preserved (only object keys sort) |
+
+`digest(obj)` returns `sha256:<64 lowercase hex>` — algorithm-prefixed
+(`ACT-VER-FR-041`) so a future second algorithm is a different prefix, not a
+format migration.
+
+**The float decision**: IEEE-754 floats do not round-trip reliably across
+JSON encoders/languages (`0.1 + 0.2` serializes differently in Python, Go,
+and JavaScript), so `canonicalize()`/`digest()` raise
+`CanonicalizationError` the instant one appears anywhere in the structure —
+they never silently guess a portable representation. `stringify_floats()`
+is the documented, explicit, opt-in conversion producers use instead.
+**Finding, as required by this phase**: `model_configuration.temperature`/
+`top_p` are exactly the float fields this codebase actually produces (see
+the compatibility-detection sampling-parameter list in the section above);
+`_checksum()` and `checksum_of()` both call `stringify_floats()` on their
+input before digesting.
+
+**Known-answer vectors** (also committed as `KNOWN_ANSWER_VECTORS` in
+`backend/tests/runtime/test_canonical.py`, so a second implementation can
+check its own output against the same fixed inputs):
+
+| Input | `digest()` |
+|---|---|
+| `{}` | `sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a` |
+| `[]` | `sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945` |
+| `None` | `sha256:74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b` |
+| `{"a": 1, "b": "two", "c": True, "d": None}` | `sha256:eb2c149467b56cfad324e3c07e2eb850f0481017871fe2250e3d21c9d0ba1fdc` |
+| `{"outer": {"z": 1, "a": [3, 2, 1]}, "flag": False}` | `sha256:f9de48f91c5f237ea969b03b9d8c8dabf4bf81d9353800ce3840afcb2167e49a` |
+| `{"name": "héllo wörld 🎉"}` | `sha256:3af931f0fc2a91cbcfcd909e0d2b0962c43b0a7a1cdef759a8767d16392508c1` |
+
+**Migrating existing rows**: `agent_versions.checksum_algorithm` and
+`agent_version_snapshots.checksum_algorithm` (migration `0027`) default to
+`'legacy-sha256'` for every row that existed before this migration ran; new
+rows set `'canonical-sha256'` explicitly at creation (`AgentVersionService.
+create`, `SnapshotBuilderService.build_and_store`). Verification branches
+on the column (`_verify_checksum` in `services.py`) — legacy rows verify
+against `_legacy_checksum`/`_legacy_checksum_of` (the original, unchanged
+routines, kept and clearly marked deprecated), canonical rows against the
+new `canonical.digest()`-backed ones. **The migration itself never
+recomputes a single existing checksum** — silently rewriting integrity
+values in a schema migration, with no audit trail of who ran it or when,
+is precisely what this phase exists to prevent. `backend/scripts/
+recompute_checksums.py` is the explicit, operator-invoked, audited
+alternative (`--dry-run` reports without writing).
+
+Both checksum columns were also widened from 64 to 80 characters to fit the
+new algorithm-prefixed format (`"sha256:<64 hex>"` is 71 characters);
+legacy bare-hex values fit unchanged. Two pre-existing tests that asserted
+the legacy bare-64-hex length (`test_snapshot_is_built_only_at_publish`,
+`test_version_lifecycle_and_checksum`) were updated to assert the new
+format instead — the only tests this phase touched, per its own governing
+principle's one authorized exception.
+
+**A second bug the refactor surfaced**: `build_snapshot()` (`snapshot.py`)
+previously embedded `release_metadata.release_window_start`/
+`release_window_end`/`support_end_date` as raw `datetime` objects, relying
+on the old `checksum_of()`'s `default=str` to paper over it with Python's
+non-portable `str(datetime)` formatting. `canonical.py` refuses to guess a
+representation for an unsupported type, so this had to be fixed as a
+precondition for the refactor: those three fields are now `.isoformat()`
+strings in the snapshot document, matching the `created_time` field right
+next to them, which already did this correctly.
+
+## Cryptographic signing, provenance & attestation (Phase 5.2.4, ACT-VER-FR-060..071)
+
+Every `publish()` now produces a cryptographic signature over the frozen
+snapshot, plus a portable, self-contained attestation document describing
+exactly what was published and by whom.
+
+### Signing provider abstraction
+
+`app/runtime/versioning/signing/` — `SigningProvider` (`base.py`) is the
+interface; `LocalKeyProvider` (`local.py`, Ed25519 via the `cryptography`
+library) is the only implementation today; `registry.py` selects one from
+`settings.SIGNING_PROVIDER`, so swapping to Azure Key Vault at deployment
+is a configuration change, not a rewrite. **Private key material never
+crosses the interface**: `sign()` takes bytes and returns a signature,
+never a key; nothing outside `local.py` reads a key file.
+
+Local keys live at `settings.SIGNING_KEY_PATH` (default `./.keys/`,
+gitignored), one PEM pair per key version
+(`{key_id}.v{n}.pem`/`{key_id}.v{n}.pub.pem`). A keypair is auto-generated
+on first use if absent, logging a clear warning that it is not
+production-grade. `SigningKeyService` (`keys.py`) is the database record of
+a key's *public* material and lifecycle (`signing_keys`/
+`signing_key_versions`) — it never touches private key material itself,
+only calling into the provider for cryptographic operations.
+
+### Signing at publish time
+
+Order, inside `AgentVersionService.publish()` (`services.py`), after the
+snapshot is built and frozen:
+
+1. Compute the snapshot's canonical digest (already done by
+   `SnapshotBuilderService`).
+2. Compute the **manifest digest** — a canonical digest over
+   `{schema_version, snapshot_digest, agent_id, version_id,
+   semantic_version, version_number, published_at}`
+   (`compute_manifest_digest`) — a small, unambiguous object identifying
+   *this exact publish*, not the snapshot body again.
+3. Build the attestation document (below).
+4. Sign the DSSE Pre-Authentication Encoding of that document via the
+   provider, wrap the result in a DSSE envelope.
+5. Persist an `agent_version_signatures` row (`signature_type='PUBLISHER'`)
+   and an `agent_version_provenance` row.
+6. Set `agent_versions.manifest_digest`/`signed_at`.
+
+**Fail-closed — the opposite policy from Phase 5.2.6's compatibility
+analysis.** Compatibility analysis is advisory: a bug in it is logged and
+swallowed after `publish()`'s own commit, so it can never make a version
+unpublishable. Signing is not advisory — `ACT-VER-NFR-004` requires
+fail-closed, since an unsigned published version is an integrity hole. The
+signing call in `publish()` is deliberately **not** wrapped in `try`/
+`except`: it runs *before* the transaction commits, so an exception there
+propagates out of `publish()` entirely, the session's pending changes are
+discarded when the request's `get_db` dependency closes it, and the
+version never reaches `PUBLISHED`.
+
+`agent_versions.signature_id` (added by Part 1, always null until now) is
+wired to this primary `PUBLISHER` signature's id, rather than dropped —
+the column's own name already says "the id of *the* signature," which maps
+naturally onto "the primary one," the same way `snapshot_reference` already
+denormalizes a pointer onto the version row.
+
+### Key rotation and revocation
+
+`POST /signing-keys/{key_id}/rotate` generates a new key version (the
+previous version's public key stays retrievable — old signatures must stay
+verifiable) and makes it current; `POST /signing-keys/{key_id}/revoke`
+marks the key `REVOKED` and sets every affected signature's
+`verification_status` to `'KEY_REVOKED'` **without altering the version
+record or the signature bytes themselves** (`ACT-VER-FR-066`) — the
+historical fact that it was signed remains true, only its current trust
+status changes. Both operate only on a key that already has a database
+row — an unrecognized `key_id` 404s (`SIGNING_KEY_NOT_FOUND`) rather than
+being silently auto-provisioned, which only the internal first-use path
+(`ensure_key`, called from `publish()`/`countersign()`) does.
+
+### Key rotation & revocation runbook
+
+**Routine rotation** (no suspected compromise — e.g. a periodic policy):
+
+1. `POST /api/v1/runtime/signing-keys/{key_id}/rotate` (requires
+   `runtime.signing.manage`). The previous version keeps signing history
+   verifiable — nothing needs re-signing.
+2. New `publish()`/`countersign()` calls automatically use the new current
+   version from this point on; no other action needed.
+
+**Suspected key compromise**:
+
+1. `POST /api/v1/runtime/signing-keys/{key_id}/revoke` with a `reason` —
+   immediately marks every signature made with that key
+   `verification_status: 'KEY_REVOKED'` platform-wide. This does **not**
+   unpublish anything or alter any version/signature row.
+2. Rotation is blocked on a revoked key (`SIGNING_KEY_REVOKED`) — a
+   revoked `key_id` is retired permanently; sign with a **different**
+   `key_id` going forward (a new `key_id` is provisioned automatically the
+   next time something signs with it).
+3. Treat every version whose primary signature now shows
+   `KEY_REVOKED` as needing manual review — `POST .../verify` on each
+   still reports whether the *content* is intact, but the trust chain back
+   to that key is broken.
+4. There is currently exactly one operational key per deployment
+   (`settings.SIGNING_DEFAULT_KEY_ID`, default `"default"`) — `signing_keys`
+   has no per-organization scoping (a deliberate global-catalog choice, see
+   "Release channels" above for the same pattern), so a revocation is
+   platform-wide, not scoped to one tenant.
+
+**Local-provider file loss** (`SIGNING_PROVIDER=LOCAL` only): if
+`settings.SIGNING_KEY_PATH` is lost (e.g. a wiped dev environment), every
+existing signature becomes unverifiable (`SIGNING_KEY_NOT_FOUND` on
+verify) — there is no recovery path for a lost local private key by
+design. This is a further reason Azure Key Vault, not more local-provider
+tooling, is the intended production path (see Known Deviations).
+
+### Portable attestation
+
+`app/runtime/versioning/attestation.py` builds an in-toto Statement v1
+document (`predicateType`:
+`https://ai-agent-control-tower.io/AgentVersionAttestation/v1`) and wraps
+it in a DSSE envelope (`application/vnd.in-toto+json`). Every predicate
+field is copied by value at build time — the agent's actual name/slug, the
+version's actual semantic version/status, digests, timestamps, opaque UUID
+identifiers — never a foreign key that only resolves through this
+platform's schema. `subject[0].digest.sha256` is bare hex (no `sha256:`
+prefix), per in-toto's own convention, even though every digest elsewhere
+in this codebase is prefixed.
+
+The DSSE signature covers the **Pre-Authentication Encoding** (PAE) of the
+payload, not the raw payload — `pae(payloadType, payload) = "DSSEv1" SP
+LEN(payloadType) SP payloadType SP LEN(payload) SP payload`, per the DSSE
+spec exactly. Signing the raw payload instead would silently break every
+external verifier that follows the spec.
+
+**Verification scope — internal only, deliberately.** This phase builds no
+public endpoint and no standalone verifier script — `POST .../verify` is
+authenticated and organization-scoped like every other route here
+(`ACT-VER-FR-070`, the public verification endpoint, is deferred — see
+Known Deviations). The in-toto/DSSE format is followed anyway: signed
+artifacts accumulate, and the signature covers the document's *shape* —
+changing that shape later means re-signing every version that already
+exists, while following a documented external format now costs nothing and
+keeps the door open. `POST .../verify` independently re-verifies every
+signature row for a version (never trusting the persisted
+`verification_status` alone) plus whether the frozen snapshot still
+matches what was signed, so it catches both a tampered signature/payload
+and a tampered snapshot as two orthogonal signals.
+
+### Countersigning
+
+`POST .../countersign` (`runtime.agent.approve` — see "Permission mapping"
+below) adds an additional, independent signature over the *same* payload
+the `PUBLISHER` signature covers (`ACT-VER-FR-069`: multiple signatures per
+version permitted) — each signature row carries its own minimal envelope
+(the shared payload plus just its own `signatures` entry), so every
+signature verifies independently of every other one.
+
+### API
+
+`GET`/`POST .../versions/{id}/signatures`, `.../provenance`,
+`.../attestation`, `.../verify`, `.../countersign`; `GET /signing-keys`,
+`POST /signing-keys/{key_id}/rotate`, `POST /signing-keys/{key_id}/revoke`.
+Two new permissions, `runtime.signing.view`/`runtime.signing.manage`, for
+the signing-key endpoints; the version-scoped endpoints reuse
+`runtime.version.view`.
+
+**Permission mapping decision**: the countersign endpoint's obvious
+permission — "whoever can approve a version" — already exists in this
+codebase as `runtime.agent.approve` (the permission `approve_version`,
+DRAFT→APPROVED, already uses), not a separate `runtime.version.approve`
+code. Reusing it rather than inventing a same-meaning synonym matches this
+phase's own instruction to add a new permission "only if you find a
+concrete reason" — there isn't one here.
+
+### Known Deviations
+
+- **`ACT-VER-NFR-002`** ("private key material must never enter process
+  memory") **is violated by the local file-based provider by
+  construction** — signing necessarily reads the private key bytes from
+  disk into this process's memory for the duration of the `sign()` call.
+  Accepted pre-production; **closes when Azure Key Vault** (which signs
+  server-side and never exposes key material to the calling process) lands
+  as a second `SigningProvider`.
+- **`ACT-VER-FR-070`** (a public, unauthenticated verification endpoint) is
+  **deliberately deferred** — every route this phase adds requires
+  authentication and organization scoping (see "Verification scope"
+  above). **Closes** when external/public verification is actually needed;
+  the attestation format was chosen specifically so that's a routing
+  decision at that point, not a re-signing exercise.
+
 ## Capability/tool references on a version
 
 `capability_ids`/`tool_ids` passed at version creation both (a) get
@@ -329,13 +615,14 @@ addition to — assigning a capability/tool directly to the agent (no
 
 ## What's deferred
 
-Real cryptographic signing (verifying `signature_id`) remains
-foundation-only — nothing generates or checks a signature yet (that's
-Phase 5.2.4, not this phase). Actually executing a rollback, canary
-rollout, or traffic shift belongs to deployments (Phase 5.0, already
-shipped) and future runtime work, not this versioning foundation.
-Compatibility *analysis* (Phase 5.2.6, above) is no longer deferred — the
-`compatibility_level` column is real and computed.
+Actually executing a rollback, canary rollout, or traffic shift belongs to
+deployments (Phase 5.0, already shipped) and future runtime work, not this
+versioning foundation. Compatibility *analysis* (Phase 5.2.6) and
+cryptographic signing/provenance/attestation (Phase 5.2.4) are no longer
+deferred — see their sections above. Within signing itself, two things
+remain deferred on purpose — see Phase 5.2.4's "Known Deviations": Azure
+Key Vault as a second `SigningProvider` (closes `ACT-VER-NFR-002`), and a
+public/unauthenticated verification endpoint (`ACT-VER-FR-070`).
 
 ## What's deliberately not done
 

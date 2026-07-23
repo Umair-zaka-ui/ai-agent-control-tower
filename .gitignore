@@ -32,6 +32,10 @@ coverage.xml
 *.pgpass
 pgpass.conf
 
+# Phase 5.2.4 — local signing keys (private key material). Never commit.
+.keys/
+backend/.keys/
+
 # IDE
 .idea/
 .vscode/
