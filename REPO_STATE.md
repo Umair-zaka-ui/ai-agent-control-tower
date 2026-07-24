@@ -2,7 +2,7 @@
 
 **Purpose**: a factual, verified state document for `ai-agent-control-tower`. Every claim below was extracted directly from the codebase, the live local Postgres database (after `alembic upgrade head` to `0027_version_signing`), the running FastAPI app object, or `git` — not from memory, changelog prose, or inference. Where something could not be mechanically verified, it is marked **UNVERIFIED**.
 
-**Generated**: 2026-07-23, initial version on branch `main` at commit `8092be1ac5b07ce1744ace5b7d0615835ed2c219`. **Fully regenerated** the same day after Phase 5.2 Part 1, Phase 5.2.6, and Phase 5.2.4 all shipped — now reflects `main` at commit `9ddb46d` ("Merge Phase 5.2.4: Cryptographic Signing, Provenance & Portable Attestation", 2026-07-23 07:24:47 +0500), working tree clean. §2, §3, §5, §6, and §8 were re-derived from the live system in this pass (not patched in place, unlike the two intermediate partial updates that preceded it).
+**Generated**: 2026-07-23, initial version on branch `main` at commit `8092be1ac5b07ce1744ace5b7d0615835ed2c219`. **Fully regenerated** the same day after Phase 5.2 Part 1, Phase 5.2.6, and Phase 5.2.4 all shipped — that pass reflected `main` at commit `9ddb46d` ("Merge Phase 5.2.4: Cryptographic Signing, Provenance & Portable Attestation", 2026-07-23 07:24:47 +0500). §2, §3, §5, §6, and §8 were re-derived from the live system in that pass (not patched in place, unlike the two intermediate partial updates that preceded it). **Updated 2026-07-24** after Phase 5.7a.1 (Model Provider Abstraction & Registry) shipped — now reflects `main` at commit `326e55a` ("Merge Phase 5.7a.1: Model Provider Abstraction & Registry", 2026-07-24 16:33:36 +0500), working tree clean. This pass re-verified §2/§3/§5 as **unchanged** (no migration, no new routes — confirmed live, not assumed from the build prompt's own no-migration claim) and updated §1, §4, §6, §7, §8, §9, and §10 to cover the new `backend/app/runtime/providers/` package.
 
 **Verification methods used**:
 - Directory tree: `find` (depth 4, pruned `node_modules`/`__pycache__`/`.git`/`.venv`/`dist`/`.pytest_cache`).
@@ -117,6 +117,7 @@ backend
       user.py
     runtime
       __init__.py
+      providers
       registry
       routes.py
       schemas.py
@@ -229,6 +230,7 @@ backend
       conftest.py
       test_attestation.py
       test_canonical.py
+      test_provider_abstraction.py
       test_version_compatibility.py
       test_version_signing.py
     test_agents_part32.py
@@ -378,6 +380,7 @@ docs
     health-and-observability.md
     operations-and-kill-switch.md
     overview.md
+    providers.md
     registry
       agent-definitions.md
       api.md
@@ -2817,7 +2820,7 @@ All 27 Alembic revisions in `backend/migrations/versions/`, in chain order (olde
 
 ## 4. Implemented Modules
 
-**233 non-`__init__.py` Python files** under `backend/app/` (226 at the last full count, `0025_agent_versioning`; +7 this session — `versioning/attestation.py`, `canonical.py`, `compatibility.py`, `keys.py`, `signing/base.py`, `signing/local.py`, `signing/registry.py`; `signing/__init__.py` excluded per this section's own non-`__init__.py` rule), AST-parsed for their module docstring (first line shown) and every top-level class/public function. Grouped by domain (backend directory structure). Frontend module structure is summarized separately at the end of this section (file-count only — the frontend was not AST-parsed since the exhaustive symbol-level inventory the user asked for was scoped to "modules" in the module/class/function sense, which is the backend's organizing unit; the frontend's `src/modules/*` React component tree does not have an equivalent exported-symbol convention).
+**238 non-`__init__.py` Python files** under `backend/app/` (233 at the last full count, post Phase 5.2.6/5.2.4; +5 this update — Phase 5.7a.1's `runtime/providers/base.py`, `errors.py`, `mock.py`, `registry.py`, `types.py`; `runtime/providers/__init__.py` excluded per this section's own non-`__init__.py` rule), AST-parsed for their module docstring (first line shown) and every top-level class/public function. Grouped by domain (backend directory structure). Frontend module structure is summarized separately at the end of this section (file-count only — the frontend was not AST-parsed since the exhaustive symbol-level inventory the user asked for was scoped to "modules" in the module/class/function sense, which is the backend's organizing unit; the frontend's `src/modules/*` React component tree does not have an equivalent exported-symbol convention).
 
 **Out of this section's stated scope** (`backend/app/` only): `backend/scripts/recompute_checksums.py` (Phase 5.2.4's audited legacy-checksum-migration script) and its `backend/scripts/__init__.py` live under `backend/scripts/`, a sibling of `backend/app/`, not under it — noted here for completeness rather than silently expanding the count above.
 
@@ -3454,6 +3457,24 @@ All 27 Alembic revisions in `backend/migrations/versions/`, in chain order (olde
 
 **`backend/app/runtime/services.py`** — Agent Runtime & Lifecycle Management services (Phase 5.0).
 - Classes: `AgentRegistryService,AgentVersionService,DeploymentService,CapabilityService,ToolRegistryService,ModelGatewayError,ModelGatewayService,ToolGatewayService,PolicyResult,RuntimePolicyService,IdempotencyService,ExecutionRequestService,ExecutionWorkerService,RuntimeApprovalService,HealthMonitoringService,KillSwitchService,RuntimeDashboardService`
+
+
+### runtime/providers (Phase 5.7a.1)
+
+**`backend/app/runtime/providers/base.py`** — Phase 5.7a.1 SRS ACT-MDL-FR-001, FR-002, FR-009 — the model provider contract.
+- Classes: `ModelProvider`
+
+**`backend/app/runtime/providers/errors.py`** — Phase 5.7a.1 SRS ACT-MDL-FR-005, FR-009 — provider-layer exceptions.
+- Classes: `ProviderUnavailableError,CapabilityUnsupportedError`
+
+**`backend/app/runtime/providers/mock.py`** — Phase 5.7a.1 SRS ACT-MDL-FR-008 — MockProvider.
+- Classes: `MockProvider`
+
+**`backend/app/runtime/providers/registry.py`** — Phase 5.7a.1 SRS ACT-MDL-FR-003, FR-005, FR-010 — provider registry.
+- Functions: `register,resolve,registered_identifiers`
+
+**`backend/app/runtime/providers/types.py`** — Phase 5.7a.1 SRS ACT-MDL-FR-006, FR-007 — provider-neutral internal representation.
+- Classes: `FinishReason,ModelToolDefinition,ModelToolCall,ModelMessage,ModelRequest,ModelResponse,ModelCapabilities`
 
 
 ### runtime/registry (Phase 5.1)
@@ -4330,6 +4351,16 @@ Verified against the current codebase (models, live schema, service files, route
 | **5.2.6 Compatibility Detection** | **IMPLEMENTED** | `CompatibilityAnalysisService` in `backend/app/runtime/versioning/compatibility.py` classifies a candidate version against a resolved baseline into `COMPATIBLE`/`BACKWARD_COMPATIBLE`/`BREAKING`/`UNKNOWN`; persists to `agent_versions.compatibility_level` (now real, no longer stuck at `"UNKNOWN"`) plus new columns `compatibility_baseline_id`/`compatibility_analyzed_at` (migration `0026_version_compatibility`); one `agent_version_compatibility_findings` row per detected change. Triggered automatically as a best-effort follow-up after `publish()`'s own commit (failure-tolerant — an analyzer exception is logged and swallowed, never blocks publication); also available on demand via `POST .../compatibility/analyze`. `VersionReadinessService`'s `compatibility_analysis` check is a real evaluation — `skipped` is never `true`. Routes: `GET`/`POST .../versions/{id}/compatibility`, `.../compatibility/analyze`, `GET .../compatibility/findings`. 35 new tests in `backend/tests/runtime/test_version_compatibility.py`. See `docs/runtime/versioning.md`'s "Compatibility & breaking-change detection" section for the classification rules and the deliberate SRS deviation (semver/compatibility inconsistency is reported, not enforced as a publish-blocker). |
 | **5.2.7 Release Channels & Promotion** | **IMPLEMENTED** | `agent_release_channels` table (seeded with STABLE/BETA/CANARY/INTERNAL by migration `0025`); `ReleaseChannelService` in `backend/app/runtime/versioning/channels.py`; route `GET /release-channels`. Promotion **readiness** (not promotion *execution*) via `VersionReadinessService` in `backend/app/runtime/versioning/readiness.py` and route `GET /agents/{agent_id}/versions/{version_id}/readiness` — a read-only diagnostic checklist (snapshot buildability, validation, metadata, ownership, registry status, blocking governance findings, artifacts, approval), never a gate on the lifecycle actions themselves. Actual environment promotion / rollout execution is out of scope (see §9). |
 
+### Milestone 1 — Real Model Provider Integration (Phase 5.7a)
+
+Verified against the current codebase this session (`feat/5.7a.1-provider-abstraction`, merged `326e55a`). Eight planned sub-phases; only the first is built. No schema migration in 5.7a.1 (table count unchanged at 97, §2) and no new HTTP routes (route count unchanged at 452, §5) — purely an internal abstraction layer plus a translation-boundary rewrite of `ModelGatewayService.invoke()`.
+
+| Sub-phase | Status | Evidence |
+|---|---|---|
+| **5.7a.1 Model Provider Abstraction & Registry** | **IMPLEMENTED** | New package `backend/app/runtime/providers/` (`base.py`'s `ModelProvider(ABC)` with abstract `complete()`/`stream()`/`describe()` and concrete `supports()`/`validate_capabilities()`; `types.py`'s frozen, provider-neutral `ModelRequest`/`ModelResponse`/`ModelMessage`/`ModelToolDefinition`/`ModelToolCall`/`ModelCapabilities`/`FinishReason`; `registry.py`'s explicit `register()`/`resolve()`/`registered_identifiers()`, no directory-scanning discovery; `mock.py`'s `MockProvider` — the sole registered adapter, registered under `"MOCK"` at import time). `ModelGatewayService.invoke()` (`backend/app/runtime/services.py`) rewritten as a translation boundary: resolves a provider via the registry, wraps `input_payload` as one `ModelMessage`, calls `provider.complete()`, translates the `ModelResponse` back into the legacy `(output_payload, usage)` tuple every caller already depends on — `SUPPORTED_PROVIDERS` class attribute removed, registry is now sole source of truth. Two new error codes (`MODEL_PROVIDER_UNAVAILABLE` reused, `MODEL_CAPABILITY_UNSUPPORTED` added) in `backend/app/identity/errors.py`; two new settings (`MODEL_DEFAULT_PROVIDER`, `MODEL_PROVIDER_BASE_URLS`) in `backend/app/core/config.py`. 23 new tests in `backend/tests/runtime/test_provider_abstraction.py`, including a reusable parameterized conformance suite (`PROVIDERS_UNDER_TEST`) designed so a future provider is one line to add. See `docs/runtime/providers.md`. |
+| **5.7a.2 First Real Provider Adapter** | **NOT STARTED** | Explicitly deferred by the 5.7a.1 build prompt ("Don't [build a real provider]. The next prompt does that."). No `openai.py`/`anthropic.py`/etc. adapter exists; `registered_identifiers()` returns only `("MOCK",)`. |
+| **5.7a.3-5.7a.8** | **NOT STARTED** | Streaming, cost/usage accounting beyond the mock's positive-token stub, retry/backoff, credential storage (`deployment.secret_references` resolution — referenced in `docs/runtime/gateways.md` as "not yet built"), and any remaining Milestone 1 sub-phases are all unbuilt; no code references them beyond forward-looking doc comments. |
+
 ---
 
 ## 7. Conventions
@@ -4344,7 +4375,7 @@ Verified against the current codebase (models, live schema, service files, route
 | Repository pattern (minority) | Explicit `XRepository` classes wrapping queries, used underneath services | Only in `backend/app/identity/repositories/*.py` (`BaseRepository` generic base in `base.py`) and `backend/app/authorization/repositories.py` (Phase 4.3.1 core only) — **not** used in the later authorization submodules (`abac/`, `admin/`, `hierarchy/`, `resources/`), governance, or runtime/registry/versioning (including 5.2.6's `compatibility.py`, 5.2.4's `attestation.py`/`keys.py`, re-verified this session), which query directly from services. This is an inconsistency across phases, not a documented rule (see §10). |
 | Permission naming | Dot-notation `domain.resource.action` strings (e.g. `runtime.version.retire`, `runtime.signing.manage`, `agent.view`, `policy.edit`), centrally cataloged | `PERMISSION_CATALOG: dict[str, str]` in `backend/app/services/rbac_service.py`; `require_permission(code)` dependency in `backend/app/api/deps.py:129` |
 | Backend test framework | pytest, real Postgres (not sqlite/mocks) via `SessionLocal()`; `client`/`db_session`/`admin` fixtures | `backend/tests/authorization/conftest.py`, `backend/tests/runtime/conftest.py` (the latter also carries an autouse fixture isolating each test onto its own signing key_id — see §10 #16); hermetic defaults (notifications/rate-limit/envelope off) via autouse fixtures in `backend/tests/conftest.py` |
-| Backend test layout | `backend/tests/{authorization,identity,runtime}/` plus flat `test_*.py` files at `backend/tests/` root for the original Phase 1-3 surface | `runtime/` added this session (Phase 5.2.6/5.2.4: `test_version_compatibility.py`, `test_canonical.py`, `test_version_signing.py`, `test_attestation.py`); verified via `find backend/tests -maxdepth 2 -type d` |
+| Backend test layout | `backend/tests/{authorization,identity,runtime}/` plus flat `test_*.py` files at `backend/tests/` root for the original Phase 1-3 surface | `runtime/` added Phase 5.2.6/5.2.4 (`test_version_compatibility.py`, `test_canonical.py`, `test_version_signing.py`, `test_attestation.py`); `test_provider_abstraction.py` added Phase 5.7a.1 (reusable parameterized conformance suite, `PROVIDERS_UNDER_TEST` list); verified via `find backend/tests -maxdepth 2 -type d` |
 | Frontend test framework | Vitest, `jsdom` environment, `@testing-library/react` + `user-event`, cleanup via `afterEach` | `frontend/vitest.config.ts`, `frontend/src/test/setup.ts` |
 | Frontend test layout | `frontend/src/modules/<domain>/tests/*.test.tsx` co-located per module (not a top-level `tests/` dir) | verified via `find frontend/src/modules -iname "*.test.*"` (this session) |
 | Frontend structure | One module dir per backend domain (`frontend/src/modules/<domain>/`), one service file per domain (`frontend/src/services/<domain>Service.ts`), shared Radix-based primitives in `frontend/src/components/ui/` | `frontend/src/modules/*`, `frontend/src/services/*.ts` |
@@ -4355,11 +4386,12 @@ Verified against the current codebase (models, live schema, service files, route
 
 ## 8. Branch History
 
-Output of `git branch --sort=-committerdate`, with committer dates added via `--format`. Names and dates only — 30 local branches, re-verified this session (was 25 at the last full count); each mirrored by an `origin/*` remote-tracking branch at the same commit/date (shown once below; the `origin/<name>` counterpart is identical). 5 new branches since the last full count: `feat/5.2.4-signing-provenance`, `feat/5.2.6-compatibility`, `feature/phase-5.2-part1-versioning-foundation` (all merged into `main` via local `--no-ff` merges, per the git-log evidence below), plus 2 more that existed but weren't reflected in that stale count.
+Output of `git branch --sort=-committerdate`, with committer dates added via `--format`. Names and dates only — 31 local branches, re-verified this session (was 30 at the last full count); each mirrored by an `origin/*` remote-tracking branch at the same commit/date (shown once below; the `origin/<name>` counterpart is identical). 1 new branch since the last full count: `feat/5.7a.1-provider-abstraction` (merged into `main` via a local `--no-ff` merge, per the git-log evidence below).
 
 | Branch | Committer date |
 |---|---|
-| `main` | 2026-07-23 07:24:47 +0500 |
+| `main` | 2026-07-24 16:33:36 +0500 |
+| `feat/5.7a.1-provider-abstraction` | 2026-07-24 16:33:05 +0500 |
 | `feat/5.2.4-signing-provenance` | 2026-07-23 07:24:19 +0500 |
 | `feat/5.2.6-compatibility` | 2026-07-23 06:27:39 +0500 |
 | `feature/phase-5.2-part1-versioning-foundation` | 2026-07-23 01:56:36 +0500 |
@@ -4390,7 +4422,7 @@ Output of `git branch --sort=-committerdate`, with committer dates added via `--
 | `feat/audit-compliance-center-part-3.5` | 2026-07-01 04:18:00 +0500 |
 | `feat/approval-workbench-part-3.4` | 2026-06-30 02:53:28 +0500 |
 
-Current branch: `main`, at `9ddb46d` ("Merge Phase 5.2.4: Cryptographic Signing, Provenance & Portable Attestation"). Working tree is clean except for this document's own in-progress regeneration (verified via `git status --porcelain`).
+Current branch: `main`, at `326e55a` ("Merge Phase 5.7a.1: Model Provider Abstraction & Registry"). Working tree is clean except for this document's own in-progress update (verified via `git status --porcelain`).
 
 ---
 
@@ -4402,7 +4434,7 @@ Every item below was mechanically verified at generation time (grep with an expl
 2. **Zero `NotImplementedError`** anywhere in `backend/app`.
 3. **Zero pytest `skip`/`xfail` markers** in `backend/tests`.
 4. **Duplicate OpenAPI `operationId` warning**: `update_policy` in `backend/app/api/routes/policies.py:137` is registered via `@router.api_route("/{policy_id}", methods=["PUT", "PATCH"])` — both methods share one function, so FastAPI's OpenAPI generator emits a `UserWarning: Duplicate Operation ID` every time the schema is built (reproduced during this session's test run). Cosmetic — both HTTP methods work correctly (`test_response_envelope.py::test_openapi_schema_is_not_enveloped` passes) — but would break strict OpenAPI-codegen tooling pointed at this schema.
-5. **Only the `MOCK` model provider actually executes.** `ModelGatewayService` (`backend/app/runtime/services.py:898`) models and authorizes every other provider but fails closed with `MODEL_PROVIDER_UNAVAILABLE`.
+5. **Only the `MOCK` model provider actually executes.** As of Phase 5.7a.1, `ModelGatewayService.invoke()` (`backend/app/runtime/services.py`) resolves providers through a real, pluggable `ModelProvider` interface and explicit registry (`backend/app/runtime/providers/`) rather than a hardcoded branch — but `registered_identifiers()` still returns only `("MOCK",)`. Any other provider name (`OPENAI`, `ANTHROPIC`, …) fails closed with `MODEL_PROVIDER_UNAVAILABLE` immediately, same as before; the gap is narrower now (no real adapter exists yet, not "the abstraction doesn't exist yet") but still a gap. See `docs/runtime/providers.md`.
 6. **Only the `FUNCTION`/`echo` tool action actually executes.** Everything else fails closed with `TOOL_ACTION_NOT_ALLOWED` (`docs/runtime/overview.md`).
 7. **CAPTCHA is a placeholder.** `CaptchaService.verify()` (`backend/app/identity/protection/policy.py:89`) has no real Turnstile/reCAPTCHA/hCaptcha integration.
 8. **Analytics cost figures are deterministic estimates**, not real provider billing data (`backend/app/services/analytics_service.py:64`, "Estimated unit costs (USD)... deterministic placeholders").
@@ -4412,7 +4444,7 @@ Every item below was mechanically verified at generation time (grep with an expl
 12. **Actual rollback/canary/traffic-shift execution does not exist.** `AgentVersion.rollback_target_id` (Phase 5.2 Part 1) is a settable pointer only; nothing reads it to perform a rollback. `DeploymentService.rollback` (Phase 5.0, `backend/app/runtime/services.py`) is the only thing that changes what's actually deployed, and is a full redeploy to a target version, not a traffic-shifting rollback.
 13. **Frontend production bundle is a single ~1.65 MB chunk** (431 KB gzip) — Vite's build output flags this as exceeding its 500 KB warning threshold; no route-level code-splitting has been applied (reproduced this session via `npm run build`).
 14. **`backend/.venv` had to be rebuilt mid-session** (Phase 5.1 work) because the one present in the working tree pointed at a Python interpreter path (`C:\Users\Dell\...`) from a different machine. It is gitignored, so this is a local-environment fact, not a repository defect — flagged here since a fresh clone on another machine will need the same rebuild. **UNVERIFIED** whether this affects any environment other than the one this document was generated in.
-15. **Test suite status at generation time**: backend `661 passed, 0 failed` (`pytest -q`, 176.05s); frontend `297 passed, 0 failed` across 48 files (`vitest run`). Both re-run fresh for this document, not carried forward. **Phase 5.2.6 update**: backend re-run at `696 passed, 0 failed` (`pytest -q`, 184.63s) after adding 35 compatibility-detection tests; frontend untouched by Phase 5.2.6 (backend-only phase), still `297 passed, 0 failed` as of its own last run. **Phase 5.2.4 update**: backend re-run at `743 passed, 0 failed` (`pytest -q`, 190.89s) after adding 47 canonical-serialization/signing/attestation tests; frontend untouched by Phase 5.2.4 (also backend-only), still `297 passed, 0 failed` as of its own last run.
+15. **Test suite status at generation time**: backend `661 passed, 0 failed` (`pytest -q`, 176.05s); frontend `297 passed, 0 failed` across 48 files (`vitest run`). Both re-run fresh for this document, not carried forward. **Phase 5.2.6 update**: backend re-run at `696 passed, 0 failed` (`pytest -q`, 184.63s) after adding 35 compatibility-detection tests; frontend untouched by Phase 5.2.6 (backend-only phase), still `297 passed, 0 failed` as of its own last run. **Phase 5.2.4 update**: backend re-run at `743 passed, 0 failed` (`pytest -q`, 190.89s) after adding 47 canonical-serialization/signing/attestation tests; frontend untouched by Phase 5.2.4 (also backend-only), still `297 passed, 0 failed` as of its own last run. **Phase 5.7a.1 update**: backend re-run at `766 passed, 0 failed` (`pytest -q`, 196.51s) after adding 23 provider-abstraction/conformance-suite tests; frontend untouched by Phase 5.7a.1 (also backend-only), still `297 passed, 0 failed` as of its own last run.
 
 ---
 
@@ -4438,6 +4470,11 @@ Decisions the SRS/roadmap documents don't specify, that the implementation settl
 16. **`signing_keys` is a single global catalog, not per-organization** — the same pattern as release channels (#9 above) and for the same reason (no SRS bullet asked for per-tenant keys, and a shared vocabulary is simpler to operate). A concrete consequence, discovered and fixed during this work: revoking "the" key is process-wide, not scoped to one tenant/test — `backend/tests/runtime/conftest.py`'s autouse `_isolated_signing_key` fixture exists specifically because an early test run revoked the shared key and the (real, committed) corruption persisted across separate test invocations until manually repaired.
 17. **`agent_versions.signature_id` was wired to the primary signature's id, not dropped**, even though Phase 5.2 Part 1 left it permanently null. The column's own name ("the id of *the* signature") maps naturally onto "the primary one," matching the existing `snapshot_reference` denormalization pattern already on the same row. `backend/app/runtime/versioning/attestation.py::AttestationService.build_and_sign`.
 18. **The countersign endpoint reuses `runtime.agent.approve` rather than introducing `runtime.version.approve`.** No permission by that literal name exists in `PERMISSION_CATALOG`; `runtime.agent.approve` already gates the conceptually identical action (`approve_version`, the DRAFT/READY_FOR_REVIEW→APPROVED transition) — reusing it avoided a same-meaning synonym. `backend/app/runtime/routes.py::countersign_version`.
+19. **`ModelProvider.supports()` is concrete, not abstract** (Phase 5.7a.1) — it derives its answer entirely from the abstract `describe()`, so a provider's two ways of answering "do you support capability X?" can never contradict each other. The build prompt didn't specify this; it was chosen to make a whole class of "describe() and supports() disagree" bugs structurally impossible rather than something each adapter must remember to keep in sync. `backend/app/runtime/providers/base.py`.
+20. **Capability enforcement is an explicit call each provider makes (`self.validate_capabilities(request)`), not a Template Method wrapper around the abstract override point.** A Template Method design (renaming the override point to `_complete()` behind a concrete public `complete()`) was considered and rejected — it would have renamed the interface's documented override point for no behavior the explicit-call version doesn't already give, adding an indirection layer purely for its own sake. `backend/app/runtime/providers/base.py` docstring, `docs/runtime/providers.md`.
+21. **`FinishReason` needs no provider-specific translation function in the shared layer.** Subclassing `str, Enum` gets a free `ValueError` on any unmapped provider value via `FinishReason(value)`; a bespoke translation function would itself have to embed provider vocabulary (`"stop_sequence"`, `"length"`, …) inside `types.py`, which `ACT-MDL-FR-006` forbids — that mapping correctly belongs in each future adapter, not the shared, provider-neutral types module. `backend/app/runtime/providers/types.py`.
+22. **`ModelGatewayService.invoke()` is a translation boundary, not a rewrite of its callers' contract.** The legacy `(input_payload: dict) -> (output_payload, usage)` shape `ExecutionWorkerService` and every existing test depend on was preserved exactly; internally it now wraps the whole payload as one `ModelMessage`, calls the resolved provider's `complete()`, and translates the `ModelResponse` back. Verified before implementation, by grepping every existing assertion on `output_payload`/`model_usage`/`execution.cost`, that no test asserts on the *exact wording* of the mock's result text or *exact* token counts — only `echo == input_payload`, `provider == "MOCK"`, and `cost > 0` — which is what made this translation possible without touching a single existing assertion (AC-04). `backend/app/runtime/services.py::ModelGatewayService.invoke`.
+23. **The provider registry (`backend/app/runtime/providers/registry.py`) is an explicit `register()`/`resolve()` call, not directory-scanning plugin discovery.** Every registered provider is one grep away (`register("MOCK", MockProvider)` at the bottom of the module) rather than implicitly discovered by filename/decorator convention — "greppable, not magic," matching this codebase's existing preference for explicit catalogs over convention-based magic (permission catalog, release channels, signing keys — see #9, #16 above).
 
 ---
 
