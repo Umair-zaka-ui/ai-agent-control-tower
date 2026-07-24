@@ -189,6 +189,18 @@ class Settings(BaseSettings):
     SIGNING_KEY_PATH: str = "./.keys/"
     SIGNING_DEFAULT_KEY_ID: str = "default"
 
+    # --- Phase 5.7a.1: model provider abstraction (ACT-MDL-FR-001..010) -------
+    # The provider identifier used when a version's model_configuration omits
+    # one — matches ModelGatewayService's pre-abstraction default exactly.
+    MODEL_DEFAULT_PROVIDER: str = "MOCK"
+    # Per-provider base URL (ACT-MDL-FR-010) — lets one adapter class serve
+    # multiple compatible endpoints (e.g. OpenAI itself vs. a self-hosted
+    # OpenAI-compatible gateway) without a code change, just a different
+    # registered identifier pointing at the same class with a different URL.
+    # MOCK has nothing to call, but still reads this end-to-end so the
+    # mechanism is proven before any real provider depends on it.
+    MODEL_PROVIDER_BASE_URLS: dict[str, str] = {}
+
     # --- Phase 2: email notifications (SMTP / Mailtrap for development) ---
     NOTIFICATIONS_ENABLED: bool = False
     SMTP_HOST: str = "sandbox.smtp.mailtrap.io"

@@ -38,6 +38,7 @@ from sqlalchemy.orm import Session
 from app.authorization.enums import AuthorizationAuditEvent
 from app.authorization.middleware.gateway import AuthorizationGateway
 from app.authorization.services import AuthorizationAuditService
+from app.core.config import settings
 from app.core.enums import UserRole
 from app.identity.errors import ErrorCode, IdentityError
 from app.identity.models.department import Department, Team
@@ -967,43 +968,60 @@ class ModelGatewayError(IdentityError):
 
 
 class ModelGatewayService:
-    """§40 — the only supported provider in this environment is ``MOCK`` (a
-    deterministic local adapter, always available); anything else fails
-    closed with ``MODEL_PROVIDER_UNAVAILABLE`` rather than silently
-    degrading — the same discipline §36 (default deny) applies to model
-    providers, not just permissions. With only one real provider, ``invoke``
-    has no per-provider branching yet; adding a second (OpenAI/Anthropic/
-    Bedrock, §41) means giving ``invoke`` a provider dispatch and adding
-    each provider's call there — additive to ``SUPPORTED_PROVIDERS`` and
-    ``invoke``, not a rewrite of the surrounding gateway contract (callers
-    still just get back ``(output_payload, usage)``)."""
+    """§40 — Phase 5.7a.1 SRS ACT-MDL-FR-004, FR-005: ``invoke()`` selects a
+    provider from the version's frozen ``model_configuration`` (never from
+    mutable agent/deployment state) and delegates to
+    ``app.runtime.providers.registry.resolve()`` — an unregistered
+    provider still fails closed with ``MODEL_PROVIDER_UNAVAILABLE``
+    (``ModelGatewayError``, unchanged), the same discipline §36 (default
+    deny) applies everywhere else. ``MOCK`` is the only registered provider
+    today; adding a second (OpenAI/Anthropic/Bedrock, §41, Phase 5.7a.2) is
+    additive — one more ``register()`` call in ``providers/registry.py`` —
+    not a change to this method's signature or the ``(output_payload,
+    usage)`` contract every caller (``ExecutionWorkerService``) already
+    depends on.
 
-    SUPPORTED_PROVIDERS = {"MOCK"}
+    This method is the translation boundary between the execution
+    pipeline's legacy ``dict``-shaped ``input_payload``/``(output_payload,
+    usage)`` contract and the provider-neutral ``ModelRequest``/
+    ``ModelResponse`` types every provider actually speaks
+    (``app.runtime.providers.types``) — the whole input payload becomes one
+    user message; a provider's response content and token counts become
+    the legacy ``output_payload``/``usage`` shape. See
+    ``docs/runtime/providers.md`` for why this split exists."""
 
     def invoke(self, version: AgentVersion, input_payload: dict) -> tuple[dict, dict]:
+        from app.runtime.providers.registry import resolve as resolve_provider
+        from app.runtime.providers.types import ModelMessage, ModelRequest
+
         config = version.model_configuration or {}
-        provider = (config.get("provider") or "MOCK").upper()
-        if provider not in self.SUPPORTED_PROVIDERS:
-            raise ModelGatewayError(
-                ErrorCode.MODEL_PROVIDER_UNAVAILABLE,
-                f"Model provider '{provider}' is not configured in this environment.",
-            )
+        provider_name = (config.get("provider") or settings.MODEL_DEFAULT_PROVIDER).upper()
+        try:
+            provider = resolve_provider(provider_name, base_url=settings.MODEL_PROVIDER_BASE_URLS.get(provider_name))
+        except IdentityError as exc:
+            # Preserve the pre-abstraction exception type callers/tests catch.
+            raise ModelGatewayError(exc.code, exc.message) from exc
+
         # Test/simulation hook only — lets the timeout enforcement in
         # ExecutionWorkerService be exercised deterministically without a
         # real slow provider. Never triggered by normal input.
         simulated_delay = input_payload.get("__simulate_slow_seconds__") if isinstance(input_payload, dict) else None
         if simulated_delay:
             time.sleep(float(simulated_delay))
-        text_in = json.dumps(input_payload, default=str)
-        input_tokens = max(1, len(text_in) // 4)
-        output_text = f"[{config.get('model', 'mock-model')}] processed {len(input_payload)} input field(s)."
-        output_tokens = max(1, len(output_text) // 4)
+
+        request = ModelRequest(
+            messages=(ModelMessage(role="user", content=json.dumps(input_payload, default=str)),),
+            sampling_parameters={k: v for k, v in config.items() if k not in ("provider", "model")},
+        )
+        response = provider.complete(request)
+
         usage = {
-            "provider": provider, "model": config.get("model", "mock-model"),
-            "input_tokens": input_tokens, "output_tokens": output_tokens,
-            "total_tokens": input_tokens + output_tokens,
+            "provider": provider_name, "model": config.get("model", "mock-model"),
+            "input_tokens": response.raw_usage.get("input_tokens", 0),
+            "output_tokens": response.raw_usage.get("output_tokens", 0),
+            "total_tokens": response.raw_usage.get("total_tokens", 0),
         }
-        output_payload = {"result": output_text, "echo": input_payload}
+        output_payload = {"result": response.content, "echo": input_payload}
         return output_payload, usage
 
 

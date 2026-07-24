@@ -29,6 +29,7 @@ same governance and security controls as everything else on the platform.
 | [workers-and-queue.md](workers-and-queue.md) | The Postgres-backed queue, worker claim/lock/retry, dead-lettering |
 | [capabilities-and-tools.md](capabilities-and-tools.md) | Capability/tool registries, assignment, authorization |
 | [gateways.md](gateways.md) | Model Gateway and Tool Gateway adapters |
+| [providers.md](providers.md) | Phase 5.7a.1 — the `ModelProvider` interface, registry, and provider-neutral internal representation |
 | [runtime-policy-and-approvals.md](runtime-policy-and-approvals.md) | Runtime limits, policy evaluation, human approval |
 | [health-and-observability.md](health-and-observability.md) | Heartbeats, health, telemetry, cost tracking, the dashboard |
 | [operations-and-kill-switch.md](operations-and-kill-switch.md) | Operations Center, suspension, the emergency kill switch |
@@ -54,8 +55,11 @@ these being added later.
   dependency in this environment. See [workers-and-queue.md](workers-and-queue.md).
 - Only the `MOCK` model provider and the `FUNCTION`/`echo` tool action
   actually execute in this environment; everything else is fully modeled
-  (registry, assignment, authorization) but fails closed if invoked. See
-  [gateways.md](gateways.md).
+  (registry, assignment, authorization) but fails closed if invoked. As of
+  Phase 5.7a.1, `MOCK` runs through a real, pluggable provider interface
+  (`ModelProvider`) and registry rather than a hardcoded branch — adding a
+  real provider (Phase 5.7a.2) is additive, not a rewrite. See
+  [gateways.md](gateways.md) and [providers.md](providers.md).
 - Agents can also trigger their own next run via `POST
   /runtime/executions/self`, authenticated by API key rather than a human
   session and authorized through ABAC alone (self-only, no agent-to-agent

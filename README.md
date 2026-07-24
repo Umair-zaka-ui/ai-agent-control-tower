@@ -493,6 +493,16 @@ rotation and revocation are supported; verification is internal-only for
 now (deliberately deferred, not forgotten — see the "Known Deviations" in
 [docs/runtime/versioning.md](docs/runtime/versioning.md)).
 
+**Model provider abstraction (Phase 5.7a.1)** — the first step in
+replacing the mock execution every layer above it has been tested
+against: a real `ModelProvider` interface, an explicit registry, and a
+provider-neutral internal representation (messages, requests, responses,
+capabilities) that no future adapter's shape can leak outside its own
+module. `MOCK` is migrated onto it with zero change in externally
+observable behavior — proof the interface doesn't distort what it
+expresses. No real provider yet; that's the next sub-phase. See
+[docs/runtime/providers.md](docs/runtime/providers.md).
+
 **Users** (password `DemoPass!2026`):
 
 | Email                  | Role       |
