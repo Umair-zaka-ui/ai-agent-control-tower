@@ -4,31 +4,37 @@
 
 `ModelGatewayService.invoke(version, input_payload)` is the *only* way a
 worker calls a model — the provider is read from
-`version.model_configuration.provider` (defaulting to `MOCK`), never
-hardcoded per agent.
+`version.model_configuration.provider` (defaulting to
+`settings.MODEL_DEFAULT_PROVIDER`, `"MOCK"`), never hardcoded per agent,
+and never from mutable agent/deployment state (only the frozen version).
 
-Only `MOCK` is a working adapter in this environment: it's fully
-deterministic (no network call, no API key), returns a stub completion
-referencing the configured `model` name, and reports token usage estimated
-from payload length (`len(text) // 4`) so cost tracking has real numbers to
-aggregate. Any other provider name — `OPENAI`, `ANTHROPIC`,
-`AZURE_OPENAI`, `BEDROCK`, … — raises `MODEL_PROVIDER_UNAVAILABLE`
-immediately rather than silently falling back to `MOCK` or failing in some
-provider-specific way. This is the same "default deny" discipline (§36)
-applied to model providers, not just permissions: an unconfigured provider
-should be *loud*.
+As of **Phase 5.7a.1**, provider resolution goes through a real,
+pluggable interface and explicit registry — see
+[providers.md](providers.md) for the full design (the `ModelProvider`
+contract, the provider-neutral `ModelRequest`/`ModelResponse` types,
+capability declaration/enforcement). `invoke()` itself is now just the
+translation boundary between the legacy `input_payload: dict`/
+`(output_payload, usage)` shape every caller here already depends on, and
+the provider-neutral types every adapter actually speaks.
 
-With only `MOCK` implemented, `invoke()` has no per-provider branching yet
-— it *is* the mock behavior. Adding a real provider means giving `invoke()`
-a provider dispatch and adding that provider's call (§41's contract:
-`invoke`, `validate_configuration`, `estimate_cost`, `health_check`) plus
-adding it to `SUPPORTED_PROVIDERS` — additive to this one method, not a
-rewrite of the surrounding gateway; nothing about the caller
-(`ExecutionWorkerService._execute`) or the `(output_payload, usage)` return
-shape needs to change. Credentials would
-be resolved via `deployment.secret_references` (§45) — never stored on the
-agent version itself, which only ever holds a secret *reference* string
-like `"vault://production/openai/api-key"`.
+Only `MOCK` is a registered, working adapter in this environment: it's
+fully deterministic (no network call, no API key) and reports a positive
+token count so cost tracking has real numbers to aggregate. Any
+unregistered provider name — `OPENAI`, `ANTHROPIC`, `AZURE_OPENAI`,
+`BEDROCK`, … — raises `MODEL_PROVIDER_UNAVAILABLE` immediately rather than
+silently falling back to `MOCK` or failing in some provider-specific way.
+This is the same "default deny" discipline (§36) applied to model
+providers, not just permissions: an unconfigured provider should be
+*loud*.
+
+Adding a real provider (Phase 5.7a.2) means one more `register(...)` call
+in `app/runtime/providers/registry.py` and a new adapter module — additive,
+not a rewrite of `invoke()`, the surrounding gateway, or the
+`(output_payload, usage)` shape `ExecutionWorkerService` depends on.
+Credentials would be resolved via `deployment.secret_references` (§45) —
+never stored on the agent version itself, which only ever holds a secret
+*reference* string like `"vault://production/openai/api-key"` (credential
+storage itself is Phase 5.7a.5, not yet built).
 
 ## Tool Gateway (§43, §44)
 

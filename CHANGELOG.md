@@ -4,6 +4,59 @@ All notable changes to the AI Agent Control Tower are documented here. The forma
 based on [Keep a Changelog](https://keepachangelog.com/); the project is pre-1.0 and
 versions track the roadmap phases rather than semver guarantees.
 
+## [Unreleased] — Phase 5.7a.1 · Model Provider Abstraction & Registry
+
+- **Added** `app/runtime/providers/` — a new package: `base.py` (the
+  `ModelProvider` abstract interface: `complete()`/`stream()`/`describe()`
+  abstract, `supports()` concrete and derived from `describe()`),
+  `types.py` (the provider-neutral internal representation —
+  `ModelMessage`, `ModelRequest`, `ModelResponse`, `ModelToolDefinition`,
+  `ModelToolCall`, `ModelCapabilities`, `FinishReason` — all immutable,
+  frozen/slotted dataclasses with `MappingProxyType`-wrapped dict fields),
+  `registry.py` (explicit `register()`/`resolve()`, not directory-scanning
+  discovery), `mock.py` (`MockProvider`, the first implementation),
+  `errors.py` (`ProviderUnavailableError`, `CapabilityUnsupportedError`).
+- **Migrated** `MOCK` onto the new interface with unchanged externally
+  observable behavior: exact input echo, `provider == "MOCK"`, a positive
+  token count. The exact wording of the completion text and exact token
+  counts changed internally (dict-key-count vs. message-count), but
+  nothing in the test suite ever asserted on either — zero pre-existing
+  tests needed modification.
+- **Refactored** `ModelGatewayService.invoke()` to resolve providers via
+  the registry instead of an inline `MOCK`-only branch. Public signature
+  and `(output_payload, usage)` return shape unchanged; provider selection
+  still reads only from the version's frozen `model_configuration`, never
+  from mutable agent/deployment state. `AuthorizationGateway` is
+  untouched — it already ran at an earlier pipeline stage
+  (`request_execution`, before an execution is even queued), well before
+  provider resolution.
+- **Added** capability declaration and enforcement
+  (`ACT-MDL-FR-009`): a request asking a provider for something its own
+  `describe()` says it doesn't support (e.g. tool definitions sent to
+  `MockProvider`, which declares `supports_tools=False`) raises
+  `MODEL_CAPABILITY_UNSUPPORTED` (422) rather than being silently ignored
+  or mishandled.
+- **Added** a reusable, parameterized conformance test suite
+  (`PROVIDERS_UNDER_TEST` in `tests/runtime/test_provider_abstraction.py`)
+  — every future adapter (starting with Phase 5.7a.2's real provider) is
+  validated against it by adding one line, not copying tests.
+- **Added** `MODEL_CAPABILITY_UNSUPPORTED` error code;
+  `MODEL_PROVIDER_UNAVAILABLE` preserved exactly. Added
+  `MODEL_DEFAULT_PROVIDER`/`MODEL_PROVIDER_BASE_URLS` settings
+  (`ACT-MDL-FR-010` — per-provider base URL configuration, proven
+  end-to-end even though `MOCK` has nothing to call).
+- **No schema migration** — this sub-phase is purely an application-layer
+  abstraction over the existing `model_configuration` JSONB column.
+- **Explicitly out of scope, per the build prompt**: any real provider
+  implementation (5.7a.2), streaming (5.7a.3), token accounting/cost
+  (5.7a.3/5.7a.5), a real error taxonomy and retry (5.7a.4), credential
+  storage (5.7a.5).
+- 23 new backend tests (`tests/runtime/test_provider_abstraction.py`) —
+  unit/conformance (no database) plus 4 integration tests proving the
+  execution pipeline actually routes through the new abstraction
+  end-to-end. Backend **766** green (743 + 23), 0 failed; frontend
+  untouched by this backend-only phase, still **297** green.
+
 ## [Unreleased] — Phase 5.2.4 · Cryptographic Signing, Provenance & Portable Attestation
 
 - **Added** `app/runtime/versioning/canonical.py` — the single canonical

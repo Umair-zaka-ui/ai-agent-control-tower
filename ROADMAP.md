@@ -910,6 +910,47 @@ The final Phase 5.2 sub-phase — closes the platform's integrity story:
   (`runtime.signing.view`/`.manage`); 47 new backend tests (743 total
   green); backend only — frontend untouched, still 297 green.
 
+## Milestone 1 — Real Model Provider Integration (Phase 5.7a)
+
+Closes the gap every phase above rested on an untested assumption about:
+the platform can register, version, sign, authorize, govern and audit an
+agent — and then executes a *mock*. Eight sub-phases, built in order so
+each interface is proven by a trivial implementation before a real one
+leans on it.
+
+### Part 5.7a.1 — Model Provider Abstraction & Registry ✅
+
+Abstraction only — no real provider yet (that's 5.7a.2, deliberately kept
+separate so its shape doesn't leak into the interface while it's still
+being designed):
+
+- **`ModelProvider`** abstract interface (`complete()`/`stream()`/
+  `describe()` abstract; `supports()` concrete, derived from `describe()`
+  so it can never contradict its own capability declaration).
+- **Provider-neutral internal representation** (`ModelMessage`,
+  `ModelRequest`, `ModelResponse`, `ModelToolDefinition`, `ModelToolCall`,
+  `ModelCapabilities`, `FinishReason`) — immutable, no provider-specific
+  field name anywhere, sampling parameters a free-form dict since
+  providers accept different sets.
+- **Explicit provider registry** (`register()`/`resolve()`) — greppable,
+  not directory-scanning discovery; adding a provider is one line.
+- **Capability enforcement**: a request for something a provider doesn't
+  support (per its own `describe()`) raises `MODEL_CAPABILITY_UNSUPPORTED`
+  rather than being silently mishandled.
+- **`MOCK` migrated onto the interface**, externally observable behavior
+  unchanged (exact echo, `provider == "MOCK"`, positive token count) —
+  proof the interface doesn't need to distort a real provider's shape to
+  express it. `ModelGatewayService.invoke()` keeps its exact signature;
+  only what happens inside changed.
+- **Reusable, parameterized conformance test suite** — every future
+  adapter (5.7a.2 onward) is validated against it in one line, no copied
+  tests.
+- No schema migration (pure application-layer abstraction). 23 new
+  backend tests (766 total green); backend only — frontend untouched,
+  still 297 green.
+
+Next: 5.7a.2 (a real OpenAI-compatible provider implementation).
+
 Next: production readiness (MFA, OAuth/SSO, observability), or Phase 5.3
 (detailed release APIs, actual rollback/canary execution).
 
