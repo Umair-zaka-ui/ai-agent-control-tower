@@ -1,8 +1,8 @@
 # REPO_STATE.md
 
-**Purpose**: a factual, verified state document for `ai-agent-control-tower`. Every claim below was extracted directly from the codebase, the live local Postgres database (after `alembic upgrade head` to `0027_version_signing`), the running FastAPI app object, or `git` — not from memory, changelog prose, or inference. Where something could not be mechanically verified, it is marked **UNVERIFIED**.
+**Purpose**: a factual, verified state document for `ai-agent-control-tower`. Every claim below was extracted directly from the codebase, the live local Postgres database (after `alembic upgrade head` to `0028_streaming_and_pricing`), the running FastAPI app object, or `git` — not from memory, changelog prose, or inference. Where something could not be mechanically verified, it is marked **UNVERIFIED**.
 
-**Generated**: 2026-07-23, initial version on branch `main` at commit `8092be1ac5b07ce1744ace5b7d0615835ed2c219`. **Fully regenerated** the same day after Phase 5.2 Part 1, Phase 5.2.6, and Phase 5.2.4 all shipped — that pass reflected `main` at commit `9ddb46d` ("Merge Phase 5.2.4: Cryptographic Signing, Provenance & Portable Attestation", 2026-07-23 07:24:47 +0500). §2, §3, §5, §6, and §8 were re-derived from the live system in that pass (not patched in place, unlike the two intermediate partial updates that preceded it). **Updated 2026-07-24** after Phase 5.7a.1 (Model Provider Abstraction & Registry) shipped — now reflects `main` at commit `326e55a` ("Merge Phase 5.7a.1: Model Provider Abstraction & Registry", 2026-07-24 16:33:36 +0500), working tree clean. This pass re-verified §2/§3/§5 as **unchanged** (no migration, no new routes — confirmed live, not assumed from the build prompt's own no-migration claim) and updated §1, §4, §6, §7, §8, §9, and §10 to cover the new `backend/app/runtime/providers/` package.
+**Generated**: 2026-07-23, initial version on branch `main` at commit `8092be1ac5b07ce1744ace5b7d0615835ed2c219`. **Fully regenerated** the same day after Phase 5.2 Part 1, Phase 5.2.6, and Phase 5.2.4 all shipped — that pass reflected `main` at commit `9ddb46d` ("Merge Phase 5.2.4: Cryptographic Signing, Provenance & Portable Attestation", 2026-07-23 07:24:47 +0500). §2, §3, §5, §6, and §8 were re-derived from the live system in that pass. **Updated 2026-07-24** after Phase 5.7a.1 (Model Provider Abstraction & Registry) shipped — reflected `main` at commit `326e55a`. **Updated 2026-07-28** after Phase 5.7a.2 (OpenAI-Compatible Provider Adapter) and Phase 5.7a.3 (Streaming & Token Accounting) both shipped — this pass covers *two* un-documented phases at once, since REPO_STATE.md was not updated after 5.7a.2 landed before 5.7a.3's build began. Now reflects `main` at commit `781cc82` ("Merge Phase 5.7a.3: Streaming & Token Accounting", 2026-07-28 00:44:13 +0500), working tree clean. §2/§3/§5 were re-derived live (not assumed): schema **did** change this time — `model_pricing` (new table) plus sixteen new columns across `agent_executions`/`execution_attempts`, migration head now `0028_streaming_and_pricing` — while routes stayed unchanged at 452 (streaming is internal-only, no new HTTP surface). §1, §4, §6, §7, §8, §9, and §10 were updated to cover `openai_compatible.py` (missing from the previous pass only because it didn't exist yet), the registry's `model`/`api_key` forwarding, real SSE streaming, token/cost accounting, and `PricingService`.
 
 **Verification methods used**:
 - Directory tree: `find` (depth 4, pruned `node_modules`/`__pycache__`/`.git`/`.venv`/`dist`/`.pytest_cache`).
@@ -187,10 +187,13 @@ backend
       0025_agent_versioning.py
       0026_version_compatibility.py
       0027_version_signing.py
+      0028_streaming_and_pricing.py
+  pytest.ini
   requirements.txt
   scripts
     __init__.py
     recompute_checksums.py
+    record_provider_fixtures.py
   tests
     __init__.py
     authorization
@@ -228,9 +231,25 @@ backend
       unit
     runtime
       conftest.py
+      fixtures
+        providers
+          README.md
+          max_tokens_reached.json
+          multi_turn_with_tool_message.json
+          multiple_tool_calls.json
+          omitted_optional_fields.json
+          simple_completion.json
+          single_tool_call.json
+          stream_simple_completion.sse
+          stream_tool_call_fragmented.sse
+          stream_truncated.sse
+          stream_with_usage.sse
+          stream_without_usage.sse
       test_attestation.py
       test_canonical.py
+      test_openai_compatible_provider.py
       test_provider_abstraction.py
+      test_streaming_and_accounting.py
       test_version_compatibility.py
       test_version_signing.py
     test_agents_part32.py
@@ -576,9 +595,11 @@ scripts
 
 ## 2. Database Schema
 
-**97 tables**, extracted via live `sqlalchemy.inspect()` against the local Postgres database after running every migration through `0027_version_signing` (head). This reflects exactly what the migration chain produces. `alembic_version` (Alembic's own bookkeeping table, one column, no app data) is included below for completeness since it is a real table in the database.
+**98 tables**, extracted via live `sqlalchemy.inspect()` against the local Postgres database after running every migration through `0028_streaming_and_pricing` (head). This reflects exactly what the migration chain produces. `alembic_version` (Alembic's own bookkeeping table, one column, no app data) is included below for completeness since it is a real table in the database.
 
-**Phase 5.2.6/5.2.4 update**: re-extracted this session (previously 92 tables at `0025_agent_versioning`). 5 new tables: `agent_version_compatibility_findings` (5.2.6), `signing_keys`, `signing_key_versions`, `agent_version_signatures`, `agent_version_provenance` (5.2.4). `agent_versions` gained `compatibility_baseline_id`/`compatibility_analyzed_at` (5.2.6) and `checksum_algorithm`/`signed_at`/`manifest_digest` (5.2.4), plus `checksum` widened from `VARCHAR(64)` to `VARCHAR(80)`. `agent_version_snapshots` gained `checksum_algorithm` and the same `checksum` widening.
+**Phase 5.7a.3 update**: re-extracted this session (previously 97 tables at `0027_version_signing`). 1 new table: `model_pricing` (per-provider/model pricing with effective dating, ACT-MDL-FR-084). `agent_executions` gained twelve columns (`prompt_tokens`/`completion_tokens`/`total_tokens`/`token_accounting_complete`/`cost_amount`/`cost_currency`/`pricing_version`/`cost_is_estimated`/`time_to_first_token_ms`/`generation_duration_ms`/`finish_reason`/`was_streamed`/`stream_interrupted`); `execution_attempts` gained four (`prompt_tokens`/`completion_tokens`/`total_tokens`/`token_accounting_complete`). Phase 5.7a.1/5.7a.2 added no schema changes at all (confirmed live both times — see §8's branch history and the Milestone 1 status table in §6).
+
+**Phase 5.2.6/5.2.4 update**: re-extracted previously (92 tables at `0025_agent_versioning`). 5 new tables: `agent_version_compatibility_findings` (5.2.6), `signing_keys`, `signing_key_versions`, `agent_version_signatures`, `agent_version_provenance` (5.2.4). `agent_versions` gained `compatibility_baseline_id`/`compatibility_analyzed_at` (5.2.6) and `checksum_algorithm`/`signed_at`/`manifest_digest` (5.2.4), plus `checksum` widened from `VARCHAR(64)` to `VARCHAR(80)`. `agent_version_snapshots` gained `checksum_algorithm` and the same `checksum` widening.
 
 For each table: every column with its Postgres type, nullability and default; primary key; foreign keys (with `ondelete` behavior); unique constraints; and indexes (including the unique ones, which Postgres also surfaces as indexes).
 
@@ -923,6 +944,19 @@ Columns:
   - cost: NUMERIC(12, 6) NOT NULL DEFAULT '0'::numeric
   - created_at: TIMESTAMP NOT NULL DEFAULT now()
   - updated_at: TIMESTAMP NOT NULL DEFAULT now()
+  - prompt_tokens: INTEGER NULL
+  - completion_tokens: INTEGER NULL
+  - total_tokens: INTEGER NULL
+  - token_accounting_complete: BOOLEAN NOT NULL DEFAULT true
+  - cost_amount: NUMERIC(18, 8) NULL
+  - cost_currency: VARCHAR(3) NOT NULL DEFAULT 'USD'::character varying
+  - pricing_version: VARCHAR(32) NULL
+  - cost_is_estimated: BOOLEAN NOT NULL DEFAULT false
+  - time_to_first_token_ms: INTEGER NULL
+  - generation_duration_ms: INTEGER NULL
+  - finish_reason: VARCHAR(32) NULL
+  - was_streamed: BOOLEAN NOT NULL DEFAULT false
+  - stream_interrupted: BOOLEAN NOT NULL DEFAULT false
 Primary key: ['id'] (name=agent_executions_pkey)
 Foreign keys:
   - ['agent_id'] -> agents.['id'] (name=agent_executions_agent_id_fkey, ondelete=CASCADE)
@@ -1808,6 +1842,10 @@ Columns:
   - error_code: VARCHAR(50) NULL
   - error_message: TEXT NULL
   - created_at: TIMESTAMP NOT NULL DEFAULT now()
+  - prompt_tokens: INTEGER NULL
+  - completion_tokens: INTEGER NULL
+  - total_tokens: INTEGER NULL
+  - token_accounting_complete: BOOLEAN NOT NULL DEFAULT true
 Primary key: ['id'] (name=execution_attempts_pkey)
 Foreign keys:
   - ['execution_id'] -> agent_executions.['id'] (name=execution_attempts_execution_id_fkey, ondelete=CASCADE)
@@ -2022,6 +2060,26 @@ Indexes:
   - ix_login_history_organization_id: ['organization_id']
   - ix_login_history_success: ['success']
   - ix_login_history_user_id: ['user_id']
+
+#### model_pricing
+Columns:
+  - id: UUID NOT NULL
+  - provider: VARCHAR(64) NOT NULL
+  - model_name: VARCHAR(128) NOT NULL
+  - prompt_cost_per_1k: NUMERIC(18, 8) NOT NULL
+  - completion_cost_per_1k: NUMERIC(18, 8) NOT NULL
+  - currency: VARCHAR(3) NOT NULL DEFAULT 'USD'::character varying
+  - pricing_version: VARCHAR(32) NOT NULL
+  - effective_from: TIMESTAMP NOT NULL
+  - effective_to: TIMESTAMP NULL
+  - created_at: TIMESTAMP NOT NULL DEFAULT now()
+Primary key: ['id'] (name=model_pricing_pkey)
+Unique constraints:
+  - ['provider', 'model_name', 'effective_from'] (name=uq_model_pricing_provider_model_from)
+Indexes:
+  - ix_model_pricing_model_name: ['model_name']
+  - ix_model_pricing_provider: ['provider']
+  - uq_model_pricing_provider_model_from: ['provider', 'model_name', 'effective_from']
 
 #### organizations
 Columns:
@@ -2786,7 +2844,7 @@ Indexes:
 
 ## 3. Migration Chain
 
-All 27 Alembic revisions in `backend/migrations/versions/`, in chain order (oldest → newest), verified via `alembic history` and `ls` this session. **Current head: `0027_version_signing`** (verified via `alembic current` against the live database; `alembic upgrade head` / `downgrade -1` / `upgrade head` all re-verified clean this session for both of the two newest revisions).
+All 28 Alembic revisions in `backend/migrations/versions/`, in chain order (oldest → newest), verified via `alembic history` and `ls` this session. **Current head: `0028_streaming_and_pricing`** (verified via `alembic current` against the live database; `alembic upgrade head` / `downgrade -1` / `upgrade head` re-verified clean this session for the newest revision).
 
 | # | Revision file | Description (from the migration's own docstring) |
 |---|---|---|
@@ -2816,11 +2874,12 @@ All 27 Alembic revisions in `backend/migrations/versions/`, in chain order (olde
 | 24 | `0024_agent_registry.py` | Phase 5.1 - Enterprise Agent Registry, Definitions & Lifecycle. |
 | 25 | `0025_agent_versioning.py` | Phase 5.2 Part 1 - Enterprise Immutable Agent Versioning & Release Management. |
 | 26 | `0026_version_compatibility.py` | Phase 5.2.6 - Compatibility & Breaking-Change Detection. |
-| 27 | `0027_version_signing.py` | Phase 5.2.4 - Cryptographic Signing, Provenance & Portable Attestation. **(head)** |
+| 27 | `0027_version_signing.py` | Phase 5.2.4 - Cryptographic Signing, Provenance & Portable Attestation. |
+| 28 | `0028_streaming_and_pricing.py` | Phase 5.7a.3 - Streaming & Token Accounting: 12 new columns on `agent_executions`, 4 on `execution_attempts`, new `model_pricing` table (seeded with 3 illustrative rows), legacy non-zero-cost rows marked `cost_is_estimated=true`. **(head)** |
 
 ## 4. Implemented Modules
 
-**238 non-`__init__.py` Python files** under `backend/app/` (233 at the last full count, post Phase 5.2.6/5.2.4; +5 this update — Phase 5.7a.1's `runtime/providers/base.py`, `errors.py`, `mock.py`, `registry.py`, `types.py`; `runtime/providers/__init__.py` excluded per this section's own non-`__init__.py` rule), AST-parsed for their module docstring (first line shown) and every top-level class/public function. Grouped by domain (backend directory structure). Frontend module structure is summarized separately at the end of this section (file-count only — the frontend was not AST-parsed since the exhaustive symbol-level inventory the user asked for was scoped to "modules" in the module/class/function sense, which is the backend's organizing unit; the frontend's `src/modules/*` React component tree does not have an equivalent exported-symbol convention).
+**239 non-`__init__.py` Python files** under `backend/app/` (238 at the last full count, post Phase 5.7a.1; +1 this update — Phase 5.7a.2's `runtime/providers/openai_compatible.py`, missing from that previous pass only because it didn't exist yet at the time). Phase 5.7a.3 added no new files under `backend/app/` (streaming/accounting/pricing all landed inside already-counted files — `services.py`, `types.py`, `registry.py`, `models/runtime.py`). AST-parsed for their module docstring (first line shown) and every top-level class/public function. Grouped by domain (backend directory structure). Frontend module structure is summarized separately at the end of this section (file-count only — the frontend was not AST-parsed since the exhaustive symbol-level inventory the user asked for was scoped to "modules" in the module/class/function sense, which is the backend's organizing unit; the frontend's `src/modules/*` React component tree does not have an equivalent exported-symbol convention).
 
 **Out of this section's stated scope** (`backend/app/` only): `backend/scripts/recompute_checksums.py` (Phase 5.2.4's audited legacy-checksum-migration script) and its `backend/scripts/__init__.py` live under `backend/scripts/`, a sibling of `backend/app/`, not under it — noted here for completeness rather than silently expanding the count above.
 
@@ -3456,25 +3515,32 @@ All 27 Alembic revisions in `backend/migrations/versions/`, in chain order (olde
 - Classes: `AgentDefinitionRead,AgentVersionCreate,AgentVersionRead,DeploymentCreate,DeploymentRollbackRequest,DeploymentRead,DeploymentHealthRead,HeartbeatSubmit,ExecutionCreate,AgentSelfExecutionCreate,ExecutionRead,ExecutionAttemptRead,ToolCallRead,RuntimeEventRead,CapabilityCreate,CapabilityRead,AgentCapabilityAssign,AgentCapabilityRead,ToolCreate,ToolRead,AgentToolAssign,AgentToolRead,RuntimeApprovalDecision,RuntimeApprovalRead,KillSwitchRequest,RuntimeDashboardRead`
 
 **`backend/app/runtime/services.py`** — Agent Runtime & Lifecycle Management services (Phase 5.0).
-- Classes: `AgentRegistryService,AgentVersionService,DeploymentService,CapabilityService,ToolRegistryService,ModelGatewayError,ModelGatewayService,ToolGatewayService,PolicyResult,RuntimePolicyService,IdempotencyService,ExecutionRequestService,ExecutionWorkerService,RuntimeApprovalService,HealthMonitoringService,KillSwitchService,RuntimeDashboardService`
+- Classes: `AgentRegistryService,AgentVersionService,DeploymentService,CapabilityService,ToolRegistryService,CostResult,PricingService,ModelGatewayError,ModelGatewayService,ToolGatewayService,PolicyResult,RuntimePolicyService,IdempotencyService,ExecutionRequestService,ExecutionWorkerService,RuntimeApprovalService,HealthMonitoringService,KillSwitchService,RuntimeDashboardService` (`CostResult`/`PricingService` added Phase 5.7a.3 — per-provider/model pricing with effective dating, ACT-MDL-FR-084)
 
 
-### runtime/providers (Phase 5.7a.1)
+### runtime/providers (Phase 5.7a.1, 5.7a.2, 5.7a.3)
 
 **`backend/app/runtime/providers/base.py`** — Phase 5.7a.1 SRS ACT-MDL-FR-001, FR-002, FR-009 — the model provider contract.
 - Classes: `ModelProvider`
 
 **`backend/app/runtime/providers/errors.py`** — Phase 5.7a.1 SRS ACT-MDL-FR-005, FR-009 — provider-layer exceptions.
-- Classes: `ProviderUnavailableError,CapabilityUnsupportedError`
+- Classes: `ProviderUnavailableError,CapabilityUnsupportedError,ProviderRequestFailedError` (`ProviderRequestFailedError` added Phase 5.7a.2 — one coarse `MODEL_PROVIDER_REQUEST_FAILED` exception for any adapter HTTP failure, deliberately not a taxonomy)
 
 **`backend/app/runtime/providers/mock.py`** — Phase 5.7a.1 SRS ACT-MDL-FR-008 — MockProvider.
 - Classes: `MockProvider`
+- Unchanged since 5.7a.1 — re-verified this session (not in the 5.7a.2/5.7a.3 diffs).
+
+**`backend/app/runtime/providers/openai_compatible.py`** — Phase 5.7a.2 SRS ACT-MDL-FR-020..028, Phase 5.7a.3 SRS ACT-MDL-FR-040..044 — OpenAI-compatible chat completions adapter, streaming included.
+- Classes: `OpenAICompatibleProvider`
+- The first real, network-calling `ModelProvider` (Phase 5.7a.2); real incremental SSE streaming replaced a placeholder `stream()` in Phase 5.7a.3. Registered as `"OPENAI_COMPATIBLE"` (names the wire protocol, not a vendor) in `registry.py`. This file was missing from the previous (Phase 5.7a.1) regeneration pass because it didn't exist yet — added now.
 
 **`backend/app/runtime/providers/registry.py`** — Phase 5.7a.1 SRS ACT-MDL-FR-003, FR-005, FR-010 — provider registry.
 - Functions: `register,resolve,registered_identifiers`
+- `resolve()` gained optional `model`/`api_key` parameters in Phase 5.7a.2, forwarded to a provider's constructor only if that constructor's signature actually declares the matching parameter (checked via `inspect.signature`, not assumed) — a genuine Phase 5.7a.1 gap: neither previously reached a provider instance, only usage-reporting strings.
 
 **`backend/app/runtime/providers/types.py`** — Phase 5.7a.1 SRS ACT-MDL-FR-006, FR-007 — provider-neutral internal representation.
 - Classes: `FinishReason,ModelToolDefinition,ModelToolCall,ModelMessage,ModelRequest,ModelResponse,ModelCapabilities`
+- Functions: `_frozen_mapping,assemble_response` (`assemble_response()` added Phase 5.7a.3 — reduces a `ModelProvider.stream()` chunk sequence into one complete `ModelResponse`; no new dataclass was needed for streaming, see REPO_STATE §10.25).
 
 
 ### runtime/registry (Phase 5.1)
@@ -4353,13 +4419,16 @@ Verified against the current codebase (models, live schema, service files, route
 
 ### Milestone 1 — Real Model Provider Integration (Phase 5.7a)
 
-Verified against the current codebase this session (`feat/5.7a.1-provider-abstraction`, merged `326e55a`). Eight planned sub-phases; only the first is built. No schema migration in 5.7a.1 (table count unchanged at 97, §2) and no new HTTP routes (route count unchanged at 452, §5) — purely an internal abstraction layer plus a translation-boundary rewrite of `ModelGatewayService.invoke()`.
+Verified against the current codebase this session (`main` at `781cc82`, "Merge Phase 5.7a.3: Streaming & Token Accounting"). Eight planned sub-phases; the first three are built. 5.7a.1/5.7a.2 added no schema migration and no new HTTP routes (confirmed live both times); 5.7a.3 is the first sub-phase with schema impact — one new table, sixteen new columns across two existing tables (§2), still zero new HTTP routes (§5 unchanged at 452) since streaming stayed internal-only, no browser-facing SSE endpoint.
 
 | Sub-phase | Status | Evidence |
 |---|---|---|
-| **5.7a.1 Model Provider Abstraction & Registry** | **IMPLEMENTED** | New package `backend/app/runtime/providers/` (`base.py`'s `ModelProvider(ABC)` with abstract `complete()`/`stream()`/`describe()` and concrete `supports()`/`validate_capabilities()`; `types.py`'s frozen, provider-neutral `ModelRequest`/`ModelResponse`/`ModelMessage`/`ModelToolDefinition`/`ModelToolCall`/`ModelCapabilities`/`FinishReason`; `registry.py`'s explicit `register()`/`resolve()`/`registered_identifiers()`, no directory-scanning discovery; `mock.py`'s `MockProvider` — the sole registered adapter, registered under `"MOCK"` at import time). `ModelGatewayService.invoke()` (`backend/app/runtime/services.py`) rewritten as a translation boundary: resolves a provider via the registry, wraps `input_payload` as one `ModelMessage`, calls `provider.complete()`, translates the `ModelResponse` back into the legacy `(output_payload, usage)` tuple every caller already depends on — `SUPPORTED_PROVIDERS` class attribute removed, registry is now sole source of truth. Two new error codes (`MODEL_PROVIDER_UNAVAILABLE` reused, `MODEL_CAPABILITY_UNSUPPORTED` added) in `backend/app/identity/errors.py`; two new settings (`MODEL_DEFAULT_PROVIDER`, `MODEL_PROVIDER_BASE_URLS`) in `backend/app/core/config.py`. 23 new tests in `backend/tests/runtime/test_provider_abstraction.py`, including a reusable parameterized conformance suite (`PROVIDERS_UNDER_TEST`) designed so a future provider is one line to add. See `docs/runtime/providers.md`. |
-| **5.7a.2 First Real Provider Adapter** | **NOT STARTED** | Explicitly deferred by the 5.7a.1 build prompt ("Don't [build a real provider]. The next prompt does that."). No `openai.py`/`anthropic.py`/etc. adapter exists; `registered_identifiers()` returns only `("MOCK",)`. |
-| **5.7a.3-5.7a.8** | **NOT STARTED** | Streaming, cost/usage accounting beyond the mock's positive-token stub, retry/backoff, credential storage (`deployment.secret_references` resolution — referenced in `docs/runtime/gateways.md` as "not yet built"), and any remaining Milestone 1 sub-phases are all unbuilt; no code references them beyond forward-looking doc comments. |
+| **5.7a.1 Model Provider Abstraction & Registry** | **IMPLEMENTED** | New package `backend/app/runtime/providers/` (`base.py`'s `ModelProvider(ABC)` with abstract `complete()`/`stream()`/`describe()` and concrete `supports()`/`validate_capabilities()`; `types.py`'s frozen, provider-neutral `ModelRequest`/`ModelResponse`/`ModelMessage`/`ModelToolDefinition`/`ModelToolCall`/`ModelCapabilities`/`FinishReason`; `registry.py`'s explicit `register()`/`resolve()`/`registered_identifiers()`, no directory-scanning discovery; `mock.py`'s `MockProvider` — the sole registered adapter at the time, registered under `"MOCK"` at import time). `ModelGatewayService.invoke()` (`backend/app/runtime/services.py`) rewritten as a translation boundary. 23 tests in `backend/tests/runtime/test_provider_abstraction.py`, including a reusable parameterized conformance suite (`PROVIDERS_UNDER_TEST`). See `docs/runtime/providers.md`. |
+| **5.7a.2 First Real Provider Adapter** | **IMPLEMENTED** | `backend/app/runtime/providers/openai_compatible.py`'s `OpenAICompatibleProvider` — the first real, network-calling provider, talking the OpenAI chat-completions wire protocol against any `base_url` (Ollama/vLLM/LM Studio/OpenAI), registered as `"OPENAI_COMPATIBLE"` (names the protocol, not a vendor — `"OPENAI"` is deliberately left free for a future vendor-specific adapter). Message/tool-call/finish-reason translation, sampling-parameter filtering, tolerant parsing of responses missing optional fields. `registry.resolve()` gained signature-checked `model`/`api_key` forwarding (a genuine 5.7a.1 gap — neither previously reached a provider instance). New `ProviderRequestFailedError`/`MODEL_PROVIDER_REQUEST_FAILED` (one coarse exception, not a taxonomy). Fixture-replay test infrastructure (`httpx.MockTransport`, six committed wire-format fixtures, a manual recorder script, a `live_provider` pytest marker excluded by default via `backend/pytest.ini`). 30 tests (`test_openai_compatible_provider.py` + additions to `test_provider_abstraction.py`). `registered_identifiers()` now returns `["MOCK", "OPENAI_COMPATIBLE"]`. |
+| **5.7a.3 Streaming & Token Accounting** | **IMPLEMENTED** | Real SSE streaming replaces 5.7a.2's `stream()` placeholder — incremental content deltas, tool-call reassembly across fragmented/interleaved chunks, interruption persists a partial via `FinishReason.ERROR` rather than raising (deliberately unlike `complete()`). No new dataclass needed in `types.py`; one function, `assemble_response()`. `ModelGatewayService.invoke()` gained an opt-in streaming path (`model_configuration.stream=true`) with the `(output_payload, usage)` contract unchanged for non-streaming callers. Real token/cost accounting: `usage` gained `token_accounting_complete`/`was_streamed`/`stream_interrupted`/`time_to_first_token_ms`/`generation_duration_ms`/`finish_reason`; a provider omitting usage now reports `{}` (never zero-filled — the never-estimate rule, `ACT-MDL-FR-046`). New `model_pricing` table with effective dating (a price change inserts and closes a row, never mutates one in place) backs `PricingService`, replacing the flat `total_tokens*0.000002` placeholder; local/unpriced providers (`MOCK`) honestly cost `0` (two previously-stable `cost > 0` assertions were updated to `== 0` accordingly — see §10.27). 1,538 pre-existing non-zero-cost rows marked `cost_is_estimated=true` by the migration, never recomputed. 22 tests in `backend/tests/runtime/test_streaming_and_accounting.py`. See `docs/runtime/providers.md`. |
+| **5.7a.4 Error Taxonomy & Retry** | **NOT STARTED** | Explicitly deferred by both the 5.7a.2 and 5.7a.3 build prompts. `ProviderRequestFailedError` remains the one coarse exception; no retry/backoff/circuit-breaking exists anywhere in the provider layer. |
+| **5.7a.5 Credential Storage** | **NOT STARTED** | `MODEL_PROVIDER_API_KEYS` (a flat settings dict, plain values) is the entire credential story today. No per-organization storage/resolution, no `deployment.secret_references` wiring — still referenced in `docs/runtime/gateways.md` as "not yet built." |
+| **5.7a.6-5.7a.8** | **NOT STARTED** | No code references them beyond forward-looking doc comments. |
 
 ---
 
@@ -4375,7 +4444,7 @@ Verified against the current codebase this session (`feat/5.7a.1-provider-abstra
 | Repository pattern (minority) | Explicit `XRepository` classes wrapping queries, used underneath services | Only in `backend/app/identity/repositories/*.py` (`BaseRepository` generic base in `base.py`) and `backend/app/authorization/repositories.py` (Phase 4.3.1 core only) — **not** used in the later authorization submodules (`abac/`, `admin/`, `hierarchy/`, `resources/`), governance, or runtime/registry/versioning (including 5.2.6's `compatibility.py`, 5.2.4's `attestation.py`/`keys.py`, re-verified this session), which query directly from services. This is an inconsistency across phases, not a documented rule (see §10). |
 | Permission naming | Dot-notation `domain.resource.action` strings (e.g. `runtime.version.retire`, `runtime.signing.manage`, `agent.view`, `policy.edit`), centrally cataloged | `PERMISSION_CATALOG: dict[str, str]` in `backend/app/services/rbac_service.py`; `require_permission(code)` dependency in `backend/app/api/deps.py:129` |
 | Backend test framework | pytest, real Postgres (not sqlite/mocks) via `SessionLocal()`; `client`/`db_session`/`admin` fixtures | `backend/tests/authorization/conftest.py`, `backend/tests/runtime/conftest.py` (the latter also carries an autouse fixture isolating each test onto its own signing key_id — see §10 #16); hermetic defaults (notifications/rate-limit/envelope off) via autouse fixtures in `backend/tests/conftest.py` |
-| Backend test layout | `backend/tests/{authorization,identity,runtime}/` plus flat `test_*.py` files at `backend/tests/` root for the original Phase 1-3 surface | `runtime/` added Phase 5.2.6/5.2.4 (`test_version_compatibility.py`, `test_canonical.py`, `test_version_signing.py`, `test_attestation.py`); `test_provider_abstraction.py` added Phase 5.7a.1 (reusable parameterized conformance suite, `PROVIDERS_UNDER_TEST` list); verified via `find backend/tests -maxdepth 2 -type d` |
+| Backend test layout | `backend/tests/{authorization,identity,runtime}/` plus flat `test_*.py` files at `backend/tests/` root for the original Phase 1-3 surface | `runtime/` added Phase 5.2.6/5.2.4 (`test_version_compatibility.py`, `test_canonical.py`, `test_version_signing.py`, `test_attestation.py`); `test_provider_abstraction.py` added Phase 5.7a.1 (reusable parameterized conformance suite, `PROVIDERS_UNDER_TEST` list); `test_openai_compatible_provider.py` added Phase 5.7a.2, `test_streaming_and_accounting.py` added Phase 5.7a.3; `runtime/fixtures/providers/` holds committed wire-format/SSE replay fixtures (Phase 5.7a.2/5.7a.3) plus a `README.md` on their provenance; verified via `find backend/tests -maxdepth 2 -type d` |
 | Frontend test framework | Vitest, `jsdom` environment, `@testing-library/react` + `user-event`, cleanup via `afterEach` | `frontend/vitest.config.ts`, `frontend/src/test/setup.ts` |
 | Frontend test layout | `frontend/src/modules/<domain>/tests/*.test.tsx` co-located per module (not a top-level `tests/` dir) | verified via `find frontend/src/modules -iname "*.test.*"` (this session) |
 | Frontend structure | One module dir per backend domain (`frontend/src/modules/<domain>/`), one service file per domain (`frontend/src/services/<domain>Service.ts`), shared Radix-based primitives in `frontend/src/components/ui/` | `frontend/src/modules/*`, `frontend/src/services/*.ts` |
@@ -4386,11 +4455,13 @@ Verified against the current codebase this session (`feat/5.7a.1-provider-abstra
 
 ## 8. Branch History
 
-Output of `git branch --sort=-committerdate`, with committer dates added via `--format`. Names and dates only — 31 local branches, re-verified this session (was 30 at the last full count); each mirrored by an `origin/*` remote-tracking branch at the same commit/date (shown once below; the `origin/<name>` counterpart is identical). 1 new branch since the last full count: `feat/5.7a.1-provider-abstraction` (merged into `main` via a local `--no-ff` merge, per the git-log evidence below).
+Output of `git branch --sort=-committerdate`, with committer dates added via `--format`. Names and dates only — 33 local branches, re-verified this session (was 31 at the last full count); each mirrored by an `origin/*` remote-tracking branch at the same commit/date (shown once below; the `origin/<name>` counterpart is identical). 2 new branches since the last full count: `feat/5.7a.2-openai-compatible` and `feat/5.7a.3-streaming-tokens` (both merged into `main` via local `--no-ff` merges, per the git-log evidence below).
 
 | Branch | Committer date |
 |---|---|
-| `main` | 2026-07-24 16:33:36 +0500 |
+| `main` | 2026-07-28 00:44:13 +0500 |
+| `feat/5.7a.3-streaming-tokens` | 2026-07-28 00:38:11 +0500 |
+| `feat/5.7a.2-openai-compatible` | 2026-07-27 18:14:08 +0500 |
 | `feat/5.7a.1-provider-abstraction` | 2026-07-24 16:33:05 +0500 |
 | `feat/5.2.4-signing-provenance` | 2026-07-23 07:24:19 +0500 |
 | `feat/5.2.6-compatibility` | 2026-07-23 06:27:39 +0500 |
@@ -4422,7 +4493,7 @@ Output of `git branch --sort=-committerdate`, with committer dates added via `--
 | `feat/audit-compliance-center-part-3.5` | 2026-07-01 04:18:00 +0500 |
 | `feat/approval-workbench-part-3.4` | 2026-06-30 02:53:28 +0500 |
 
-Current branch: `main`, at `326e55a` ("Merge Phase 5.7a.1: Model Provider Abstraction & Registry"). Working tree is clean except for this document's own in-progress update (verified via `git status --porcelain`).
+Current branch: `main`, at `781cc82` ("Merge Phase 5.7a.3: Streaming & Token Accounting"). Working tree is clean except for this document's own in-progress update (verified via `git status --porcelain`).
 
 ---
 
@@ -4434,17 +4505,18 @@ Every item below was mechanically verified at generation time (grep with an expl
 2. **Zero `NotImplementedError`** anywhere in `backend/app`.
 3. **Zero pytest `skip`/`xfail` markers** in `backend/tests`.
 4. **Duplicate OpenAPI `operationId` warning**: `update_policy` in `backend/app/api/routes/policies.py:137` is registered via `@router.api_route("/{policy_id}", methods=["PUT", "PATCH"])` — both methods share one function, so FastAPI's OpenAPI generator emits a `UserWarning: Duplicate Operation ID` every time the schema is built (reproduced during this session's test run). Cosmetic — both HTTP methods work correctly (`test_response_envelope.py::test_openapi_schema_is_not_enveloped` passes) — but would break strict OpenAPI-codegen tooling pointed at this schema.
-5. **Only the `MOCK` model provider actually executes.** As of Phase 5.7a.1, `ModelGatewayService.invoke()` (`backend/app/runtime/services.py`) resolves providers through a real, pluggable `ModelProvider` interface and explicit registry (`backend/app/runtime/providers/`) rather than a hardcoded branch — but `registered_identifiers()` still returns only `("MOCK",)`. Any other provider name (`OPENAI`, `ANTHROPIC`, …) fails closed with `MODEL_PROVIDER_UNAVAILABLE` immediately, same as before; the gap is narrower now (no real adapter exists yet, not "the abstraction doesn't exist yet") but still a gap. See `docs/runtime/providers.md`.
+5. ~~Only the `MOCK` model provider actually executes~~ — closed in Phase 5.7a.2: `registered_identifiers()` now returns `["MOCK", "OPENAI_COMPATIBLE"]`, and `OpenAICompatibleProvider` (`backend/app/runtime/providers/openai_compatible.py`) makes real HTTP calls (streaming included, Phase 5.7a.3) against Ollama/vLLM/LM Studio/OpenAI. What remains: no error taxonomy/retry (5.7a.4), no per-organization credential storage (5.7a.5, see item 16 below), and only these two identifiers are registered — any other provider name still fails closed with `MODEL_PROVIDER_UNAVAILABLE`. See `docs/runtime/providers.md`.
 6. **Only the `FUNCTION`/`echo` tool action actually executes.** Everything else fails closed with `TOOL_ACTION_NOT_ALLOWED` (`docs/runtime/overview.md`).
 7. **CAPTCHA is a placeholder.** `CaptchaService.verify()` (`backend/app/identity/protection/policy.py:89`) has no real Turnstile/reCAPTCHA/hCaptcha integration.
-8. **Analytics cost figures are deterministic estimates**, not real provider billing data (`backend/app/services/analytics_service.py:64`, "Estimated unit costs (USD)... deterministic placeholders").
+8. **Analytics cost figures are deterministic estimates**, not real provider billing data (`backend/app/services/analytics_service.py:64`, "Estimated unit costs (USD)... deterministic placeholders"). This is a genuinely separate, older, coarser concept than the real per-execution cost Phase 5.7a.3 added (`agent_executions.cost_amount`, computed from real tokens via `PricingService`) — `analytics_service.py`'s `cost_analytics()` aggregates Phase 3's `agent_actions` table, with no connection to `AgentExecution`/token data at all, and was deliberately left untouched (see `docs/runtime/providers.md`'s "What Phase 5.7a.3 found").
 9. ~~Phase 5.2 cryptographic signing is unimplemented~~ — shipped in Phase 5.2.4 (see §6, row 5.2.4) and is no longer a gap. Two narrower deviations remain, both deliberate and documented in `docs/runtime/versioning.md`'s Known Deviations: (a) the local signing provider necessarily loads private key bytes into process memory to sign (`ACT-VER-NFR-002`), closing when Azure Key Vault lands; (b) there is no public/unauthenticated verification endpoint (`ACT-VER-FR-070`), closing if/when external verification is actually needed.
 10. **No "release package" entity, literally named.** The SRS for Phase 5.2 Part 1 lists "release packages" as in-scope; this codebase treats the frozen `agent_version_snapshots.snapshot` document — and, as of Phase 5.2.4, the signed in-toto attestation built over it (`agent_version_provenance.attestation_document`) — as that bundle rather than introducing a separately-named table. The attestation document is a closer functional analog than the bare snapshot was (self-contained, portable, cryptographically signed), but still no artifact literally named "release package" exists — documented as a deliberate equivalence in `docs/runtime/versioning.md`, not a gap in functionality.
 11. **Multi-agent orchestration and several other large feature areas do not exist in any form**: a visual workflow builder, distributed event streaming at hyperscale, automated model optimization, reinforcement learning, autonomous agent creation, a marketplace, multi-cloud federation, a Kubernetes operator, GPU scheduling. Explicitly out of scope per `docs/runtime/overview.md`'s "What's deliberately not here."
 12. **Actual rollback/canary/traffic-shift execution does not exist.** `AgentVersion.rollback_target_id` (Phase 5.2 Part 1) is a settable pointer only; nothing reads it to perform a rollback. `DeploymentService.rollback` (Phase 5.0, `backend/app/runtime/services.py`) is the only thing that changes what's actually deployed, and is a full redeploy to a target version, not a traffic-shifting rollback.
 13. **Frontend production bundle is a single ~1.65 MB chunk** (431 KB gzip) — Vite's build output flags this as exceeding its 500 KB warning threshold; no route-level code-splitting has been applied (reproduced this session via `npm run build`).
 14. **`backend/.venv` had to be rebuilt mid-session** (Phase 5.1 work) because the one present in the working tree pointed at a Python interpreter path (`C:\Users\Dell\...`) from a different machine. It is gitignored, so this is a local-environment fact, not a repository defect — flagged here since a fresh clone on another machine will need the same rebuild. **UNVERIFIED** whether this affects any environment other than the one this document was generated in.
-15. **Test suite status at generation time**: backend `661 passed, 0 failed` (`pytest -q`, 176.05s); frontend `297 passed, 0 failed` across 48 files (`vitest run`). Both re-run fresh for this document, not carried forward. **Phase 5.2.6 update**: backend re-run at `696 passed, 0 failed` (`pytest -q`, 184.63s) after adding 35 compatibility-detection tests; frontend untouched by Phase 5.2.6 (backend-only phase), still `297 passed, 0 failed` as of its own last run. **Phase 5.2.4 update**: backend re-run at `743 passed, 0 failed` (`pytest -q`, 190.89s) after adding 47 canonical-serialization/signing/attestation tests; frontend untouched by Phase 5.2.4 (also backend-only), still `297 passed, 0 failed` as of its own last run. **Phase 5.7a.1 update**: backend re-run at `766 passed, 0 failed` (`pytest -q`, 196.51s) after adding 23 provider-abstraction/conformance-suite tests; frontend untouched by Phase 5.7a.1 (also backend-only), still `297 passed, 0 failed` as of its own last run.
+15. **Test suite status at generation time**: backend `661 passed, 0 failed` (`pytest -q`, 176.05s); frontend `297 passed, 0 failed` across 48 files (`vitest run`). Both re-run fresh for this document, not carried forward. **Phase 5.2.6 update**: backend re-run at `696 passed, 0 failed` (`pytest -q`, 184.63s) after adding 35 compatibility-detection tests; frontend untouched by Phase 5.2.6 (backend-only phase), still `297 passed, 0 failed` as of its own last run. **Phase 5.2.4 update**: backend re-run at `743 passed, 0 failed` (`pytest -q`, 190.89s) after adding 47 canonical-serialization/signing/attestation tests; frontend untouched by Phase 5.2.4 (also backend-only), still `297 passed, 0 failed` as of its own last run. **Phase 5.7a.1 update**: backend re-run at `766 passed, 0 failed` (`pytest -q`, 196.51s) after adding 23 provider-abstraction/conformance-suite tests; frontend untouched by Phase 5.7a.1 (also backend-only), still `297 passed, 0 failed` as of its own last run. **Phase 5.7a.2 update**: backend re-run at `800 passed, 0 failed, 1 deselected` (`pytest -q`, 202.56s; the one deselected test is the `live_provider`-marked genuinely-live Ollama check, excluded by default via `backend/pytest.ini`) after adding 34 OpenAI-compatible-adapter tests; frontend untouched (also backend-only), still `297 passed, 0 failed`. **Phase 5.7a.3 update**: backend re-run at `822 passed, 0 failed, 1 deselected` (`pytest -q`, 211.40s) after adding 22 streaming/accounting/cost tests; frontend untouched (also backend-only), still `297 passed, 0 failed` as of its own last run.
+16. **No per-organization model-provider credential storage.** `MODEL_PROVIDER_API_KEYS` (`backend/app/core/config.py`) is a flat settings dict of plain values, read as-is and sent as a `Bearer` header — there is no `deployment.secret_references` resolution, no vault integration, no per-tenant key rotation. Explicitly deferred to Phase 5.7a.5; `docs/runtime/gateways.md` and `docs/runtime/providers.md` both still describe this as "not yet built."
 
 ---
 
@@ -4475,6 +4547,11 @@ Decisions the SRS/roadmap documents don't specify, that the implementation settl
 21. **`FinishReason` needs no provider-specific translation function in the shared layer.** Subclassing `str, Enum` gets a free `ValueError` on any unmapped provider value via `FinishReason(value)`; a bespoke translation function would itself have to embed provider vocabulary (`"stop_sequence"`, `"length"`, …) inside `types.py`, which `ACT-MDL-FR-006` forbids — that mapping correctly belongs in each future adapter, not the shared, provider-neutral types module. `backend/app/runtime/providers/types.py`.
 22. **`ModelGatewayService.invoke()` is a translation boundary, not a rewrite of its callers' contract.** The legacy `(input_payload: dict) -> (output_payload, usage)` shape `ExecutionWorkerService` and every existing test depend on was preserved exactly; internally it now wraps the whole payload as one `ModelMessage`, calls the resolved provider's `complete()`, and translates the `ModelResponse` back. Verified before implementation, by grepping every existing assertion on `output_payload`/`model_usage`/`execution.cost`, that no test asserts on the *exact wording* of the mock's result text or *exact* token counts — only `echo == input_payload`, `provider == "MOCK"`, and `cost > 0` — which is what made this translation possible without touching a single existing assertion (AC-04). `backend/app/runtime/services.py::ModelGatewayService.invoke`.
 23. **The provider registry (`backend/app/runtime/providers/registry.py`) is an explicit `register()`/`resolve()` call, not directory-scanning plugin discovery.** Every registered provider is one grep away (`register("MOCK", MockProvider)` at the bottom of the module) rather than implicitly discovered by filename/decorator convention — "greppable, not magic," matching this codebase's existing preference for explicit catalogs over convention-based magic (permission catalog, release channels, signing keys — see #9, #16 above).
+24. **`registry.resolve()`'s `model`/`api_key` forwarding is signature-checked, not blind** (Phase 5.7a.2) — `inspect.signature(provider_cls.__init__)` decides whether to forward each, so a provider (or a test double like `_RecordingProvider`) with no notion of one isn't forced to accept a parameter it has no use for. This closed a genuine 5.7a.1 gap: neither `model` nor `api_key` had ever reached a provider instance before, only a usage-reporting string. `backend/app/runtime/providers/registry.py`.
+25. **Real streaming needed no new dataclass in `types.py`** (Phase 5.7a.3) — `ModelProvider.stream()`'s existing `Iterator[ModelResponse]` contract already expresses everything once every adapter follows one documented convention: `content` is incremental per chunk (concatenate, don't take the last); `tool_calls`/`finish_reason`/`raw_usage` are only meaningful on the last chunk; `FinishReason.ERROR` (already existing, previously unused) doubles as "this stream was interrupted." One function, `assemble_response()`, was added to reduce a chunk sequence into a complete response — not a type. `MockProvider`'s pre-existing single-chunk `stream()` satisfied the convention with zero code changes. `backend/app/runtime/providers/types.py`.
+26. **`stream()` never raises; `complete()` does — deliberately different failure semantics for the same adapter** (Phase 5.7a.3). A connection failure, bad status, or truncated stream all make `stream()` yield one final chunk with `finish_reason=FinishReason.ERROR` and whatever was already accumulated, rather than losing everything to an exception (`ACT-MDL-FR-043` requires persisting the partial). A caller that needs to know whether a stream truly succeeded checks the final chunk's `finish_reason`, not a try/except. `backend/app/runtime/providers/openai_compatible.py::OpenAICompatibleProvider.stream`.
+27. **A local/unpriced provider's cost is `0`, not carried forward from a flat placeholder — even where that meant updating two previously-stable test assertions** (Phase 5.7a.3, `ACT-MDL-FR-087`). Before this phase, every `MOCK` execution's `cost` came from `total_tokens * 0.000002`, which made `execution["cost"] > 0` true for any `MOCK` call. Once cost is computed by the same `PricingService` every provider uses, `MOCK` (which has no `model_pricing` row, deliberately) honestly costs `0`. `test_execution_runs_end_to_end` and `test_every_existing_mock_execution_behavior_is_unchanged` were updated to `== 0` with a comment explaining why — confirmed as the intended direction before implementing it, precisely because it touched previously-protected assertions.
+28. **`analytics_service.py`'s cost dashboard was deliberately not rewired to real per-execution cost** (Phase 5.7a.3) despite the build prompt's own wording pointing there for `ACT-MDL-FR-086`. That module aggregates the older, coarser Phase 3 `agent_actions` table with flat per-unit estimates (`_COST_PER_LLM_ACTION`, etc.) and has no connection to `AgentExecution`/token data at all — rewiring it would mean redesigning a Phase 3 dashboard around a Phase 5 data model, a materially larger and riskier scope than "replace the placeholder with real per-execution cost," which now lives on `AgentExecution.cost_amount` via `PricingService` instead. `backend/app/services/analytics_service.py`; see `docs/runtime/providers.md`.
 
 ---
 
