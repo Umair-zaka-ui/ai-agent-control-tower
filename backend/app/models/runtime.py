@@ -509,6 +509,27 @@ class AgentExecution(Base, UUIDPrimaryKeyMixin):
     model_usage: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     tool_usage: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     cost: Mapped[float] = mapped_column(Numeric(12, 6), nullable=False, default=0)
+    # --- Phase 5.7a.3: streaming & token accounting (ACT-MDL-FR-040..049,
+    # FR-084..089, migration 0028) --------------------------------------
+    # Nullable, not zero-default: null means "unavailable" (the provider
+    # omitted usage), never estimated (ACT-MDL-FR-046) -- see
+    # ModelGatewayService.invoke()/PricingService in services.py.
+    prompt_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    completion_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    total_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    token_accounting_complete: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    cost_amount: Mapped[float | None] = mapped_column(Numeric(18, 8), nullable=True)
+    cost_currency: Mapped[str] = mapped_column(String(3), nullable=False, default="USD")
+    pricing_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # True only for rows computed by the pre-5.7a.3 placeholder formula
+    # (total_tokens * a flat rate) -- set once, historically, by migration
+    # 0028; every row computed from here on is real (False).
+    cost_is_estimated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    time_to_first_token_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    generation_duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    finish_reason: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    was_streamed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    stream_interrupted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -534,6 +555,13 @@ class ExecutionAttempt(Base, UUIDPrimaryKeyMixin):
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     error_code: Mapped[str | None] = mapped_column(String(50), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Phase 5.7a.3 (ACT-MDL-FR-047) -- per-attempt, not only per-execution,
+    # so a retried execution's earlier (failed/timed-out) attempts still
+    # show their own token usage rather than only the final one's.
+    prompt_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    completion_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    total_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    token_accounting_complete: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -554,6 +582,33 @@ class ExecutionLock(Base, UUIDPrimaryKeyMixin):
     )
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     heartbeat_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class ModelPricing(Base, UUIDPrimaryKeyMixin):
+    """Phase 5.7a.3 SRS ACT-MDL-FR-084 — per-provider, per-model pricing
+    with effective dating. A price change never updates a row in place: it
+    inserts a new row and closes the prior one's ``effective_to`` (see
+    ``PricingService.set_price`` in ``services.py``), which is what keeps
+    an already-computed historical execution's cost accurate after a price
+    changes (``ACT-MDL-FR-085``, AC-16/AC-17). ``effective_to IS NULL``
+    means "still the current price."""
+
+    __tablename__ = "model_pricing"
+    __table_args__ = (
+        UniqueConstraint("provider", "model_name", "effective_from", name="uq_model_pricing_provider_model_from"),
+    )
+
+    provider: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    model_name: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    prompt_cost_per_1k: Mapped[float] = mapped_column(Numeric(18, 8), nullable=False)
+    completion_cost_per_1k: Mapped[float] = mapped_column(Numeric(18, 8), nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="USD")
+    pricing_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    effective_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    effective_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 

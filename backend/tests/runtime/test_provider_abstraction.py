@@ -338,7 +338,14 @@ def _ready_agent(client: TestClient, admin: dict, *, model_configuration: dict) 
 
 def test_every_existing_mock_execution_behavior_is_unchanged(client: TestClient) -> None:
     """AC-04 — the specific shape ``ExecutionWorkerService``/existing tests
-    depend on: exact echo, ``provider == 'MOCK'``, a positive token count."""
+    depend on: exact echo, ``provider == 'MOCK'``, a positive token count.
+
+    Phase 5.7a.3 note: ``cost`` itself is no longer asserted ``> 0`` here.
+    It's now computed by ``PricingService`` from real per-model pricing;
+    MOCK has no pricing row, so its cost is honestly ``0`` (``ACT-MDL-FR-
+    087``), not the old flat ``total_tokens * 0.000002`` placeholder that
+    made this assertion pass before. Token counts (still real, still
+    positive) are unaffected."""
     org = _register_org(client)
     setup = _ready_agent(client, org, model_configuration={"provider": "MOCK", "model": "mock-model"})
 
@@ -351,7 +358,7 @@ def test_every_existing_mock_execution_behavior_is_unchanged(client: TestClient)
     assert execution["output_payload"]["echo"] == {"question": "hello"}
     assert execution["model_usage"]["provider"] == "MOCK"
     assert execution["model_usage"]["total_tokens"] > 0
-    assert execution["cost"] > 0
+    assert execution["cost"] == 0
 
 
 def test_provider_selection_reads_frozen_version_config_not_mutable_state(client: TestClient,

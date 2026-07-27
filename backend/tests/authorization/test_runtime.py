@@ -330,7 +330,11 @@ def test_execution_runs_end_to_end(client: TestClient) -> None:
     assert execution["decision"] == "ALLOW"
     assert execution["output_payload"]["echo"] == {"question": "hello"}
     assert execution["model_usage"]["provider"] == "MOCK"
-    assert execution["cost"] > 0
+    # Phase 5.7a.3: cost is now computed from real per-model pricing
+    # (PricingService) rather than a flat total_tokens*0.000002 placeholder.
+    # MOCK has no pricing row -- ACT-MDL-FR-087 says a provider with no
+    # pricing data costs exactly 0, not a fabricated positive number.
+    assert execution["cost"] == 0
     assert execution["attempt_count"] == 1
 
     r = client.get(f"{RT}/executions/{execution['id']}/attempts", headers=org["headers"])

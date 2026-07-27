@@ -1,0 +1,20 @@
+data: {"id":"chatcmpl-stream3","object":"chat.completion.chunk","created":1718000120,"model":"llama3","choices":[{"index":0,"delta":{"role":"assistant","content":null,"tool_calls":[{"index":0,"id":"call_a1b2c3","type":"function","function":{"name":"get_weather","arguments":""}}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-stream3","object":"chat.completion.chunk","created":1718000120,"model":"llama3","choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"id":"call_d4e5f6","type":"function","function":{"name":"get_weather","arguments":""}}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-stream3","object":"chat.completion.chunk","created":1718000120,"model":"llama3","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"loc"}}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-stream3","object":"chat.completion.chunk","created":1718000120,"model":"llama3","choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"function":{"arguments":"{\"loc"}}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-stream3","object":"chat.completion.chunk","created":1718000120,"model":"llama3","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"ation\": \"New York"}}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-stream3","object":"chat.completion.chunk","created":1718000120,"model":"llama3","choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"function":{"arguments":"ation\": \"Boston"}}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-stream3","object":"chat.completion.chunk","created":1718000120,"model":"llama3","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":", NY\"}"}}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-stream3","object":"chat.completion.chunk","created":1718000120,"model":"llama3","choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"function":{"arguments":", MA\"}"}}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-stream3","object":"chat.completion.chunk","created":1718000120,"model":"llama3","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":48,"completion_tokens":30,"total_tokens":78}}
+
+data: [DONE]
+

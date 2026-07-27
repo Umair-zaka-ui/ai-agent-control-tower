@@ -1,0 +1,12 @@
+data: {"id":"chatcmpl-stream2","object":"chat.completion.chunk","created":1718000110,"model":"llama3","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-stream2","object":"chat.completion.chunk","created":1718000110,"model":"llama3","choices":[{"index":0,"delta":{"content":"Paris"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-stream2","object":"chat.completion.chunk","created":1718000110,"model":"llama3","choices":[{"index":0,"delta":{"content":" is"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-stream2","object":"chat.completion.chunk","created":1718000110,"model":"llama3","choices":[{"index":0,"delta":{"content":" the capital of France."},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-stream2","object":"chat.completion.chunk","created":1718000110,"model":"llama3","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":14,"completion_tokens":8,"total_tokens":22}}
+
+data: [DONE]
+
