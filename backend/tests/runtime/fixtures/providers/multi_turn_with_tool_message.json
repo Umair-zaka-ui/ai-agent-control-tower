@@ -1,0 +1,22 @@
+{
+  "id": "chatcmpl-8f3a1c32",
+  "object": "chat.completion",
+  "created": 1718000040,
+  "model": "llama3",
+  "system_fingerprint": "fp_ollama",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "Based on the current conditions I looked up, it's 58°F and partly cloudy in New York right now."
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 76,
+    "completion_tokens": 21,
+    "total_tokens": 97
+  }
+}

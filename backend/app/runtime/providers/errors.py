@@ -31,3 +31,16 @@ class CapabilityUnsupportedError(IdentityError):
     def __init__(self, provider: str, capability: str) -> None:
         super().__init__(ErrorCode.MODEL_CAPABILITY_UNSUPPORTED,
                          f"Provider '{provider}' does not support '{capability}'.")
+
+
+class ProviderRequestFailedError(IdentityError):
+    """Raised by an adapter (Phase 5.7a.2's ``OpenAICompatibleProvider`` is
+    the first) when the HTTP call to a configured provider endpoint fails
+    outright (connection error, timeout) or returns something this adapter
+    cannot parse into a ``ModelResponse``. Deliberately one coarse
+    exception, not a taxonomy — classifying failure modes for retry/backoff
+    purposes is Phase 5.7a.4."""
+
+    def __init__(self, provider: str, detail: str) -> None:
+        super().__init__(ErrorCode.MODEL_PROVIDER_REQUEST_FAILED,
+                         f"Request to model provider '{provider}' failed: {detail}")

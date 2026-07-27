@@ -201,6 +201,11 @@ class ErrorCode:
     MODEL_PROVIDER_UNAVAILABLE = "MODEL_PROVIDER_UNAVAILABLE"
     # Model Provider Abstraction (Phase 5.7a.1).
     MODEL_CAPABILITY_UNSUPPORTED = "MODEL_CAPABILITY_UNSUPPORTED"
+    # OpenAI-compatible provider adapter (Phase 5.7a.2). Deliberately coarse
+    # -- a single code for "the HTTP call to the provider failed or returned
+    # something this adapter couldn't parse." Classifying failure modes
+    # (timeout vs. 5xx vs. malformed body) for retry/backoff is 5.7a.4.
+    MODEL_PROVIDER_REQUEST_FAILED = "MODEL_PROVIDER_REQUEST_FAILED"
     RUNTIME_POLICY_DENIED = "RUNTIME_POLICY_DENIED"
     RUNTIME_APPROVAL_REQUIRED = "RUNTIME_APPROVAL_REQUIRED"
     RUNTIME_APPROVAL_NOT_FOUND = "RUNTIME_APPROVAL_NOT_FOUND"
@@ -450,6 +455,7 @@ _STATUS: dict[str, int] = {
     ErrorCode.MODEL_NOT_APPROVED: status.HTTP_403_FORBIDDEN,
     ErrorCode.MODEL_PROVIDER_UNAVAILABLE: status.HTTP_503_SERVICE_UNAVAILABLE,
     ErrorCode.MODEL_CAPABILITY_UNSUPPORTED: status.HTTP_422_UNPROCESSABLE_ENTITY,
+    ErrorCode.MODEL_PROVIDER_REQUEST_FAILED: status.HTTP_502_BAD_GATEWAY,
     ErrorCode.RUNTIME_POLICY_DENIED: status.HTTP_403_FORBIDDEN,
     ErrorCode.RUNTIME_APPROVAL_REQUIRED: status.HTTP_403_FORBIDDEN,
     ErrorCode.RUNTIME_APPROVAL_NOT_FOUND: status.HTTP_404_NOT_FOUND,
