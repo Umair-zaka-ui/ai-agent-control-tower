@@ -1,7 +1,8 @@
 # Model Provider Abstraction
 
 `backend/app/runtime/providers/` · Phase 5.7a.1 SRS `ACT-MDL-FR-001..010`,
-Phase 5.7a.2 SRS `ACT-MDL-FR-020..028`.
+Phase 5.7a.2 SRS `ACT-MDL-FR-020..028`, Phase 5.7a.3 SRS
+`ACT-MDL-FR-040..049`, `FR-084..089`.
 
 ## Why this exists
 
@@ -474,10 +475,232 @@ explicitly out of scope for this sub-phase, and guessing at the right
 shape without that consumer in hand risked distorting `types.py` for a use
 case not yet built. Flagged here for whoever builds 5.6a.3.
 
+## Streaming (`stream()`, Phase 5.7a.3)
+
+`OpenAICompatibleProvider.stream()` replaced the 5.7a.2 placeholder
+(`yield self.complete(request)`) with real Server-Sent-Events parsing:
+`POST .../chat/completions` with `"stream": true`, reading `data: {...}`
+lines via `httpx.Client.stream()` (never buffering the full response
+first — `ACT-MDL-FR-041`), terminated by `data: [DONE]`.
+
+### The per-chunk convention — no new type needed
+
+Every yielded `ModelResponse`'s `content` is that chunk's **incremental**
+delta, not the cumulative text — concatenate across every yielded chunk
+for the full content. `tool_calls`/`finish_reason`/`raw_usage` are only
+meaningful on the **last** chunk yielded: a streamed tool call's
+`arguments` arrives as a string fragment per chunk and isn't valid JSON
+until fully reassembled (`ACT-MDL-FR-044`), so every non-final chunk
+correctly reports `tool_calls=()` — there's nothing valid to report yet.
+
+`types.py` gained exactly one addition for this: `assemble_response()`, a
+module-level function reducing a chunk sequence into the single complete
+`ModelResponse` a non-streaming caller would have received
+(`ACT-MDL-FR-042`) — not a new dataclass. **No change to `ModelResponse`,
+`ModelProvider`, or `MockProvider` was needed.** The existing
+`Iterator[ModelResponse]` contract already expresses everything real
+streaming needs once every adapter follows the convention above:
+`MockProvider`'s single-chunk `stream()` already satisfies it with zero
+code changes, since its one chunk's content *is* the whole completion and
+it *is* the last (only) chunk.
+
+**Interruption reuses an existing enum value.** `FinishReason.ERROR` (already
+defined in 5.7a.1, unused until now) doubles as "this stream was
+interrupted" on the final chunk — no new type needed there either. A
+connection failure, a non-2xx status, or a stream that ends without ever
+reaching `[DONE]` (truncation) all make `stream()` yield exactly one final
+chunk with `finish_reason=FinishReason.ERROR` and whatever content/tool-
+call state had already accumulated (`ACT-MDL-FR-043`), rather than raising
+and losing everything already received. **This is deliberately different
+from `complete()`, which does raise** (`ProviderRequestFailedError`) on
+the same failures — a caller that needs to know whether a stream actually
+succeeded checks the final chunk's `finish_reason`, not a try/except.
+
+### Tool-call reassembly across chunks
+
+A streamed tool call's `function.arguments` arrives as successive string
+*fragments*, one per chunk, keyed by `index` (multiple concurrent tool
+calls interleave by index — `ACT-MDL-FR-044`). `_accumulate_tool_call_
+deltas` keeps a per-index `{id, name, arguments}` accumulator; only the
+first delta for a given index typically carries `id`/`function.name`,
+every later delta for that index appends to `arguments`.
+`_finalize_tool_calls` JSON-parses each accumulated argument string only
+once, at the end — tolerating (rather than crashing on) an argument
+string that never fully reassembled into valid JSON, by falling back to
+an empty `{}`.
+
+### Known limitation
+
+`stream()` reads `usage` only from the same event that carries
+`finish_reason` — matching Ollama's actual behavior and OpenAI's default.
+OpenAI's opt-in `stream_options.include_usage` trailing usage-only chunk
+(empty `choices`) is not requested or handled; nothing in
+`ACT-MDL-FR-040..049` asks for it.
+
+## The platform-side streaming boundary (`ModelGatewayService`)
+
+`invoke(version, input_payload)` **keeps its exact signature and
+`(output_payload, usage)` contract** for every existing caller
+(`ACT-MDL-FR-042`'s "same tuple" requirement, and this phase's own
+governing principle: "a streamed call must still yield the same tuple to
+any caller that does not opt into streaming"). A version opts into
+streaming via `model_configuration = {..., "stream": true}`;
+`config.get("stream", False)` defaults every pre-5.7a.3 configuration
+(none of which set this key) to the unchanged non-streaming path.
+
+`_invoke_streaming()` is the new internal path, used only when streaming
+is requested:
+
+1. Iterates `provider.stream(request)` chunk by chunk — never collecting
+   the whole thing before starting.
+2. Measures **time to first token** — the elapsed time until the first
+   chunk carrying non-empty `content` (`ACT-MDL-FR-048`).
+3. Enforces `settings.MODEL_STREAM_MAX_DURATION_SECONDS` (default 120s,
+   `ACT-MDL-FR-049`) by simply **no longer calling `next()`** on the
+   generator once the budget is exceeded — the abandoned generator's own
+   `with`-managed HTTP connection closes on garbage collection; no
+   separate thread or signal needed.
+4. Reassembles whatever chunks were consumed via `assemble_response()`
+   and measures **total generation duration**.
+5. Distinguishes *why* a stream ended: a real `FinishReason.ERROR` final
+   chunk from the adapter reports as "provider stream ended unexpectedly";
+   the platform's own duration cutoff reports as "exceeded the maximum
+   response duration," with `finish_reason` left `null` in `usage` (the
+   adapter never got to report one) — both set `stream_interrupted=true`
+   and a human-readable `interruption_reason`, distinctly.
+
+There is deliberately **no HTTP-level streaming endpoint** in this
+sub-phase — an SSE `GET .../stream` surfaced to a browser is Phase 5.9 or
+a later UI phase's job. This phase makes the *provider* stream and makes
+the *platform* correctly reassemble, account for, and persist that
+stream — internal correctness, not a new API surface.
+
+## Token accounting (`ACT-MDL-FR-045..048`)
+
+`usage` (the dict `ModelGatewayService.invoke()` returns) grew several
+keys, present for **both** streaming and non-streaming calls alike:
+`token_accounting_complete`, `was_streamed`, `stream_interrupted`,
+`interruption_reason`, `time_to_first_token_ms`, `generation_duration_ms`,
+`finish_reason` — alongside the pre-existing `provider`/`model`/
+`input_tokens`/`output_tokens`/`total_tokens`.
+
+**The never-estimate rule (`ACT-MDL-FR-046`)**: `OpenAICompatibleProvider.
+_usage_to_raw()` returns `{}` — not a dict of zeros — when the provider's
+response omits `usage` entirely. `{}` and `{"total_tokens": 0, ...}` mean
+different things: the latter is a real, if boring, measurement; the
+former means "no measurement was possible." `ModelGatewayService` uses
+`bool(raw_usage)` to compute `token_accounting_complete`, and
+`ExecutionWorkerService._execute` honors it explicitly — when accounting
+is incomplete, `agent_executions.prompt_tokens`/`completion_tokens`/
+`total_tokens` are set to **`NULL`**, never `0`. This is also why
+`test_response_omitting_optional_fields_parses_without_error` now asserts
+`raw_usage == {}` rather than a zero-filled dict — the old assertion (from
+5.7a.2, before this rule existed) was itself testing the exact
+estimate-that-looks-real shape this rule forbids.
+
+**Per-attempt, not only per-execution (`ACT-MDL-FR-047`)**:
+`execution_attempts` gained the same three token columns plus
+`token_accounting_complete`, written alongside the `agent_executions` row
+in the same `_execute()` call — a retried execution's earlier attempts
+keep their own usage, not only the final attempt's.
+
+## Cost (`ACT-MDL-FR-084..089`)
+
+### `model_pricing` and effective dating
+
+One new table, `provider`/`model_name`/`prompt_cost_per_1k`/
+`completion_cost_per_1k`/`currency`/`pricing_version`/`effective_from`/
+`effective_to`, unique on `(provider, model_name, effective_from)`.
+**A price change is never an `UPDATE`.** `PricingService.set_price()`
+closes whatever row is currently open (`effective_to IS NULL`) by setting
+its `effective_to` to the new price's `effective_from`, then inserts the
+new price as a new row. `PricingService.resolve_price(provider, model,
+at)` picks the row whose `[effective_from, effective_to)` window contains
+`at`. This is what keeps an execution's already-computed cost accurate
+after a price changes later — resolving a price *at* a past instant
+always returns whatever was actually in effect then, regardless of what's
+been added since.
+
+### Pricing seed data
+
+Migration `0028_streaming_and_pricing` seeds three rows under provider
+`"OPENAI_COMPATIBLE"` (the only adapter capable of calling them):
+
+| Model | Prompt $/1K | Completion $/1K | Pricing version | Effective from |
+|---|---|---|---|---|
+| `gpt-3.5-turbo` | 0.0005 | 0.0015 | `2025-01-seed` | 2025-01-01 |
+| `gpt-4o-mini` | 0.00015 | 0.0006 | `2025-01-seed` | 2025-01-01 |
+| `gpt-4o` | 0.0025 | 0.01 | `2025-01-seed` | 2025-01-01 |
+
+**These are illustrative, approximately-dated figures, not live prices.**
+An operator pointing this adapter at a real metered endpoint must verify
+current rates and maintain them via `PricingService.set_price()` — never
+by hand-editing this migration after the fact, and never by mutating a
+`model_pricing` row's price columns directly (that would silently corrupt
+every historical cost computed against it).
+
+### Local/unpriced providers cost zero, not null (`ACT-MDL-FR-087`)
+
+`PricingService.calculate_cost()` returns `CostResult(amount=0.0,
+currency="USD", pricing_version=None)` when no `model_pricing` row
+matches `(provider, model)` at the execution's time — this is the
+ordinary case for `MOCK` (no pricing row exists for it, deliberately) and
+for a real provider pointed at a self-hosted/local endpoint. Zero is a
+definite, known answer ("this call cost nothing to run"), not "unknown."
+
+**This changed one existing, previously-protected assertion.** Before
+5.7a.3, every MOCK execution's `cost` came from a flat
+`total_tokens * 0.000002` placeholder in `ExecutionWorkerService`, which
+made `execution["cost"] > 0` true for any MOCK call — asserted in both
+`test_execution_runs_end_to_end` and
+`test_every_existing_mock_execution_behavior_is_unchanged`. Once cost is
+computed by the same `PricingService` every provider uses, MOCK (which
+has no pricing row) honestly costs `0`. Both assertions were updated to
+`== 0`, with a comment explaining why: the old `> 0` was itself testing
+the exact fake-positive-number-that-looks-real problem `ACT-MDL-FR-087`
+exists to retire, not a behavior worth preserving.
+
+### Legacy placeholder rows (`ACT-MDL-FR-086`)
+
+Every `agent_executions` row with a non-zero `cost` from before this
+migration was computed by that same flat placeholder formula — never a
+real per-model rate. Migration `0028` runs one `UPDATE agent_executions
+SET cost_is_estimated = true WHERE cost <> 0` (1,538 rows, in this
+environment's dev database) — **flagging, never recomputing or deleting**
+a single existing value. `analytics_service.py`'s cost dashboard (Phase
+3's `_COST_PER_LLM_ACTION` and friends) is a separate, older, coarser
+concept entirely — a flat per-`AgentAction`-row estimate with no
+connection to `AgentExecution`/token data at all, not touched by this
+migration or this sub-phase; see "What Phase 5.7a.3 found" below for why.
+
+## What Phase 5.7a.3 found (honest findings)
+
+- **The 5.7a.2 abstraction held for real streaming, with zero changes to
+  `ModelResponse`, `ModelProvider`, or `MockProvider`** — one addition to
+  `types.py` (`assemble_response()`, a function, not a new dataclass) and
+  the documented per-chunk convention above were enough.
+- **`analytics_service.py`'s cost estimates are not the same "placeholder
+  cost" `ACT-MDL-FR-086` describes**, despite the build prompt's own
+  wording pointing there. That module's `cost_analytics()` aggregates
+  Phase 3's `AgentAction` table (a coarser, older business-action audit
+  concept) with flat per-unit estimates (`_COST_PER_LLM_ACTION = 0.03`,
+  etc.) — it has no connection whatsoever to `AgentExecution`/
+  `model_usage`/real token counts, and rewriting it to use real per-
+  execution costs would mean redesigning a Phase 3 dashboard around a
+  Phase 5 data model, a much larger and riskier scope than this
+  sub-phase's actual mandate. The genuinely real, token-grounded cost this
+  phase was asked to build lives on `AgentExecution` (`cost_amount`,
+  attributable to execution/agent/version/org/model — exactly
+  `ACT-MDL-FR-088`'s shape), which is what `PricingService` computes.
+  `analytics_service.py` was deliberately left untouched.
+- **MOCK's cost became 0, not a preserved positive placeholder** — see
+  above. This was confirmed as the intended direction before implementing
+  it, since it meant updating two existing, previously-stable assertions.
+
 ## What's deferred
 
-Real incremental streaming, token accounting/cost, a real error taxonomy
-and retry semantics, and credential storage remain out of scope — owned by
-Phase 5.7a.3, 5.7a.3/5.7a.5, 5.7a.4, and 5.7a.5 respectively. The interface,
-registry, and now one real adapter all exist so each of those can be added
+A real error taxonomy and retry semantics, and per-organization credential
+storage, remain out of scope — owned by Phase 5.7a.4 and 5.7a.5
+respectively. The interface, registry, one real adapter, real streaming,
+and real token/cost accounting all exist so each of those can be added
 without another rewrite of the surrounding contract.

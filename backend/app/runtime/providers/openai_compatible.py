@@ -1,4 +1,5 @@
-"""Phase 5.7a.2 SRS ACT-MDL-FR-020..028 — OpenAI-compatible chat completions adapter.
+"""Phase 5.7a.2 SRS ACT-MDL-FR-020..028, Phase 5.7a.3 SRS ACT-MDL-FR-040..044
+— OpenAI-compatible chat completions adapter, streaming included.
 
 The first *real* ``ModelProvider``: talks the OpenAI chat-completions wire
 protocol (``POST {base_url}/chat/completions``) that Ollama, vLLM, LM
@@ -25,14 +26,16 @@ call's ``id``). Every field outside ``choices[0].message.content`` is
 treated as potentially absent and read with ``.get(...)``/a fallback,
 never direct indexing.
 
-**``stream()`` is a placeholder** — see the module-level note near its
-definition. Real incremental streaming (parsing Server-Sent Events chunk by
-chunk) is Phase 5.7a.3.
+**``stream()`` is real incremental SSE parsing** (Phase 5.7a.3) — see its
+own docstring for the per-chunk convention, tool-call reassembly across
+fragments, and why it never raises (unlike ``complete()``, which does).
 
 **No credential resolution, no retry/backoff, no error taxonomy** — an API
-key is read as a plain configured value if present; any HTTP failure or
-unparseable response raises the one coarse ``ProviderRequestFailedError``.
-Both are deliberately out of scope here; see Phase 5.7a.4/5.7a.5.
+key is read as a plain configured value if present; ``complete()`` raises
+the one coarse ``ProviderRequestFailedError`` on any HTTP failure or
+unparseable response; ``stream()`` instead persists a partial and reports
+interruption via ``FinishReason.ERROR`` (``ACT-MDL-FR-043``). Both are
+deliberately out of scope for a real error taxonomy; see Phase 5.7a.4/5.7a.5.
 """
 
 from __future__ import annotations
@@ -148,14 +151,118 @@ class OpenAICompatibleProvider(ModelProvider):
         return self._parse_response(data)
 
     def stream(self, request: ModelRequest) -> Iterator[ModelResponse]:
-        """Placeholder: delegates to ``complete()`` and yields the whole
-        response as a single terminal chunk. This satisfies the interface
-        (every provider must implement ``stream()``) without pretending to
-        stream — no SSE parsing happens here. **Closure condition**: Phase
-        5.7a.3 replaces this with real incremental parsing of the
-        provider's ``stream=true`` SSE response; nothing about this
-        adapter's other methods needs to change when that happens."""
-        yield self.complete(request)
+        """Real incremental streaming (Phase 5.7a.3, replacing the 5.7a.2
+        placeholder) — parses the OpenAI-compatible Server-Sent-Events
+        format (``data: {...}`` lines, terminated by ``data: [DONE]``).
+
+        Each yielded ``ModelResponse.content`` is that chunk's
+        *incremental* delta, not the cumulative text — concatenate across
+        every yielded chunk for the full content (see ``assemble_response()``
+        in ``types.py``). ``tool_calls``/``finish_reason``/``raw_usage``
+        are only populated on the *final* chunk: a tool call's
+        ``arguments`` string arrives as fragments spread across many
+        chunks and is not valid JSON until fully reassembled
+        (``ACT-MDL-FR-044``), so every non-final chunk correctly reports
+        ``tool_calls=()`` — there is nothing valid to report yet.
+
+        **Never raises** — unlike ``complete()``. An HTTP failure, a
+        non-2xx status, or a connection that ends without ever reaching
+        ``[DONE]`` (truncation) all yield exactly one final chunk with
+        ``finish_reason=FinishReason.ERROR`` and whatever content/tool-call
+        state had already accumulated, rather than raising and losing
+        everything already received (``ACT-MDL-FR-043``). A caller that
+        needs to know whether a stream actually succeeded checks the final
+        chunk's ``finish_reason``, not a try/except.
+
+        **Known limitation**: ``usage`` is read only from the same event
+        that carries ``finish_reason`` — matching both Ollama's actual
+        behavior and OpenAI's default. OpenAI's opt-in ``stream_options.
+        include_usage`` trailing usage-only chunk (empty ``choices``) is
+        not requested or handled; nothing in ``ACT-MDL-FR-040..049`` asks
+        for it, and requesting it would be a one-line addition to
+        ``_build_request_body`` if a future sub-phase needs it."""
+        self.validate_capabilities(request)
+        body = self._build_request_body(request)
+        body["stream"] = True
+        tool_state: dict[int, dict] = {}
+        reached_done = False
+        try:
+            with self._client.stream("POST", "/chat/completions", json=body) as http_response:
+                http_response.raise_for_status()
+                for raw_line in http_response.iter_lines():
+                    if not raw_line or not raw_line.startswith("data:"):
+                        continue
+                    payload = raw_line[len("data:"):].strip()
+                    if payload == "[DONE]":
+                        reached_done = True
+                        break
+                    try:
+                        event = json.loads(payload)
+                    except ValueError:
+                        continue  # tolerate a malformed/keep-alive line rather than aborting the whole stream
+                    yield self._chunk_from_event(event, tool_state)
+        except httpx.HTTPError as exc:
+            yield self._interrupted_chunk(tool_state, str(exc))
+            return
+        if not reached_done:
+            yield self._interrupted_chunk(tool_state, "stream ended without reaching the [DONE] terminator")
+
+    def _chunk_from_event(self, event: dict, tool_state: dict[int, dict]) -> ModelResponse:
+        choices = event.get("choices") or []
+        choice = choices[0] if choices else {}
+        delta = choice.get("delta") or {}
+        content_delta = delta.get("content") or ""
+        self._accumulate_tool_call_deltas(delta.get("tool_calls"), tool_state)
+
+        raw_finish_reason = choice.get("finish_reason")
+        if raw_finish_reason is None:
+            return ModelResponse(content=content_delta)  # non-final: tool_calls/finish_reason/raw_usage not yet meaningful
+
+        return ModelResponse(
+            content=content_delta,
+            tool_calls=self._finalize_tool_calls(tool_state),
+            finish_reason=self._map_finish_reason(raw_finish_reason),
+            raw_usage=self._usage_to_raw(event.get("usage")),
+        )
+
+    def _interrupted_chunk(self, tool_state: dict[int, dict], detail: str) -> ModelResponse:
+        logger.debug("%s: stream interrupted -- %s", type(self).__name__, detail)
+        return ModelResponse(content="", tool_calls=self._finalize_tool_calls(tool_state), finish_reason=FinishReason.ERROR)
+
+    @staticmethod
+    def _accumulate_tool_call_deltas(raw_tool_call_deltas, tool_state: dict[int, dict]) -> None:
+        """A streamed tool call's ``function.arguments`` arrives as
+        successive string *fragments*, one per chunk, keyed by ``index``
+        (multiple concurrent tool calls interleave by index) —
+        ``ACT-MDL-FR-044``. Only the first delta for a given index
+        typically carries ``id``/``function.name``; every later delta for
+        that index carries only the next ``arguments`` fragment to append."""
+        for raw in raw_tool_call_deltas or []:
+            index = raw.get("index", 0)
+            entry = tool_state.setdefault(index, {"id": None, "name": None, "arguments": ""})
+            if raw.get("id"):
+                entry["id"] = raw["id"]
+            function = raw.get("function") or {}
+            if function.get("name"):
+                entry["name"] = function["name"]
+            if function.get("arguments"):
+                entry["arguments"] += function["arguments"]
+
+    @staticmethod
+    def _finalize_tool_calls(tool_state: dict[int, dict]) -> tuple[ModelToolCall, ...]:
+        calls = []
+        for index in sorted(tool_state):
+            entry = tool_state[index]
+            try:
+                arguments = json.loads(entry["arguments"] or "{}")
+            except ValueError:
+                # A tool call whose fragments never fully reassembled into
+                # valid JSON (e.g. the stream was interrupted mid-argument)
+                # -- tolerate rather than crash the whole stream over it.
+                arguments = {}
+            call_id = entry["id"] or f"call_{index}"
+            calls.append(ModelToolCall(id=call_id, name=entry["name"] or "", arguments=arguments))
+        return tuple(calls)
 
     def describe(self) -> ModelCapabilities:
         return ModelCapabilities(
@@ -223,18 +330,34 @@ class OpenAICompatibleProvider(ModelProvider):
         content = message.get("content") or ""
         tool_calls = self._parse_tool_calls(message.get("tool_calls"))
         finish_reason = self._map_finish_reason(choice.get("finish_reason"))
-        usage = data.get("usage") or {}
 
         return ModelResponse(
             content=content,
             tool_calls=tool_calls,
             finish_reason=finish_reason,
-            raw_usage={
-                "input_tokens": usage.get("prompt_tokens", 0),
-                "output_tokens": usage.get("completion_tokens", 0),
-                "total_tokens": usage.get("total_tokens", 0),
-            },
+            raw_usage=self._usage_to_raw(data.get("usage")),
         )
+
+    @staticmethod
+    def _usage_to_raw(usage: dict | None) -> dict:
+        """ACT-MDL-FR-046 (Phase 5.7a.3) — when the provider omits ``usage``
+        entirely (Ollama does, on some responses), this returns an empty
+        dict, not a dict of zeros. ``{}`` and ``{"total_tokens": 0, ...}``
+        mean different things: the platform (``ModelGatewayService``) uses
+        ``bool(raw_usage)`` to decide ``token_accounting_complete`` — a
+        zero-filled dict here would silently and permanently claim
+        "accounting complete, zero tokens used," which is a fabrication,
+        not an honest "unavailable." Individual *sub-fields* missing from
+        an otherwise-present ``usage`` block still default to 0 -- that's
+        a minor completeness gap in one number, not "no accounting at
+        all," and is not what FR-046 is about."""
+        if not usage:
+            return {}
+        return {
+            "input_tokens": usage.get("prompt_tokens", 0),
+            "output_tokens": usage.get("completion_tokens", 0),
+            "total_tokens": usage.get("total_tokens", 0),
+        }
 
     @staticmethod
     def _parse_tool_calls(raw_tool_calls) -> tuple[ModelToolCall, ...]:

@@ -214,6 +214,16 @@ class Settings(BaseSettings):
     # storage/resolution is Phase 5.7a.5, not this one.
     MODEL_PROVIDER_API_KEYS: dict[str, str] = {}
 
+    # --- Phase 5.7a.3: streaming & token accounting (ACT-MDL-FR-040..049,
+    # FR-084..089) -----------------------------------------------------------
+    # ACT-MDL-FR-049 -- a streamed call that never finishes must not run
+    # forever; ModelGatewayService._invoke_streaming breaks the loop once
+    # this budget is exceeded and persists whatever was received so far as
+    # an interrupted (not failed) execution. Independent of the existing
+    # per-execution DEFAULT_TIMEOUT_SECONDS (ExecutionWorkerService), which
+    # still bounds the whole attempt including this.
+    MODEL_STREAM_MAX_DURATION_SECONDS: float = 120.0
+
     # --- Phase 2: email notifications (SMTP / Mailtrap for development) ---
     NOTIFICATIONS_ENABLED: bool = False
     SMTP_HOST: str = "sandbox.smtp.mailtrap.io"

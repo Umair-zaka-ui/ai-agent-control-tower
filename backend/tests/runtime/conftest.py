@@ -31,6 +31,14 @@ def load_fixture(name: str) -> dict:
     return json.loads((FIXTURES_DIR / name).read_text())
 
 
+def load_sse_fixture(name: str) -> bytes:
+    """Raw bytes of a committed ``.sse`` fixture — read as bytes (not
+    parsed) since it's a multi-line ``data: {...}`` stream, not one JSON
+    document; the adapter's own SSE line-parser is what tests this
+    content, so it must arrive over the transport exactly as recorded."""
+    return (FIXTURES_DIR / name).read_bytes()
+
+
 def replay_transport(name: str, *, status_code: int = 200) -> httpx.MockTransport:
     """An ``httpx`` transport that returns the named fixture's recorded
     response regardless of what request is sent — a request never leaves
@@ -44,6 +52,33 @@ def replay_transport(name: str, *, status_code: int = 200) -> httpx.MockTranspor
     return httpx.MockTransport(_handler)
 
 
+def replay_sse_transport(name: str, *, status_code: int = 200) -> httpx.MockTransport:
+    """Like ``replay_transport``, but for a streamed (``.sse``) fixture —
+    used by ``OpenAICompatibleProvider.stream()`` tests."""
+    content = load_sse_fixture(name)
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(status_code, content=content, headers={"content-type": "text/event-stream"},
+                              request=request)
+
+    return httpx.MockTransport(_handler)
+
+
+def _default_transport_handler(request: httpx.Request) -> httpx.Response:
+    """Serves both request shapes the zero-arg conformance/end-to-end path
+    can send: a plain JSON body (``complete()``) or ``{"stream": true,
+    ...}`` (``stream()``) — inspecting the outgoing request is the only
+    way one default transport can correctly answer either method."""
+    try:
+        body = json.loads(request.content or b"{}")
+    except ValueError:
+        body = {}
+    if body.get("stream"):
+        return httpx.Response(200, content=load_sse_fixture("stream_simple_completion.sse"),
+                              headers={"content-type": "text/event-stream"}, request=request)
+    return httpx.Response(200, json=load_fixture("simple_completion.json"), request=request)
+
+
 @pytest.fixture(autouse=True)
 def _default_openai_compatible_transport(monkeypatch) -> None:
     """The provider conformance suite (``test_provider_abstraction.py``)
@@ -52,16 +87,17 @@ def _default_openai_compatible_transport(monkeypatch) -> None:
     (Phase 5.7a.2) — there is no real endpoint to call in that context. This
     globally substitutes the *default* transport (used only when a test
     doesn't inject its own via the ``transport=`` constructor kwarg) with a
-    replay of ``simple_completion.json``, so the zero-arg conformance path
-    gets a real, valid ``ModelResponse`` instead of trying to open a real
-    socket. Tests that need a *specific* fixture still pass ``transport=
-    replay_transport(...)`` explicitly, which always wins over this
-    default."""
+    replay that answers either ``complete()`` or ``stream()`` correctly
+    (``_default_transport_handler``), so the zero-arg conformance path
+    gets a real, valid response either way instead of trying to open a
+    real socket. Tests that need a *specific* fixture still pass
+    ``transport=replay_transport(...)``/``replay_sse_transport(...)``
+    explicitly, which always wins over this default."""
     from app.runtime.providers.openai_compatible import OpenAICompatibleProvider
 
     monkeypatch.setattr(
         OpenAICompatibleProvider, "_build_default_transport",
-        lambda self: replay_transport("simple_completion.json"),
+        lambda self: httpx.MockTransport(_default_transport_handler),
     )
 
 

@@ -31,6 +31,7 @@ nested dict either.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from enum import Enum
 from types import MappingProxyType
@@ -119,10 +120,17 @@ class ModelRequest:
 
 @dataclass(frozen=True, slots=True)
 class ModelResponse:
-    """A provider-neutral completion response. ``raw_usage`` is structure
-    only in this sub-phase — a passthrough dict of whatever token/usage
-    numbers the provider reported; formal accounting (cost, normalized
-    fields) is Phase 5.7a.3/5.7a.5, not this one."""
+    """A provider-neutral completion response. ``raw_usage`` is a
+    passthrough dict of whatever token/usage numbers the provider
+    reported — **absent, not zero-filled, when the provider omitted usage
+    entirely** (``ACT-MDL-FR-046`` — an adapter must never estimate).
+    Formal cost accounting is layered on top of this in
+    ``ModelGatewayService`` (Phase 5.7a.3) using real pricing data, not
+    here. When yielded from ``stream()`` rather than returned from
+    ``complete()``, see ``assemble_response()``'s docstring for the
+    per-chunk convention (``content`` is incremental; ``tool_calls``/
+    ``finish_reason``/``raw_usage`` are only authoritative on the last
+    chunk)."""
 
     content: str
     tool_calls: tuple[ModelToolCall, ...] = ()
@@ -145,3 +153,40 @@ class ModelCapabilities:
     supports_tools: bool
     supports_system_prompt: bool
     max_context_tokens: int
+
+
+def assemble_response(chunks: Iterable[ModelResponse]) -> ModelResponse:
+    """Phase 5.7a.3 SRS ACT-MDL-FR-042 — reduces a ``ModelProvider.stream()``
+    chunk sequence into the single complete ``ModelResponse`` a
+    non-streaming caller would have received, for persistence/audit.
+
+    This is the *only* addition Phase 5.7a.3 made to this module — no new
+    dataclass. ``stream()``'s existing ``Iterator[ModelResponse]``
+    contract already expresses everything real streaming needs, given one
+    documented convention every adapter's ``stream()`` follows: each
+    yielded ``ModelResponse.content`` is that chunk's *incremental* text
+    (concatenate, don't take the last one), while ``tool_calls``/
+    ``finish_reason``/``raw_usage`` are only meaningful on the *last*
+    chunk yielded (a tool call's arguments aren't valid JSON until fully
+    reassembled across chunks, so every provider's ``stream()`` reports
+    ``tool_calls=()`` on every chunk except the final one; the existing
+    ``FinishReason.ERROR`` value doubles as "this stream was interrupted"
+    on that final chunk, needing no new enum member). ``MockProvider``'s
+    single-chunk ``stream()`` already satisfies this convention with zero
+    changes: its one chunk's content *is* the whole completion, and it *is*
+    the last (only) chunk, so its tool_calls/finish_reason/raw_usage are
+    already correct as the "final" values.
+    """
+    assembled_content: list[str] = []
+    last: ModelResponse | None = None
+    for chunk in chunks:
+        assembled_content.append(chunk.content)
+        last = chunk
+    if last is None:
+        raise ValueError("assemble_response() requires at least one chunk; stream() yielded none.")
+    return ModelResponse(
+        content="".join(assembled_content),
+        tool_calls=last.tool_calls,
+        finish_reason=last.finish_reason,
+        raw_usage=last.raw_usage,
+    )

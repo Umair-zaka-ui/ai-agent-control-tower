@@ -224,7 +224,15 @@ def test_unrecognized_finish_reason_raises_rather_than_defaulting() -> None:
 # AC-11 — tolerating omitted optional fields
 # --------------------------------------------------------------------------- #
 def test_response_omitting_optional_fields_parses_without_error() -> None:
-    """AC-11 — no id/object/created/system_fingerprint/usage at all."""
+    """AC-11 — no id/object/created/system_fingerprint/usage at all.
+
+    Phase 5.7a.3 note (``ACT-MDL-FR-046``): ``raw_usage`` is asserted
+    empty, not zero-filled. A provider that omits ``usage`` entirely must
+    report "unavailable," not "zero tokens used" — those mean different
+    things, and ``ModelGatewayService`` relies on ``bool(raw_usage)`` to
+    tell them apart (``token_accounting_complete``). Zero-filling here
+    would have been exactly the kind of estimate-that-looks-real FR-046
+    exists to forbid."""
     fixture = load_fixture("omitted_optional_fields.json")
     provider = OpenAICompatibleProvider(transport=replay_transport("omitted_optional_fields.json"))
     response = provider.complete(ModelRequest(messages=(ModelMessage(role="user", content="hi"),)))
@@ -232,7 +240,7 @@ def test_response_omitting_optional_fields_parses_without_error() -> None:
     assert response.content == fixture["choices"][0]["message"]["content"]
     assert response.finish_reason == FinishReason.STOP
     assert response.tool_calls == ()
-    assert response.raw_usage == {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+    assert response.raw_usage == {}
 
 
 # --------------------------------------------------------------------------- #

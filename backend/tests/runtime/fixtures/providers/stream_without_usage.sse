@@ -1,0 +1,12 @@
+data: {"model":"llama3","choices":[{"delta":{"role":"assistant","content":""},"finish_reason":null}]}
+
+data: {"model":"llama3","choices":[{"delta":{"content":"Ollama"},"finish_reason":null}]}
+
+data: {"model":"llama3","choices":[{"delta":{"content":" often"},"finish_reason":null}]}
+
+data: {"model":"llama3","choices":[{"delta":{"content":" omits usage."},"finish_reason":null}]}
+
+data: {"model":"llama3","choices":[{"delta":{},"finish_reason":"stop"}]}
+
+data: [DONE]
+

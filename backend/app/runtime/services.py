@@ -28,11 +28,12 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeoutError
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse
 
 import jsonschema
-from sqlalchemy import case, delete, func, select
+from sqlalchemy import case, delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.authorization.enums import AuthorizationAuditEvent
@@ -57,6 +58,7 @@ from app.models.runtime import (
     ExecutionAttempt,
     ExecutionLock,
     IdempotencyRecord,
+    ModelPricing,
     RuntimeApproval,
     RuntimeEvent,
     Tool,
@@ -961,6 +963,82 @@ class ToolRegistryService:
 
 
 # --------------------------------------------------------------------------- #
+# Pricing (Phase 5.7a.3 SRS ACT-MDL-FR-084..089)
+# --------------------------------------------------------------------------- #
+@dataclass(frozen=True)
+class CostResult:
+    """The result of one cost calculation — attributed to a specific
+    provider/model/pricing-version pair (``ACT-MDL-FR-088``/``FR-089``),
+    never an unattributed number."""
+
+    amount: float
+    currency: str
+    pricing_version: str | None
+
+
+class PricingService:
+    """§ACT-MDL-FR-084 — per-provider, per-model pricing with effective
+    dating, following the runtime domain's established pattern (a service
+    with ``db: Session``, direct ORM queries, no repository layer — §7,
+    §10.10). A price change is never an ``UPDATE``: ``set_price`` inserts
+    a new row and closes the prior one's ``effective_to``, which is what
+    keeps an already-computed historical execution's cost accurate after a
+    price changes (``ACT-MDL-FR-085``)."""
+
+    def __init__(self, db: Session) -> None:
+        self.db = db
+
+    def resolve_price(self, provider: str, model: str, at: datetime) -> ModelPricing | None:
+        return self.db.execute(
+            select(ModelPricing).where(
+                ModelPricing.provider == provider, ModelPricing.model_name == model,
+                ModelPricing.effective_from <= at,
+                or_(ModelPricing.effective_to.is_(None), ModelPricing.effective_to > at),
+            ).order_by(ModelPricing.effective_from.desc())
+        ).scalars().first()
+
+    def calculate_cost(self, *, provider: str, model: str, prompt_tokens: int, completion_tokens: int,
+                       at: datetime) -> CostResult:
+        pricing = self.resolve_price(provider, model, at)
+        if pricing is None:
+            # ACT-MDL-FR-087 — no pricing row for this provider/model (the
+            # ordinary case for MOCK, or a real provider pointed at a
+            # self-hosted/local endpoint) means this call has a definite,
+            # known cost: zero. Not "unknown" — there is nothing to meter.
+            return CostResult(amount=0.0, currency="USD", pricing_version=None)
+        amount = (
+            (prompt_tokens / 1000) * float(pricing.prompt_cost_per_1k)
+            + (completion_tokens / 1000) * float(pricing.completion_cost_per_1k)
+        )
+        return CostResult(amount=round(amount, 8), currency=pricing.currency, pricing_version=pricing.pricing_version)
+
+    def set_price(self, *, provider: str, model: str, prompt_cost_per_1k: float, completion_cost_per_1k: float,
+                  pricing_version: str, effective_from: datetime, currency: str = "USD") -> ModelPricing:
+        """Closes whatever row is currently open (``effective_to IS
+        NULL``) for this ``(provider, model)`` at ``effective_from``, then
+        inserts the new price as a new row. Never mutates an existing
+        row's price in place — that is what AC-16/AC-17 (a price change
+        must not retroactively alter an already-computed historical cost)
+        depend on."""
+        prior = self.db.execute(
+            select(ModelPricing).where(
+                ModelPricing.provider == provider, ModelPricing.model_name == model,
+                ModelPricing.effective_to.is_(None),
+            )
+        ).scalars().first()
+        if prior is not None:
+            prior.effective_to = effective_from
+        new_row = ModelPricing(
+            provider=provider, model_name=model,
+            prompt_cost_per_1k=prompt_cost_per_1k, completion_cost_per_1k=completion_cost_per_1k,
+            currency=currency, pricing_version=pricing_version, effective_from=effective_from,
+        )
+        self.db.add(new_row)
+        self.db.flush()
+        return new_row
+
+
+# --------------------------------------------------------------------------- #
 # Model Gateway (§40-§42) — provider-neutral, one working adapter (§4.5)
 # --------------------------------------------------------------------------- #
 class ModelGatewayError(IdentityError):
@@ -988,9 +1066,21 @@ class ModelGatewayService:
     (``app.runtime.providers.types``) — the whole input payload becomes one
     user message; a provider's response content and token counts become
     the legacy ``output_payload``/``usage`` shape. See
-    ``docs/runtime/providers.md`` for why this split exists."""
+    ``docs/runtime/providers.md`` for why this split exists.
 
-    def invoke(self, version: AgentVersion, input_payload: dict) -> tuple[dict, dict]:
+    Phase 5.7a.3 (``ACT-MDL-FR-040..049``) added real streaming and token/
+    cost accounting, without changing this signature or the
+    ``(output_payload, usage)`` contract for any caller that doesn't ask
+    for streaming: ``invoke(version, input_payload)`` with no ``stream``
+    argument behaves for every existing caller exactly as it did before —
+    ``config.get("stream", False)`` defaults every pre-5.7a.3
+    ``model_configuration`` to the non-streaming path (``AC-07``). Opting
+    a version into streaming is ``model_configuration = {..., "stream":
+    true}``; ``usage`` grows several new keys either way (token/cost/
+    timing accounting applies identically to both paths) but keeps every
+    key existing callers already read."""
+
+    def invoke(self, version: AgentVersion, input_payload: dict, *, stream: bool | None = None) -> tuple[dict, dict]:
         from app.runtime.providers.registry import resolve as resolve_provider
         from app.runtime.providers.types import ModelMessage, ModelRequest
 
@@ -1016,17 +1106,92 @@ class ModelGatewayService:
 
         request = ModelRequest(
             messages=(ModelMessage(role="user", content=json.dumps(input_payload, default=str)),),
-            sampling_parameters={k: v for k, v in config.items() if k not in ("provider", "model")},
+            sampling_parameters={k: v for k, v in config.items() if k not in ("provider", "model", "stream")},
         )
+
+        should_stream = config.get("stream", False) if stream is None else stream
+        if should_stream:
+            return self._invoke_streaming(provider, provider_name, config, request, input_payload)
+
+        start = time.monotonic()
         response = provider.complete(request)
+        generation_duration_ms = int((time.monotonic() - start) * 1000)
 
         usage = {
             "provider": provider_name, "model": config.get("model", "mock-model"),
             "input_tokens": response.raw_usage.get("input_tokens", 0),
             "output_tokens": response.raw_usage.get("output_tokens", 0),
             "total_tokens": response.raw_usage.get("total_tokens", 0),
+            "token_accounting_complete": bool(response.raw_usage),
+            "was_streamed": False,
+            "stream_interrupted": False,
+            "interruption_reason": None,
+            "time_to_first_token_ms": None,
+            "generation_duration_ms": generation_duration_ms,
+            "finish_reason": response.finish_reason.value,
         }
         output_payload = {"result": response.content, "echo": input_payload}
+        return output_payload, usage
+
+    def _invoke_streaming(self, provider, provider_name: str, config: dict, request, input_payload: dict,
+                         ) -> tuple[dict, dict]:
+        """``ACT-MDL-FR-041..043, FR-048, FR-049`` — consumes
+        ``provider.stream()`` chunk by chunk (never buffering the whole
+        response before starting), measuring time-to-first-token and total
+        generation duration, enforcing ``MODEL_STREAM_MAX_DURATION_SECONDS``
+        by simply no longer calling ``next()`` on the generator once the
+        budget is exceeded (the abandoned generator's own ``with``-managed
+        HTTP connection is closed on garbage collection — see
+        ``OpenAICompatibleProvider.stream()``), and reassembling the
+        consumed chunks into the same ``(output_payload, usage)`` shape the
+        non-streaming path returns."""
+        from app.runtime.providers.types import FinishReason, assemble_response
+
+        start = time.monotonic()
+        time_to_first_token_ms: int | None = None
+        chunks = []
+        max_duration = settings.MODEL_STREAM_MAX_DURATION_SECONDS
+        truncated_by_duration = False
+        for chunk in provider.stream(request):
+            if time_to_first_token_ms is None and chunk.content:
+                time_to_first_token_ms = int((time.monotonic() - start) * 1000)
+            chunks.append(chunk)
+            if (time.monotonic() - start) > max_duration:
+                truncated_by_duration = True
+                break
+
+        generation_duration_ms = int((time.monotonic() - start) * 1000)
+        assembled = assemble_response(chunks) if chunks else None
+        provider_signaled_error = (
+            not truncated_by_duration and assembled is not None and assembled.finish_reason == FinishReason.ERROR
+        )
+        stream_interrupted = truncated_by_duration or provider_signaled_error
+
+        if truncated_by_duration:
+            interruption_reason = f"Stream exceeded the maximum response duration of {max_duration}s."
+            reported_finish_reason = None
+        elif provider_signaled_error:
+            interruption_reason = "Provider stream ended unexpectedly (connection error or malformed response)."
+            reported_finish_reason = FinishReason.ERROR.value
+        else:
+            interruption_reason = None
+            reported_finish_reason = assembled.finish_reason.value if assembled else None
+
+        raw_usage = assembled.raw_usage if assembled else {}
+        usage = {
+            "provider": provider_name, "model": config.get("model", "mock-model"),
+            "input_tokens": raw_usage.get("input_tokens", 0),
+            "output_tokens": raw_usage.get("output_tokens", 0),
+            "total_tokens": raw_usage.get("total_tokens", 0),
+            "token_accounting_complete": bool(raw_usage),
+            "was_streamed": True,
+            "stream_interrupted": stream_interrupted,
+            "interruption_reason": interruption_reason,
+            "time_to_first_token_ms": time_to_first_token_ms,
+            "generation_duration_ms": generation_duration_ms,
+            "finish_reason": reported_finish_reason,
+        }
+        output_payload = {"result": assembled.content if assembled else "", "echo": input_payload}
         return output_payload, usage
 
 
@@ -1645,7 +1810,53 @@ class ExecutionWorkerService:
             execution.output_payload = output_payload
             execution.model_usage = model_usage
             execution.tool_usage = tool_usage
-            execution.cost = float(execution.cost or 0) + model_usage["total_tokens"] * 0.000002
+
+            # --- Phase 5.7a.3: streaming/accounting/cost (ACT-MDL-FR-045..049,
+            # FR-084..089) --------------------------------------------------
+            token_accounting_complete = model_usage.get("token_accounting_complete", True)
+            execution.token_accounting_complete = token_accounting_complete
+            execution.was_streamed = model_usage.get("was_streamed", False)
+            execution.stream_interrupted = model_usage.get("stream_interrupted", False)
+            execution.time_to_first_token_ms = model_usage.get("time_to_first_token_ms")
+            execution.generation_duration_ms = model_usage.get("generation_duration_ms")
+            execution.finish_reason = model_usage.get("finish_reason")
+
+            if token_accounting_complete:
+                # ACT-MDL-FR-046 — never estimate: null-not-zero when the
+                # provider didn't report usage, checked just above.
+                execution.prompt_tokens = model_usage["input_tokens"]
+                execution.completion_tokens = model_usage["output_tokens"]
+                execution.total_tokens = model_usage["total_tokens"]
+            else:
+                execution.prompt_tokens = None
+                execution.completion_tokens = None
+                execution.total_tokens = None
+
+            attempt.prompt_tokens = execution.prompt_tokens
+            attempt.completion_tokens = execution.completion_tokens
+            attempt.total_tokens = execution.total_tokens
+            attempt.token_accounting_complete = token_accounting_complete
+
+            if token_accounting_complete:
+                cost_result = PricingService(self.db).calculate_cost(
+                    provider=model_usage["provider"], model=model_usage["model"],
+                    prompt_tokens=execution.prompt_tokens, completion_tokens=execution.completion_tokens,
+                    at=_now(),
+                )
+                execution.cost_amount = cost_result.amount
+                execution.cost_currency = cost_result.currency
+                execution.pricing_version = cost_result.pricing_version
+                execution.cost_is_estimated = False
+                # Legacy, non-nullable column — kept in sync with the new,
+                # nullable cost_amount rather than dropped, since existing
+                # callers/tests still read execution.cost directly.
+                execution.cost = float(execution.cost or 0) + cost_result.amount
+            else:
+                execution.cost_amount = None
+                execution.cost_currency = "USD"
+                execution.pricing_version = None
+                execution.cost_is_estimated = False
+
             _set_execution_status(execution, "SUCCEEDED")
             execution.completed_at = _now()
             execution.duration_ms = int((execution.completed_at - execution.started_at).total_seconds() * 1000)
