@@ -1,10 +1,14 @@
 """Fixtures for the ``tests/runtime/`` suite (Phase 5.2.6 compatibility
-detection, Phase 5.2.4 signing/provenance/attestation)."""
+detection, Phase 5.2.4 signing/provenance/attestation, Phase 5.7a.2
+provider fixture replay)."""
 
 from __future__ import annotations
 
+import json
 import uuid
+from pathlib import Path
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -13,6 +17,52 @@ from app.core.database import SessionLocal
 from app.main import app
 
 PASSWORD = "T3st!Passw0rd#Ok"
+
+# --------------------------------------------------------------------------- #
+# Phase 5.7a.2 — provider fixture replay. ``OpenAICompatibleProvider`` has no
+# awareness of any of this: it always calls whatever ``httpx.BaseTransport``
+# its constructor was given (or built by its own ``_build_default_transport``
+# if none was), and this file is the only place that ever substitutes one.
+# --------------------------------------------------------------------------- #
+FIXTURES_DIR = Path(__file__).parent / "fixtures" / "providers"
+
+
+def load_fixture(name: str) -> dict:
+    return json.loads((FIXTURES_DIR / name).read_text())
+
+
+def replay_transport(name: str, *, status_code: int = 200) -> httpx.MockTransport:
+    """An ``httpx`` transport that returns the named fixture's recorded
+    response regardless of what request is sent — a request never leaves
+    the process. See ``fixtures/providers/README.md`` for how the fixtures
+    themselves were produced."""
+    body = load_fixture(name)
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(status_code, json=body, request=request)
+
+    return httpx.MockTransport(_handler)
+
+
+@pytest.fixture(autouse=True)
+def _default_openai_compatible_transport(monkeypatch) -> None:
+    """The provider conformance suite (``test_provider_abstraction.py``)
+    constructs every entry in ``PROVIDERS_UNDER_TEST`` with zero
+    arguments, including ``OpenAICompatibleProvider`` once appended
+    (Phase 5.7a.2) — there is no real endpoint to call in that context. This
+    globally substitutes the *default* transport (used only when a test
+    doesn't inject its own via the ``transport=`` constructor kwarg) with a
+    replay of ``simple_completion.json``, so the zero-arg conformance path
+    gets a real, valid ``ModelResponse`` instead of trying to open a real
+    socket. Tests that need a *specific* fixture still pass ``transport=
+    replay_transport(...)`` explicitly, which always wins over this
+    default."""
+    from app.runtime.providers.openai_compatible import OpenAICompatibleProvider
+
+    monkeypatch.setattr(
+        OpenAICompatibleProvider, "_build_default_transport",
+        lambda self: replay_transport("simple_completion.json"),
+    )
 
 
 @pytest.fixture(scope="session", autouse=True)

@@ -1,0 +1,32 @@
+{
+  "id": "chatcmpl-8f3a1c30",
+  "object": "chat.completion",
+  "created": 1718000020,
+  "model": "llama3",
+  "system_fingerprint": "fp_ollama",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "call_9f1e2a",
+            "type": "function",
+            "function": {
+              "name": "get_weather",
+              "arguments": "{\"location\": \"New York, NY\"}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 42,
+    "completion_tokens": 12,
+    "total_tokens": 54
+  }
+}

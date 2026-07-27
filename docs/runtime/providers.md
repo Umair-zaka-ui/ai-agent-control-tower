@@ -1,19 +1,25 @@
 # Model Provider Abstraction
 
-`backend/app/runtime/providers/` · Phase 5.7a.1 SRS `ACT-MDL-FR-001..010`.
+`backend/app/runtime/providers/` · Phase 5.7a.1 SRS `ACT-MDL-FR-001..010`,
+Phase 5.7a.2 SRS `ACT-MDL-FR-020..028`.
 
 ## Why this exists
 
 Every layer above the runtime — registry, versioning, signing, governance,
 authorization — has been built and tested against a real executing agent.
-Until this phase, "executing" meant `ModelGatewayService` running a single
-hardcoded `MOCK` branch and failing closed (`MODEL_PROVIDER_UNAVAILABLE`)
-for anything else. This phase replaces that branch with a real interface,
-a registry, and a provider-neutral internal representation — proven by
-migrating `MOCK` onto it with **zero change in observable behavior**. No
-real provider is implemented here; that's Phase 5.7a.2, deliberately kept
-separate so the interface's shape isn't distorted by one concrete
-implementation's assumptions while it's still being designed.
+Until Phase 5.7a.1, "executing" meant `ModelGatewayService` running a
+single hardcoded `MOCK` branch and failing closed
+(`MODEL_PROVIDER_UNAVAILABLE`) for anything else. That phase replaced the
+branch with a real interface, a registry, and a provider-neutral internal
+representation — proven by migrating `MOCK` onto it with **zero change in
+observable behavior** — but registered no real adapter, deliberately, so
+the interface's shape wasn't distorted by one concrete implementation's
+assumptions while it was still being designed.
+
+**Phase 5.7a.2 is the first real test of that interface**: an
+`OpenAICompatibleProvider` that actually calls a model, over HTTP, and the
+answer to whether the 5.7a.1 abstraction held is in the section below
+titled "What Phase 5.7a.2 proved about the abstraction."
 
 ## The contract (`base.py`)
 
@@ -161,10 +167,12 @@ into a `ModelResponse`.
 
 ```python
 def register(identifier: str, provider_cls: type[ModelProvider]) -> None: ...
-def resolve(identifier: str, *, base_url: str | None = None) -> ModelProvider: ...
+def resolve(identifier: str, *, base_url: str | None = None,
+           model: str | None = None, api_key: str | None = None) -> ModelProvider: ...
 def registered_identifiers() -> list[str]: ...
 
-register("MOCK", MockProvider)   # the only registration today
+register("MOCK", MockProvider)
+register("OPENAI_COMPATIBLE", OpenAICompatibleProvider)   # added Phase 5.7a.2
 ```
 
 Registration is **explicit**, at the bottom of `registry.py` — one line
@@ -172,15 +180,47 @@ per provider, not directory-scanning discovery. Explicit registration is
 greppable: `grep "^register(" backend/app/runtime/providers/registry.py`
 tells you every provider this deployment knows about; a discovery
 mechanism would require actually running the code to find out. Adding
-Phase 5.7a.2's real provider means one more `register(...)` call here and
-nothing else changes.
+Phase 5.7a.2's real provider meant exactly one more `register(...)` call
+here.
 
 `resolve()` upper-cases the identifier before lookup (matching
 `AgentVersion.model_configuration`'s existing `"provider": "MOCK"`
 convention) and raises `ProviderUnavailableError`
 (`MODEL_PROVIDER_UNAVAILABLE`) for anything unregistered — the exact
-fail-closed behavior `ModelGatewayService` had before this phase, now
-delegated rather than inlined.
+fail-closed behavior `ModelGatewayService` had before Phase 5.7a.1, still
+true today.
+
+### `model`/`api_key` forwarding (added Phase 5.7a.2)
+
+5.7a.1 left `model_configuration.model` reaching only the reported
+`usage.model` in `ModelGatewayService.invoke()` — never the provider
+instance itself (`MockProvider` didn't need it: its cosmetic `self.model`
+only affected output text nothing asserts on). A real adapter genuinely
+needs to know which model to ask for (and, if the endpoint requires one,
+an API key), so `resolve()` now accepts optional `model`/`api_key`
+parameters and forwards each **only if the target provider's constructor
+actually declares that parameter** — checked via `inspect.signature`, not
+assumed:
+
+```python
+accepted = inspect.signature(provider_cls.__init__).parameters
+kwargs = {"base_url": base_url}
+if model is not None and "model" in accepted:
+    kwargs["model"] = model
+if api_key is not None and "api_key" in accepted:
+    kwargs["api_key"] = api_key
+return provider_cls(**kwargs)
+```
+
+This is the one change 5.7a.2 made to `registry.py` itself, and it was
+made carefully to avoid breaking `test_base_url_configuration_reaches_the_
+provider`'s `_RecordingProvider` test double, whose constructor accepts
+only `base_url` — the signature check means neither `model` nor `api_key`
+is forwarded to it, exactly as before. Every other provider that does
+declare `model` (both `MockProvider` and `OpenAICompatibleProvider`) now
+actually receives the version's configured value; `api_key` is read from
+`settings.MODEL_PROVIDER_API_KEYS` (keyed by provider identifier, the same
+shape as `MODEL_PROVIDER_BASE_URLS`) and forwarded the same way.
 
 ## Capability declaration & enforcement
 
@@ -202,8 +242,10 @@ inside it changed, from an inline `MOCK`-only branch to:
    publish time — never from the agent or deployment, which can still
    change after the version is signed; `ACT-MDL-FR-004`).
 2. `resolve(provider_name, base_url=settings.MODEL_PROVIDER_BASE_URLS.get
-   (provider_name))` — unregistered still raises `MODEL_PROVIDER_
-   UNAVAILABLE` (`ACT-MDL-FR-005`).
+   (provider_name), model=config.get("model"), api_key=settings.MODEL_
+   PROVIDER_API_KEYS.get(provider_name))` — unregistered still raises
+   `MODEL_PROVIDER_UNAVAILABLE` (`ACT-MDL-FR-005`). The `model`/`api_key`
+   forwarding (Phase 5.7a.2) is new; see "The registry" section above.
 3. Translate the legacy `input_payload: dict` into a `ModelRequest` — the
    whole payload becomes the content of one `user`-role message. (This is
    the one place this phase's design is shaped by a pre-existing contract
@@ -260,23 +302,182 @@ not `MOCK`. It didn't come to that.
 ```python
 # backend/app/core/config.py
 MODEL_DEFAULT_PROVIDER: str = "MOCK"
-MODEL_PROVIDER_BASE_URLS: dict[str, str] = {}   # {"SOME_IDENTIFIER": "https://..."}
+MODEL_PROVIDER_BASE_URLS: dict[str, str] = {}          # {"SOME_IDENTIFIER": "https://..."}
+MODEL_PROVIDER_DEFAULT_MODELS: dict[str, str] = {}     # {"SOME_IDENTIFIER": "llama3"} -- Phase 5.7a.2
+MODEL_PROVIDER_CONNECT_TIMEOUT_SECONDS: float = 5.0    # Phase 5.7a.2
+MODEL_PROVIDER_READ_TIMEOUT_SECONDS: float = 30.0      # Phase 5.7a.2
+MODEL_PROVIDER_API_KEYS: dict[str, str] = {}           # Phase 5.7a.2 -- plain value, see note below
 ```
 
 `MODEL_PROVIDER_BASE_URLS` lets one adapter *class* serve multiple
-compatible endpoints under different registered identifiers (e.g. a future
-`OpenAICompatibleProvider` registered once as `"OPENAI"` pointed at
-OpenAI's own API, and again as `"SELF_HOSTED_LLM"` pointed at an
-internally-hosted OpenAI-compatible gateway) — `ACT-MDL-FR-010`. `MOCK` has
-nothing to call, but still accepts and stores a `base_url` in its
-constructor so the end-to-end wiring (settings → registry → provider
-constructor) is proven before any real provider depends on it (see
-`test_base_url_configuration_reaches_the_provider`).
+compatible endpoints under different registered identifiers —
+`ACT-MDL-FR-010`. `MOCK` has nothing to call, but still accepts and stores
+a `base_url` in its constructor so the end-to-end wiring (settings →
+registry → provider constructor) is proven before any real provider
+depends on it (see `test_base_url_configuration_reaches_the_provider`).
+`OpenAICompatibleProvider` (5.7a.2) is the first provider that actually
+uses it.
+
+`MODEL_PROVIDER_API_KEYS` is a plain configured value, read as-is and sent
+as `Authorization: Bearer <value>` — **not** credential storage.
+Per-organization credential resolution (e.g. from `deployment.secret_
+references`, a vault reference string, rotation) is Phase 5.7a.5; this is
+deliberately the simplest thing that could work for a single environment
+variable today.
+
+## The OpenAI-compatible adapter (`openai_compatible.py`, Phase 5.7a.2)
+
+`OpenAICompatibleProvider` talks the OpenAI chat-completions wire protocol
+— `POST {base_url}/chat/completions` — which Ollama, vLLM, LM Studio and
+OpenAI itself all implement. One class, one `base_url`/`model` pair per
+registered identifier, no per-vendor subclass (`ACT-MDL-FR-027`).
+
+### Naming: `"OPENAI_COMPATIBLE"`, not `"OPENAI"`
+
+The registered identifier names the *wire protocol*, not a vendor. Ollama
+and vLLM are not OpenAI. Registering this class as `"OPENAI"` would have
+made a future, genuinely OpenAI-specific adapter (one that used
+OpenAI-only request fields or auth) awkward to add without a naming
+collision. `"OPENAI_COMPATIBLE"` leaves `"OPENAI"` free for that.
+
+### Translation boundary
+
+All OpenAI wire-format vocabulary — `choices`, `message.tool_calls`,
+`function.arguments` (a JSON-encoded string, decoded here), `finish_
+reason`'s raw values (`"stop"`/`"length"`/`"tool_calls"`/
+`"content_filter"`) — is translated to and from `ModelRequest`/
+`ModelResponse` entirely inside this one module (`ACT-MDL-FR-006`).
+`test_no_openai_wire_vocabulary_outside_this_module` checks `base.py`,
+`registry.py` and `types.py` directly for a set of unambiguous wire tokens
+(`choices`, `prompt_tokens`, `completion_tokens`, the endpoint path,
+`system_fingerprint`) — deliberately excluding `finish_reason`/
+`tool_calls`, since those are `ModelResponse`'s *own* field names, chosen
+on their own terms and only coincidentally spelled the same as OpenAI's.
+
+Finish-reason mapping is a small local dict (`_FINISH_REASON_MAP`), per
+`types.py`'s own design rule — an unrecognized raw value raises `ValueError`
+rather than defaulting to `STOP`/`ERROR`
+(`test_unrecognized_finish_reason_raises_rather_than_defaulting`).
+
+### Tolerant parsing (`ACT-MDL-FR-028`)
+
+Ollama's OpenAI-compatible layer doesn't always send every field OpenAI's
+own API does — `usage`, `system_fingerprint`, `id`, even a tool call's
+`id` can be absent. Every field outside `choices[0].message.content` is
+read with `.get(...)`/a fallback, never direct indexing; a missing tool
+call `id` gets a synthesized placeholder (`call_<index>`) rather than
+raising, since its only downstream job is pairing a later `tool`-role
+message back to this call. See `omitted_optional_fields.json` and
+`test_response_omitting_optional_fields_parses_without_error`.
+
+### Sampling parameters
+
+Only `temperature`, `top_p`, `presence_penalty`, `frequency_penalty`,
+`seed` and `n` are forwarded from `ModelRequest.sampling_parameters`;
+anything else (e.g. `top_k`, `repeat_penalty` — knobs some
+llama.cpp-family servers accept but OpenAI's own API doesn't) is silently
+dropped from the wire request and logged at `DEBUG` naming exactly what
+was dropped, so a developer wondering why a parameter had no effect can
+find out (`ACT-MDL-FR-023`).
+
+### Tool-calling capability is configurable, not assumed
+
+Not every model behind an OpenAI-compatible endpoint supports function
+calling — many self-hosted base models don't. `describe().supports_tools`
+is `True` by default but can be set `False` per instance
+(`OpenAICompatibleProvider(supports_tools=False, ...)`), so a deployment
+known not to support tools fails closed with `CapabilityUnsupportedError`
+(`MODEL_CAPABILITY_UNSUPPORTED`) instead of silently sending tool
+definitions the server will ignore or reject.
+
+### `stream()` — the placeholder, and its closure condition
+
+`stream()` delegates to `complete()` and yields the whole response as one
+terminal chunk — it satisfies the interface without pretending to stream.
+**Closure condition**: Phase 5.7a.3 replaces this with real SSE parsing of
+the provider's `stream=true` response; nothing about `complete()`, request
+translation, or response parsing needs to change when that happens.
+
+### Errors
+
+One coarse exception, deliberately not a taxonomy:
+`ProviderRequestFailedError` (`MODEL_PROVIDER_REQUEST_FAILED`, HTTP 502)
+covers a connection failure, a timeout, a non-2xx response, and an
+unparseable body alike. Classifying these (timeout vs. 5xx vs. malformed
+body) for retry/backoff purposes is Phase 5.7a.4's job — building that
+classification now, before seeing a second real provider's failure modes,
+would likely produce a worse design.
+
+### Timeouts
+
+`connect_timeout`/`read_timeout` (seconds, defaulting to 5/30) are
+constructor parameters, backed by `MODEL_PROVIDER_CONNECT_TIMEOUT_SECONDS`/
+`MODEL_PROVIDER_READ_TIMEOUT_SECONDS`. A hanging provider call raises
+`ProviderRequestFailedError` rather than hanging the worker indefinitely —
+no retry/backoff, that's still 5.7a.4.
+
+## Fixtures & the `live_provider` marker
+
+Every test in `test_openai_compatible_provider.py` replays a committed,
+raw wire-format JSON fixture through an `httpx.MockTransport` — no test
+opens a real socket (AC-23, verified by running the full suite with no
+Ollama instance reachable). See `backend/tests/runtime/fixtures/providers/
+README.md` for what each of the six fixtures covers and — importantly —
+their actual provenance in this environment (hand-authored to match
+Ollama's documented response shape, since no local Ollama was reachable
+here; regenerate them for real with the recorder below if you have one).
+
+**Recording fixtures for real**, against a local Ollama:
+
+```bash
+ollama pull llama3
+python -m scripts.record_provider_fixtures --base-url http://localhost:11434/v1 --model llama3
+```
+
+The recorder (`backend/scripts/record_provider_fixtures.py`) is run
+manually only, never from CI or any test — it strips any `Authorization`
+header before writing, and the adapter itself has no knowledge the
+recorder or the replay transport exist.
+
+**Running the one genuinely live test** (excluded by default —
+`backend/pytest.ini` registers the `live_provider` marker and sets
+`addopts = -m "not live_provider"`):
+
+```bash
+pytest backend/tests/runtime/test_openai_compatible_provider.py -m live_provider
+```
+
+Requires `ollama serve` running locally with `llama3` pulled.
+
+## What Phase 5.7a.2 proved about the abstraction
+
+**The 5.7a.1 interface held without modification.** `ModelProvider`
+(`base.py`), the registry's `register`/`resolve`/`registered_identifiers`
+functions, and `types.py` are all **unchanged** except for one addition:
+`resolve()` gained an optional `model` parameter (see above) — a genuine
+gap 5.7a.1 left (every caller's configured model reached only a usage-
+reporting string, never the provider instance), surfaced by building a
+provider that actually needs to know which model to ask for. Nothing about
+`ModelRequest`/`ModelResponse`/`ModelCapabilities`/`FinishReason` needed to
+change to express the OpenAI chat-completions protocol faithfully.
+
+**One field the internal types still cannot express**: an assistant
+message's own prior tool-call request, for use in conversation history.
+`ModelMessage` has `tool_call_id` (set on a `role="tool"` message,
+answering a call) but no field for "this assistant message itself
+requested these tool calls." A real multi-turn tool-use loop replaying
+full history therefore can't yet reconstruct a prior assistant tool
+invocation as a `ModelMessage` — only `ModelResponse.tool_calls` carries
+that, at the moment of the response itself. This wasn't fixed here: the
+tool invocation loop that would actually need it is Phase 5.6a.3's job,
+explicitly out of scope for this sub-phase, and guessing at the right
+shape without that consumer in hand risked distorting `types.py` for a use
+case not yet built. Flagged here for whoever builds 5.6a.3.
 
 ## What's deferred
 
-Real provider implementations (Phase 5.7a.2), streaming (5.7a.3), token
-accounting/cost (5.7a.3/5.7a.5), a real error taxonomy and retry semantics
-(5.7a.4), and credential storage (5.7a.5) are all explicitly out of scope
-for this sub-phase — the interface and registry exist so each of those can
-be added without another rewrite of the surrounding contract.
+Real incremental streaming, token accounting/cost, a real error taxonomy
+and retry semantics, and credential storage remain out of scope — owned by
+Phase 5.7a.3, 5.7a.3/5.7a.5, 5.7a.4, and 5.7a.5 respectively. The interface,
+registry, and now one real adapter all exist so each of those can be added
+without another rewrite of the surrounding contract.

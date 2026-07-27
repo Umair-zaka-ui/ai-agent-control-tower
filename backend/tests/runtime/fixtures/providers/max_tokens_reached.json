@@ -1,0 +1,22 @@
+{
+  "id": "chatcmpl-8f3a1c2f",
+  "object": "chat.completion",
+  "created": 1718000010,
+  "model": "llama3",
+  "system_fingerprint": "fp_ollama",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "Rayleigh scattering is a physical phenomenon named after the British physicist Lord Rayleigh, who first described it mathematically in the"
+      },
+      "finish_reason": "length"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 18,
+    "completion_tokens": 16,
+    "total_tokens": 34
+  }
+}

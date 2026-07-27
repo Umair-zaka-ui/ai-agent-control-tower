@@ -201,6 +201,19 @@ class Settings(BaseSettings):
     # mechanism is proven before any real provider depends on it.
     MODEL_PROVIDER_BASE_URLS: dict[str, str] = {}
 
+    # --- Phase 5.7a.2: OpenAI-compatible provider adapter (ACT-MDL-FR-020..028) -
+    # Per-provider default model name, read by a provider's constructor when
+    # a version's model_configuration doesn't carry one through (mirrors
+    # MODEL_PROVIDER_BASE_URLS's per-identifier shape).
+    MODEL_PROVIDER_DEFAULT_MODELS: dict[str, str] = {}
+    # A hanging provider call must not hang the worker indefinitely. No
+    # retry/backoff here -- that classification is Phase 5.7a.4.
+    MODEL_PROVIDER_CONNECT_TIMEOUT_SECONDS: float = 5.0
+    MODEL_PROVIDER_READ_TIMEOUT_SECONDS: float = 30.0
+    # Plain configured value, read as-is. Per-organization credential
+    # storage/resolution is Phase 5.7a.5, not this one.
+    MODEL_PROVIDER_API_KEYS: dict[str, str] = {}
+
     # --- Phase 2: email notifications (SMTP / Mailtrap for development) ---
     NOTIFICATIONS_ENABLED: bool = False
     SMTP_HOST: str = "sandbox.smtp.mailtrap.io"

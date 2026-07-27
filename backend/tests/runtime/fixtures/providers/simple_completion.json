@@ -1,0 +1,22 @@
+{
+  "id": "chatcmpl-8f3a1c2e",
+  "object": "chat.completion",
+  "created": 1718000000,
+  "model": "llama3",
+  "system_fingerprint": "fp_ollama",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "The sky appears blue because shorter blue wavelengths of sunlight scatter more than other colors as they pass through the atmosphere (Rayleigh scattering)."
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 18,
+    "completion_tokens": 27,
+    "total_tokens": 45
+  }
+}

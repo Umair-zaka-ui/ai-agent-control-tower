@@ -1,0 +1,12 @@
+{
+  "model": "llama3",
+  "choices": [
+    {
+      "message": {
+        "role": "assistant",
+        "content": "Yes, Ollama's OpenAI-compatible endpoint doesn't always send every field OpenAI's own API does."
+      },
+      "finish_reason": "stop"
+    }
+  ]
+}

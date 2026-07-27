@@ -28,6 +28,7 @@ from app.runtime.providers import registry as registry_module
 from app.runtime.providers.base import ModelProvider
 from app.runtime.providers.errors import CapabilityUnsupportedError, ProviderUnavailableError
 from app.runtime.providers.mock import MockProvider
+from app.runtime.providers.openai_compatible import OpenAICompatibleProvider
 from app.runtime.providers.types import (
     FinishReason,
     ModelCapabilities,
@@ -44,7 +45,7 @@ RT = "/api/v1/runtime"
 # The conformance suite — reusable by every future adapter (ACT-MDL-NFR-100).
 # Adding a provider means adding one line here, not copying tests.
 # --------------------------------------------------------------------------- #
-PROVIDERS_UNDER_TEST = [MockProvider]  # Phase 5.7a.2 appends the real adapter here.
+PROVIDERS_UNDER_TEST = [MockProvider, OpenAICompatibleProvider]  # Phase 5.7a.2 appended the real adapter here.
 
 
 @pytest.mark.parametrize("provider_cls", PROVIDERS_UNDER_TEST)
@@ -102,8 +103,10 @@ class TestProviderConformance:
 
 def test_conformance_suite_adds_a_provider_in_one_line() -> None:
     """AC-15 — a structural guarantee, not just a claim: exactly one list,
-    no per-provider test functions to copy/paste."""
-    assert PROVIDERS_UNDER_TEST == [MockProvider]
+    no per-provider test functions to copy/paste. Phase 5.7a.2 proved this
+    by adding OpenAICompatibleProvider as a second entry with no changes to
+    any test method in TestProviderConformance."""
+    assert PROVIDERS_UNDER_TEST == [MockProvider, OpenAICompatibleProvider]
     assert all(issubclass(cls, ModelProvider) for cls in PROVIDERS_UNDER_TEST)
 
 

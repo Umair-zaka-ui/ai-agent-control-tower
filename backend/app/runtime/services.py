@@ -997,7 +997,12 @@ class ModelGatewayService:
         config = version.model_configuration or {}
         provider_name = (config.get("provider") or settings.MODEL_DEFAULT_PROVIDER).upper()
         try:
-            provider = resolve_provider(provider_name, base_url=settings.MODEL_PROVIDER_BASE_URLS.get(provider_name))
+            provider = resolve_provider(
+                provider_name,
+                base_url=settings.MODEL_PROVIDER_BASE_URLS.get(provider_name),
+                model=config.get("model"),
+                api_key=settings.MODEL_PROVIDER_API_KEYS.get(provider_name),
+            )
         except IdentityError as exc:
             # Preserve the pre-abstraction exception type callers/tests catch.
             raise ModelGatewayError(exc.code, exc.message) from exc
