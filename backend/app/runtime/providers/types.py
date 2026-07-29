@@ -53,6 +53,41 @@ class FinishReason(str, Enum):
     ERROR = "ERROR"
 
 
+class ProviderErrorClass(str, Enum):
+    """Phase 5.7a.4 SRS ``ACT-MDL-FR-060`` — the provider-neutral failure
+    taxonomy every adapter classifies its own failures into. Lives here
+    (not in a specific adapter) for the same reason ``FinishReason`` does:
+    it's a shared vocabulary a future adapter inherits with no new code.
+
+    The *mapping* from a provider's own wire-level status/body/exception
+    onto one of these eight values is each adapter's own job (see
+    ``openai_compatible.py``'s ``_classify_status_error``/
+    ``_classify_transport_error``) — nothing here names a provider.
+
+    ``UNKNOWN`` is the deliberate "we don't know" bucket: a failure this
+    codebase cannot confidently classify into one of the other seven maps
+    here rather than being guessed into a neighbor — and is never retried
+    (see ``RETRYABLE_PROVIDER_ERROR_CLASSES`` below), since retrying an
+    unclassified failure risks amplifying something that was never
+    transient in the first place."""
+
+    RATE_LIMITED = "RATE_LIMITED"
+    PROVIDER_UNAVAILABLE = "PROVIDER_UNAVAILABLE"
+    TIMEOUT = "TIMEOUT"
+    CONTEXT_LENGTH_EXCEEDED = "CONTEXT_LENGTH_EXCEEDED"
+    CONTENT_FILTERED = "CONTENT_FILTERED"
+    AUTHENTICATION_FAILED = "AUTHENTICATION_FAILED"
+    INVALID_REQUEST = "INVALID_REQUEST"
+    UNKNOWN = "UNKNOWN"
+
+
+# ``ACT-MDL-FR-061``/``FR-062`` — only these three are ever transient enough
+# to retry; every other class (including UNKNOWN) is never retried.
+RETRYABLE_PROVIDER_ERROR_CLASSES = frozenset({
+    ProviderErrorClass.RATE_LIMITED, ProviderErrorClass.PROVIDER_UNAVAILABLE, ProviderErrorClass.TIMEOUT,
+})
+
+
 def _frozen_mapping(value: Mapping[str, Any] | None) -> Mapping[str, Any]:
     return MappingProxyType(dict(value or {}))
 
@@ -130,12 +165,24 @@ class ModelResponse:
     ``complete()``, see ``assemble_response()``'s docstring for the
     per-chunk convention (``content`` is incremental; ``tool_calls``/
     ``finish_reason``/``raw_usage`` are only authoritative on the last
-    chunk)."""
+    chunk).
+
+    ``error_class``/``retry_after_seconds`` (Phase 5.7a.4) are set only on
+    an interrupted stream's final chunk (``finish_reason == ERROR``) — the
+    adapter's own classification of *why* the stream ended, so
+    ``ModelGatewayService`` can decide whether a pre-first-token
+    interruption is worth retrying without ``stream()`` ever raising (it
+    still never does; see ``ACT-MDL-FR-043``). ``None`` on every other
+    chunk, including every successful response — a non-streaming
+    ``complete()`` failure carries the same classification on the raised
+    ``ProviderRequestFailedError`` instead (see ``providers/errors.py``)."""
 
     content: str
     tool_calls: tuple[ModelToolCall, ...] = ()
     finish_reason: FinishReason = FinishReason.STOP
     raw_usage: Mapping[str, Any] = field(default_factory=dict)
+    error_class: ProviderErrorClass | None = None
+    retry_after_seconds: float | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "tool_calls", tuple(self.tool_calls))
@@ -176,6 +223,12 @@ def assemble_response(chunks: Iterable[ModelResponse]) -> ModelResponse:
     changes: its one chunk's content *is* the whole completion, and it *is*
     the last (only) chunk, so its tool_calls/finish_reason/raw_usage are
     already correct as the "final" values.
+
+    Phase 5.7a.4 added ``error_class``/``retry_after_seconds`` to the same
+    "only the last chunk is authoritative" set — an interrupted stream's
+    classification (from the last chunk) must survive assembly, or
+    ``ModelGatewayService``'s streaming retry boundary would have nothing
+    to decide from.
     """
     assembled_content: list[str] = []
     last: ModelResponse | None = None
@@ -189,4 +242,6 @@ def assemble_response(chunks: Iterable[ModelResponse]) -> ModelResponse:
         tool_calls=last.tool_calls,
         finish_reason=last.finish_reason,
         raw_usage=last.raw_usage,
+        error_class=last.error_class,
+        retry_after_seconds=last.retry_after_seconds,
     )

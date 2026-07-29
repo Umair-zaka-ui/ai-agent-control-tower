@@ -224,6 +224,25 @@ class Settings(BaseSettings):
     # still bounds the whole attempt including this.
     MODEL_STREAM_MAX_DURATION_SECONDS: float = 120.0
 
+    # --- Phase 5.7a.4: error taxonomy & resilience (ACT-MDL-FR-060..069) -----
+    # Retry only ever applies to the same provider, for a transient
+    # classification (RATE_LIMITED/PROVIDER_UNAVAILABLE/TIMEOUT) -- see
+    # ModelGatewayService in services.py. 3 total attempts by default
+    # (the original call plus up to this many retries).
+    MODEL_PROVIDER_MAX_RETRIES: int = 3
+    # Backoff is "equal jitter": delay = half + uniform(0, half), where
+    # half = min(MAX_DELAY, BASE_DELAY * 2**attempt) / 2 -- deterministically
+    # increasing across attempts (until capped) with randomized jitter on
+    # top, so a backoff test can assert ordering without a fixed seed.
+    MODEL_PROVIDER_RETRY_BASE_DELAY_SECONDS: float = 0.5
+    MODEL_PROVIDER_RETRY_MAX_DELAY_SECONDS: float = 8.0
+    # Circuit breaker (ACT-MDL-FR-067): per provider identifier, in-process,
+    # not persisted across a restart -- a fresh process starts closed. See
+    # docs/runtime/providers.md's "known limitation" for why (Milestone 3's
+    # distributed worker model is what would need a shared store).
+    MODEL_PROVIDER_CIRCUIT_FAILURE_THRESHOLD: int = 5
+    MODEL_PROVIDER_CIRCUIT_COOLDOWN_SECONDS: float = 30.0
+
     # --- Phase 2: email notifications (SMTP / Mailtrap for development) ---
     NOTIFICATIONS_ENABLED: bool = False
     SMTP_HOST: str = "sandbox.smtp.mailtrap.io"

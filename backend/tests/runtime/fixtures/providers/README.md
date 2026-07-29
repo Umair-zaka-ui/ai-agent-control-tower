@@ -59,7 +59,34 @@ python -m scripts.record_provider_fixtures --base-url http://localhost:11434/v1 
 | `stream_without_usage.sse` | Streamed completion with no `usage` anywhere — the Ollama case | 5.7a.3 AC-11 |
 | `stream_tool_call_fragmented.sse` | Two interleaved tool calls, each fragmented across many chunks | 5.7a.3 AC-03, AC-04 |
 | `stream_truncated.sse` | Connection ends mid-stream — no `finish_reason` chunk, no `[DONE]` | 5.7a.3 AC-05 |
+| `error_rate_limited.json` | HTTP 429, replayed with a `Retry-After` header set by the test | 5.7a.4 AC-01 (`RATE_LIMITED`) |
+| `error_server_error.json` | HTTP 500 | 5.7a.4 AC-01 (`PROVIDER_UNAVAILABLE`) |
+| `error_context_length_exceeded.json` | HTTP 400, body names `context_length_exceeded` | 5.7a.4 AC-01 (`CONTEXT_LENGTH_EXCEEDED`) |
+| `error_content_filtered.json` | HTTP 400, body names `content_filter` | 5.7a.4 AC-01 (`CONTENT_FILTERED`) |
+| `error_authentication_failed.json` | HTTP 401 | 5.7a.4 AC-01 (`AUTHENTICATION_FAILED`) |
+| `error_invalid_request.json` | HTTP 400, no special marker | 5.7a.4 AC-01 (`INVALID_REQUEST`) |
+| `error_unrecognizable.json` | HTTP 418, a body shape this adapter has never seen documented | 5.7a.4 AC-01/AC-02 (`UNKNOWN`) |
+| `error_connection_refused.json` | Documentation only — see note below | 5.7a.4 AC-01 (`PROVIDER_UNAVAILABLE`) |
+| `error_read_timeout.json` | Documentation only — see note below | 5.7a.4 AC-01 (`TIMEOUT`) |
 
 None of these contain a credential or `Authorization` header (AC-24) — the
 recorder strips them before writing, and none was ever present in the
 hand-authored versions either.
+
+## Phase 5.7a.4 error fixtures — two that are documentation only
+
+`error_connection_refused.json` and `error_read_timeout.json` are never
+literally replayed as an HTTP response body, because a connection-refused
+failure or a timeout has no response body at all — the request never
+completes. Both files exist only so all nine `ACT-MDL-FR-060` taxonomy
+classes have a named entry in this directory (matching this README's own
+existing precedent for `stream_truncated.sse`, also not literally
+recordable). The corresponding tests
+(`test_connection_refused_classifies_as_provider_unavailable`,
+`test_read_timeout_classifies_as_timeout` in
+`test_error_taxonomy_and_resilience.py`) instead raise `httpx.ConnectError`/
+`httpx.ReadTimeout` directly from a transport handler.
+
+The other seven error fixtures **are** ordinary replayable response
+bodies, served via `replay_transport(name, status_code=...)` — the same
+helper the non-error fixtures use, just with a non-200 `status_code`.

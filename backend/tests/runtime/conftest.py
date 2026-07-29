@@ -39,15 +39,19 @@ def load_sse_fixture(name: str) -> bytes:
     return (FIXTURES_DIR / name).read_bytes()
 
 
-def replay_transport(name: str, *, status_code: int = 200) -> httpx.MockTransport:
+def replay_transport(name: str, *, status_code: int = 200, headers: dict[str, str] | None = None) -> httpx.MockTransport:
     """An ``httpx`` transport that returns the named fixture's recorded
     response regardless of what request is sent — a request never leaves
     the process. See ``fixtures/providers/README.md`` for how the fixtures
-    themselves were produced."""
+    themselves were produced.
+
+    ``headers`` (Phase 5.7a.4) lets an error-scenario test attach a
+    response header the classifier reads — e.g. ``Retry-After`` on a 429 —
+    without inventing a second transport helper just for that."""
     body = load_fixture(name)
 
     def _handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(status_code, json=body, request=request)
+        return httpx.Response(status_code, json=body, headers=headers, request=request)
 
     return httpx.MockTransport(_handler)
 
