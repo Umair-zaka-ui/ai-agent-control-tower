@@ -60,6 +60,7 @@ from app.models.runtime import (
     ExecutionLock,
     IdempotencyRecord,
     ModelPricing,
+    ProviderCredential,
     RuntimeApproval,
     RuntimeEvent,
     Tool,
@@ -1042,6 +1043,196 @@ class PricingService:
 
 
 # --------------------------------------------------------------------------- #
+# Provider credentials (Phase 5.7a.5 SRS ACT-MDL-FR-080..083)
+# --------------------------------------------------------------------------- #
+@dataclass(frozen=True)
+class ProviderCredentialInfo:
+    """Everything about a stored credential *except* the value —
+    ``ACT-MDL-FR-081``. The only shape ``get_metadata``/``list_for_org``
+    (and, transitively, the read API) ever return."""
+
+    id: uuid.UUID
+    organization_id: uuid.UUID
+    provider: str
+    secret_hint: str
+    base_url: str | None
+    status: str
+    created_at: datetime
+    updated_at: datetime
+    created_by: uuid.UUID | None
+    last_used_at: datetime | None
+
+
+@dataclass(frozen=True)
+class ResolvedCredential:
+    """What ``ModelGatewayService.invoke()`` actually needs to reach a
+    provider — an ``api_key`` (possibly ``None``, valid for a credential-
+    free local provider, ``ACT-MDL-FR-083``) and an optional per-
+    organization ``base_url`` override. Deliberately just two plain,
+    immutable fields with no database handle: this crosses the
+    ``ThreadPoolExecutor`` boundary into ``ModelGatewayService.invoke()``
+    (see ``ExecutionWorkerService._execute``'s own comment on why the
+    model call runs on a second thread against no shared, non-thread-safe
+    ``Session``) — resolution itself always happens first, synchronously,
+    on the worker's own thread, and only this plain value crosses over."""
+
+    api_key: str | None
+    base_url: str | None
+
+
+@dataclass(frozen=True)
+class CredentialTestResult:
+    success: bool
+    error_class: str | None
+    message: str
+
+
+class ProviderCredentialService:
+    """§ACT-MDL-FR-080..083 — per-organization, per-provider model-provider
+    credential storage, encrypted at rest, following the runtime domain's
+    established pattern (a service with ``db: Session``, direct ORM
+    queries, no repository layer — §7, §10.10).
+
+    A dedicated table (``provider_credentials``), not the pre-existing
+    ``AgentDeployment.secret_references`` JSONB field: ``secret_references``
+    is a free-form dict of *reference strings* (`"vault://..."`) with no
+    actual storage or resolution behind it at all — see
+    ``_validate_secret_references`` above, which only checks the string
+    *looks like* a reference — and it is scoped to one deployment, not one
+    organization. A provider credential needs dedicated columns
+    (``provider``, ``secret_hint``, ``base_url``, ``status``) and org-wide
+    scope (one org, one deployment or a hundred, shares the same provider
+    key), which is a distinct enough concern to warrant its own table
+    rather than overloading a field designed for a different purpose.
+
+    **Resolution order (``ACT-MDL-FR-082``, explicit)**: (1) this
+    organization's own stored, ``ACTIVE`` credential for the provider, (2)
+    ``settings.MODEL_PROVIDER_API_KEYS`` as a fallback default, (3) no
+    credential at all — valid for a local provider (``ACT-MDL-FR-083``); a
+    *real* provider that then fails authentication with none configured is
+    translated to ``PROVIDER_CREDENTIAL_REQUIRED`` by
+    ``ModelGatewayService.invoke`` (see there), not raised here — this
+    service has no way to know in advance whether a given provider
+    endpoint actually requires one."""
+
+    def __init__(self, db: Session) -> None:
+        self.db = db
+
+    @staticmethod
+    def _to_metadata(row: ProviderCredential) -> ProviderCredentialInfo:
+        return ProviderCredentialInfo(
+            id=row.id, organization_id=row.organization_id, provider=row.provider,
+            secret_hint=row.secret_hint, base_url=row.base_url, status=row.status,
+            created_at=row.created_at, updated_at=row.updated_at,
+            created_by=row.created_by, last_used_at=row.last_used_at,
+        )
+
+    def _get_row(self, organization_id: uuid.UUID, provider: str) -> ProviderCredential | None:
+        return self.db.execute(
+            select(ProviderCredential).where(
+                ProviderCredential.organization_id == organization_id,
+                ProviderCredential.provider == provider,
+            )
+        ).scalars().first()
+
+    def get_or_404(self, organization_id: uuid.UUID, provider: str) -> ProviderCredential:
+        row = self._get_row(organization_id, provider)
+        if row is None:
+            raise IdentityError(ErrorCode.PROVIDER_CREDENTIAL_NOT_FOUND,
+                               f"No credential configured for provider '{provider}'.")
+        return row
+
+    def list_for_org(self, organization_id: uuid.UUID) -> list[ProviderCredentialInfo]:
+        rows = self.db.execute(
+            select(ProviderCredential).where(ProviderCredential.organization_id == organization_id)
+            .order_by(ProviderCredential.provider)
+        ).scalars().all()
+        return [self._to_metadata(row) for row in rows]
+
+    def get_metadata(self, organization_id: uuid.UUID, provider: str) -> ProviderCredentialInfo:
+        return self._to_metadata(self.get_or_404(organization_id, provider))
+
+    def store(self, actor: User, organization_id: uuid.UUID, provider: str, secret: str, *,
+             base_url: str | None = None) -> ProviderCredentialInfo:
+        """Upsert — creates or replaces-and-re-encrypts (``AC-16``). Never
+        mutates an existing row's ciphertext through anything other than
+        this method, and never returns the plaintext."""
+        from app.runtime.providers.credential_crypto import encrypt_secret, mask_hint
+
+        row = self._get_row(organization_id, provider)
+        encrypted = encrypt_secret(secret)
+        hint = mask_hint(secret)
+        if row is None:
+            row = ProviderCredential(
+                organization_id=organization_id, provider=provider, encrypted_secret=encrypted,
+                secret_hint=hint, base_url=base_url, status="ACTIVE", created_by=actor.id,
+            )
+            self.db.add(row)
+        else:
+            row.encrypted_secret = encrypted
+            row.secret_hint = hint
+            row.base_url = base_url
+            row.status = "ACTIVE"
+        self.db.flush()
+        # ACT-MDL-FR-081 -- meta carries the provider identifier only, never
+        # the secret or its ciphertext.
+        _record_event(self.db, AuthorizationAuditEvent.RUNTIME_PROVIDER_CREDENTIAL_UPDATED, actor,
+                     organization_id=organization_id, meta={"provider": provider})
+        self.db.commit()
+        self.db.refresh(row)
+        return self._to_metadata(row)
+
+    def delete(self, actor: User, organization_id: uuid.UUID, provider: str) -> None:
+        row = self.get_or_404(organization_id, provider)
+        self.db.delete(row)
+        _record_event(self.db, AuthorizationAuditEvent.RUNTIME_PROVIDER_CREDENTIAL_DELETED, actor,
+                     organization_id=organization_id, meta={"provider": provider})
+        self.db.commit()
+
+    def resolve_secret(self, organization_id: uuid.UUID, provider: str) -> ResolvedCredential:
+        """The one place a stored credential is decrypted. The plaintext
+        is returned to the caller (which hands it straight into the
+        ``api_key`` forwarding path already established in 5.7a.2) and is
+        never assigned onto ``self`` or any persisted object."""
+        from app.runtime.providers.credential_crypto import decrypt_secret
+
+        row = self._get_row(organization_id, provider)
+        if row is not None and row.status == "ACTIVE":
+            row.last_used_at = _now()
+            return ResolvedCredential(api_key=decrypt_secret(row.encrypted_secret), base_url=row.base_url)
+        fallback = settings.MODEL_PROVIDER_API_KEYS.get(provider)
+        return ResolvedCredential(api_key=fallback, base_url=None)
+
+    def resolve_for_version(self, organization_id: uuid.UUID, version: AgentVersion) -> ResolvedCredential:
+        config = version.model_configuration or {}
+        provider_name = (config.get("provider") or settings.MODEL_DEFAULT_PROVIDER).upper()
+        return self.resolve_secret(organization_id, provider_name)
+
+    def test(self, organization_id: uuid.UUID, provider: str) -> CredentialTestResult:
+        """``ACT-MDL-FR-080``'s validation endpoint — a minimal real call
+        through the stored credential, classified via the 5.7a.4 taxonomy,
+        never returning the credential itself."""
+        from app.runtime.providers.registry import resolve as resolve_provider
+        from app.runtime.providers.errors import ProviderRequestFailedError
+        from app.runtime.providers.types import ModelMessage, ModelRequest
+
+        resolved = self.resolve_secret(organization_id, provider)
+        try:
+            instance = resolve_provider(
+                provider, base_url=resolved.base_url or settings.MODEL_PROVIDER_BASE_URLS.get(provider),
+                api_key=resolved.api_key,
+            )
+        except IdentityError as exc:
+            return CredentialTestResult(success=False, error_class=None, message=exc.message)
+
+        try:
+            instance.complete(ModelRequest(messages=(ModelMessage(role="user", content="ping"),)))
+        except ProviderRequestFailedError as exc:
+            return CredentialTestResult(success=False, error_class=exc.error_class.value, message=exc.message)
+        return CredentialTestResult(success=True, error_class=None, message="Credential test succeeded.")
+
+
+# --------------------------------------------------------------------------- #
 # Provider resilience — retry & circuit breaking (Phase 5.7a.4 SRS
 # ACT-MDL-FR-060..069)
 # --------------------------------------------------------------------------- #
@@ -1173,18 +1364,32 @@ class ModelGatewayService:
     timing accounting applies identically to both paths) but keeps every
     key existing callers already read."""
 
-    def invoke(self, version: AgentVersion, input_payload: dict, *, stream: bool | None = None) -> tuple[dict, dict]:
+    def invoke(self, version: AgentVersion, input_payload: dict, *, stream: bool | None = None,
+              resolved_credential: ResolvedCredential | None = None) -> tuple[dict, dict]:
+        """``resolved_credential`` (Phase 5.7a.5, ``ACT-MDL-FR-082``) is
+        resolved by the *caller* — ``ExecutionWorkerService._execute``,
+        synchronously, on the worker's own thread, via
+        ``ProviderCredentialService`` — and handed in as a plain,
+        immutable value. This method itself never touches a database: it
+        may run inside a ``ThreadPoolExecutor`` (see the caller's own
+        comment on why), and a live SQLAlchemy ``Session`` is not safe to
+        share across threads. ``None`` (every pre-5.7a.5 caller) falls
+        back to ``settings.MODEL_PROVIDER_API_KEYS``/``MODEL_PROVIDER_
+        BASE_URLS`` exactly as before — this parameter is purely additive."""
         from app.runtime.providers.registry import resolve as resolve_provider
-        from app.runtime.providers.types import ModelMessage, ModelRequest
+        from app.runtime.providers.types import ModelMessage, ModelRequest, ProviderErrorClass
 
         config = version.model_configuration or {}
         provider_name = (config.get("provider") or settings.MODEL_DEFAULT_PROVIDER).upper()
+        api_key = (resolved_credential.api_key if resolved_credential is not None
+                  else settings.MODEL_PROVIDER_API_KEYS.get(provider_name))
+        base_url = (
+            (resolved_credential.base_url if resolved_credential is not None else None)
+            or settings.MODEL_PROVIDER_BASE_URLS.get(provider_name)
+        )
         try:
             provider = resolve_provider(
-                provider_name,
-                base_url=settings.MODEL_PROVIDER_BASE_URLS.get(provider_name),
-                model=config.get("model"),
-                api_key=settings.MODEL_PROVIDER_API_KEYS.get(provider_name),
+                provider_name, base_url=base_url, model=config.get("model"), api_key=api_key,
             )
         except IdentityError as exc:
             # Preserve the pre-abstraction exception type callers/tests catch.
@@ -1207,7 +1412,24 @@ class ModelGatewayService:
             return self._invoke_streaming(provider, provider_name, config, request, input_payload)
 
         start = time.monotonic()
-        response = self._complete_with_resilience(provider, provider_name, request)
+        try:
+            response = self._complete_with_resilience(provider, provider_name, request)
+        except ProviderRequestFailedError as exc:
+            # ACT-MDL-FR-083/AC-09 — a real provider rejecting an
+            # unauthenticated call (AUTHENTICATION_FAILED) is a more
+            # actionable, specific condition when *this organization never
+            # configured a credential at all* than when one was configured
+            # but wrong: the former is "go configure one," the latter is
+            # "your configured value is wrong." Only the first case is
+            # translated; a credential that was present and still rejected
+            # stays AUTHENTICATION_FAILED, unchanged from 5.7a.4.
+            if exc.error_class == ProviderErrorClass.AUTHENTICATION_FAILED and not api_key:
+                raise ModelGatewayError(
+                    ErrorCode.PROVIDER_CREDENTIAL_REQUIRED,
+                    f"Provider '{provider_name}' requires a credential and none is configured "
+                    "for this organization.",
+                ) from exc
+            raise
         generation_duration_ms = int((time.monotonic() - start) * 1000)
 
         usage = {
@@ -1941,6 +2163,13 @@ class ExecutionWorkerService:
         deployment = self.db.get(AgentDeployment, execution.deployment_id) if execution.deployment_id else None
         timeout_seconds = ((deployment.runtime_limits or {}).get("maximum_execution_seconds")
                           if deployment else None) or self.DEFAULT_TIMEOUT_SECONDS
+        # Phase 5.7a.5 (ACT-MDL-FR-082) — resolved synchronously, on this
+        # (the worker's own) thread, using self.db, *before* anything is
+        # handed to the thread pool below: only the resulting plain,
+        # immutable ResolvedCredential value crosses into the pooled
+        # thread, never the session itself.
+        resolved_credential = ProviderCredentialService(self.db).resolve_for_version(
+            execution.organization_id, version)
         try:
             # §36 — a hung model call must not hang the worker forever. Only
             # the model invocation is time-boxed: it's pure (no DB access),
@@ -1953,7 +2182,8 @@ class ExecutionWorkerService:
             # ``shutdown(wait=False)`` so a timeout doesn't itself block.
             pool = ThreadPoolExecutor(max_workers=1)
             try:
-                future = pool.submit(ModelGatewayService().invoke, version, execution.input_payload)
+                future = pool.submit(ModelGatewayService().invoke, version, execution.input_payload,
+                                    resolved_credential=resolved_credential)
                 try:
                     output_payload, model_usage = future.result(timeout=timeout_seconds)
                 except FutureTimeoutError:
@@ -2086,6 +2316,10 @@ class ExecutionWorkerService:
                          ErrorCode.TOOL_ACTION_NOT_ALLOWED, ErrorCode.TOOL_NOT_ASSIGNED,
                          ErrorCode.TOOL_NOT_FOUND, ErrorCode.TOOL_CONSTRAINT_VIOLATION,
                          ErrorCode.VALIDATION_ERROR, ErrorCode.MODEL_PROVIDER_UNAVAILABLE,
+                         # Phase 5.7a.5 — a missing credential needs an admin to configure
+                         # one via the API, not an automatic requeue; same treatment as
+                         # TOOL_NOT_ASSIGNED just above (a setup problem, not a transient one).
+                         ErrorCode.PROVIDER_CREDENTIAL_REQUIRED,
                          ProviderErrorClass.CONTENT_FILTERED.value, ProviderErrorClass.CONTEXT_LENGTH_EXCEEDED.value,
                          ProviderErrorClass.AUTHENTICATION_FAILED.value, ProviderErrorClass.INVALID_REQUEST.value,
                          ProviderErrorClass.UNKNOWN.value}

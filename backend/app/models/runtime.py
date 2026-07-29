@@ -613,6 +613,56 @@ class ModelPricing(Base, UUIDPrimaryKeyMixin):
     )
 
 
+class ProviderCredential(Base, UUIDPrimaryKeyMixin):
+    """Phase 5.7a.5 SRS ACT-MDL-FR-080..083 — a per-organization, per-
+    provider model-provider credential, encrypted at rest.
+
+    ``encrypted_secret`` is a Fernet ciphertext (``app/runtime/providers/
+    credential_crypto.py``) — never plaintext, never the raw API key. No
+    column or property on this class ever holds the decrypted value;
+    decryption happens exactly once, inline, inside
+    ``ProviderCredentialService.resolve_secret`` and the result is handed
+    directly to the provider call, never assigned back onto an instance of
+    this class (``ACT-MDL-FR-081`` — nothing here can accidentally log or
+    serialize a plaintext secret because nothing here ever holds one).
+    ``__repr__`` is overridden below as a second, structural line of
+    defense in case a future column is ever added carelessly.
+
+    Unique on ``(organization_id, provider)`` — one credential per
+    provider per tenant, matching ``ACT-PLT-NFR-001`` row-level tenant
+    isolation (every query in ``ProviderCredentialService`` filters by
+    ``organization_id``, never trusts a caller-supplied id alone)."""
+
+    __tablename__ = "provider_credentials"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "provider", name="uq_provider_credentials_org_provider"),
+    )
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    provider: Mapped[str] = mapped_column(String(64), nullable=False)
+    encrypted_secret: Mapped[str] = mapped_column(Text, nullable=False)
+    secret_hint: Mapped[str] = mapped_column(String(8), nullable=False)
+    base_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="ACTIVE")
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    def __repr__(self) -> str:  # pragma: no cover -- structural safety net, not behavior under test
+        return (f"<ProviderCredential id={self.id} organization_id={self.organization_id} "
+               f"provider={self.provider!r} hint=***{self.secret_hint} status={self.status}>")
+
+
 class Capability(Base, UUIDPrimaryKeyMixin):
     """§18 — a declared, potential behaviour an agent may be assigned."""
 

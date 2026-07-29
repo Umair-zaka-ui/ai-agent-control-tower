@@ -67,6 +67,9 @@ from app.runtime.schemas import (
     ExecutionRead,
     HeartbeatSubmit,
     KillSwitchRequest,
+    ProviderCredentialRead,
+    ProviderCredentialTestResult,
+    ProviderCredentialUpsert,
     RuntimeApprovalDecision,
     RuntimeApprovalRead,
     RuntimeDashboardRead,
@@ -84,6 +87,7 @@ from app.runtime.services import (
     ExecutionWorkerService,
     HealthMonitoringService,
     KillSwitchService,
+    ProviderCredentialService,
     RuntimeApprovalService,
     RuntimeDashboardService,
     ToolRegistryService,
@@ -157,6 +161,8 @@ _TOOL_ASSIGN = "runtime.tool.assign"
 _HEALTH = "runtime.health.view"
 _TELEMETRY = "runtime.telemetry.view"
 _COST = "runtime.cost.view"
+_PROVIDER_VIEW = "runtime.provider.view"
+_PROVIDER_MANAGE = "runtime.provider.manage"
 _APPROVAL = "runtime.approval.review"
 _KILL_SWITCH = "runtime.kill_switch.execute"
 # Enterprise Agent Registry (Phase 5.1 §57).
@@ -928,6 +934,47 @@ def rotate_signing_key(key_id: str, actor: User = Depends(require_permission(_SI
 def revoke_signing_key(key_id: str, payload: RevokeSigningKeyRequest = RevokeSigningKeyRequest(),
                        actor: User = Depends(require_permission(_SIGNING_MANAGE)), db: Session = Depends(get_db)):
     return SigningKeyService(db).revoke(key_id, reason=payload.reason)
+
+
+# --------------------------------------------------------------------------- #
+# Provider credentials (Phase 5.7a.5 SRS ACT-MDL-FR-080..083)
+#
+# Per-organization: every method below scopes by ``actor.organization_id``,
+# never by a caller-supplied id, so org A structurally cannot reach org B's
+# row (ACT-PLT-NFR-001) -- the same discipline every other org-scoped
+# resource in this router already follows (see get_or_404 elsewhere).
+# --------------------------------------------------------------------------- #
+@router.get("/providers/credentials", response_model=list[ProviderCredentialRead])
+def list_provider_credentials(actor: User = Depends(require_permission(_PROVIDER_VIEW)),
+                              db: Session = Depends(get_db)):
+    return ProviderCredentialService(db).list_for_org(actor.organization_id)
+
+
+@router.put("/providers/{provider}/credentials", response_model=ProviderCredentialRead)
+def upsert_provider_credential(provider: str, payload: ProviderCredentialUpsert,
+                               actor: User = Depends(require_permission(_PROVIDER_MANAGE)),
+                               db: Session = Depends(get_db)):
+    """Create or replace-and-re-encrypt (AC-16) — the request body is never
+    logged or echoed back; the response carries metadata and a masked hint
+    only (ACT-MDL-FR-081)."""
+    return ProviderCredentialService(db).store(
+        actor, actor.organization_id, provider.upper(), payload.secret, base_url=payload.base_url,
+    )
+
+
+@router.delete("/providers/{provider}/credentials", status_code=status.HTTP_204_NO_CONTENT)
+def delete_provider_credential(provider: str, actor: User = Depends(require_permission(_PROVIDER_MANAGE)),
+                               db: Session = Depends(get_db)):
+    ProviderCredentialService(db).delete(actor, actor.organization_id, provider.upper())
+
+
+@router.post("/providers/{provider}/credentials/test", response_model=ProviderCredentialTestResult)
+def test_provider_credential(provider: str, actor: User = Depends(require_permission(_PROVIDER_MANAGE)),
+                             db: Session = Depends(get_db)):
+    """A minimal real call through whatever credential currently resolves
+    for this org/provider (stored, or the fallback), classified via the
+    Phase 5.7a.4 taxonomy. Never returns the credential itself."""
+    return ProviderCredentialService(db).test(actor.organization_id, provider.upper())
 
 
 # --------------------------------------------------------------------------- #

@@ -391,8 +391,18 @@ def test_execution_error_code_stores_the_taxonomy_class_on_failure(
     client: TestClient, db_session: Session, monkeypatch) -> None:
     """AC-11 — a non-retryable classification is recorded in the existing
     ``error_code`` column (both on the attempt and the execution) as the
-    taxonomy value, not the generic ``MODEL_PROVIDER_REQUEST_FAILED``."""
+    taxonomy value, not the generic ``MODEL_PROVIDER_REQUEST_FAILED``.
+
+    Phase 5.7a.5 note: a *credential-configured* 401 is used here
+    (``MODEL_PROVIDER_API_KEYS`` set to a value the fixture still rejects)
+    so this test keeps proving the general "taxonomy class lands in
+    error_code" mechanism via ``AUTHENTICATION_FAILED`` specifically. A 401
+    with **no** credential configured at all now maps to the more specific
+    ``PROVIDER_CREDENTIAL_REQUIRED`` instead (see
+    ``test_provider_credentials.py``'s AC-09), which is the correct,
+    intended behavior 5.7a.5 added, not a regression of this one."""
     monkeypatch.setattr(settings, "MODEL_PROVIDER_CIRCUIT_FAILURE_THRESHOLD", 100_000)
+    monkeypatch.setattr(settings, "MODEL_PROVIDER_API_KEYS", {"OPENAI_COMPATIBLE": "sk-configured-but-wrong"})
     transport, calls = _sequenced_transport({"status": 401, "json": load_fixture("error_authentication_failed.json")})
     monkeypatch.setattr(OpenAICompatibleProvider, "_build_default_transport", lambda self: transport)
 
@@ -585,8 +595,15 @@ def test_retry_and_replay_routes_behave_unchanged(client: TestClient, db_session
     """AC-22 — the pre-existing ``/retry``/``/replay`` routes (§31-§37,
     unrelated to this phase) still work exactly as before: a failed
     execution can be retried, and any execution can be replayed as a fresh
-    one, once whatever caused the original failure is no longer present."""
+    one, once whatever caused the original failure is no longer present.
+
+    Phase 5.7a.5 note: a credential is configured (wrong on purpose) so
+    this failure classifies as ``AUTHENTICATION_FAILED``, not the newer,
+    more specific ``PROVIDER_CREDENTIAL_REQUIRED`` — see the equivalent
+    note on ``test_execution_error_code_stores_the_taxonomy_class_on_
+    failure`` above."""
     monkeypatch.setattr(settings, "MODEL_PROVIDER_CIRCUIT_FAILURE_THRESHOLD", 100_000)
+    monkeypatch.setattr(settings, "MODEL_PROVIDER_API_KEYS", {"OPENAI_COMPATIBLE": "sk-configured-but-wrong"})
     failing_transport, _ = _sequenced_transport(
         {"status": 401, "json": load_fixture("error_authentication_failed.json")})
     monkeypatch.setattr(OpenAICompatibleProvider, "_build_default_transport", lambda self: failing_transport)
