@@ -23,6 +23,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import random
 import re
 import time
 import uuid
@@ -65,6 +66,8 @@ from app.models.runtime import (
     ToolCall,
 )
 from app.models.user import User
+from app.runtime.providers.errors import ProviderRequestFailedError
+from app.runtime.providers.types import RETRYABLE_PROVIDER_ERROR_CLASSES, ProviderErrorClass
 
 logger = logging.getLogger(__name__)
 
@@ -1039,6 +1042,96 @@ class PricingService:
 
 
 # --------------------------------------------------------------------------- #
+# Provider resilience — retry & circuit breaking (Phase 5.7a.4 SRS
+# ACT-MDL-FR-060..069)
+# --------------------------------------------------------------------------- #
+# Retry policy decides *whether* to retry, from the adapter's own
+# classification (``ProviderErrorClass``) — it lives here, not in
+# ``openai_compatible.py``, so a future second adapter inherits the exact
+# same retry/backoff/circuit-breaker behavior with no new retry code of its
+# own, provided it classifies into the same provider-neutral taxonomy
+# (``ACT-MDL-FR-006``'s "no wire vocabulary crosses the adapter boundary"
+# extends to this: retry policy must never need to know an adapter's wire
+# format).
+class _ProviderCircuitState:
+    __slots__ = ("failure_count", "opened_at")
+
+    def __init__(self) -> None:
+        self.failure_count = 0
+        self.opened_at: float | None = None
+
+
+# ACT-MDL-FR-067 — per-provider identifier, in-process, three-state (closed/
+# open/half-open) without a distinct "HALF_OPEN" flag: ``opened_at is None``
+# is closed; ``opened_at`` set and within the cooldown window is open;
+# ``opened_at`` set but the cooldown has elapsed is half-open (the next
+# call is let through, and either resets the breaker via
+# ``_circuit_record_success`` or re-opens it, extending the cooldown, via
+# ``_circuit_record_failure``). Deliberately a plain module-level dict, not
+# persisted anywhere -- a fresh process starts every provider closed; see
+# docs/runtime/providers.md's "known limitation" for why (Milestone 3's
+# distributed worker model would need a shared store; not this phase's job).
+_provider_circuit_state: dict[str, _ProviderCircuitState] = {}
+
+
+def reset_provider_circuit_breakers() -> None:
+    """Test-only reset hook for the module-level circuit-breaker state,
+    which would otherwise leak between tests that reuse the same provider
+    identifier (most tests instead sidestep this by using a unique
+    identifier per test, matching this codebase's existing convention for
+    other global registries/catalogs)."""
+    _provider_circuit_state.clear()
+
+
+def _circuit_before_call(provider_name: str) -> None:
+    """ACT-MDL-FR-067, AC-16 — raises (failing fast, no call made) if this
+    provider's circuit is currently open."""
+    state = _provider_circuit_state.setdefault(provider_name, _ProviderCircuitState())
+    if state.opened_at is None:
+        return
+    if (time.monotonic() - state.opened_at) >= settings.MODEL_PROVIDER_CIRCUIT_COOLDOWN_SECONDS:
+        return  # half-open: let exactly this one call through
+    raise ProviderRequestFailedError(
+        provider_name, "circuit breaker is open for this provider -- failing fast without calling it",
+        error_class=ProviderErrorClass.PROVIDER_UNAVAILABLE,
+    )
+
+
+def _circuit_record_success(provider_name: str) -> None:
+    """AC-17 — a success (including the one probing half-open call) closes
+    the circuit."""
+    state = _provider_circuit_state.setdefault(provider_name, _ProviderCircuitState())
+    state.failure_count = 0
+    state.opened_at = None
+
+
+def _circuit_record_failure(provider_name: str) -> None:
+    """AC-15 — opens the circuit once consecutive failures reach the
+    configured threshold; a failure while already open (the half-open probe
+    failing again) re-opens it, restarting the cooldown."""
+    state = _provider_circuit_state.setdefault(provider_name, _ProviderCircuitState())
+    state.failure_count += 1
+    if state.failure_count >= settings.MODEL_PROVIDER_CIRCUIT_FAILURE_THRESHOLD:
+        state.opened_at = time.monotonic()
+
+
+def _provider_backoff_delay(attempt: int, *, retry_after_seconds: float | None) -> float:
+    """ACT-MDL-FR-063, FR-064 — a provider-supplied ``Retry-After`` always
+    wins over computed backoff. Otherwise: "equal jitter" -- delay = half +
+    uniform(0, half), where half = min(MAX_DELAY, BASE_DELAY * 2**attempt) /
+    2. This keeps the deterministic floor (``half``) strictly increasing
+    across attempts (until the cap), so a backoff test can assert ordering
+    without needing a fixed random seed, while still adding genuine
+    randomized jitter on top of that floor."""
+    if retry_after_seconds is not None:
+        return max(retry_after_seconds, 0.0)
+    base = settings.MODEL_PROVIDER_RETRY_BASE_DELAY_SECONDS
+    cap = settings.MODEL_PROVIDER_RETRY_MAX_DELAY_SECONDS
+    half = min(cap, base * (2 ** attempt)) / 2
+    return half + random.uniform(0, half)
+
+
+# --------------------------------------------------------------------------- #
 # Model Gateway (§40-§42) — provider-neutral, one working adapter (§4.5)
 # --------------------------------------------------------------------------- #
 class ModelGatewayError(IdentityError):
@@ -1114,7 +1207,7 @@ class ModelGatewayService:
             return self._invoke_streaming(provider, provider_name, config, request, input_payload)
 
         start = time.monotonic()
-        response = provider.complete(request)
+        response = self._complete_with_resilience(provider, provider_name, request)
         generation_duration_ms = int((time.monotonic() - start) * 1000)
 
         usage = {
@@ -1133,8 +1226,40 @@ class ModelGatewayService:
         output_payload = {"result": response.content, "echo": input_payload}
         return output_payload, usage
 
-    def _invoke_streaming(self, provider, provider_name: str, config: dict, request, input_payload: dict,
-                         ) -> tuple[dict, dict]:
+    def _complete_with_resilience(self, provider, provider_name: str, request):
+        """Phase 5.7a.4 ``ACT-MDL-FR-060..068`` — wraps a single non-
+        streaming ``provider.complete()`` call with the per-provider
+        circuit breaker and, for a transient classification only, retry
+        with backoff. Lives here (the service layer), not in the adapter:
+        the adapter classifies (``ProviderRequestFailedError.error_class``),
+        this decides whether that classification is worth retrying — the
+        same retry code applies unchanged to any future adapter that
+        classifies into the same taxonomy.
+
+        Entirely contained within one call — every retry here happens
+        inside the single ``execution_attempts`` row the caller
+        (``ExecutionWorkerService``) already writes for this attempt; the
+        pre-existing, unrelated execution-level retry (a fresh worker claim
+        after this raises) is untouched and still applies on top for
+        transient classes, per its own existing policy."""
+        _circuit_before_call(provider_name)
+        max_retries = settings.MODEL_PROVIDER_MAX_RETRIES
+        attempt = 0
+        while True:
+            try:
+                response = provider.complete(request)
+            except ProviderRequestFailedError as exc:
+                _circuit_record_failure(provider_name)
+                if exc.error_class not in RETRYABLE_PROVIDER_ERROR_CLASSES or attempt >= max_retries:
+                    raise
+                time.sleep(_provider_backoff_delay(attempt, retry_after_seconds=exc.retry_after_seconds))
+                attempt += 1
+                continue
+            _circuit_record_success(provider_name)
+            return response
+
+    def _stream_once(self, provider, provider_name: str, config: dict, request, input_payload: dict,
+                     ) -> tuple[dict, dict, bool, ProviderErrorClass | None, float | None]:
         """``ACT-MDL-FR-041..043, FR-048, FR-049`` — consumes
         ``provider.stream()`` chunk by chunk (never buffering the whole
         response before starting), measuring time-to-first-token and total
@@ -1144,7 +1269,13 @@ class ModelGatewayService:
         HTTP connection is closed on garbage collection — see
         ``OpenAICompatibleProvider.stream()``), and reassembling the
         consumed chunks into the same ``(output_payload, usage)`` shape the
-        non-streaming path returns."""
+        non-streaming path returns.
+
+        Returns one extra tuple element beyond ``(output_payload, usage)``
+        (Phase 5.7a.4): whether *this one attempt's* interruption is
+        retryable pre-first-token, plus the classification/retry-after that
+        decision was based on — consumed only by ``_invoke_streaming``'s
+        retry loop, never returned to ``invoke()``'s own caller."""
         from app.runtime.providers.types import FinishReason, assemble_response
 
         start = time.monotonic()
@@ -1167,12 +1298,16 @@ class ModelGatewayService:
         )
         stream_interrupted = truncated_by_duration or provider_signaled_error
 
+        error_class = None
+        retry_after_seconds = None
         if truncated_by_duration:
             interruption_reason = f"Stream exceeded the maximum response duration of {max_duration}s."
             reported_finish_reason = None
         elif provider_signaled_error:
             interruption_reason = "Provider stream ended unexpectedly (connection error or malformed response)."
             reported_finish_reason = FinishReason.ERROR.value
+            error_class = assembled.error_class
+            retry_after_seconds = assembled.retry_after_seconds
         else:
             interruption_reason = None
             reported_finish_reason = assembled.finish_reason.value if assembled else None
@@ -1192,7 +1327,46 @@ class ModelGatewayService:
             "finish_reason": reported_finish_reason,
         }
         output_payload = {"result": assembled.content if assembled else "", "echo": input_payload}
-        return output_payload, usage
+
+        # ACT-MDL-FR-061/FR-062 -- retryable only if nothing was ever
+        # emitted yet (a caller that already received partial content must
+        # not have it silently discarded by a retry) *and* the platform's
+        # own duration cutoff isn't the cause (retrying that would just hit
+        # the same cutoff again -- it's a policy limit, not a provider
+        # failure) *and* the classification itself is transient.
+        retryable_pre_first_token = (
+            stream_interrupted and time_to_first_token_ms is None and not truncated_by_duration
+            and error_class in RETRYABLE_PROVIDER_ERROR_CLASSES
+        )
+        return output_payload, usage, retryable_pre_first_token, error_class, retry_after_seconds
+
+    def _invoke_streaming(self, provider, provider_name: str, config: dict, request, input_payload: dict,
+                         ) -> tuple[dict, dict]:
+        """Phase 5.7a.4 — wraps ``_stream_once`` with the same per-provider
+        circuit breaker and transient-class retry ``_complete_with_
+        resilience`` applies to ``complete()``, honoring the streaming
+        retry boundary (``ACT-MDL-FR-061..064``): only a pre-first-token,
+        transiently-classified interruption retries (a fresh
+        ``provider.stream(request)`` call); anything else — content already
+        emitted, a non-transient class, the duration cutoff, or attempts
+        exhausted — returns exactly what ``_stream_once`` produced, exactly
+        as this method always has."""
+        _circuit_before_call(provider_name)
+        max_retries = settings.MODEL_PROVIDER_MAX_RETRIES
+        attempt = 0
+        while True:
+            output_payload, usage, retryable, error_class, retry_after_seconds = self._stream_once(
+                provider, provider_name, config, request, input_payload)
+            if retryable and attempt < max_retries:
+                _circuit_record_failure(provider_name)
+                time.sleep(_provider_backoff_delay(attempt, retry_after_seconds=retry_after_seconds))
+                attempt += 1
+                continue
+            if usage["stream_interrupted"]:
+                _circuit_record_failure(provider_name)
+            else:
+                _circuit_record_success(provider_name)
+            return output_payload, usage
 
 
 # --------------------------------------------------------------------------- #
@@ -1867,7 +2041,16 @@ class ExecutionWorkerService:
                          organization_id=execution.organization_id, agent_id=execution.agent_id,
                          execution_id=execution.id)
         except IdentityError as exc:
-            self._fail_or_retry(execution, attempt, exc.code, exc.message)
+            # Phase 5.7a.4 (§5) — a classified provider failure
+            # (``ProviderRequestFailedError.error_class``, e.g. "RATE_
+            # LIMITED") is recorded in this existing ``error_code`` column
+            # in place of the generic ``MODEL_PROVIDER_REQUEST_FAILED`` it
+            # would otherwise carry, so the taxonomy is visible on the row
+            # without a new column. Every other ``IdentityError`` is
+            # unaffected -- ``error_class`` simply isn't there.
+            error_class = getattr(exc, "error_class", None)
+            code = error_class.value if error_class is not None else exc.code
+            self._fail_or_retry(execution, attempt, code, exc.message)
         except Exception as exc:  # noqa: BLE001 — a worker must never crash the poll loop
             self._fail_or_retry(execution, attempt, "INTERNAL_ERROR", str(exc))
 
@@ -1889,10 +2072,23 @@ class ExecutionWorkerService:
         # allows" — the default policy allows it) — it just reports as
         # TIMED_OUT rather than DEAD_LETTERED once attempts are exhausted,
         # so the terminal reason stays distinguishable in the UI.
+        # Phase 5.7a.4 (``ACT-MDL-FR-062``) — a *classified* provider
+        # failure's non-retryable classes are added here by value (plain
+        # strings, matching ``code``'s own shape) so this outer, execution-
+        # level retry (a fresh worker claim) never contradicts the platform
+        # rule "never retry these" just because the inner, same-call retry
+        # in ``ModelGatewayService`` already gave up on a *different*
+        # (transient) classification. RATE_LIMITED/PROVIDER_UNAVAILABLE/
+        # TIMEOUT are deliberately *not* added here -- they stay retryable
+        # at this outer layer too, same as before this classification
+        # existed (see docs/runtime/providers.md's two-tier retry note).
         non_retryable = {ErrorCode.RUNTIME_POLICY_DENIED, ErrorCode.MODEL_NOT_APPROVED,
                          ErrorCode.TOOL_ACTION_NOT_ALLOWED, ErrorCode.TOOL_NOT_ASSIGNED,
                          ErrorCode.TOOL_NOT_FOUND, ErrorCode.TOOL_CONSTRAINT_VIOLATION,
-                         ErrorCode.VALIDATION_ERROR, ErrorCode.MODEL_PROVIDER_UNAVAILABLE}
+                         ErrorCode.VALIDATION_ERROR, ErrorCode.MODEL_PROVIDER_UNAVAILABLE,
+                         ProviderErrorClass.CONTENT_FILTERED.value, ProviderErrorClass.CONTEXT_LENGTH_EXCEEDED.value,
+                         ProviderErrorClass.AUTHENTICATION_FAILED.value, ProviderErrorClass.INVALID_REQUEST.value,
+                         ProviderErrorClass.UNKNOWN.value}
         if code in non_retryable or execution.attempt_count >= max_attempts:
             if code == ErrorCode.EXECUTION_TIMED_OUT:
                 _set_execution_status(execution, "TIMED_OUT")

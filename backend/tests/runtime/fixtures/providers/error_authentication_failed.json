@@ -1,0 +1,7 @@
+{
+  "error": {
+    "message": "Incorrect credentials provided. Please check your configured access token and try again.",
+    "type": "invalid_request_error",
+    "code": "invalid_authentication"
+  }
+}

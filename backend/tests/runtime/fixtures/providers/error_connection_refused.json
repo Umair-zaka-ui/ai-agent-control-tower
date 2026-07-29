@@ -1,0 +1,3 @@
+{
+  "_note": "Documentation only -- there is no HTTP response body for a connection-refused failure (the connection never completes), so this file is never literally replayed as a response. The corresponding test raises httpx.ConnectError directly from its transport handler. Committed anyway so all nine ACT-MDL-FR-060 taxonomy classes have a named fixture entry, matching this directory's existing precedent for stream_truncated.sse (also not literally recordable)."
+}

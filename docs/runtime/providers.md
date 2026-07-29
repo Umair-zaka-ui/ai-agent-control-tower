@@ -2,7 +2,7 @@
 
 `backend/app/runtime/providers/` · Phase 5.7a.1 SRS `ACT-MDL-FR-001..010`,
 Phase 5.7a.2 SRS `ACT-MDL-FR-020..028`, Phase 5.7a.3 SRS
-`ACT-MDL-FR-040..049`, `FR-084..089`.
+`ACT-MDL-FR-040..049`, `FR-084..089`, Phase 5.7a.4 SRS `ACT-MDL-FR-060..069`.
 
 ## Why this exists
 
@@ -697,10 +697,234 @@ migration or this sub-phase; see "What Phase 5.7a.3 found" below for why.
   above. This was confirmed as the intended direction before implementing
   it, since it meant updating two existing, previously-stable assertions.
 
+## Error taxonomy & resilience (Phase 5.7a.4, `ACT-MDL-FR-060..069`)
+
+Before this sub-phase, every provider failure — a 429, a 500, a timeout, a
+content-filter refusal, a bad API key — collapsed into one coarse
+`ProviderRequestFailedError` (`MODEL_PROVIDER_REQUEST_FAILED`). This
+sub-phase classifies those failures and adds the resilience behavior the
+classification enables: retry what's transient, never retry what isn't,
+and stop calling a provider that's clearly down.
+
+### The taxonomy
+
+Eight values, in `types.py` (`ProviderErrorClass(str, Enum)`), alongside
+`FinishReason`:
+
+| Class | Meaning | Retryable |
+|---|---|---|
+| `RATE_LIMITED` | HTTP 429 | Yes |
+| `PROVIDER_UNAVAILABLE` | 5xx, connection refused, DNS failure, a stream that drops without `[DONE]` | Yes |
+| `TIMEOUT` | Connect or read timeout exceeded | Yes |
+| `CONTEXT_LENGTH_EXCEEDED` | HTTP 400, body names `context_length_exceeded`/similar | No |
+| `CONTENT_FILTERED` | HTTP 400, body names `content_filter`/similar | No |
+| `AUTHENTICATION_FAILED` | HTTP 401/403 | No |
+| `INVALID_REQUEST` | Any other HTTP 400 | No |
+| `UNKNOWN` | Anything else | No |
+
+`RETRYABLE_PROVIDER_ERROR_CLASSES` (also in `types.py`) is the frozenset of
+the first three. **`UNKNOWN` is deliberately never retried** — retrying a
+failure this codebase cannot confidently classify risks amplifying a
+harmful request or burning budget on something that was never transient.
+A real failure mode that keeps landing on `UNKNOWN` is a signal to extend
+the taxonomy later, deliberately — not a reason to guess it into a
+neighbor now.
+
+### Classification lives in the adapter; retry policy does not
+
+`openai_compatible.py` gained `_classify_status_error(status_code,
+body_text)` and `_classify_transport_error(exc)` — the only place that
+maps an HTTP status/body or an `httpx` exception type onto the taxonomy,
+same discipline as `_FINISH_REASON_MAP`. Every `ProviderRequestFailedError`
+this module raises now carries `.error_class` (defaulting to `UNKNOWN` for
+any call site that doesn't classify) and, when the provider sent one,
+`.retry_after_seconds` (`_parse_retry_after`, numeric `Retry-After` only —
+the HTTP-date form isn't handled; nothing in this sub-phase's scope needed
+it). `stream()`'s interrupted final chunk carries the same two fields —
+`ModelResponse` gained `error_class`/`retry_after_seconds` (both default
+`None`) for exactly this, and `assemble_response()` now carries them
+forward from the last chunk the same way it already does `finish_reason`.
+
+**Retry/backoff/circuit-breaking live in `ModelGatewayService`
+(`services.py`), not the adapter.** The adapter classifies; the service
+layer decides whether a classification is worth retrying. This is
+deliberate: a future second adapter that classifies into this same
+taxonomy inherits retry/backoff/circuit-breaking with zero new retry code
+of its own.
+
+### Credential scrubbing (`ACT-MDL-FR-069`)
+
+`_scrub(text, *, api_key, base_url=None)` redacts a configured API key and
+this instance's own `base_url` out of any text before it can reach a log
+line or a raised message. In practice this mostly guards the `logger.debug`
+line: every message this module actually *raises* is a safe, templated
+summary (`"HTTP {status} from provider (classified {class})"`) that never
+embeds the raw provider response body at all — the body is only ever used
+(scrubbed first) to *decide* the classification, never echoed back to a
+caller.
+
+### Retry (`ModelGatewayService._complete_with_resilience` /
+`_invoke_streaming`)
+
+`_complete_with_resilience(provider, provider_name, request)` wraps a
+single non-streaming `provider.complete()` call: on a
+`ProviderRequestFailedError` whose `.error_class` is retryable and attempts
+remain, it sleeps (`_provider_backoff_delay`) and retries the *same* call;
+otherwise it re-raises. This is entirely contained within the one
+`execution_attempts` row `ExecutionWorkerService` already writes for this
+attempt — a retry here is invisible to that row's own bookkeeping (it
+either succeeds, in which case the row shows one clean success, or it
+exhausts and raises, in which case the row shows one classified failure).
+
+`_stream_once` (the renamed, unchanged-in-substance body of the old
+`_invoke_streaming`) now also returns whether *this* attempt's
+interruption is retryable **pre-first-token**, plus the classification/
+retry-after that decision came from. `_invoke_streaming` wraps it with the
+same retry loop, honoring the streaming boundary below.
+
+**Backoff**: "equal jitter" — `delay = half + uniform(0, half)`, where
+`half = min(MAX_DELAY, BASE_DELAY * 2**attempt) / 2`. The deterministic
+floor (`half`) strictly increases with `attempt` until the cap, which is
+what lets a test assert ordering without a fixed random seed, while
+`uniform(0, half)` still adds genuine jitter. A `Retry-After` from the
+provider always wins over this computed value (`ACT-MDL-FR-064`).
+
+### The streaming retry boundary (`ACT-MDL-FR-061..064`)
+
+A streamed call that fails **before any content was ever emitted**
+(`time_to_first_token_ms is None`) is retryable exactly like a
+non-streaming call, for the same three transient classes — a fresh
+`provider.stream(request)` call, from scratch. A streamed call that fails
+**after** content was already emitted is never retried, regardless of
+classification: the caller already received that partial content, and
+retrying would silently discard it and start over as if it never
+happened. Per `ACT-MDL-FR-043` this still doesn't *raise* — it persists
+the partial exactly as 5.7a.3 already did, unchanged. The platform's own
+`MODEL_STREAM_MAX_DURATION_SECONDS` cutoff is excluded from retry
+eligibility entirely, even pre-first-token: it's a deliberate policy
+limit, not a provider failure, and retrying it would just hit the same
+cutoff again.
+
+### Circuit breaker (`ACT-MDL-FR-067`)
+
+Per-provider-identifier, in-process, a plain module-level dict
+(`_provider_circuit_state`) in `services.py` — three states without a
+distinct `HALF_OPEN` flag: `opened_at is None` is closed; `opened_at` set
+and within `MODEL_PROVIDER_CIRCUIT_COOLDOWN_SECONDS` is open (every call
+fails fast via `_circuit_before_call` raising, without ever reaching the
+provider); `opened_at` set but the cooldown elapsed is half-open (the next
+call is let through — a success via `_circuit_record_success` closes it, a
+failure via `_circuit_record_failure` re-opens it and restarts the
+cooldown). Opens after `MODEL_PROVIDER_CIRCUIT_FAILURE_THRESHOLD`
+consecutive failures (default 5).
+
+**Known limitation, deliberately not solved here**: this state is
+per-process and not persisted anywhere. A fresh process starts every
+provider closed. Milestone 3's distributed worker model (multiple worker
+processes/machines) would need a shared store for this to mean anything
+across the whole fleet — out of scope for this sub-phase, which owns one
+in-process worker.
+
+### Timeouts (`ACT-MDL-FR-068`)
+
+Unchanged from 5.7a.2: `connect_timeout`/`read_timeout` were already
+independent `httpx.Timeout` fields. This sub-phase's addition is that
+whichever one fires now classifies as `TIMEOUT` (via
+`_classify_transport_error`'s `isinstance(exc, httpx.TimeoutException)`
+check, which catches both `ConnectTimeout` and `ReadTimeout`) instead of
+collapsing into the old undifferentiated coarse error.
+
+### Reusing `error_code` for the taxonomy — no migration
+
+No new column. `agent_executions.error_code`/`execution_attempts.
+error_code` (both already existed, `VARCHAR(50)`) now store the taxonomy
+class string (e.g. `"RATE_LIMITED"`) in place of the generic
+`MODEL_PROVIDER_REQUEST_FAILED` whenever the failure that reached
+`ExecutionWorkerService._execute`'s `except IdentityError` came from a
+classified `ProviderRequestFailedError` — `exc.error_class.value` is used
+instead of `exc.code` when present. Every other `IdentityError` (an
+authorization denial, a validation failure, ...) is unaffected: it simply
+has no `error_class` attribute, so the existing `exc.code` is used exactly
+as before.
+
+### Two-tier retry — the pre-existing execution-level retry is untouched
+
+`ExecutionWorkerService._fail_or_retry` (§34, pre-existing since Phase
+5.0) already requeues a failed execution for a fresh worker claim, up to
+its own `maximum_retries` limit — unrelated to this sub-phase, and left
+running exactly as before. This sub-phase's inner retry (same HTTP call,
+within one attempt) and that outer retry (a fresh attempt entirely) now
+cooperate rather than one replacing the other: `non_retryable` (the set
+`_fail_or_retry` checks before allowing another outer attempt) gained the
+five non-retryable taxonomy classes, so `ACT-MDL-FR-062` ("never retry
+these") holds at *both* layers — a `CONTENT_FILTERED` failure, for
+instance, never gets a second outer attempt either. The three transient
+classes are deliberately *not* added to `non_retryable`: they were already
+retryable at the outer layer before this classification existed (any
+`IdentityError` not explicitly excluded was), and nothing about adding
+finer-grained classification should make that layer more conservative
+than it already was.
+
+### Configuration
+
+```python
+# backend/app/core/config.py
+MODEL_PROVIDER_MAX_RETRIES: int = 3
+MODEL_PROVIDER_RETRY_BASE_DELAY_SECONDS: float = 0.5
+MODEL_PROVIDER_RETRY_MAX_DELAY_SECONDS: float = 8.0
+MODEL_PROVIDER_CIRCUIT_FAILURE_THRESHOLD: int = 5
+MODEL_PROVIDER_CIRCUIT_COOLDOWN_SECONDS: float = 30.0
+```
+
+### Fixtures
+
+Nine new fixtures in `backend/tests/runtime/fixtures/providers/`, one per
+taxonomy class — see that directory's `README.md` for the full table.
+Seven are ordinary replayable response bodies (served via the existing
+`replay_transport(name, status_code=...)`, now accepting an optional
+`headers` dict too, for `Retry-After`); two (`error_connection_refused.
+json`, `error_read_timeout.json`) are documentation-only, since a
+connection-refused or timeout failure has no HTTP response body at all —
+their tests raise `httpx.ConnectError`/`httpx.ReadTimeout` directly.
+
+## What Phase 5.7a.4 found (honest findings)
+
+- **The abstraction held again.** The only changes to the shared,
+  provider-neutral surface were additive: two new optional fields on
+  `ModelResponse` (`error_class`, `retry_after_seconds`, both default
+  `None`) and one new enum (`ProviderErrorClass`) plus one frozenset
+  (`RETRYABLE_PROVIDER_ERROR_CLASSES`) in `types.py`. `ModelProvider`,
+  `MockProvider`, and the registry are all unchanged.
+- **`assemble_response()` needed one addition it didn't have**: it
+  originally carried forward only `content`/`tool_calls`/`finish_reason`/
+  `raw_usage` from the last chunk — the new `error_class`/
+  `retry_after_seconds` fields had to be added to that carry-forward too,
+  or a streaming interruption's classification would silently vanish
+  during assembly and the retry boundary (AC-13/AC-14) couldn't be
+  decided at all. Caught by writing the streaming-retry test before
+  assuming the plumbing already worked.
+- **No migration.** `error_code` (on both `agent_executions` and
+  `execution_attempts`) already existed with room (`VARCHAR(50)`) for the
+  longest taxonomy value (`CONTEXT_LENGTH_EXCEEDED`, 23 characters); no
+  new column was needed anywhere.
+- **The outer, execution-level retry (`ExecutionWorkerService._fail_or_
+  retry`, pre-existing since Phase 5.0) was deliberately left running**,
+  not replaced or disabled for transient classes — see "Two-tier retry"
+  above. Only its `non_retryable` set changed, to add the five classes
+  that must never retry at *either* layer.
+- **Retry accounting reuses 5.7a.3, not a reimplementation.** The inner
+  retry never writes its own row; the one `execution_attempts` row per
+  worker claim, and the token/cost accounting attached to it, are
+  unchanged in shape and behavior — a retried-then-succeeded call simply
+  shows one successful attempt with accurate tokens, exactly as if it had
+  succeeded on the first try.
+
 ## What's deferred
 
-A real error taxonomy and retry semantics, and per-organization credential
-storage, remain out of scope — owned by Phase 5.7a.4 and 5.7a.5
-respectively. The interface, registry, one real adapter, real streaming,
-and real token/cost accounting all exist so each of those can be added
-without another rewrite of the surrounding contract.
+Per-organization credential storage remains out of scope — owned by Phase
+5.7a.5. Multi-provider failover (trying a *different* provider on
+failure), response caching, and quota/budget enforcement remain out of
+scope for 5.7 proper / Phase 5.8. The interface, registry, one real
+adapter, real streaming, real token/cost accounting, and now a real error
+taxonomy with retry/backoff/circuit-breaking all exist so each of those
+can be added without another rewrite of the surrounding contract.

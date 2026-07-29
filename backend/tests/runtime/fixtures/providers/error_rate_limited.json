@@ -1,0 +1,7 @@
+{
+  "error": {
+    "message": "Rate limit reached for requests. Please retry after a short wait.",
+    "type": "requests",
+    "code": "rate_limit_exceeded"
+  }
+}

@@ -30,12 +30,17 @@ never direct indexing.
 own docstring for the per-chunk convention, tool-call reassembly across
 fragments, and why it never raises (unlike ``complete()``, which does).
 
-**No credential resolution, no retry/backoff, no error taxonomy** — an API
-key is read as a plain configured value if present; ``complete()`` raises
-the one coarse ``ProviderRequestFailedError`` on any HTTP failure or
-unparseable response; ``stream()`` instead persists a partial and reports
-interruption via ``FinishReason.ERROR`` (``ACT-MDL-FR-043``). Both are
-deliberately out of scope for a real error taxonomy; see Phase 5.7a.4/5.7a.5.
+**No credential resolution** — an API key is read as a plain configured
+value if present (Phase 5.7a.5 is per-organization credential storage).
+
+**Error classification (Phase 5.7a.4, ``ACT-MDL-FR-060``)** — every
+``ProviderRequestFailedError`` this module raises, and every interrupted
+``stream()`` final chunk, now carries a ``ProviderErrorClass`` (see
+``_classify_status_error``/``_classify_transport_error`` below). This
+module only *classifies*; it does not retry or circuit-break — that
+decision belongs to ``ModelGatewayService`` (the service layer), which is
+provider-neutral and must not know this module's wire format. ``stream()``
+still never raises, per ``ACT-MDL-FR-043``.
 """
 
 from __future__ import annotations
@@ -56,6 +61,7 @@ from app.runtime.providers.types import (
     ModelResponse,
     ModelToolCall,
     ModelToolDefinition,
+    ProviderErrorClass,
 )
 
 logger = logging.getLogger(__name__)
@@ -85,6 +91,81 @@ _FINISH_REASON_MAP = {
     "content_filter": FinishReason.CONTENT_FILTER,
 }
 
+# ACT-MDL-FR-060 — a 400 body is only ever CONTEXT_LENGTH_EXCEEDED or
+# CONTENT_FILTERED if it says so explicitly; anything else that's merely a
+# 400 is the generic INVALID_REQUEST. Substring markers, not exact string
+# matches, since providers phrase these inconsistently (OpenAI's message
+# text vs. a compatible server's own wording) -- matches the same tolerant-
+# parsing spirit as the rest of this module (ACT-MDL-FR-028).
+_CONTEXT_LENGTH_MARKERS = ("context_length_exceeded", "maximum context length", "context length")
+_CONTENT_FILTER_MARKERS = ("content_filter", "content management policy", "flagged")
+
+
+def _classify_status_error(status_code: int, body_text: str) -> ProviderErrorClass:
+    """ACT-MDL-FR-060 — maps an HTTP status + response body to the
+    provider-neutral taxonomy. Never guesses past what the status/body
+    actually says: an unrecognized status (not 429/401/403/5xx/400) maps to
+    ``UNKNOWN``, not to whichever bucket seems closest."""
+    lowered = body_text.lower()
+    if status_code == 429:
+        return ProviderErrorClass.RATE_LIMITED
+    if status_code in (401, 403):
+        return ProviderErrorClass.AUTHENTICATION_FAILED
+    if status_code >= 500:
+        return ProviderErrorClass.PROVIDER_UNAVAILABLE
+    if status_code == 400:
+        if any(marker in lowered for marker in _CONTEXT_LENGTH_MARKERS):
+            return ProviderErrorClass.CONTEXT_LENGTH_EXCEEDED
+        if any(marker in lowered for marker in _CONTENT_FILTER_MARKERS):
+            return ProviderErrorClass.CONTENT_FILTERED
+        return ProviderErrorClass.INVALID_REQUEST
+    return ProviderErrorClass.UNKNOWN
+
+
+def _classify_transport_error(exc: httpx.HTTPError) -> ProviderErrorClass:
+    """ACT-MDL-FR-060 — a failure below the HTTP-status level (the request
+    never got a response at all). ``httpx.TimeoutException`` is itself a
+    subclass of ``httpx.TransportError``, so it's checked first; any other
+    transport-level failure (connection refused, DNS failure, a dropped
+    socket) is ``PROVIDER_UNAVAILABLE``. Anything neither (e.g. a decoding
+    error, too many redirects) is ``UNKNOWN`` rather than guessed."""
+    if isinstance(exc, httpx.TimeoutException):
+        return ProviderErrorClass.TIMEOUT
+    if isinstance(exc, httpx.TransportError):
+        return ProviderErrorClass.PROVIDER_UNAVAILABLE
+    return ProviderErrorClass.UNKNOWN
+
+
+def _parse_retry_after(response: httpx.Response) -> float | None:
+    """ACT-MDL-FR-064 — a numeric ``Retry-After`` (seconds), if present and
+    parseable. The HTTP-date form of this header exists but is not handled
+    here — no fixture or real target in this sub-phase's scope sends it,
+    and guessing at date parsing without a real case to test against would
+    itself be exactly the kind of guess ``types.py``'s design rules forbid
+    elsewhere in this codebase."""
+    value = response.headers.get("retry-after")
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except ValueError:
+        return None
+
+
+def _scrub(text: str, *, api_key: str | None, base_url: str | None = None) -> str:
+    """ACT-MDL-FR-069 — redacts a configured API key, and this instance's
+    own ``base_url`` (an internal endpoint, per FR-069), out of any text
+    before it leaves this module (an exception message, a debug log line).
+    Applied defensively to every detail string this module constructs from
+    provider-supplied content; the *safe*, templated messages this module
+    raises never include raw provider body text at all (see
+    ``_classified_status_error``), so this mostly guards the debug log."""
+    if api_key:
+        text = text.replace(api_key, "***REDACTED***")
+    if base_url:
+        text = text.replace(base_url, "<provider endpoint>")
+    return text
+
 
 class OpenAICompatibleProvider(ModelProvider):
     """Talks the OpenAI chat-completions wire protocol against any
@@ -105,6 +186,9 @@ class OpenAICompatibleProvider(ModelProvider):
         self.base_url = base_url or DEFAULT_BASE_URL
         self.model = model
         self._max_context_tokens = max_context_tokens
+        # Kept only for credential scrubbing (ACT-MDL-FR-069) -- never sent
+        # anywhere itself except as the existing Authorization header below.
+        self._api_key = api_key
         # Not every model behind an OpenAI-compatible endpoint supports
         # function calling (many self-hosted base models don't) -- this is
         # a per-deployment fact the operator knows and configures, not
@@ -137,18 +221,39 @@ class OpenAICompatibleProvider(ModelProvider):
             http_response = self._client.post("/chat/completions", json=body)
             http_response.raise_for_status()
         except httpx.HTTPStatusError as exc:
-            raise ProviderRequestFailedError(
-                type(self).__name__, f"HTTP {exc.response.status_code} from provider"
-            ) from exc
+            raise self._classified_status_error(exc) from exc
         except httpx.HTTPError as exc:
-            raise ProviderRequestFailedError(type(self).__name__, str(exc)) from exc
+            raise self._classified_transport_error(exc) from exc
 
         try:
             data = http_response.json()
         except ValueError as exc:
-            raise ProviderRequestFailedError(type(self).__name__, "response body was not valid JSON") from exc
+            raise ProviderRequestFailedError(
+                type(self).__name__, "response body was not valid JSON", error_class=ProviderErrorClass.UNKNOWN,
+            ) from exc
 
         return self._parse_response(data)
+
+    def _classified_status_error(self, exc: httpx.HTTPStatusError) -> ProviderRequestFailedError:
+        """ACT-MDL-FR-060, FR-069 — the raised message is a safe, templated
+        summary (status + classification) only; the raw response body is
+        never included in it (only used, scrubbed, to *decide* the
+        classification and in a debug log) so nothing the provider sent
+        back can leak a credential or internal detail to a caller."""
+        response = exc.response
+        body_text = _scrub(response.text or "", api_key=self._api_key, base_url=self.base_url)
+        error_class = _classify_status_error(response.status_code, body_text)
+        retry_after = _parse_retry_after(response) if error_class == ProviderErrorClass.RATE_LIMITED else None
+        logger.debug("%s: HTTP %s classified as %s -- body=%s",
+                     type(self).__name__, response.status_code, error_class.value, body_text)
+        detail = f"HTTP {response.status_code} from provider (classified {error_class.value})"
+        return ProviderRequestFailedError(type(self).__name__, detail, error_class=error_class,
+                                          retry_after_seconds=retry_after)
+
+    def _classified_transport_error(self, exc: httpx.HTTPError) -> ProviderRequestFailedError:
+        error_class = _classify_transport_error(exc)
+        detail = _scrub(str(exc), api_key=self._api_key, base_url=self.base_url)
+        return ProviderRequestFailedError(type(self).__name__, detail, error_class=error_class)
 
     def stream(self, request: ModelRequest) -> Iterator[ModelResponse]:
         """Real incremental streaming (Phase 5.7a.3, replacing the 5.7a.2
@@ -180,7 +285,19 @@ class OpenAICompatibleProvider(ModelProvider):
         include_usage`` trailing usage-only chunk (empty ``choices``) is
         not requested or handled; nothing in ``ACT-MDL-FR-040..049`` asks
         for it, and requesting it would be a one-line addition to
-        ``_build_request_body`` if a future sub-phase needs it."""
+        ``_build_request_body`` if a future sub-phase needs it.
+
+        **Interruption classification (Phase 5.7a.4)**: the final,
+        interrupted chunk's ``error_class``/``retry_after_seconds`` mirror
+        what ``complete()`` would have raised for the equivalent failure —
+        an HTTP status error before any events arrived classifies via
+        ``_classify_status_error``, a transport-level failure via
+        ``_classify_transport_error``, and a stream that simply ends
+        without ``[DONE]`` and no exception at all (the connection was
+        dropped cleanly) is classified ``PROVIDER_UNAVAILABLE``. This lets
+        ``ModelGatewayService`` decide whether a *pre-first-token*
+        interruption is worth retrying without this module knowing
+        anything about retry policy itself."""
         self.validate_capabilities(request)
         body = self._build_request_body(request)
         body["stream"] = True
@@ -201,11 +318,18 @@ class OpenAICompatibleProvider(ModelProvider):
                     except ValueError:
                         continue  # tolerate a malformed/keep-alive line rather than aborting the whole stream
                     yield self._chunk_from_event(event, tool_state)
+        except httpx.HTTPStatusError as exc:
+            classified = self._classified_status_error(exc)
+            yield self._interrupted_chunk(tool_state, str(exc), error_class=classified.error_class,
+                                          retry_after_seconds=classified.retry_after_seconds)
+            return
         except httpx.HTTPError as exc:
-            yield self._interrupted_chunk(tool_state, str(exc))
+            classified = self._classified_transport_error(exc)
+            yield self._interrupted_chunk(tool_state, str(exc), error_class=classified.error_class)
             return
         if not reached_done:
-            yield self._interrupted_chunk(tool_state, "stream ended without reaching the [DONE] terminator")
+            yield self._interrupted_chunk(tool_state, "stream ended without reaching the [DONE] terminator",
+                                          error_class=ProviderErrorClass.PROVIDER_UNAVAILABLE)
 
     def _chunk_from_event(self, event: dict, tool_state: dict[int, dict]) -> ModelResponse:
         choices = event.get("choices") or []
@@ -225,9 +349,14 @@ class OpenAICompatibleProvider(ModelProvider):
             raw_usage=self._usage_to_raw(event.get("usage")),
         )
 
-    def _interrupted_chunk(self, tool_state: dict[int, dict], detail: str) -> ModelResponse:
-        logger.debug("%s: stream interrupted -- %s", type(self).__name__, detail)
-        return ModelResponse(content="", tool_calls=self._finalize_tool_calls(tool_state), finish_reason=FinishReason.ERROR)
+    def _interrupted_chunk(self, tool_state: dict[int, dict], detail: str, *,
+                          error_class: ProviderErrorClass = ProviderErrorClass.UNKNOWN,
+                          retry_after_seconds: float | None = None) -> ModelResponse:
+        logger.debug("%s: stream interrupted (%s) -- %s", type(self).__name__, error_class.value,
+                    _scrub(detail, api_key=self._api_key, base_url=self.base_url))
+        return ModelResponse(content="", tool_calls=self._finalize_tool_calls(tool_state),
+                             finish_reason=FinishReason.ERROR, error_class=error_class,
+                             retry_after_seconds=retry_after_seconds)
 
     @staticmethod
     def _accumulate_tool_call_deltas(raw_tool_call_deltas, tool_state: dict[int, dict]) -> None:
