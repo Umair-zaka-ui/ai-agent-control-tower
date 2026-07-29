@@ -17,24 +17,47 @@ translation boundary between the legacy `input_payload: dict`/
 `(output_payload, usage)` shape every caller here already depends on, and
 the provider-neutral types every adapter actually speaks.
 
-Only `MOCK` is a registered, working adapter in this environment: it's
-fully deterministic (no network call, no API key) and reports a positive
-token count so cost tracking has real numbers to aggregate. Any
-unregistered provider name — `OPENAI`, `ANTHROPIC`, `AZURE_OPENAI`,
-`BEDROCK`, … — raises `MODEL_PROVIDER_UNAVAILABLE` immediately rather than
-silently falling back to `MOCK` or failing in some provider-specific way.
-This is the same "default deny" discipline (§36) applied to model
-providers, not just permissions: an unconfigured provider should be
-*loud*.
+Two adapters are registered today: `MOCK` (fully deterministic, no
+network call, no credential — reports a positive token count so cost
+tracking has real numbers to aggregate) and `OPENAI_COMPATIBLE` (Phase
+5.7a.2), which makes real HTTP calls — streaming (5.7a.3), classified
+errors with retry/backoff/circuit-breaking (5.7a.4), and per-organization
+encrypted credentials (5.7a.5, below) — against any OpenAI-chat-
+completions-compatible endpoint (Ollama, vLLM, LM Studio, OpenAI itself).
+Any unregistered provider name — `ANTHROPIC`, `AZURE_OPENAI`, `BEDROCK`, …
+— raises `MODEL_PROVIDER_UNAVAILABLE` immediately rather than silently
+falling back to `MOCK` or failing in some provider-specific way. This is
+the same "default deny" discipline (§36) applied to model providers, not
+just permissions: an unconfigured provider should be *loud*.
 
-Adding a real provider (Phase 5.7a.2) means one more `register(...)` call
-in `app/runtime/providers/registry.py` and a new adapter module — additive,
+Adding a further real provider means one more `register(...)` call in
+`app/runtime/providers/registry.py` and a new adapter module — additive,
 not a rewrite of `invoke()`, the surrounding gateway, or the
 `(output_payload, usage)` shape `ExecutionWorkerService` depends on.
-Credentials would be resolved via `deployment.secret_references` (§45) —
-never stored on the agent version itself, which only ever holds a secret
-*reference* string like `"vault://production/openai/api-key"` (credential
-storage itself is Phase 5.7a.5, not yet built).
+
+### Credentials (Phase 5.7a.5, `ACT-MDL-FR-080..083`)
+
+Credentials are **not** resolved via `deployment.secret_references` (§45)
+— that field remains what it always was, a free-form JSONB dict of
+reference *strings* (`"vault://..."`) with no actual storage or
+resolution mechanism behind it, scoped to one deployment. A model-provider
+API key is a distinct, org-wide concern (one org, one deployment or a
+hundred, shares the same provider key), so it gets its own table,
+`provider_credentials` — one row per `(organization_id, provider)`,
+`encrypted_secret` a Fernet ciphertext, never plaintext at rest. See
+[providers.md](providers.md#error-taxonomy--resilience-phase-57a4) and
+its "Per-organization credentials" section for the full design: storage,
+resolution order (per-org → `MODEL_PROVIDER_API_KEYS` fallback → none),
+redaction, and the four CRUD/test API endpoints under
+`/api/v1/runtime/providers/{provider}/credentials`.
+
+Resolution happens once per execution, on the worker's own thread, via
+`ProviderCredentialService.resolve_for_version` — *before* the model call
+is handed to the `ThreadPoolExecutor` `ModelGatewayService.invoke()` runs
+inside (§36's existing timeout mechanism), never inside it: only the
+resulting plain, immutable `ResolvedCredential` value crosses into the
+pooled thread, since a live SQLAlchemy `Session` is not safe to share
+across threads.
 
 ## Tool Gateway (§43, §44)
 

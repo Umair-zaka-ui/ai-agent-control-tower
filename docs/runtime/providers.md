@@ -2,7 +2,8 @@
 
 `backend/app/runtime/providers/` · Phase 5.7a.1 SRS `ACT-MDL-FR-001..010`,
 Phase 5.7a.2 SRS `ACT-MDL-FR-020..028`, Phase 5.7a.3 SRS
-`ACT-MDL-FR-040..049`, `FR-084..089`, Phase 5.7a.4 SRS `ACT-MDL-FR-060..069`.
+`ACT-MDL-FR-040..049`, `FR-084..089`, Phase 5.7a.4 SRS `ACT-MDL-FR-060..069`,
+Phase 5.7a.5 SRS `ACT-MDL-FR-080..083`.
 
 ## Why this exists
 
@@ -919,12 +920,166 @@ their tests raise `httpx.ConnectError`/`httpx.ReadTimeout` directly.
   shows one successful attempt with accurate tokens, exactly as if it had
   succeeded on the first try.
 
+## Per-organization credentials (Phase 5.7a.5, `ACT-MDL-FR-080..083`)
+
+Before this sub-phase, the entire credential story was `MODEL_PROVIDER_
+API_KEYS` — one flat, plaintext, process-wide settings dict, shared by
+every organization on the platform. This sub-phase adds real,
+per-organization, encrypted-at-rest credential storage, resolved at
+execution time, feeding the *same* `api_key` forwarding path 5.7a.2 built
+— nothing about the adapter or the registry changed to support this.
+
+### Storage: a dedicated table, not `secret_references`
+
+`AgentDeployment.secret_references` (Phase 5.0/5.2, §45) is a free-form
+JSONB dict of reference *strings* (`"vault://production/openai/api-key"`)
+— `_validate_secret_references` in `services.py` only checks that a value
+*looks like* a `scheme://...` reference; there has never been any actual
+storage or resolution behind it, and it's scoped to one deployment, not
+one organization. A model-provider API key is a distinct concern: it
+needs dedicated columns (`provider`, `secret_hint`, `base_url`, `status`)
+and org-wide scope (every deployment in an org shares the org's one
+configured key per provider), so it gets its own table,
+`provider_credentials` (migration `0029_provider_credentials`):
+
+| Column | Notes |
+|---|---|
+| `organization_id` | FK, CASCADE, indexed — every query filters by this |
+| `provider` | e.g. `OPENAI_COMPATIBLE` |
+| `encrypted_secret` | Fernet ciphertext — never plaintext |
+| `secret_hint` | Last 4 characters only, for UI display |
+| `base_url` | Optional per-org endpoint override |
+| `status` | `ACTIVE`/`DISABLED` |
+| `created_by`, `last_used_at` | |
+
+Unique on `(organization_id, provider)`. `ProviderCredential.__repr__` is
+overridden to print only `id`/`organization_id`/`provider`/a redacted hint
+— a structural second line of defense (the primary guarantee is simpler:
+no column or property on this class ever holds a decrypted value at all,
+so there's nothing to accidentally log).
+
+### Encryption
+
+`app/runtime/providers/credential_crypto.py` — Fernet (AES-128-CBC +
+HMAC-SHA256, authenticated symmetric encryption) via the `cryptography`
+package already vendored transitively through `python-jose[cryptography]`
+(no new dependency). The key comes from `settings.MODEL_CREDENTIAL_
+ENCRYPTION_KEY` if set; otherwise one is auto-generated and persisted to
+`settings.MODEL_CREDENTIAL_ENCRYPTION_KEY_PATH` (default `./.keys/
+model_credentials.key`, gitignored) — **the identical dev-convenience
+pattern Phase 5.2.4's `LocalKeyProvider` already established** for
+signing keys, deliberately reused rather than inventing a second one,
+including the loud warning logged on first auto-generation.
+
+**Known Deviation (mirrors `ACT-VER-NFR-002`, Phase 5.2.4's own recorded
+deviation)**: a platform-held symmetric key necessarily enters process
+memory to encrypt/decrypt — no way to avoid that without an external
+KMS/HSM performing the operation server-side. Accepted pre-production;
+closes when Milestone 13 lands external KMS/vault integration, the exact
+closure condition 5.2.4 recorded for its own local signing provider. Not
+built here.
+
+### Resolution order (`ACT-MDL-FR-082`)
+
+1. This organization's own stored, `ACTIVE` credential for the provider.
+2. `settings.MODEL_PROVIDER_API_KEYS` as a fallback default.
+3. No credential — valid for a local provider (`ACT-MDL-FR-083`).
+
+### The `MODEL_PROVIDER_API_KEYS` decision: kept, as the fallback
+
+Of the three options the build prompt posed (fallback-only, removed
+entirely, or retained for one designated org), **fallback-only** was
+chosen: it's the least disruptive (nothing previously exercised this dict
+in a way a preceding per-org lookup could break — confirmed by grep before
+implementing), and it's still genuinely useful for exactly the case it
+already served, a single shared dev/local key, without forcing every local
+development setup to configure a database row just to point at a
+credential-free Ollama instance. `MODEL_PROVIDER_API_KEYS.get(provider)`
+is tried only when no organization-specific row resolves.
+
+### Resolution crosses a thread boundary as a plain value, never a session
+
+`ModelGatewayService.invoke()` may run inside a `ThreadPoolExecutor` (§36's
+pre-existing timeout mechanism) — and a live SQLAlchemy `Session` is not
+safe to share across threads (this constraint predates 5.7a.5; see the
+module's own comment on why the model call, unlike `ToolGatewayService`,
+is "pure — no DB access"). Resolution therefore happens *before* that,
+synchronously, on the worker's own thread, in `ExecutionWorkerService.
+_execute`, via `ProviderCredentialService(self.db).resolve_for_version(...)`.
+Only the result — a `ResolvedCredential(api_key, base_url)`, two plain
+immutable fields with no database handle — crosses into the pooled thread,
+passed to `invoke()` as an optional keyword argument. Every pre-5.7a.5
+caller of `invoke()` (there are none outside `ExecutionWorkerService`, but
+the contract matters) gets `resolved_credential=None` and behaves exactly
+as before, falling back to `MODEL_PROVIDER_API_KEYS`/`MODEL_PROVIDER_
+BASE_URLS` unchanged.
+
+### `PROVIDER_CREDENTIAL_REQUIRED` — reusing the 5.7a.4 taxonomy rather than a new heuristic
+
+`ACT-MDL-FR-083` requires credential-free providers to keep working
+(Ollama, `MOCK`); `AC-09` requires a *real* provider with nothing
+resolvable to fail with a specific, actionable error rather than a
+generic one. Rather than inventing a per-provider "does this need a
+credential?" flag (which would have to be guessed — the same
+`OPENAI_COMPATIBLE` identifier serves both a keyless local Ollama and a
+real, auth-required endpoint, so no static answer is correct for both),
+`invoke()` reacts to what actually happens: if the call ultimately raises
+a classified `AUTHENTICATION_FAILED` (5.7a.4) **and no credential was
+supplied for this call from any source**, that's translated to
+`ModelGatewayError(PROVIDER_CREDENTIAL_REQUIRED)` — a more specific,
+actionable "go configure one" rather than "your credential was wrong."
+A credential that *was* configured and still rejected stays
+`AUTHENTICATION_FAILED`, unchanged from 5.7a.4. `MOCK` and a genuinely
+keyless Ollama endpoint never receive a 401 in the first place, so neither
+is ever affected by this translation — no special-casing needed for the
+credential-free path at all, it simply never triggers the check.
+
+At the outer, execution-level retry layer (`ExecutionWorkerService.
+_fail_or_retry`, pre-existing since Phase 5.0), `PROVIDER_CREDENTIAL_
+REQUIRED` was added to `non_retryable` — the same treatment as
+`TOOL_NOT_ASSIGNED`: a missing credential needs an administrator to
+configure one via the API, not an automatic requeue.
+
+### API
+
+Four endpoints under `/api/v1/runtime/providers/{provider}/credentials`,
+gated by two new permissions (`runtime.provider.view`/`.manage`):
+
+| Method | Path | Permission | Behavior |
+|---|---|---|---|
+| `GET` | `/providers/credentials` | `.view` | Lists this org's credentials — metadata + `secret_hint` only |
+| `PUT` | `/providers/{provider}/credentials` | `.manage` | Upsert — creates or replaces-and-re-encrypts |
+| `DELETE` | `/providers/{provider}/credentials` | `.manage` | Removes; resolution falls through to the fallback/none |
+| `POST` | `/providers/{provider}/credentials/test` | `.manage` | A real, minimal call through the resolved credential, classified via 5.7a.4's taxonomy — never returns the value |
+
+Every method scopes strictly by the authenticated actor's own
+`organization_id` — there is no parameter through which a caller could
+even *name* a different organization, so cross-tenant access isn't a
+check that can fail, it's a request shape that cannot be constructed.
+
+### Redaction (`ACT-MDL-FR-081`)
+
+The plaintext exists in exactly two places: encrypted at rest, and in the
+outbound provider request. A `GET`/`PUT` response returns metadata and
+`secret_hint` only; the `test` endpoint's result carries `success`/
+`error_class`/a message, never the credential; every audit/runtime event
+this phase records (`RUNTIME_PROVIDER_CREDENTIAL_UPDATED`/`_DELETED`)
+carries only the provider identifier in its `meta`; `ProviderCredential.
+__repr__` never includes the ciphertext or a decrypted value. This
+composes with 5.7a.4's adapter-level credential scrubbing (a configured-
+but-wrong credential rejected by a real provider still can't leak through
+the resulting error message).
+
 ## What's deferred
 
-Per-organization credential storage remains out of scope — owned by Phase
-5.7a.5. Multi-provider failover (trying a *different* provider on
-failure), response caching, and quota/budget enforcement remain out of
-scope for 5.7 proper / Phase 5.8. The interface, registry, one real
-adapter, real streaming, real token/cost accounting, and now a real error
-taxonomy with retry/backoff/circuit-breaking all exist so each of those
-can be added without another rewrite of the surrounding contract.
+Multi-provider failover (trying a *different* provider on failure),
+response caching, and quota/budget enforcement remain out of scope for
+5.7 proper / Phase 5.8. External KMS/vault integration for credential
+encryption remains out of scope until Milestone 13 (see the Known
+Deviation above). Tool credentials, any tool execution, and the model-
+driven tool invocation loop are 5.6a.1-3, not this track. The interface,
+registry, one real adapter, real streaming, real token/cost accounting, a
+real error taxonomy with retry/backoff/circuit-breaking, and now real
+per-organization encrypted credentials all exist — **this completes the
+model half of Milestone 1**; only tool execution (5.6a.1-3) remains before
+the platform genuinely executes end to end.

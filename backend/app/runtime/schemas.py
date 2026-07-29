@@ -437,3 +437,37 @@ class RuntimeDashboardRead(BaseModel):
     avg_execution_ms: float
     execution_trend: list[dict]
     status_distribution: list[dict]
+
+
+# --------------------------------------------------------------------------- #
+# Provider credentials (Phase 5.7a.5 SRS ACT-MDL-FR-080..083)
+# --------------------------------------------------------------------------- #
+class ProviderCredentialRead(BaseModel):
+    """Metadata and a masked hint only — **never** the credential value
+    (``ACT-MDL-FR-081``). Built from ``ProviderCredentialInfo``
+    (``app/runtime/services.py``), a plain dataclass with no field for the
+    decrypted secret at all, not from the ORM row directly."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    organization_id: uuid.UUID
+    provider: str
+    secret_hint: str
+    base_url: str | None
+    status: str
+    created_at: datetime
+    updated_at: datetime
+    created_by: uuid.UUID | None
+    last_used_at: datetime | None
+
+
+class ProviderCredentialUpsert(BaseModel):
+    secret: str = Field(min_length=1, max_length=4096)
+    base_url: str | None = Field(default=None, max_length=2048)
+
+
+class ProviderCredentialTestResult(BaseModel):
+    success: bool
+    error_class: str | None
+    message: str

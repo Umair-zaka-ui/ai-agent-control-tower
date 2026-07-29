@@ -149,6 +149,9 @@ PERMISSION_CATALOG: dict[str, str] = {
     "runtime.cost.view": "View runtime cost and token usage",
     "runtime.approval.review": "Approve or reject runtime approval requests",
     "runtime.kill_switch.execute": "Activate the runtime kill switch at any scope",
+    # Per-organization model-provider credentials (Phase 5.7a.5).
+    "runtime.provider.view": "View configured model-provider credentials (metadata and hint only, never the value)",
+    "runtime.provider.manage": "Configure, replace, delete and test model-provider credentials",
     # Enterprise Agent Registry (Phase 5.1 §57).
     "runtime.agent.register": "Move a draft agent into the REGISTERED lifecycle state",
     "runtime.agent.submit": "Submit a validated agent for approval",

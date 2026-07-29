@@ -165,3 +165,8 @@ class AuthorizationAuditEvent(str, enum.Enum):
     RUNTIME_VERSION_NOTE_ADDED = "RUNTIME_VERSION_NOTE_ADDED"
     RUNTIME_VERSION_RELEASE_METADATA_UPDATED = "RUNTIME_VERSION_RELEASE_METADATA_UPDATED"
     RUNTIME_VERSION_ROLLBACK_TARGET_SET = "RUNTIME_VERSION_ROLLBACK_TARGET_SET"
+    # Per-organization model-provider credentials (Phase 5.7a.5). ``meta``
+    # carries the provider identifier and action only -- never the secret
+    # value or even its encrypted form (ACT-MDL-FR-081).
+    RUNTIME_PROVIDER_CREDENTIAL_UPDATED = "RUNTIME_PROVIDER_CREDENTIAL_UPDATED"
+    RUNTIME_PROVIDER_CREDENTIAL_DELETED = "RUNTIME_PROVIDER_CREDENTIAL_DELETED"

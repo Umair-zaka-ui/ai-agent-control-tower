@@ -210,8 +210,12 @@ class Settings(BaseSettings):
     # retry/backoff here -- that classification is Phase 5.7a.4.
     MODEL_PROVIDER_CONNECT_TIMEOUT_SECONDS: float = 5.0
     MODEL_PROVIDER_READ_TIMEOUT_SECONDS: float = 30.0
-    # Plain configured value, read as-is. Per-organization credential
-    # storage/resolution is Phase 5.7a.5, not this one.
+    # Plain configured value, read as-is. Phase 5.7a.5 layered per-organization
+    # encrypted credential storage in front of this: an org's own stored
+    # credential is tried first; this dict is now only the fallback used when
+    # no org-specific credential is configured (see ProviderCredentialService
+    # .resolve() in services.py) -- kept, not removed, since it is still the
+    # simplest thing that works for a single shared dev/local-only key.
     MODEL_PROVIDER_API_KEYS: dict[str, str] = {}
 
     # --- Phase 5.7a.3: streaming & token accounting (ACT-MDL-FR-040..049,
@@ -242,6 +246,13 @@ class Settings(BaseSettings):
     # distributed worker model is what would need a shared store).
     MODEL_PROVIDER_CIRCUIT_FAILURE_THRESHOLD: int = 5
     MODEL_PROVIDER_CIRCUIT_COOLDOWN_SECONDS: float = 30.0
+
+    # --- Phase 5.7a.5: per-organization provider credentials (ACT-MDL-FR-080..083) ---
+    # Plain configured value read as a base64 urlsafe Fernet key, if set. Never
+    # hardcoded, never committed -- if unset, one is auto-generated and persisted
+    # locally (dev convenience only; see credential_crypto.py's Known Deviation).
+    MODEL_CREDENTIAL_ENCRYPTION_KEY: str | None = None
+    MODEL_CREDENTIAL_ENCRYPTION_KEY_PATH: str = "./.keys/model_credentials.key"
 
     # --- Phase 2: email notifications (SMTP / Mailtrap for development) ---
     NOTIFICATIONS_ENABLED: bool = False

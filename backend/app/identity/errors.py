@@ -206,6 +206,9 @@ class ErrorCode:
     # something this adapter couldn't parse." Classifying failure modes
     # (timeout vs. 5xx vs. malformed body) for retry/backoff is 5.7a.4.
     MODEL_PROVIDER_REQUEST_FAILED = "MODEL_PROVIDER_REQUEST_FAILED"
+    # Per-organization model-provider credentials (Phase 5.7a.5).
+    PROVIDER_CREDENTIAL_NOT_FOUND = "PROVIDER_CREDENTIAL_NOT_FOUND"
+    PROVIDER_CREDENTIAL_REQUIRED = "PROVIDER_CREDENTIAL_REQUIRED"
     RUNTIME_POLICY_DENIED = "RUNTIME_POLICY_DENIED"
     RUNTIME_APPROVAL_REQUIRED = "RUNTIME_APPROVAL_REQUIRED"
     RUNTIME_APPROVAL_NOT_FOUND = "RUNTIME_APPROVAL_NOT_FOUND"
@@ -456,6 +459,12 @@ _STATUS: dict[str, int] = {
     ErrorCode.MODEL_PROVIDER_UNAVAILABLE: status.HTTP_503_SERVICE_UNAVAILABLE,
     ErrorCode.MODEL_CAPABILITY_UNSUPPORTED: status.HTTP_422_UNPROCESSABLE_ENTITY,
     ErrorCode.MODEL_PROVIDER_REQUEST_FAILED: status.HTTP_502_BAD_GATEWAY,
+    ErrorCode.PROVIDER_CREDENTIAL_NOT_FOUND: status.HTTP_404_NOT_FOUND,
+    # The provider itself is reachable in principle; this organization simply
+    # hasn't configured what it needs to reach it -- 503, same "provider isn't
+    # usable right now" family as MODEL_PROVIDER_UNAVAILABLE, not a 4xx client
+    # input error (the request itself was perfectly valid).
+    ErrorCode.PROVIDER_CREDENTIAL_REQUIRED: status.HTTP_503_SERVICE_UNAVAILABLE,
     ErrorCode.RUNTIME_POLICY_DENIED: status.HTTP_403_FORBIDDEN,
     ErrorCode.RUNTIME_APPROVAL_REQUIRED: status.HTTP_403_FORBIDDEN,
     ErrorCode.RUNTIME_APPROVAL_NOT_FOUND: status.HTTP_404_NOT_FOUND,
