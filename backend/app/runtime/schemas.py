@@ -250,6 +250,15 @@ class ToolCallRead(BaseModel):
     duration_ms: int | None
     error_code: str | None
     cost: float | None
+    # Phase 5.6a.1 (ACT-TLX-FR-011) -- HTTP egress recording, null for FUNCTION/echo.
+    target_host: str | None
+    target_path: str | None
+    http_method: str | None
+    http_status: int | None
+    request_bytes: int | None
+    response_bytes: int | None
+    egress_decision: str | None
+    egress_denied_reason: str | None
     created_at: datetime
 
 
@@ -334,6 +343,14 @@ class ToolCreate(BaseModel):
     data_classification: str = Field(default="INTERNAL", max_length=30)
     requires_approval: bool = False
     timeout_seconds: int = Field(default=30, ge=1, le=600)
+    # Phase 5.6a.1 (ACT-TLX-FR-004) -- the HTTP action's egress declaration
+    # (allowed_hosts, allow_plaintext_http, local_dev_hosts,
+    # sensitive_headers, sensitive_body_fields, requires_credential,
+    # credential_header, credential_scheme, max_redirects,
+    # max_response_bytes, method). Only meaningful when tool_type == "HTTP";
+    # see docs/runtime/gateways.md's "Egress control" section for the
+    # full shape and what each field does.
+    http_config: dict | None = None
 
 
 class ToolRead(BaseModel):
@@ -352,6 +369,7 @@ class ToolRead(BaseModel):
     requires_approval: bool
     timeout_seconds: int
     enabled: bool
+    http_config: dict | None
     created_at: datetime
     updated_at: datetime
 
