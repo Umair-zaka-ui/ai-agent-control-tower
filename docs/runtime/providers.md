@@ -920,6 +920,15 @@ their tests raise `httpx.ConnectError`/`httpx.ReadTimeout` directly.
   shows one successful attempt with accurate tokens, exactly as if it had
   succeeded on the first try.
 
+**Reused by tools, not duplicated (Phase 5.6a.2).** `ProviderErrorClass`,
+`RETRYABLE_PROVIDER_ERROR_CLASSES`, and the backoff/circuit-breaker *state
+machine* built here are all reused for a tool's HTTP-level failures —
+see [gateways.md](gateways.md)'s "Schema validation & resilience" section
+for the honest assessment of how neutral this build actually was (the
+state machine and backoff math were; "what happens when the circuit is
+open" wasn't, and had to be extracted into a shared core before the tool
+path could reuse it without raising a model-specific exception).
+
 ## Per-organization credentials (Phase 5.7a.5, `ACT-MDL-FR-080..083`)
 
 Before this sub-phase, the entire credential story was `MODEL_PROVIDER_

@@ -35,6 +35,22 @@ from app.models.runtime import (
 )
 
 
+def _frozen_http_config(tool: Tool) -> dict | None:
+    """Phase 5.6a.2 (AC-10) -- ``tool.http_config`` copied by value, with
+    ``timeout_seconds`` defaulted in from the tool's own (coarser, always-
+    present) ``timeout_seconds`` column whenever ``http_config`` doesn't
+    already declare a more specific one of its own. Either way, the value
+    that ends up frozen here is the *only* one ``ToolGatewayService.
+    _invoke_http`` ever reads at execution time -- never the live column
+    directly, so a per-tool timeout cap is exactly as immune to being
+    changed for an already-published version as the egress allowlist."""
+    if tool.http_config is None:
+        return None
+    config = dict(tool.http_config)
+    config.setdefault("timeout_seconds", tool.timeout_seconds)
+    return config
+
+
 def build_snapshot(agent: Agent, definition: AgentDefinition, version: AgentVersion, *,
                    release_channel: AgentReleaseChannel | None,
                    release_metadata: AgentReleaseMetadata | None,
@@ -82,8 +98,24 @@ def build_snapshot(agent: Agent, definition: AgentDefinition, version: AgentVers
             # comparison, compatibility diffing) in ways that assume exactly
             # that shape -- changing it would have been a much larger,
             # riskier blast radius than this sub-phase's actual scope.
+            #
+            # Phase 5.6a.2 (ACT-TLX-FR-020, AC-10) -- `input_schema`/
+            # `output_schema` are copied in by value alongside `http_config`
+            # so a tool's declared contract is just as immune to being
+            # widened post-publish as its egress allowlist already was; and
+            # `http_config`'s own `timeout_seconds` closes a gap 5.6a.1 left
+            # open (the HTTP executor previously read the *live*, mutable
+            # `Tool.timeout_seconds` column at execution time -- an explicit
+            # `http_config["timeout_seconds"]` always wins if a tool
+            # declared one there directly).
             "tool_configs": {
-                str(tool.id): {"name": tool.name, "tool_type": tool.tool_type, "http_config": tool.http_config}
+                str(tool.id): {
+                    "name": tool.name,
+                    "tool_type": tool.tool_type,
+                    "http_config": _frozen_http_config(tool),
+                    "input_schema": tool.input_schema,
+                    "output_schema": tool.output_schema,
+                }
                 for tool in (tools or [])
             },
         },

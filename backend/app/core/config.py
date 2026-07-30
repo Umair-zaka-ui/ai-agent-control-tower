@@ -254,6 +254,28 @@ class Settings(BaseSettings):
     MODEL_CREDENTIAL_ENCRYPTION_KEY: str | None = None
     MODEL_CREDENTIAL_ENCRYPTION_KEY_PATH: str = "./.keys/model_credentials.key"
 
+    # --- Phase 5.6a.2: tool schema validation & resilience (ACT-TLX-FR-020..029) ---
+    # Mirrors MODEL_PROVIDER_MAX_RETRIES/RETRY_*/CIRCUIT_* exactly -- the same
+    # "equal jitter" backoff formula and three-state circuit breaker Phase
+    # 5.7a.4 built for model calls, reused via services.py's neutral
+    # `_backoff_delay`/`_circuit_is_open` core, parameterized by these
+    # tool-specific settings instead of the MODEL_PROVIDER_* ones. Only ever
+    # applies to a tool call classified as idempotent (ACT-TLX-FR-026);
+    # undeclared idempotency means these settings are never consulted at all.
+    TOOL_MAX_RETRIES: int = 3
+    TOOL_RETRY_BASE_DELAY_SECONDS: float = 0.5
+    TOOL_RETRY_MAX_DELAY_SECONDS: float = 8.0
+    # Circuit breaker: per tool identifier, in-process, not persisted across
+    # a restart -- same known limitation as MODEL_PROVIDER_CIRCUIT_* (see
+    # docs/runtime/providers.md).
+    TOOL_CIRCUIT_FAILURE_THRESHOLD: int = 5
+    TOOL_CIRCUIT_COOLDOWN_SECONDS: float = 30.0
+    # ACT-TLX-FR-029 -- a ceiling `ToolGatewayService._invoke_http` enforces
+    # per execution id; today's strictly-sequential tool_calls loop never
+    # actually contends it (5.6a.3's model-driven loop is what will), but
+    # the enforcement point exists now so that loop needs no new mechanism.
+    TOOL_MAX_CONCURRENT_REQUESTS_PER_EXECUTION: int = 4
+
     # --- Phase 2: email notifications (SMTP / Mailtrap for development) ---
     NOTIFICATIONS_ENABLED: bool = False
     SMTP_HOST: str = "sandbox.smtp.mailtrap.io"

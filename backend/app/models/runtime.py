@@ -735,12 +735,17 @@ class Tool(Base, UUIDPrimaryKeyMixin):
     # Phase 5.6a.1 (ACT-TLX-FR-004) -- the HTTP action's egress declaration:
     # allowed_hosts, allow_plaintext_http, local_dev_hosts, sensitive_headers,
     # sensitive_body_fields, requires_credential, credential_header,
-    # credential_scheme, max_redirects, max_response_bytes. Only meaningful
-    # when tool_type == "HTTP". Frozen into the version's snapshot document
-    # at publish time (SnapshotBuilderService) -- see
-    # docs/runtime/gateways.md's "Egress control" section for why this
-    # column itself is *not* what the egress guard reads from at execution
-    # time (it reads the frozen snapshot copy, never this live, mutable row).
+    # credential_scheme, max_redirects, max_response_bytes. Phase 5.6a.2
+    # (ACT-TLX-FR-023, FR-024, FR-026) adds `timeout_seconds` (per-tool
+    # override; falls back to this row's own `timeout_seconds` column at
+    # publish time) and `idempotent` (bool, default false -- undeclared
+    # means never retried). Only meaningful when tool_type == "HTTP".
+    # Frozen into the version's snapshot document at publish time
+    # (SnapshotBuilderService) -- see docs/runtime/gateways.md's "Egress
+    # control" and "Schema validation & resilience" sections for why this
+    # column itself is *not* what the egress guard or executor read from at
+    # execution time (they read the frozen snapshot copy, never this live,
+    # mutable row).
     http_config: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -819,6 +824,15 @@ class ToolCall(Base, UUIDPrimaryKeyMixin):
     # denial that happened before reaching the guard (TOOL_NOT_ASSIGNED etc).
     egress_decision: Mapped[str | None] = mapped_column(String(20), nullable=True)
     egress_denied_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Phase 5.6a.2 (ACT-TLX-FR-018, AC-18) -- schema validation & resilience
+    # recording. `error_class` is the same `ProviderErrorClass` value Phase
+    # 5.7a.4 uses for model-provider failures (AC-12: shared taxonomy, not a
+    # parallel enum); null unless this attempt was classified. A retried
+    # idempotent call gets one row per attempt, `attempt_number` 1, 2, 3...
+    # -- see ToolGatewayService._invoke_http.
+    error_class: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    attempt_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    validation_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
