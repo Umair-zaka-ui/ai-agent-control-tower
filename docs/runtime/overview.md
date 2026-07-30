@@ -53,13 +53,22 @@ these being added later.
   not fork a second agent registry. See [architecture.md](architecture.md).
 - The execution queue *is* the `agent_executions` table — no Redis/Celery
   dependency in this environment. See [workers-and-queue.md](workers-and-queue.md).
-- Only the `MOCK` model provider and the `FUNCTION`/`echo` tool action
-  actually execute in this environment; everything else is fully modeled
-  (registry, assignment, authorization) but fails closed if invoked. As of
-  Phase 5.7a.1, `MOCK` runs through a real, pluggable provider interface
-  (`ModelProvider`) and registry rather than a hardcoded branch — adding a
-  real provider (Phase 5.7a.2) is additive, not a rewrite. See
-  [gateways.md](gateways.md) and [providers.md](providers.md).
+- The model side (Phase 5.7a.1-5) executes for real: `MOCK` and
+  `OPENAI_COMPATIBLE` (Ollama/vLLM/LM Studio/OpenAI) both run through a
+  pluggable provider interface, with streaming, classified error
+  handling/retry, and per-organization encrypted credentials. See
+  [providers.md](providers.md).
+- On the tool side, `FUNCTION`/`echo` and (Phase 5.6a.1) `HTTP` actually
+  execute; everything else is fully modeled (registry, assignment,
+  authorization) but fails closed if invoked. `HTTP` makes real outbound
+  requests behind a hardened, per-tool egress allowlist — the SSRF
+  containment boundary every real tool call goes through — see
+  [gateways.md](gateways.md)'s "Egress control" section for the full
+  defense (address validation, DNS-rebinding pinning, redirect
+  re-validation, the local-dev HTTPS exception). The model-driven loop
+  that lets an agent actually *call* a tool mid-execution is Phase
+  5.6a.3, not yet built — this sub-phase built the execution primitive,
+  not the orchestration around it.
 - Agents can also trigger their own next run via `POST
   /runtime/executions/self`, authenticated by API key rather than a human
   session and authorized through ABAC alone (self-only, no agent-to-agent

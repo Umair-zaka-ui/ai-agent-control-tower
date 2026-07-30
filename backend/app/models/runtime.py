@@ -732,6 +732,16 @@ class Tool(Base, UUIDPrimaryKeyMixin):
     requires_approval: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     timeout_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Phase 5.6a.1 (ACT-TLX-FR-004) -- the HTTP action's egress declaration:
+    # allowed_hosts, allow_plaintext_http, local_dev_hosts, sensitive_headers,
+    # sensitive_body_fields, requires_credential, credential_header,
+    # credential_scheme, max_redirects, max_response_bytes. Only meaningful
+    # when tool_type == "HTTP". Frozen into the version's snapshot document
+    # at publish time (SnapshotBuilderService) -- see
+    # docs/runtime/gateways.md's "Egress control" section for why this
+    # column itself is *not* what the egress guard reads from at execution
+    # time (it reads the frozen snapshot copy, never this live, mutable row).
+    http_config: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -795,9 +805,70 @@ class ToolCall(Base, UUIDPrimaryKeyMixin):
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     error_code: Mapped[str | None] = mapped_column(String(50), nullable=True)
     cost: Mapped[float | None] = mapped_column(Numeric(12, 6), nullable=True)
+    # Phase 5.6a.1 (ACT-TLX-FR-011) -- HTTP egress recording. All nullable:
+    # populated only for the HTTP action; FUNCTION/echo rows leave these null,
+    # unchanged from before this phase.
+    target_host: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    target_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    http_method: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    http_status: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    request_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    response_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # "ALLOWED" / "DENIED" -- set only when the egress guard actually ran
+    # (i.e. only for the HTTP action); null for FUNCTION/echo and for any
+    # denial that happened before reaching the guard (TOOL_NOT_ASSIGNED etc).
+    egress_decision: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    egress_denied_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+class ToolCredential(Base, UUIDPrimaryKeyMixin):
+    """Phase 5.6a.1 SRS ACT-TLX-FR-012 — a per-organization, per-tool
+    credential for the HTTP action, encrypted at rest.
+
+    Deliberately a separate table from Phase 5.7a.5's
+    ``provider_credentials``, not a reuse of it: a tool credential and a
+    model-provider credential authenticate to different kinds of
+    resources (an arbitrary third-party HTTP API vs. a registered model
+    provider identifier), and overloading ``provider_credentials.provider``
+    with a tool name would blur that distinction for no real benefit. The
+    storage pattern — and the encryption utility itself
+    (``app/runtime/providers/credential_crypto.py``) — is reused directly;
+    only the table is new. Same redaction discipline as its model-provider
+    counterpart: no column or property here ever holds a decrypted value;
+    decryption happens exactly once, inline, inside
+    ``ToolCredentialService.resolve_secret``."""
+
+    __tablename__ = "tool_credentials"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "tool_id", name="uq_tool_credentials_org_tool"),
+    )
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    tool_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tools.id", ondelete="CASCADE"), nullable=False,
+    )
+    encrypted_secret: Mapped[str] = mapped_column(Text, nullable=False)
+    secret_hint: Mapped[str] = mapped_column(String(8), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="ACTIVE")
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    def __repr__(self) -> str:  # pragma: no cover -- structural safety net, not behavior under test
+        return (f"<ToolCredential id={self.id} organization_id={self.organization_id} "
+               f"tool_id={self.tool_id} hint=***{self.secret_hint} status={self.status}>")
 
 
 class RuntimeEvent(Base, UUIDPrimaryKeyMixin):

@@ -54,6 +54,7 @@ from app.models.runtime import (
     AgentReleaseChannel,
     AgentTool,
     AgentVersion,
+    AgentVersionSnapshot,
     Capability,
     DeploymentHealth,
     ExecutionAttempt,
@@ -65,6 +66,7 @@ from app.models.runtime import (
     RuntimeEvent,
     Tool,
     ToolCall,
+    ToolCredential,
 )
 from app.models.user import User
 from app.runtime.providers.errors import ProviderRequestFailedError
@@ -1592,19 +1594,92 @@ class ModelGatewayService:
 
 
 # --------------------------------------------------------------------------- #
+# Tool credentials (Phase 5.6a.1 SRS ACT-TLX-FR-012)
+# --------------------------------------------------------------------------- #
+class ToolCredentialService:
+    """Per-organization, per-tool credential storage for the HTTP action,
+    encrypted at rest — the same storage pattern and encryption utility
+    (``app/runtime/providers/credential_crypto.py``) Phase 5.7a.5 built for
+    model-provider credentials, reused directly rather than duplicated. A
+    deliberately smaller surface than ``ProviderCredentialService``: no
+    fallback chain, no ``base_url`` override, no CRUD API in this
+    sub-phase (§7 of the build prompt: "likely no new HTTP surface") —
+    just ``store``/``resolve_secret``/``delete``, sufficient for what
+    ``ToolGatewayService``'s HTTP branch needs. A future sub-phase can add
+    a management API the same way 5.7a.5 added one for provider
+    credentials, without changing this storage layer."""
+
+    def __init__(self, db: Session) -> None:
+        self.db = db
+
+    def _get_row(self, organization_id: uuid.UUID, tool_id: uuid.UUID) -> ToolCredential | None:
+        return self.db.execute(
+            select(ToolCredential).where(
+                ToolCredential.organization_id == organization_id, ToolCredential.tool_id == tool_id,
+            )
+        ).scalars().first()
+
+    def store(self, actor: User, organization_id: uuid.UUID, tool_id: uuid.UUID, secret: str) -> ToolCredential:
+        from app.runtime.providers.credential_crypto import encrypt_secret, mask_hint
+
+        row = self._get_row(organization_id, tool_id)
+        encrypted, hint = encrypt_secret(secret), mask_hint(secret)
+        if row is None:
+            row = ToolCredential(organization_id=organization_id, tool_id=tool_id, encrypted_secret=encrypted,
+                                 secret_hint=hint, status="ACTIVE", created_by=actor.id)
+            self.db.add(row)
+        else:
+            row.encrypted_secret = encrypted
+            row.secret_hint = hint
+            row.status = "ACTIVE"
+        self.db.commit()
+        self.db.refresh(row)
+        return row
+
+    def resolve_secret(self, organization_id: uuid.UUID, tool_id: uuid.UUID) -> str | None:
+        """The one place a stored tool credential is decrypted. Returns
+        ``None`` (not an error) when nothing is configured — a tool
+        declaring ``requires_credential`` with nothing stored is a
+        configuration gap the HTTP executor surfaces as a normal request
+        failure (no ``Authorization`` header reaches the remote side),
+        never a crash."""
+        from app.runtime.providers.credential_crypto import decrypt_secret
+
+        row = self._get_row(organization_id, tool_id)
+        if row is None or row.status != "ACTIVE":
+            return None
+        return decrypt_secret(row.encrypted_secret)
+
+    def delete(self, actor: User, organization_id: uuid.UUID, tool_id: uuid.UUID) -> None:
+        row = self._get_row(organization_id, tool_id)
+        if row is not None:
+            self.db.delete(row)
+            self.db.commit()
+
+
+# --------------------------------------------------------------------------- #
 # Tool Gateway (§43, §44)
 # --------------------------------------------------------------------------- #
 class ToolGatewayService:
     """§43 — every tool call is validated against the agent's tool
-    assignment and constraints (§23) before it runs. Only the ``FUNCTION``
-    tool type with the built-in ``EXECUTE``/``READ`` echo actions is
-    actually executable in this environment (no outbound network/DB access
-    from tool calls is wired up); every other tool type is fully modeled
-    (registry, assignment, constraints, authorization) but fails closed
-    with ``TOOL_ACTION_NOT_ALLOWED`` if invoked, matching §36 default deny.
-    Every attempted call — allowed, denied for constraint violation, or
-    denied for an unconnected tool type — is recorded as a ``ToolCall`` row
-    so it's auditable regardless of outcome."""
+    assignment and constraints (§23) before it runs. ``FUNCTION``'s
+    built-in ``EXECUTE``/``READ`` echo actions, and (Phase 5.6a.1) the
+    ``HTTP`` action, are the only tool types actually executable in this
+    environment; every other tool type is fully modeled (registry,
+    assignment, constraints, authorization) but fails closed with
+    ``TOOL_ACTION_NOT_ALLOWED`` if invoked, matching §36 default deny.
+    Every attempted call — allowed, denied for constraint violation, denied
+    at the egress boundary, or denied for an unconnected tool type — is
+    recorded as a ``ToolCall`` row so it's auditable regardless of outcome.
+
+    **The HTTP action's egress allowlist is read from the frozen version
+    snapshot, never from the live, mutable ``Tool`` row** — see
+    ``_frozen_http_config`` — matching this platform's existing rule that
+    every tool invocation is verified against what the *version* actually
+    declared, not whatever a tool has since been edited to (Phase 5.2
+    immutability). See ``docs/runtime/gateways.md``'s "Egress control"
+    section for the full SSRF defense this method's ``HTTP`` branch relies
+    on (``app/runtime/tools/egress_guard.py``/``http_executor.py``)."""
 
     EXECUTABLE_ACTIONS = {"EXECUTE", "READ"}
     # §22 — Read/Write/Execute/Delete/Export/Administrative. ``read_only``
@@ -1640,6 +1715,8 @@ class ToolGatewayService:
             call.status = "ALLOWED"
             call.output_summary = {"echo": params}
             call.cost = 0
+        elif tool.tool_type == "HTTP" and action in self.EXECUTABLE_ACTIONS:
+            self._invoke_http(db, execution, agent, tool, call, params)
         else:
             call.status = "DENIED"
             call.error_code = ErrorCode.TOOL_ACTION_NOT_ALLOWED
@@ -1650,9 +1727,145 @@ class ToolGatewayService:
         if call.status == "DENIED":
             if constraint_violation:
                 raise IdentityError(ErrorCode.TOOL_CONSTRAINT_VIOLATION, constraint_violation)
+            if call.error_code == ErrorCode.TOOL_EGRESS_DENIED:
+                # ACT-TLX-FR-069-equivalent for tools: the *reason* lives on
+                # the ToolCall row (egress_denied_reason) and the security
+                # event below for an admin to inspect -- the message an
+                # untrusted caller/model sees never repeats the target host,
+                # resolved IP, or any other topology detail (§7).
+                raise IdentityError(ErrorCode.TOOL_EGRESS_DENIED,
+                                   f"Outbound request from tool '{tool_name}' was denied by egress policy.")
             raise IdentityError(ErrorCode.TOOL_ACTION_NOT_ALLOWED,
                                f"Tool type '{tool.tool_type}' is not connected in this environment.")
         return call
+
+    def _frozen_http_config(self, db: Session, execution: AgentExecution, tool: Tool) -> dict | None:
+        """``ACT-TLX-FR-004``/``AC-16``/``AC-28`` — the HTTP action's
+        policy comes from the *frozen* snapshot document built at publish
+        time (``SnapshotBuilderService``), never from ``tool.http_config``
+        directly: returns ``None`` (denying the call) both when the
+        version has no snapshot yet (cannot happen for anything actually
+        executing — see docs/runtime/gateways.md) and, more importantly,
+        when this specific tool was never part of ``tools_snapshot`` at
+        publish time at all — a tool an agent was assigned *after*
+        publish, or removed from the version's frozen tool list, has no
+        entry here and is rejected outright, exactly as a tool call must
+        be "verified against tools_snapshot.\""""
+        snapshot_row = db.execute(
+            select(AgentVersionSnapshot).where(AgentVersionSnapshot.agent_version_id == execution.agent_version_id)
+        ).scalars().first()
+        if snapshot_row is None:
+            return None
+        tool_configs = ((snapshot_row.snapshot or {}).get("runtime") or {}).get("tool_configs") or {}
+        entry = tool_configs.get(str(tool.id))
+        if entry is None:
+            return None
+        return entry.get("http_config")
+
+    def _invoke_http(self, db: Session, execution: AgentExecution, agent: Agent, tool: Tool,
+                     call: ToolCall, params: dict) -> None:
+        """Mutates ``call`` in place with the outcome — never raises;
+        ``invoke()`` above is the single place that turns a ``DENIED`` call
+        into an exception, so every code path here has exactly one job:
+        decide ``call.status``/``call.error_code`` and populate the
+        egress/HTTP recording columns (``ACT-TLX-FR-011``)."""
+        from app.runtime.tools.egress_guard import DEFAULT_MAX_REDIRECTS, EgressPolicy
+        from app.runtime.tools.http_executor import (
+            DEFAULT_MAX_RESPONSE_BYTES,
+            DEFAULT_TIMEOUT_SECONDS,
+            execute_http_tool,
+            redact_body,
+            redact_headers,
+        )
+
+        http_config = self._frozen_http_config(db, execution, tool)
+        if not http_config or not http_config.get("allowed_hosts"):
+            call.status = "DENIED"
+            call.error_code = ErrorCode.TOOL_ACTION_NOT_ALLOWED
+            return
+
+        policy = EgressPolicy(
+            allowed_hosts=frozenset(http_config.get("allowed_hosts") or ()),
+            allow_plaintext_http=bool(http_config.get("allow_plaintext_http", False)),
+            local_dev_hosts=frozenset(http_config.get("local_dev_hosts") or ()),
+            max_redirects=int(http_config.get("max_redirects", DEFAULT_MAX_REDIRECTS)),
+        )
+        sensitive_headers = frozenset(http_config.get("sensitive_headers") or ())
+        sensitive_body_fields = frozenset(http_config.get("sensitive_body_fields") or ())
+        # ACT-TLX-FR-010 -- the HTTP method is derived from the already-
+        # authorized `action` (or a tool-fixed override), never from `params`:
+        # a model asking for "READ" can never smuggle in a DELETE.
+        method = http_config.get("method") or ("GET" if call.action == "READ" else "POST")
+
+        headers: dict[str, str] = {}
+        if http_config.get("requires_credential"):
+            secret = ToolCredentialService(db).resolve_secret(agent.organization_id, tool.id)
+            if secret:
+                header_name = http_config.get("credential_header", "Authorization")
+                scheme = http_config.get("credential_scheme", "Bearer")
+                headers[header_name] = f"{scheme} {secret}" if scheme else secret
+
+        # ACT-TLX-FR-013/AC-24 -- record which headers were actually sent,
+        # redacted, so an admin auditing this call can see *that* a
+        # credential was attached without ever seeing its value.
+        call.input_summary = {**(call.input_summary or {}), "_request_headers": redact_headers(
+            headers, sensitive_headers)} if headers else call.input_summary
+
+        # ACT-TLX-FR-010 -- only the path/query/body of `params` (model-
+        # influenceable) ever reach the request; the host always comes from
+        # `tool.endpoint_reference` (the tool's own declared, allowlisted
+        # base) via `_build_target_url`'s deliberate refusal to resolve an
+        # absolute URL supplied here against that base.
+        path = params.get("path") if isinstance(params, dict) else None
+        query = params.get("query") if isinstance(params, dict) else None
+        body = params.get("body") if isinstance(params, dict) else None
+
+        result = execute_http_tool(
+            method=method, base_url=tool.endpoint_reference or "", path=path, query=query,
+            headers=headers, json_body=body, policy=policy,
+            sensitive_headers=sensitive_headers, sensitive_body_fields=sensitive_body_fields,
+            max_response_bytes=int(http_config.get("max_response_bytes", DEFAULT_MAX_RESPONSE_BYTES)),
+            timeout_seconds=float(tool.timeout_seconds or DEFAULT_TIMEOUT_SECONDS),
+        )
+
+        decision = result.egress_decision
+        call.target_host = decision.host
+        call.http_method = method
+        call.egress_decision = "ALLOWED" if decision.allowed else "DENIED"
+        call.egress_denied_reason = decision.reason
+
+        if not decision.allowed:
+            call.status = "DENIED"
+            call.error_code = ErrorCode.TOOL_EGRESS_DENIED
+            # ACT-TLX-FR-011/§7 -- security-severity, routed to alerting: an
+            # egress denial is a signal someone may be probing the boundary.
+            _record_event(db, AuthorizationAuditEvent.RUNTIME_TOOL_EGRESS_DENIED, None,
+                         organization_id=agent.organization_id, agent_id=agent.id, execution_id=execution.id,
+                         severity="CRITICAL",
+                         meta={"tool": tool.name, "host": decision.host, "reason": decision.reason})
+            return
+
+        call.target_path = (path or "")[:2048] if path else None
+        call.http_status = result.status
+        call.request_bytes = result.request_bytes
+        call.response_bytes = result.response_bytes
+        call.status = "ALLOWED"
+        call.cost = 0
+        parsed_body = None
+        if result.response_body_redacted:
+            try:
+                parsed_body = json.loads(result.response_body_redacted)
+            except ValueError:
+                parsed_body = None
+        call.output_summary = {
+            "status": result.status,
+            "body": redact_body(parsed_body, sensitive_body_fields) if isinstance(parsed_body, dict) else None,
+            "truncated": result.truncated,
+            "error": result.error,
+        }
+        _record_event(db, AuthorizationAuditEvent.RUNTIME_TOOL_INVOKED, None,
+                     organization_id=agent.organization_id, agent_id=agent.id, execution_id=execution.id,
+                     meta={"tool": tool.name, "host": decision.host, "status": result.status})
 
     def _check_constraints(self, db: Session, execution: AgentExecution, tool: Tool,
                            assignment: AgentTool, action: str) -> str | None:
@@ -2315,6 +2528,10 @@ class ExecutionWorkerService:
         non_retryable = {ErrorCode.RUNTIME_POLICY_DENIED, ErrorCode.MODEL_NOT_APPROVED,
                          ErrorCode.TOOL_ACTION_NOT_ALLOWED, ErrorCode.TOOL_NOT_ASSIGNED,
                          ErrorCode.TOOL_NOT_FOUND, ErrorCode.TOOL_CONSTRAINT_VIOLATION,
+                         # Phase 5.6a.1 -- an egress denial is a policy fact about the
+                         # target (or the tool's declared allowlist), not a transient
+                         # failure; retrying reaches the same denial every time.
+                         ErrorCode.TOOL_EGRESS_DENIED,
                          ErrorCode.VALIDATION_ERROR, ErrorCode.MODEL_PROVIDER_UNAVAILABLE,
                          # Phase 5.7a.5 — a missing credential needs an admin to configure
                          # one via the API, not an automatic requeue; same treatment as

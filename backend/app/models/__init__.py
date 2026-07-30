@@ -80,6 +80,7 @@ from app.models.runtime import (
     SigningKeyVersion,
     Tool,
     ToolCall,
+    ToolCredential,
 )
 from app.models.rbac import (
     AuthorizationAudit,
@@ -149,6 +150,7 @@ __all__ = [
     "Tool",
     "AgentTool",
     "ToolCall",
+    "ToolCredential",
     "RuntimeEvent",
     "DeploymentHealth",
     "IdempotencyRecord",

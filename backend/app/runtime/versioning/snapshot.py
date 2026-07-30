@@ -31,6 +31,7 @@ from app.models.runtime import (
     AgentReleaseNote,
     AgentVersion,
     AgentVersionSnapshot,
+    Tool,
 )
 
 
@@ -38,7 +39,8 @@ def build_snapshot(agent: Agent, definition: AgentDefinition, version: AgentVers
                    release_channel: AgentReleaseChannel | None,
                    release_metadata: AgentReleaseMetadata | None,
                    artifacts: list[AgentReleaseArtifact],
-                   notes: list[AgentReleaseNote], publisher_id: uuid.UUID | None) -> dict:
+                   notes: list[AgentReleaseNote], publisher_id: uuid.UUID | None,
+                   tools: list[Tool] | None = None) -> dict:
     return {
         "identity": {
             "agent_id": str(agent.id),
@@ -67,6 +69,23 @@ def build_snapshot(agent: Agent, definition: AgentDefinition, version: AgentVers
             "capabilities_snapshot": version.capabilities_snapshot,
             "tools_snapshot": version.tools_snapshot,
             "policy_snapshot": version.policy_snapshot,
+            # Phase 5.6a.1 (ACT-TLX-FR-004) -- each assigned tool's full
+            # HTTP egress declaration (host allowlist, plaintext exception,
+            # redaction fields, credential requirement), copied by value
+            # from the live `Tool` row at publish time -- the egress guard
+            # reads *this*, never `Tool.http_config` directly, so a tool's
+            # allowlist cannot be widened for an already-published version
+            # without a new version and re-review. Deliberately a new,
+            # separate key rather than changing `tools_snapshot`'s own
+            # shape: that field is still a bare list of tool-id strings,
+            # consumed elsewhere (attestation manifest building, version
+            # comparison, compatibility diffing) in ways that assume exactly
+            # that shape -- changing it would have been a much larger,
+            # riskier blast radius than this sub-phase's actual scope.
+            "tool_configs": {
+                str(tool.id): {"name": tool.name, "tool_type": tool.tool_type, "http_config": tool.http_config}
+                for tool in (tools or [])
+            },
         },
         "release": {
             "version": version.version,
@@ -142,10 +161,12 @@ class SnapshotBuilderService:
         notes = list(self.db.execute(
             select(AgentReleaseNote).where(AgentReleaseNote.agent_version_id == version.id)
         ).scalars())
+        tool_ids = [uuid.UUID(t) for t in (version.tools_snapshot or [])]
+        tools = list(self.db.execute(select(Tool).where(Tool.id.in_(tool_ids))).scalars()) if tool_ids else []
 
         document = build_snapshot(agent, definition, version, release_channel=release_channel,
                                   release_metadata=release_metadata, artifacts=artifacts, notes=notes,
-                                  publisher_id=publisher_id)
+                                  publisher_id=publisher_id, tools=tools)
         checksum = checksum_of(document)
         snapshot = AgentVersionSnapshot(agent_version_id=version.id, snapshot=document, checksum=checksum,
                                         checksum_algorithm="canonical-sha256")
