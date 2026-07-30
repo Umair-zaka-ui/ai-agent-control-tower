@@ -1246,7 +1246,13 @@ class ProviderCredentialService:
 # (``ACT-MDL-FR-006``'s "no wire vocabulary crosses the adapter boundary"
 # extends to this: retry policy must never need to know an adapter's wire
 # format).
-class _ProviderCircuitState:
+class _CircuitState:
+    """Generic per-identifier circuit-breaker state -- three-state (closed/
+    open/half-open) exactly as ACT-MDL-FR-067 defined it, with nothing
+    provider-specific anywhere in this class. Phase 5.6a.2 reuses it
+    unchanged for tools, under its own store/settings (see
+    ``_tool_circuit_state`` below) rather than duplicating it."""
+
     __slots__ = ("failure_count", "opened_at")
 
     def __init__(self) -> None:
@@ -1254,17 +1260,61 @@ class _ProviderCircuitState:
         self.opened_at: float | None = None
 
 
-# ACT-MDL-FR-067 — per-provider identifier, in-process, three-state (closed/
-# open/half-open) without a distinct "HALF_OPEN" flag: ``opened_at is None``
-# is closed; ``opened_at`` set and within the cooldown window is open;
-# ``opened_at`` set but the cooldown has elapsed is half-open (the next
-# call is let through, and either resets the breaker via
-# ``_circuit_record_success`` or re-opens it, extending the cooldown, via
-# ``_circuit_record_failure``). Deliberately a plain module-level dict, not
-# persisted anywhere -- a fresh process starts every provider closed; see
+def _circuit_is_open(identifier: str, store: dict[str, _CircuitState], *, cooldown_seconds: float) -> bool:
+    """The neutral core Phase 5.6a.2 extracted out of ``_circuit_before_
+    call`` below. 5.7a.4 built the *state machine* itself generically
+    (keyed by a plain string identifier, no provider-specific data), but
+    coupled "what happens when open" directly into the check -- raising
+    ``ProviderRequestFailedError``, which is genuinely model-specific and
+    could not be reused as-is for tools (a failed tool call must never
+    raise past the single call; see ``ToolGatewayService._invoke_http``).
+    This is the reusable half of that function; each call site supplies
+    its own "what to do when open" behavior on top."""
+    state = store.setdefault(identifier, _CircuitState())
+    if state.opened_at is None:
+        return False
+    return (time.monotonic() - state.opened_at) < cooldown_seconds  # else: half-open, let it through
+
+
+def _circuit_note_success(identifier: str, store: dict[str, _CircuitState]) -> None:
+    state = store.setdefault(identifier, _CircuitState())
+    state.failure_count = 0
+    state.opened_at = None
+
+
+def _circuit_note_failure(identifier: str, store: dict[str, _CircuitState], *, failure_threshold: int) -> None:
+    state = store.setdefault(identifier, _CircuitState())
+    state.failure_count += 1
+    if state.failure_count >= failure_threshold:
+        state.opened_at = time.monotonic()
+
+
+def _backoff_delay(attempt: int, *, retry_after_seconds: float | None, base_delay: float, max_delay: float) -> float:
+    """The neutral core Phase 5.6a.2 extracted out of ``_provider_backoff_
+    delay`` below -- pure math, parameterized by the caller's own base/cap
+    rather than reading ``settings.MODEL_PROVIDER_RETRY_*`` directly, so
+    the tool path can supply its own ``TOOL_RETRY_*`` settings through the
+    exact same "equal jitter" formula (ACT-MDL-FR-063/064) instead of
+    reimplementing it. A caller-supplied ``retry_after_seconds`` (e.g. a
+    provider's ``Retry-After`` header) always wins over computed backoff."""
+    if retry_after_seconds is not None:
+        return max(retry_after_seconds, 0.0)
+    half = min(max_delay, base_delay * (2 ** attempt)) / 2
+    return half + random.uniform(0, half)
+
+
+# --------------------------------------------------------------------------- #
+# Provider (model) circuit breaker -- Phase 5.7a.4. Public surface
+# (``_circuit_before_call``/``_circuit_record_success``/``_circuit_record_
+# failure``/``_provider_backoff_delay``/``reset_provider_circuit_breakers``)
+# unchanged: same signatures, same behavior, now implemented on top of the
+# neutral core above instead of duplicating the state machine.
+# --------------------------------------------------------------------------- #
+# ACT-MDL-FR-067 — per-provider identifier, in-process, not persisted
+# anywhere -- a fresh process starts every provider closed; see
 # docs/runtime/providers.md's "known limitation" for why (Milestone 3's
 # distributed worker model would need a shared store; not this phase's job).
-_provider_circuit_state: dict[str, _ProviderCircuitState] = {}
+_provider_circuit_state: dict[str, _CircuitState] = {}
 
 
 def reset_provider_circuit_breakers() -> None:
@@ -1279,33 +1329,26 @@ def reset_provider_circuit_breakers() -> None:
 def _circuit_before_call(provider_name: str) -> None:
     """ACT-MDL-FR-067, AC-16 — raises (failing fast, no call made) if this
     provider's circuit is currently open."""
-    state = _provider_circuit_state.setdefault(provider_name, _ProviderCircuitState())
-    if state.opened_at is None:
-        return
-    if (time.monotonic() - state.opened_at) >= settings.MODEL_PROVIDER_CIRCUIT_COOLDOWN_SECONDS:
-        return  # half-open: let exactly this one call through
-    raise ProviderRequestFailedError(
-        provider_name, "circuit breaker is open for this provider -- failing fast without calling it",
-        error_class=ProviderErrorClass.PROVIDER_UNAVAILABLE,
-    )
+    if _circuit_is_open(provider_name, _provider_circuit_state,
+                        cooldown_seconds=settings.MODEL_PROVIDER_CIRCUIT_COOLDOWN_SECONDS):
+        raise ProviderRequestFailedError(
+            provider_name, "circuit breaker is open for this provider -- failing fast without calling it",
+            error_class=ProviderErrorClass.PROVIDER_UNAVAILABLE,
+        )
 
 
 def _circuit_record_success(provider_name: str) -> None:
     """AC-17 — a success (including the one probing half-open call) closes
     the circuit."""
-    state = _provider_circuit_state.setdefault(provider_name, _ProviderCircuitState())
-    state.failure_count = 0
-    state.opened_at = None
+    _circuit_note_success(provider_name, _provider_circuit_state)
 
 
 def _circuit_record_failure(provider_name: str) -> None:
     """AC-15 — opens the circuit once consecutive failures reach the
     configured threshold; a failure while already open (the half-open probe
     failing again) re-opens it, restarting the cooldown."""
-    state = _provider_circuit_state.setdefault(provider_name, _ProviderCircuitState())
-    state.failure_count += 1
-    if state.failure_count >= settings.MODEL_PROVIDER_CIRCUIT_FAILURE_THRESHOLD:
-        state.opened_at = time.monotonic()
+    _circuit_note_failure(provider_name, _provider_circuit_state,
+                          failure_threshold=settings.MODEL_PROVIDER_CIRCUIT_FAILURE_THRESHOLD)
 
 
 def _provider_backoff_delay(attempt: int, *, retry_after_seconds: float | None) -> float:
@@ -1316,12 +1359,45 @@ def _provider_backoff_delay(attempt: int, *, retry_after_seconds: float | None) 
     across attempts (until the cap), so a backoff test can assert ordering
     without needing a fixed random seed, while still adding genuine
     randomized jitter on top of that floor."""
-    if retry_after_seconds is not None:
-        return max(retry_after_seconds, 0.0)
-    base = settings.MODEL_PROVIDER_RETRY_BASE_DELAY_SECONDS
-    cap = settings.MODEL_PROVIDER_RETRY_MAX_DELAY_SECONDS
-    half = min(cap, base * (2 ** attempt)) / 2
-    return half + random.uniform(0, half)
+    return _backoff_delay(attempt, retry_after_seconds=retry_after_seconds,
+                          base_delay=settings.MODEL_PROVIDER_RETRY_BASE_DELAY_SECONDS,
+                          max_delay=settings.MODEL_PROVIDER_RETRY_MAX_DELAY_SECONDS)
+
+
+# --------------------------------------------------------------------------- #
+# Tool circuit breaker -- Phase 5.6a.2 SRS ACT-TLX-FR-027. Same neutral
+# core as the provider breaker above, own store and own (TOOL_CIRCUIT_*)
+# settings so a burst of tool failures can never trip a model provider's
+# breaker or vice versa. Keyed by ``str(tool.id)`` -- a separate dict, not
+# a shared namespace with ``_provider_circuit_state``, so no prefix is
+# needed to avoid a name collision between a tool and a provider identifier.
+# --------------------------------------------------------------------------- #
+_tool_circuit_state: dict[str, _CircuitState] = {}
+
+
+def reset_tool_circuit_breakers() -> None:
+    """Test-only reset hook, mirroring ``reset_provider_circuit_breakers``."""
+    _tool_circuit_state.clear()
+
+
+def _tool_circuit_is_open(tool_identifier: str) -> bool:
+    return _circuit_is_open(tool_identifier, _tool_circuit_state,
+                            cooldown_seconds=settings.TOOL_CIRCUIT_COOLDOWN_SECONDS)
+
+
+def _tool_circuit_record_success(tool_identifier: str) -> None:
+    _circuit_note_success(tool_identifier, _tool_circuit_state)
+
+
+def _tool_circuit_record_failure(tool_identifier: str) -> None:
+    _circuit_note_failure(tool_identifier, _tool_circuit_state,
+                          failure_threshold=settings.TOOL_CIRCUIT_FAILURE_THRESHOLD)
+
+
+def _tool_backoff_delay(attempt: int, *, retry_after_seconds: float | None = None) -> float:
+    return _backoff_delay(attempt, retry_after_seconds=retry_after_seconds,
+                          base_delay=settings.TOOL_RETRY_BASE_DELAY_SECONDS,
+                          max_delay=settings.TOOL_RETRY_MAX_DELAY_SECONDS)
 
 
 # --------------------------------------------------------------------------- #
@@ -1594,6 +1670,72 @@ class ModelGatewayService:
 
 
 # --------------------------------------------------------------------------- #
+# Tool schema validation & HTTP-failure classification (Phase 5.6a.2 SRS
+# ACT-TLX-FR-020..028)
+# --------------------------------------------------------------------------- #
+def _tool_schema_violation(instance, schema: dict | None) -> dict | None:
+    """Validates ``instance`` against ``schema`` using the same
+    ``jsonschema`` library (and the tool's own already-declared JSON-Schema
+    parameters — ACT-TLX-FR-020's "reuse the existing schema language, not
+    a new one") ``_validate_schema`` above uses for the agent-level input/
+    output contract. Returns ``None`` -- valid, *or* no schema declared at
+    all (§10.15 raise-don't-guess: absence of a schema is not itself a
+    violation) -- or a structured, model-readable description of the first
+    violation ``jsonschema`` reports."""
+    if not schema:
+        return None
+    try:
+        jsonschema.validate(instance=instance, schema=schema)
+    except jsonschema.ValidationError as exc:
+        return {"message": exc.message, "path": list(exc.absolute_path), "schema_path": list(exc.absolute_schema_path)}
+    except jsonschema.SchemaError as exc:
+        return {"message": f"The tool's declared schema is invalid: {exc.message}", "path": [], "schema_path": []}
+    return None
+
+
+def _classify_tool_http_status(status_code: int) -> ProviderErrorClass:
+    """Phase 5.6a.2 — reuses the exact status-code boundaries
+    ``openai_compatible._classify_status_error`` established for the model
+    side (429 / 401,403 / 5xx / other 4xx), minus the two model-specific
+    body-text markers (context-length / content-filter) that have no
+    meaning for an arbitrary third-party HTTP tool's response."""
+    if status_code == 429:
+        return ProviderErrorClass.RATE_LIMITED
+    if status_code in (401, 403):
+        return ProviderErrorClass.AUTHENTICATION_FAILED
+    if status_code >= 500:
+        return ProviderErrorClass.PROVIDER_UNAVAILABLE
+    if status_code >= 400:
+        return ProviderErrorClass.INVALID_REQUEST
+    return ProviderErrorClass.UNKNOWN
+
+
+def _classify_tool_execution_failure(result) -> tuple[ProviderErrorClass, str]:
+    """Maps a completed (already egress-*allowed*) ``HttpExecutionResult``
+    that was not a plain success onto the **same** ``ProviderErrorClass``
+    taxonomy 5.7a.4 built for model calls (AC-12) plus this sub-phase's own
+    ``ErrorCode``. ``REDIRECT_DEPTH_EXCEEDED``/``RESPONSE_TOO_LARGE`` have
+    no natural bucket in an eight-class taxonomy built for model-provider
+    failures — both deliberately map to ``UNKNOWN``: ``UNKNOWN`` is already
+    guaranteed never to retry (``RETRYABLE_PROVIDER_ERROR_CLASSES``), which
+    is the correct behavior for both (retrying either reaches an identical
+    outcome every time against the same target — there is nothing transient
+    about a response that is simply too large, or a redirect chain that
+    simply loops)."""
+    if result.error == "TIMEOUT":
+        return ProviderErrorClass.TIMEOUT, ErrorCode.TOOL_TIMEOUT
+    if result.error == "RESPONSE_TOO_LARGE":
+        return ProviderErrorClass.UNKNOWN, ErrorCode.TOOL_RESPONSE_TOO_LARGE
+    if result.error and result.error.startswith("TRANSPORT_ERROR"):
+        return ProviderErrorClass.PROVIDER_UNAVAILABLE, ErrorCode.TOOL_EXECUTION_FAILED
+    if result.error in ("REDIRECT_DEPTH_EXCEEDED", "REDIRECT_MISSING_LOCATION"):
+        return ProviderErrorClass.UNKNOWN, ErrorCode.TOOL_EXECUTION_FAILED
+    if result.status is not None:
+        return _classify_tool_http_status(result.status), ErrorCode.TOOL_EXECUTION_FAILED
+    return ProviderErrorClass.UNKNOWN, ErrorCode.TOOL_EXECUTION_FAILED
+
+
+# --------------------------------------------------------------------------- #
 # Tool credentials (Phase 5.6a.1 SRS ACT-TLX-FR-012)
 # --------------------------------------------------------------------------- #
 class ToolCredentialService:
@@ -1672,14 +1814,16 @@ class ToolGatewayService:
     at the egress boundary, or denied for an unconnected tool type — is
     recorded as a ``ToolCall`` row so it's auditable regardless of outcome.
 
-    **The HTTP action's egress allowlist is read from the frozen version
-    snapshot, never from the live, mutable ``Tool`` row** — see
-    ``_frozen_http_config`` — matching this platform's existing rule that
-    every tool invocation is verified against what the *version* actually
-    declared, not whatever a tool has since been edited to (Phase 5.2
-    immutability). See ``docs/runtime/gateways.md``'s "Egress control"
-    section for the full SSRF defense this method's ``HTTP`` branch relies
-    on (``app/runtime/tools/egress_guard.py``/``http_executor.py``)."""
+    **The HTTP action's egress allowlist, per-tool caps, and input/output
+    schema are all read from the frozen version snapshot, never from the
+    live, mutable ``Tool`` row** — see ``_frozen_tool_entry`` — matching
+    this platform's existing rule that every tool invocation is verified
+    against what the *version* actually declared, not whatever a tool has
+    since been edited to (Phase 5.2 immutability). See
+    ``docs/runtime/gateways.md``'s "Egress control" and "Schema validation
+    & resilience" sections for the full SSRF defense and retry/circuit-
+    breaker design this class relies on (``app/runtime/tools/egress_
+    guard.py``/``http_executor.py``/``concurrency.py``)."""
 
     EXECUTABLE_ACTIONS = {"EXECUTE", "READ"}
     # §22 — Read/Write/Execute/Delete/Export/Administrative. ``read_only``
@@ -1708,23 +1852,59 @@ class ToolGatewayService:
         started = _now()
         call = ToolCall(execution_id=execution.id, agent_id=agent.id, tool_id=tool.id, action=action,
                         input_summary=params, started_at=started)
+        entry = self._frozen_tool_entry(db, execution, tool)
+        # Phase 5.6a.2 (ACT-TLX-FR-020, FR-021, AC-02, AC-04) -- argument
+        # validation runs before *anything* else that could have a side
+        # effect (before FUNCTION's echo, and before the HTTP branch even
+        # builds an EgressPolicy, let alone resolves DNS) -- no point
+        # evaluating egress for a call whose arguments are already invalid.
+        # Constraint violations still take precedence: an action this
+        # agent isn't authorized for at all is rejected before its
+        # arguments are even looked at.
+        input_violation = None if constraint_violation else _tool_schema_violation(
+            params, (entry or {}).get("input_schema"))
+
         if constraint_violation:
             call.status = "DENIED"
             call.error_code = ErrorCode.TOOL_CONSTRAINT_VIOLATION
+        elif input_violation is not None:
+            call.status = "FAILED"
+            call.error_code = ErrorCode.TOOL_SCHEMA_INVALID
+            call.error_class = ProviderErrorClass.INVALID_REQUEST.value
+            call.attempt_number = 1
+            call.validation_error = json.dumps(input_violation)
         elif tool.tool_type == "FUNCTION" and action in self.EXECUTABLE_ACTIONS:
             call.status = "ALLOWED"
             call.output_summary = {"echo": params}
+            call.attempt_number = 1
             call.cost = 0
         elif tool.tool_type == "HTTP" and action in self.EXECUTABLE_ACTIONS:
-            self._invoke_http(db, execution, agent, tool, call, params)
+            call = self._invoke_http(db, execution, agent, tool, call, params, entry)
         else:
             call.status = "DENIED"
             call.error_code = ErrorCode.TOOL_ACTION_NOT_ALLOWED
         call.completed_at = _now()
-        call.duration_ms = int((call.completed_at - started).total_seconds() * 1000)
+        # `call` may have been reassigned to a fresh row for a later retry
+        # attempt (see `_invoke_http`) -- always measure against *that*
+        # row's own `started_at`, never the outer `started` from before the
+        # whole (possibly multi-attempt) invocation began.
+        call.duration_ms = int((call.completed_at - (call.started_at or started)).total_seconds() * 1000)
         db.add(call)
         db.flush()
-        if call.status == "DENIED":
+        if call.status == "FAILED":
+            # Phase 5.6a.2 (ACT-TLX-FR-028, AC-20) -- unlike a ``DENIED``
+            # call (a governance/authorization/egress-policy fact, unchanged
+            # from before this sub-phase), a ``FAILED`` call is the outcome
+            # of an *attempted* invocation: a schema violation, an
+            # exhausted retry, a timeout, an oversized response, an open
+            # circuit, or a concurrency-ceiling rejection. None of these
+            # abort the execution -- the structured error lives on this row
+            # (``error_code``/``error_class``/``validation_error``) for a
+            # future model turn (5.6a.3's loop) to read and act on.
+            _record_event(db, AuthorizationAuditEvent.RUNTIME_TOOL_FAILED, None,
+                         organization_id=agent.organization_id, agent_id=agent.id, execution_id=execution.id,
+                         meta={"tool": tool.name, "error_code": call.error_code, "error_class": call.error_class})
+        elif call.status == "DENIED":
             if constraint_violation:
                 raise IdentityError(ErrorCode.TOOL_CONSTRAINT_VIOLATION, constraint_violation)
             if call.error_code == ErrorCode.TOOL_EGRESS_DENIED:
@@ -1739,36 +1919,49 @@ class ToolGatewayService:
                                f"Tool type '{tool.tool_type}' is not connected in this environment.")
         return call
 
-    def _frozen_http_config(self, db: Session, execution: AgentExecution, tool: Tool) -> dict | None:
-        """``ACT-TLX-FR-004``/``AC-16``/``AC-28`` — the HTTP action's
-        policy comes from the *frozen* snapshot document built at publish
-        time (``SnapshotBuilderService``), never from ``tool.http_config``
-        directly: returns ``None`` (denying the call) both when the
-        version has no snapshot yet (cannot happen for anything actually
-        executing — see docs/runtime/gateways.md) and, more importantly,
-        when this specific tool was never part of ``tools_snapshot`` at
-        publish time at all — a tool an agent was assigned *after*
-        publish, or removed from the version's frozen tool list, has no
-        entry here and is rejected outright, exactly as a tool call must
-        be "verified against tools_snapshot.\""""
+    def _frozen_tool_entry(self, db: Session, execution: AgentExecution, tool: Tool) -> dict | None:
+        """``ACT-TLX-FR-004``/``ACT-TLX-FR-020``/``AC-10``/``AC-16``/
+        ``AC-28`` — every per-tool declaration this sub-phase and 5.6a.1
+        enforce (the HTTP egress policy, the input/output schema, the
+        idempotency flag, the size/timeout caps) comes from the *frozen*
+        snapshot document built at publish time (``SnapshotBuilderService``),
+        never from the live, mutable ``Tool`` row directly: returns
+        ``None`` both when the version has no snapshot yet (cannot happen
+        for anything actually executing — see docs/runtime/gateways.md)
+        and, more importantly, when this specific tool was never part of
+        ``tools_snapshot`` at publish time at all — a tool an agent was
+        assigned *after* publish, or removed from the version's frozen
+        tool list, has no entry here and is treated as declaring nothing
+        (no schema to validate against; the HTTP branch separately treats
+        a missing/empty entry as an outright denial, exactly as a tool
+        call must be "verified against tools_snapshot.\")"""
         snapshot_row = db.execute(
             select(AgentVersionSnapshot).where(AgentVersionSnapshot.agent_version_id == execution.agent_version_id)
         ).scalars().first()
         if snapshot_row is None:
             return None
         tool_configs = ((snapshot_row.snapshot or {}).get("runtime") or {}).get("tool_configs") or {}
-        entry = tool_configs.get(str(tool.id))
-        if entry is None:
-            return None
-        return entry.get("http_config")
+        return tool_configs.get(str(tool.id))
 
     def _invoke_http(self, db: Session, execution: AgentExecution, agent: Agent, tool: Tool,
-                     call: ToolCall, params: dict) -> None:
-        """Mutates ``call`` in place with the outcome — never raises;
-        ``invoke()`` above is the single place that turns a ``DENIED`` call
-        into an exception, so every code path here has exactly one job:
-        decide ``call.status``/``call.error_code`` and populate the
-        egress/HTTP recording columns (``ACT-TLX-FR-011``)."""
+                     call: ToolCall, params: dict, entry: dict | None) -> ToolCall:
+        """Returns the ``ToolCall`` row representing the *final* attempt —
+        ``call`` itself for a call that never retries, or a fresh row (with
+        its own ``attempt_number``) when ``call``'s own attempt failed
+        transiently and the tool is declared idempotent. Every non-final
+        attempt is flushed here directly (it needs to be durable before the
+        next attempt's backoff sleep); only the final row is left for
+        ``invoke()`` above to finish (``completed_at``/``duration_ms``/
+        ``db.add``/``db.flush``), exactly as every other branch there
+        already works.
+
+        Never raises for anything this method itself decides (an egress
+        denial, a schema-invalid response, an exhausted retry, a timeout, a
+        too-large response, an open circuit, a concurrency-ceiling
+        rejection) -- ``invoke()`` is still the single place a ``DENIED``
+        call becomes an exception, and (Phase 5.6a.2) a ``FAILED`` call
+        never does."""
+        from app.runtime.tools.concurrency import ToolConcurrencyLimitExceeded, track as track_concurrency
         from app.runtime.tools.egress_guard import DEFAULT_MAX_REDIRECTS, EgressPolicy
         from app.runtime.tools.http_executor import (
             DEFAULT_MAX_RESPONSE_BYTES,
@@ -1778,11 +1971,11 @@ class ToolGatewayService:
             redact_headers,
         )
 
-        http_config = self._frozen_http_config(db, execution, tool)
+        http_config = (entry or {}).get("http_config")
         if not http_config or not http_config.get("allowed_hosts"):
             call.status = "DENIED"
             call.error_code = ErrorCode.TOOL_ACTION_NOT_ALLOWED
-            return
+            return call
 
         policy = EgressPolicy(
             allowed_hosts=frozenset(http_config.get("allowed_hosts") or ()),
@@ -1796,6 +1989,14 @@ class ToolGatewayService:
         # authorized `action` (or a tool-fixed override), never from `params`:
         # a model asking for "READ" can never smuggle in a DELETE.
         method = http_config.get("method") or ("GET" if call.action == "READ" else "POST")
+        # ACT-TLX-FR-023/024/026, AC-10 -- all three read from the frozen
+        # snapshot copy (`_frozen_http_config` in snapshot.py already
+        # defaulted `timeout_seconds` in from the tool's own column at
+        # publish time), never from the live `Tool` row at execution time.
+        timeout_seconds = float(http_config.get("timeout_seconds") or DEFAULT_TIMEOUT_SECONDS)
+        max_response_bytes = int(http_config.get("max_response_bytes", DEFAULT_MAX_RESPONSE_BYTES))
+        idempotent = bool(http_config.get("idempotent", False))
+        output_schema = (entry or {}).get("output_schema")
 
         headers: dict[str, str] = {}
         if http_config.get("requires_credential"):
@@ -1820,52 +2021,139 @@ class ToolGatewayService:
         query = params.get("query") if isinstance(params, dict) else None
         body = params.get("body") if isinstance(params, dict) else None
 
-        result = execute_http_tool(
-            method=method, base_url=tool.endpoint_reference or "", path=path, query=query,
-            headers=headers, json_body=body, policy=policy,
-            sensitive_headers=sensitive_headers, sensitive_body_fields=sensitive_body_fields,
-            max_response_bytes=int(http_config.get("max_response_bytes", DEFAULT_MAX_RESPONSE_BYTES)),
-            timeout_seconds=float(tool.timeout_seconds or DEFAULT_TIMEOUT_SECONDS),
-        )
+        tool_identifier = str(tool.id)
+        # ACT-TLX-FR-027, AC-19 -- checked once, before the retry loop even
+        # starts (mirroring `_complete_with_resilience`'s own call pattern
+        # exactly: the model-side breaker isn't re-checked between retries
+        # either, since a failure inside this same call already updates the
+        # state via `_tool_circuit_record_failure` below, and re-opening
+        # mid-loop would just be this same check repeated for no new
+        # information).
+        circuit_open = _tool_circuit_is_open(tool_identifier)
+        max_retries = settings.TOOL_MAX_RETRIES
+        max_concurrent = settings.TOOL_MAX_CONCURRENT_REQUESTS_PER_EXECUTION
 
-        decision = result.egress_decision
-        call.target_host = decision.host
-        call.http_method = method
-        call.egress_decision = "ALLOWED" if decision.allowed else "DENIED"
-        call.egress_denied_reason = decision.reason
+        current = call
+        attempt = 0
+        while True:
+            current.attempt_number = attempt + 1
+            attempt_started = current.started_at or _now()
 
-        if not decision.allowed:
-            call.status = "DENIED"
-            call.error_code = ErrorCode.TOOL_EGRESS_DENIED
-            # ACT-TLX-FR-011/§7 -- security-severity, routed to alerting: an
-            # egress denial is a signal someone may be probing the boundary.
-            _record_event(db, AuthorizationAuditEvent.RUNTIME_TOOL_EGRESS_DENIED, None,
-                         organization_id=agent.organization_id, agent_id=agent.id, execution_id=execution.id,
-                         severity="CRITICAL",
-                         meta={"tool": tool.name, "host": decision.host, "reason": decision.reason})
-            return
+            if circuit_open:
+                current.status = "FAILED"
+                current.error_code = ErrorCode.TOOL_EXECUTION_FAILED
+                current.error_class = ProviderErrorClass.PROVIDER_UNAVAILABLE.value
+                current.output_summary = {
+                    "error": "circuit_open",
+                    "message": f"Tool '{tool.name}' circuit breaker is open; failing fast without a request.",
+                }
+                return current
 
-        call.target_path = (path or "")[:2048] if path else None
-        call.http_status = result.status
-        call.request_bytes = result.request_bytes
-        call.response_bytes = result.response_bytes
-        call.status = "ALLOWED"
-        call.cost = 0
-        parsed_body = None
-        if result.response_body_redacted:
             try:
-                parsed_body = json.loads(result.response_body_redacted)
-            except ValueError:
-                parsed_body = None
-        call.output_summary = {
-            "status": result.status,
-            "body": redact_body(parsed_body, sensitive_body_fields) if isinstance(parsed_body, dict) else None,
-            "truncated": result.truncated,
-            "error": result.error,
-        }
-        _record_event(db, AuthorizationAuditEvent.RUNTIME_TOOL_INVOKED, None,
-                     organization_id=agent.organization_id, agent_id=agent.id, execution_id=execution.id,
-                     meta={"tool": tool.name, "host": decision.host, "status": result.status})
+                with track_concurrency(execution.id, limit=max_concurrent):
+                    result = execute_http_tool(
+                        method=method, base_url=tool.endpoint_reference or "", path=path, query=query,
+                        headers=headers, json_body=body, policy=policy,
+                        sensitive_headers=sensitive_headers, sensitive_body_fields=sensitive_body_fields,
+                        max_response_bytes=max_response_bytes, timeout_seconds=timeout_seconds,
+                    )
+            except ToolConcurrencyLimitExceeded as exc:
+                current.status = "FAILED"
+                current.error_code = ErrorCode.TOOL_CONCURRENCY_LIMIT_EXCEEDED
+                current.output_summary = {"error": "concurrency_limit_exceeded", "message": str(exc)}
+                return current
+
+            decision = result.egress_decision
+            current.target_host = decision.host
+            current.http_method = method
+            current.egress_decision = "ALLOWED" if decision.allowed else "DENIED"
+            current.egress_denied_reason = decision.reason
+
+            if not decision.allowed:
+                # Unchanged from 5.6a.1 -- an egress denial is a policy
+                # fact about the target, never retried, and never touches
+                # the circuit breaker (a different concern; see
+                # docs/runtime/gateways.md).
+                current.status = "DENIED"
+                current.error_code = ErrorCode.TOOL_EGRESS_DENIED
+                _record_event(db, AuthorizationAuditEvent.RUNTIME_TOOL_EGRESS_DENIED, None,
+                             organization_id=agent.organization_id, agent_id=agent.id, execution_id=execution.id,
+                             severity="CRITICAL",
+                             meta={"tool": tool.name, "host": decision.host, "reason": decision.reason})
+                return current
+
+            current.target_path = (path or "")[:2048] if path else None
+            current.http_status = result.status
+            current.request_bytes = result.request_bytes
+            current.response_bytes = result.response_bytes
+
+            parsed_body = None
+            if result.response_body_redacted:
+                try:
+                    parsed_body = json.loads(result.response_body_redacted)
+                except ValueError:
+                    parsed_body = None
+
+            succeeded = result.error is None and result.status is not None and result.status < 400
+            if succeeded:
+                # ACT-TLX-FR-022/AC-05/AC-06 -- validated only when the
+                # tool declared an output schema; absent one, this is a
+                # no-op (never guessed at). A violation here is never
+                # retried (it isn't a transient failure) and never touches
+                # the circuit breaker (the target responded correctly by
+                # its own lights; it's this platform's contract check that
+                # failed, not the target's reliability).
+                output_violation = _tool_schema_violation(parsed_body, output_schema)
+                if output_violation is not None:
+                    current.status = "FAILED"
+                    current.error_code = ErrorCode.TOOL_SCHEMA_INVALID
+                    current.error_class = ProviderErrorClass.INVALID_REQUEST.value
+                    current.validation_error = json.dumps(output_violation)
+                    current.output_summary = {"status": result.status, "truncated": result.truncated}
+                    return current
+
+                current.status = "ALLOWED"
+                current.cost = 0
+                current.output_summary = {
+                    "status": result.status,
+                    "body": redact_body(parsed_body, sensitive_body_fields) if isinstance(parsed_body, dict) else None,
+                    "truncated": result.truncated,
+                    "error": result.error,
+                }
+                _tool_circuit_record_success(tool_identifier)
+                _record_event(db, AuthorizationAuditEvent.RUNTIME_TOOL_INVOKED, None,
+                             organization_id=agent.organization_id, agent_id=agent.id, execution_id=execution.id,
+                             meta={"tool": tool.name, "host": decision.host, "status": result.status})
+                return current
+
+            # ACT-TLX-FR-025/FR-026, AC-12..17 -- a transient, HTTP-level
+            # failure. Classified into the *same* taxonomy 5.7a.4 built for
+            # model calls; retried only if this tool is declared idempotent
+            # (never inferred from `method` -- undeclared means no, per
+            # ACT-TLX-FR-026) and the classification is one of the three
+            # retryable classes, using the same backoff formula and the
+            # same per-tool circuit breaker as every other attempt.
+            error_class, error_code = _classify_tool_execution_failure(result)
+            current.error_class = error_class.value
+            current.error_code = error_code
+            current.output_summary = {"status": result.status, "truncated": result.truncated, "error": result.error}
+            _tool_circuit_record_failure(tool_identifier)
+
+            retryable = idempotent and error_class in RETRYABLE_PROVIDER_ERROR_CLASSES
+            if retryable and attempt < max_retries:
+                current.status = "FAILED"
+                current.completed_at = _now()
+                current.duration_ms = int((current.completed_at - attempt_started).total_seconds() * 1000)
+                db.add(current)
+                db.flush()
+                time.sleep(_tool_backoff_delay(attempt, retry_after_seconds=result.retry_after_seconds))
+                attempt += 1
+                current = ToolCall(execution_id=execution.id, agent_id=agent.id, tool_id=tool.id,
+                                   action=call.action, input_summary=call.input_summary, started_at=_now())
+                continue
+
+            current.status = "FAILED"
+            return current
 
     def _check_constraints(self, db: Session, execution: AgentExecution, tool: Tool,
                            assignment: AgentTool, action: str) -> str | None:

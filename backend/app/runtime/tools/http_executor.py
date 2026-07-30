@@ -61,6 +61,13 @@ class HttpExecutionResult:
     response_bytes: int = 0
     truncated: bool = False
     error: str | None = None  # e.g. "TIMEOUT", "REDIRECT_DEPTH_EXCEEDED"
+    # Phase 5.6a.2 (ACT-TLX-FR-025, AC-17) -- a numeric `Retry-After`
+    # (seconds), if the final response carried one. Consumed by
+    # `ToolGatewayService._invoke_http`'s retry backoff exactly the way
+    # `ModelGatewayService` already honors a provider's own `Retry-After`
+    # (`_provider_backoff_delay`) -- a target-supplied value always wins
+    # over computed backoff.
+    retry_after_seconds: float | None = None
 
 
 def _build_target_url(base_url: str, path_suffix: str | None, query: str | None) -> str:
@@ -77,6 +84,26 @@ def _build_target_url(base_url: str, path_suffix: str | None, query: str | None)
     base_path = base.path.rstrip("/") if base.path not in ("", "/") else ""
     combined_path = (base_path + safe_path) or "/"
     return urlunsplit((base.scheme, base.netloc, combined_path, query or suffix_parts.query, ""))
+
+
+def _parse_retry_after(response: httpx.Response) -> float | None:
+    """Phase 5.6a.2 (ACT-TLX-FR-025) -- mirrors ``openai_compatible.
+    _parse_retry_after`` exactly (numeric seconds only; the HTTP-date form
+    exists but is deliberately unhandled here for the same reason: no
+    fixture or real target in this sub-phase's scope sends it, and
+    guessing at date parsing without a real case to test against is
+    exactly the kind of guess this codebase's design rules forbid).
+    Duplicated as a tiny, private, ~8-line function rather than imported
+    from ``app.runtime.providers`` -- this module (``app/runtime/tools/``)
+    deliberately has zero dependency on the model-provider package; see
+    this module's own docstring."""
+    value = response.headers.get("retry-after")
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except ValueError:
+        return None
 
 
 def redact_headers(headers: dict[str, str], sensitive: frozenset[str]) -> dict[str, str]:
@@ -193,6 +220,7 @@ def execute_http_tool(
                         response_body_redacted=bytes(body), request_bytes=request_body_bytes,
                         response_bytes=len(body), truncated=truncated,
                         error="RESPONSE_TOO_LARGE" if truncated else None,
+                        retry_after_seconds=_parse_retry_after(response),
                     )
         except httpx.TimeoutException:
             return HttpExecutionResult(success=False, egress_decision=decision, error="TIMEOUT")

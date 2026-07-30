@@ -141,6 +141,16 @@ class AuthorizationAuditEvent(str, enum.Enum):
     # may be probing the SSRF boundary, routed to alerting.
     RUNTIME_TOOL_INVOKED = "RUNTIME_TOOL_INVOKED"
     RUNTIME_TOOL_EGRESS_DENIED = "RUNTIME_TOOL_EGRESS_DENIED"
+    # Tool schema validation & resilience (Phase 5.6a.2) -- this platform's
+    # concrete realization of the SRS's conceptual "execution.tool.failed"
+    # event, matching the existing RUNTIME_* naming convention (the same
+    # relationship RUNTIME_EXECUTION_FAILED already has to "the execution
+    # failed"). Emitted whenever a tool call ends ToolCall.status="FAILED"
+    # (schema violation, exhausted retries, timeout, oversized response,
+    # an open circuit, or the concurrency ceiling) -- never for "DENIED"
+    # (TOOL_EGRESS_DENIED/TOOL_ACTION_NOT_ALLOWED/etc. keep their own,
+    # unchanged 5.6a.1 event).
+    RUNTIME_TOOL_FAILED = "RUNTIME_TOOL_FAILED"
     RUNTIME_LIMIT_EXCEEDED = "RUNTIME_LIMIT_EXCEEDED"
     RUNTIME_KILL_SWITCH_ACTIVATED = "RUNTIME_KILL_SWITCH_ACTIVATED"
     RUNTIME_ROLLBACK_COMPLETED = "RUNTIME_ROLLBACK_COMPLETED"

@@ -259,6 +259,10 @@ class ToolCallRead(BaseModel):
     response_bytes: int | None
     egress_decision: str | None
     egress_denied_reason: str | None
+    # Phase 5.6a.2 (ACT-TLX-FR-018) -- schema validation & resilience.
+    error_class: str | None
+    attempt_number: int | None
+    validation_error: str | None
     created_at: datetime
 
 
@@ -347,9 +351,16 @@ class ToolCreate(BaseModel):
     # (allowed_hosts, allow_plaintext_http, local_dev_hosts,
     # sensitive_headers, sensitive_body_fields, requires_credential,
     # credential_header, credential_scheme, max_redirects,
-    # max_response_bytes, method). Only meaningful when tool_type == "HTTP";
-    # see docs/runtime/gateways.md's "Egress control" section for the
-    # full shape and what each field does.
+    # max_response_bytes, method). Phase 5.6a.2 (ACT-TLX-FR-023, FR-024,
+    # FR-026) adds two more optional keys to this same blob rather than new
+    # columns: `timeout_seconds` (falls back to this tool's own top-level
+    # `timeout_seconds` field, frozen in at publish time either way -- see
+    # `SnapshotBuilderService`/`_frozen_http_config` in snapshot.py) and
+    # `idempotent` (a plain bool, default false/absent -- undeclared means
+    # non-idempotent means never retried; never inferred from `method`).
+    # Only meaningful when tool_type == "HTTP"; see docs/runtime/
+    # gateways.md's "Egress control" and "Schema validation & resilience"
+    # sections for the full shape and what each field does.
     http_config: dict | None = None
 
 
@@ -363,6 +374,8 @@ class ToolRead(BaseModel):
     description: str | None
     tool_type: str
     endpoint_reference: str | None
+    input_schema: dict | None
+    output_schema: dict | None
     risk_level: str
     side_effect_level: str
     data_classification: str
