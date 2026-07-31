@@ -530,11 +530,64 @@ class AgentExecution(Base, UUIDPrimaryKeyMixin):
     finish_reason: Mapped[str | None] = mapped_column(String(32), nullable=True)
     was_streamed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     stream_interrupted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # --- Phase 5.6a.3: model-driven tool invocation loop (ACT-TLX-FR-040..049,
+    # migration 0032) -----------------------------------------------------
+    # How many model turns the loop took (1 for a plain single-turn execution
+    # with no tool calls -- unchanged behavior, see ToolLoopOrchestrator).
+    loop_iterations: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # COMPLETED / MAX_ITERATIONS / TOKEN_BUDGET / WALL_CLOCK / REPEATED_CALL /
+    # TOOL_DENIED -- always set once the loop actually runs; null only for
+    # rows created before this phase (impossible for anything executing now).
+    termination_reason: Mapped[str | None] = mapped_column(String(40), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class ExecutionMessage(Base, UUIDPrimaryKeyMixin):
+    """Phase 5.6a.3 SRS ACT-TLX-FR-049 — the complete, ordered conversation
+    transcript for one execution's model-driven tool loop: the initial user
+    input, every assistant turn (a final answer, or a request for one or
+    more tools), and every tool result (success or a 5.6a.2 structured
+    ``FAILED`` result) fed back to the next turn.
+
+    ``sequence`` is the strict, gapless ordering within one execution
+    (0, 1, 2, ...) -- never inferred from ``created_at`` alone, since two
+    rows in the same transaction can share a timestamp. ``loop_iteration``
+    is which model turn a row belongs to (0 for the initial user message,
+    matching the first model call's iteration number); a ``role="tool"``
+    row shares its requesting assistant row's ``loop_iteration``.
+    ``tool_calls_requested`` (JSONB, only ever set on a ``role="assistant"``
+    row) is the raw ``[{"id", "name", "arguments"}, ...]`` the model
+    returned that turn -- ``null`` for a final-answer turn with no tool
+    request. Per-iteration token/cost/duration accounting (``ACT-TLX-FR-
+    047``) lives on the assistant row for that turn, reusing Phase 5.7a.3's
+    ``PricingService`` per call rather than only once for the whole
+    execution."""
+
+    __tablename__ = "execution_messages"
+
+    execution_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agent_executions.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    role: Mapped[str] = mapped_column(String(20), nullable=False)  # user / assistant / tool
+    content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tool_call_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    tool_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    tool_calls_requested: Mapped[dict | list | None] = mapped_column(JSONB, nullable=True)
+    loop_iteration: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    prompt_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    completion_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    total_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cost_amount: Mapped[float | None] = mapped_column(Numeric(18, 8), nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
 
@@ -833,6 +886,10 @@ class ToolCall(Base, UUIDPrimaryKeyMixin):
     error_class: Mapped[str | None] = mapped_column(String(32), nullable=True)
     attempt_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     validation_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Phase 5.6a.3 (ACT-TLX-FR-047) -- which model-loop turn this call
+    # belongs to; null for a call made outside the loop (the pre-existing
+    # explicit `input_payload["tool_calls"]` mechanism, unchanged).
+    loop_iteration: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

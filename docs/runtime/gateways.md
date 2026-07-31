@@ -483,24 +483,283 @@ HTTP-status/transport failure that wasn't one of the more specific three
 above), `TOOL_CONCURRENCY_LIMIT_EXCEEDED` (429). `TOOL_EGRESS_DENIED` and
 `TOOL_ACTION_NOT_ALLOWED` (5.6a.1) are unchanged.
 
-## How one worker attempt composes both
+## The model-driven tool invocation loop (Phase 5.6a.3, `ACT-TLX-FR-040..049`)
 
-`ExecutionWorkerService._execute`:
+**This is Milestone 1's completion piece.** Everything above this section
+makes a tool call *safe* (5.6a.1) and *correct and resilient* (5.6a.2) —
+but until this phase, nothing actually connected a model's own tool
+request to that machinery. `ModelGatewayService.invoke()` never offered
+`tools` to a provider at all, and the only way a tool ever ran was a
+caller (a human, a test) hand-writing `input_payload["tool_calls"]` —
+never the model itself. `ToolLoopOrchestrator` (`services.py`) closes that
+gap: model requests a tool → the platform executes it (through
+`ToolGatewayService.invoke()`, completely unchanged) → the result is
+appended to the conversation → the model is called again → until a final
+answer or one of four independent safety caps ends it.
+
+### The pre-existing explicit mechanism is untouched, not replaced
+
+`ExecutionWorkerService._execute` still has both:
 
 ```python
-output_payload, model_usage = ModelGatewayService().invoke(version, execution.input_payload)
+output_payload, model_usage, tool_usage = ToolLoopOrchestrator(self.db).run(
+    execution, agent, version, resolved_credential, timeout_seconds=timeout_seconds,
+)
+# Pre-existing explicit input_payload["tool_calls"] mechanism (Phase 5.0),
+# completely unchanged — still handled here, still counted separately.
 for call_request in execution.input_payload.get("tool_calls", []):
     ToolGatewayService().invoke(db, execution, agent,
                                 call_request["tool_name"], call_request["action"], call_request["params"])
+    tool_usage["calls"] += 1
 ```
 
-Model invocation happens exactly once per attempt; tool calls happen zero
-or more times, sequentially, in the order given in `input_payload`. A
-tool call that is **denied** (governance/authorization/egress policy)
-still propagates and fails the whole attempt, exactly as before 5.6a.2
-(see retry policy in [workers-and-queue.md](workers-and-queue.md)). A tool
-call that **fails** (5.6a.2: a schema violation, an exhausted retry, a
-timeout, an oversized response, an open circuit, a concurrency-ceiling
-rejection) does not — the loop continues, and the structured error lives
-on that call's own `ToolCall` row for 5.6a.3's model-driven loop to
-eventually consume.
+`ToolLoopOrchestrator.run()` always runs — but it's a no-op wrapper around
+today's exact single model call whenever no tools are offered: `MOCK`
+(`describe().supports_tools == False`, always) never receives a `tools`
+list at all (`ModelGatewayService.invoke()` checks the provider's own
+declared capability before ever populating `ModelRequest.tools`), so it
+returns `finish_reason=STOP` on the first call exactly as it always has,
+and the loop ends immediately with one iteration. Every 5.6a.1/5.6a.2 test
+uses `MOCK` with the explicit mechanism above — this is why all of them
+pass completely unmodified (`AC-02`, `AC-21`, `AC-24`): the new loop
+genuinely never engages for them.
+
+### `ModelGatewayService.invoke()` — additive, not rebuilt
+
+Two new, both-optional keyword parameters, mirroring `resolved_credential`'s
+own precedent exactly: `conversation: tuple[ModelMessage, ...] | None` (the
+full accumulated transcript so far — when absent, the single
+`json.dumps(input_payload)` user message every pre-5.6a.3 caller already
+gets, unchanged) and `tools: tuple[ModelToolDefinition, ...] | None` (only
+ever populated by `ToolLoopOrchestrator`, from this version's frozen
+`tools_snapshot`). The returned `usage` dict gains one new key,
+`tool_calls` — a plain, JSON-safe `[{"id", "name", "arguments"}, ...]` list,
+empty whenever the model didn't request one (every existing caller,
+always) — the `(output_payload, usage)` contract itself never changes
+shape (`AC-06`).
+
+### Tool binding — the model can only use what was signed into the version
+
+Every tool the model may request is read from the frozen
+`AgentVersionSnapshot.snapshot["runtime"]["tool_configs"]` — the exact
+same source `ToolGatewayService`'s own `_frozen_tool_entry` reads from,
+keyed by name instead of id (`ToolLoopOrchestrator._frozen_tool_entries`).
+A tool name the model returns that isn't in this set is rejected with
+`TOOL_NOT_BOUND_TO_VERSION` — the model cannot invent tools, or reach one
+assigned to the agent but never included in *this* published version's
+snapshot (`ACT-TLX-FR-045`). This is treated as a scope violation, the
+same tier as `TOOL_NOT_ASSIGNED` — it aborts the execution rather than
+being fed back as a recoverable failure, deliberately: letting a model
+freely probe for tool names that don't exist is exactly the kind of
+boundary-testing 5.6a.1's SSRF-conscious posture already treats as
+something to stop, not something to let a model iterate its way past.
+This is also §10.4's enforcement point for the loop: the only thing it
+can ever call is `ToolGatewayService.invoke()`, bound to a `Tool` row —
+there is no tool shape that names an `Agent`, and no code path here that
+reaches `ExecutionRequestService` at all. A model naming a real second
+agent's identifier is simply an unbound tool name, rejected the same way
+as any other (`AC-07`).
+
+Every tool call the loop makes — sequential or parallel — still goes
+through `ToolGatewayService.invoke()` completely unchanged, so the
+existing assignment/`allowed_actions`/constraint checks still run for
+every one of them (`AC-05`, `ACT-TLX-FR-046`): a tool bound to the version
+but never assigned to the agent via `AgentTool` still fails with
+`TOOL_NOT_ASSIGNED`, exactly as it would for the explicit mechanism.
+
+**The action is always `EXECUTE`.** The model's tool-call interface has no
+notion of the platform's `READ`/`WRITE`/`EXECUTE`/... action vocabulary —
+an LLM tool call is just a name and arguments. The loop always invokes
+with `action="EXECUTE"`; a tool's `allowed_actions` assignment must
+include it. `arguments` is passed to `ToolGatewayService.invoke()` as
+`params`, completely unchanged in shape — a tool's declared `input_schema`
+(already frozen and validated by 5.6a.2) is what actually tells the model,
+and the validator, what shape of arguments a given tool expects, whether
+that's semantic fields for a `FUNCTION` tool or `{path, query, body}` for
+an `HTTP` one. The loop adds no translation layer of its own.
+
+### Termination — four independent caps, any one ends the loop
+
+5.6a.2 made a `FAILED` tool result recoverable — which means a model that
+keeps retrying an always-failing tool can keep the loop running forever,
+burning real tokens and money. Four independent conditions guard against
+this, each ending the loop with its own distinct, audited
+`termination_reason` (`agent_executions.termination_reason`) and a shared
+`error_code`, `TOOL_LOOP_LIMIT_EXCEEDED` (added to `_fail_or_retry`'s
+`non_retryable` set — a cap breach reaches the identical outcome on any
+retry):
+
+| `termination_reason` | Trigger |
+|---|---|
+| `COMPLETED` | `finish_reason != TOOL_CALLS` — a normal final answer. |
+| `MAX_ITERATIONS` | More than `settings.TOOL_LOOP_MAX_ITERATIONS` (default 10; overridable via `deployment.runtime_limits.maximum_loop_iterations`, mirroring the existing `maximum_retries`/`maximum_execution_seconds` pattern) model turns. |
+| `TOKEN_BUDGET` | Cumulative `total_tokens` across every iteration exceeds `settings.TOOL_LOOP_MAX_TOTAL_TOKENS` (default 50,000). |
+| `WALL_CLOCK` | Elapsed wall-clock time across the whole loop exceeds `settings.TOOL_LOOP_MAX_WALL_CLOCK_SECONDS` (default 120s) — a new, additional cap layered on top of the existing per-model-call `timeout_seconds`, which still bounds each individual call exactly as it always has. |
+| `REPEATED_CALL` | The model requests a `(tool, arguments)` pair identical to one it already made this execution. |
+
+**`REPEATED_CALL` fires before the duplicate is even executed, not after
+the iteration cap.** A repeat is non-productive by definition — the same
+call reaches the same outcome every time — so waiting for the iteration
+cap would just waste N more wasted model calls first. "Identical" reuses
+Phase 5.2.4's canonical serialization
+(`canonical.digest(canonical.stringify_floats({"tool": name, "arguments":
+arguments}))`) — the same discipline that makes a version's checksum
+reproducible — so key ordering and float representation can't produce a
+false negative. Every call actually attempted in this execution (any
+iteration) is tracked; the check runs against the whole batch a turn
+requests, before any of them execute, so a repeat anywhere in a parallel
+batch stops the *entire* batch.
+
+A model that always retries an always-failing tool (`AC-13`) still
+terminates in bounded iterations and bounded tool requests — proven with a
+tool declared non-idempotent (so 5.6a.2's own retry never kicks in either)
+and a transport that returns a *different* argument each turn (so
+`REPEATED_CALL` doesn't intervene first), confirming `MAX_ITERATIONS`
+alone is sufficient backstop.
+
+### Parallel tool calls — real concurrency, finally exercised
+
+`app/runtime/tools/concurrency.py`'s per-execution ceiling (5.6a.2) was
+wired but never contended — this is where that changes
+(`ACT-TLX-FR-044`). When a model returns more than one tool call in a
+single turn, `ToolLoopOrchestrator._execute_calls` runs them concurrently
+**only when every tool in the batch is declared `idempotent: true`**
+(the same 5.6a.2 flag, reused for a second purpose: "safe to run more than
+once" is the same property as "safe to run alongside its own siblings
+without a coordination guarantee"). A single non-idempotent tool anywhere
+in the batch drops the *entire* batch to sequential, model-given order —
+conservative by construction, never assumed parallel-safe by default
+(`AC-18`). A `FUNCTION` tool has no `idempotent` flag concept at all and
+is always treated as safe (no real side effect to duplicate).
+
+Each parallel call runs on its own thread with its own, fresh `Session` —
+`ToolGatewayService.invoke()` runs unmodified, but a live SQLAlchemy
+`Session` is not safe to share across threads (the same constraint that
+already keeps model invocation off `self.db`). Only a plain
+`_ToolCallSnapshot` (`status`/`error_code`/`error_class`/`output_summary`/
+`validation_error`) crosses back out of each thread — never the ORM row
+itself. Results are collected by original submission index, not
+completion order, so a slower call earlier in the model's list still
+reassembles before a faster one later in it (`AC-16`) — proven with call 1
+deliberately the slowest. One call failing among several succeeding
+(`AC-17`) is unremarkable: it's a normal `FAILED` result like any other,
+the others still succeed, and the loop continues.
+
+**A genuine deadlock, found and fixed before any of this shipped.**
+`ExecutionWorkerService.claim_next` claims an execution with `SELECT ...
+FOR UPDATE SKIP LOCKED` and holds that lock for the whole attempt's one
+long-lived transaction (correct, and untouched — the queue/worker model is
+not this phase's to change). The first version of parallel execution
+opened a fresh `Session` per thread and had each one `INSERT INTO
+tool_calls` — which references the still-`FOR UPDATE`-locked
+`agent_executions` row via a foreign key. Postgres's FK check needs a
+`FOR KEY SHARE` lock on that row, which conflicts with the outstanding
+`FOR UPDATE` and blocks; meanwhile the *main* thread is blocked inside
+`future.result()` waiting for that same worker — a real deadlock between
+an application-level thread-join and a database-level lock wait that
+Postgres's own detector cannot see (the main connection looks merely idle
+from its side, not waiting on anything). The fix:
+`ToolLoopOrchestrator._execute_parallel` commits `self.db` immediately
+before spawning any thread. This is safe — `claim_next` already
+transitioned the row out of `QUEUED` long before this method can run, so
+the lock has already done its one job (preventing a second worker from
+claiming the same row); releasing it early costs nothing, and
+`SessionLocal` is configured `expire_on_commit=False`
+(`app/core/database.py`), so `execution`/`agent` stay fully usable on the
+main thread afterward with no re-fetch needed. Found by reproducing the
+hang directly against `pg_stat_activity` (both sides showed `Lock` /
+`transactionid` waits on the same row) before writing this explanation —
+not guessed at.
+
+### Streaming stays out of the loop, for now
+
+Every model call inside the loop uses non-streaming `invoke()`, regardless
+of `model_configuration.stream`. An intermediate turn that only requests
+tools has no user-visible content to stream in the first place — its
+"output" is a tool request, not prose. Whether a *final* answer turn
+should stream out to a caller is a UI/delivery concern this sub-phase
+deliberately leaves alone rather than entangling with loop mechanics;
+5.7a.3's real incremental streaming is untouched and still available to
+any non-loop caller.
+
+### Transcript persistence — `execution_messages` (new table)
+
+Did not exist before this phase (checked first, per the build prompt's own
+instruction). One row per turn: the initial `user` message, every
+`assistant` turn (a final answer, or a tool request — `tool_calls_
+requested` carries the raw `[{"id","name","arguments"}, ...]` on that
+row), and every `tool` result (`tool_call_id` pairs it back to the request
+it answers) — in strict `sequence` order, exposed at `GET /executions/
+{id}/messages`. Per-iteration token/cost/duration accounting
+(`ACT-TLX-FR-047`) lives on each `assistant` row, computed by calling
+Phase 5.7a.3's `PricingService` once per turn — reused, not rebuilt;
+`agent_executions`' own `prompt_tokens`/`completion_tokens`/`total_tokens`/
+`cost_amount` remain the *sum* across every iteration, computed by the
+exact same, unmodified post-loop code `_execute` already had for a
+single-turn call. `agent_executions.loop_iterations`/`termination_reason`
+are the two new columns recording how the loop actually ended.
+
+A `FAILED` tool result (a schema violation, a timeout, an exhausted
+retry, a concurrency-ceiling rejection...) is appended to the transcript
+as a `tool`-role message with the same `error_code`/`error_class`/
+`validation_error` an admin already sees on the `ToolCall` row — so the
+*next* model turn genuinely sees, and can act on, exactly what went wrong
+(`AC-21`).
+
+### New error codes and events
+
+`TOOL_NOT_BOUND_TO_VERSION` (403), `TOOL_LOOP_LIMIT_EXCEEDED` (429 — covers
+all four safety-cap terminations, distinguished by `termination_reason`,
+not a separate code per reason). `RUNTIME_LOOP_ITERATION` (INFO, per
+assistant turn) and `RUNTIME_LOOP_TERMINATED` (INFO for `COMPLETED`,
+CRITICAL for any cap breach) — this platform's `RUNTIME_*`-convention
+realization of the SRS's conceptual `execution.loop.iteration`/
+`execution.loop.terminated` events, matching the same relationship
+`RUNTIME_EXECUTION_FAILED` already has to "the execution failed."
+
+## How one worker attempt composes both
+
+`ExecutionWorkerService._execute`, in full:
+
+```python
+output_payload, model_usage, tool_usage = ToolLoopOrchestrator(self.db).run(
+    execution, agent, version, resolved_credential, timeout_seconds=timeout_seconds,
+)
+for call_request in execution.input_payload.get("tool_calls", []):
+    ToolGatewayService().invoke(db, execution, agent,
+                                call_request["tool_name"], call_request["action"], call_request["params"])
+    tool_usage["calls"] += 1
+```
+
+The loop orchestrator runs exactly once per attempt (one or more model
+turns inside it); the pre-existing explicit mechanism still runs zero or
+more times afterward, sequentially, exactly as it always has. A tool call
+that is **denied** (governance/authorization/egress policy, or a model
+naming a tool outside `tools_snapshot`) still propagates and fails the
+whole attempt (see retry policy in
+[workers-and-queue.md](workers-and-queue.md)). A tool call that **fails**
+(a schema violation, an exhausted retry, a timeout, an oversized response,
+an open circuit, a concurrency-ceiling rejection) does not — the loop
+continues, and the structured error lives both on that call's own
+`ToolCall` row and, since 5.6a.3, on the transcript the next model turn
+actually reads.
+
+## Milestone 1 — complete
+
+An agent registered, versioned, signed (Phase 5.2.4), and deployed can now
+genuinely execute end to end: it calls a real model (`OpenAICompatibleProvider`,
+streaming, real token/cost accounting, the eight-class error taxonomy,
+retry with backoff, per-provider circuit breaking, per-organization
+encrypted credentials), the model requests a real tool, that tool runs
+behind an exhaustively-tested SSRF egress guard with schema-validated
+arguments and resilient, idempotency-gated retry, the result feeds back,
+the model produces a final answer, and every token, every call, every
+decision along the way is audited — see
+`test_end_to_end_registered_versioned_agent_calls_model_and_real_tool` in
+`backend/tests/runtime/test_tool_loop.py` for the proof. What remains
+before this is a product someone would actually run in front of real
+traffic is everything Milestones 2+ and the platform's own roadmap
+already name — governance policy evaluation mid-loop (5.8), multi-agent
+delegation (Milestone 10, and explicitly not this), distributed workers
+(Milestone 3). What this milestone was for — proving the platform
+*works* — is done.

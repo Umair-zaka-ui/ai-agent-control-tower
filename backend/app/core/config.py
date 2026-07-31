@@ -276,6 +276,17 @@ class Settings(BaseSettings):
     # the enforcement point exists now so that loop needs no new mechanism.
     TOOL_MAX_CONCURRENT_REQUESTS_PER_EXECUTION: int = 4
 
+    # --- Phase 5.6a.3: model-driven tool invocation loop (ACT-TLX-FR-041..043) ---
+    # Four independent termination conditions (ToolLoopOrchestrator) -- any
+    # one ends the loop; a model that keeps retrying an always-failing tool
+    # (recoverable since 5.6a.2) must still terminate in bounded time and
+    # bounded token spend. Overridable per-deployment via
+    # `runtime_limits.maximum_loop_iterations`, mirroring the existing
+    # `maximum_retries`/`maximum_execution_seconds` override pattern.
+    TOOL_LOOP_MAX_ITERATIONS: int = 10
+    TOOL_LOOP_MAX_TOTAL_TOKENS: int = 50_000
+    TOOL_LOOP_MAX_WALL_CLOCK_SECONDS: float = 120.0
+
     # --- Phase 2: email notifications (SMTP / Mailtrap for development) ---
     NOTIFICATIONS_ENABLED: bool = False
     SMTP_HOST: str = "sandbox.smtp.mailtrap.io"

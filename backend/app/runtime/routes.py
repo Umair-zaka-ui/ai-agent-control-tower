@@ -13,7 +13,14 @@ from app.authorization.enums import AuthorizationAuditEvent
 from app.models.agent import Agent
 from app.core.database import get_db
 from app.identity.errors import ErrorCode, IdentityError
-from app.models.runtime import AgentDefinition, AgentVersionSnapshot, ExecutionAttempt, RuntimeEvent, ToolCall
+from app.models.runtime import (
+    AgentDefinition,
+    AgentVersionSnapshot,
+    ExecutionAttempt,
+    ExecutionMessage,
+    RuntimeEvent,
+    ToolCall,
+)
 from app.models.user import User
 from app.runtime.registry.duplicates import AgentDuplicateDetectionService
 from app.runtime.registry.identity import AgentIdentityAssociationService
@@ -64,6 +71,7 @@ from app.runtime.schemas import (
     DeploymentRollbackRequest,
     ExecutionAttemptRead,
     ExecutionCreate,
+    ExecutionMessageRead,
     ExecutionRead,
     HeartbeatSubmit,
     KillSwitchRequest,
@@ -1116,6 +1124,17 @@ def execution_events(execution_id: uuid.UUID, actor: User = Depends(require_perm
                      db: Session = Depends(get_db)):
     ExecutionRequestService(db).get_or_404(actor, execution_id)
     stmt = select(RuntimeEvent).where(RuntimeEvent.execution_id == execution_id).order_by(RuntimeEvent.created_at)
+    return list(db.execute(stmt).scalars())
+
+
+@router.get("/executions/{execution_id}/messages", response_model=list[ExecutionMessageRead])
+def execution_messages(execution_id: uuid.UUID, actor: User = Depends(require_permission(_EXEC_VIEW)),
+                       db: Session = Depends(get_db)):
+    """Phase 5.6a.3 (ACT-TLX-FR-049) — the full conversation transcript for
+    this execution's model-driven tool loop, in strict sequence order."""
+    ExecutionRequestService(db).get_or_404(actor, execution_id)
+    stmt = select(ExecutionMessage).where(ExecutionMessage.execution_id == execution_id).order_by(
+        ExecutionMessage.sequence)
     return list(db.execute(stmt).scalars())
 
 

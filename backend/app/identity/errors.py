@@ -210,6 +210,14 @@ class ErrorCode:
     TOOL_TIMEOUT = "TOOL_TIMEOUT"
     TOOL_EXECUTION_FAILED = "TOOL_EXECUTION_FAILED"
     TOOL_CONCURRENCY_LIMIT_EXCEEDED = "TOOL_CONCURRENCY_LIMIT_EXCEEDED"
+    # Model-driven tool invocation loop (Phase 5.6a.3). Both are non-
+    # retryable (added to ExecutionWorkerService._fail_or_retry's
+    # non_retryable set): a model naming a tool outside this version's
+    # tools_snapshot is a scope violation, not a transient failure -- the
+    # same treatment TOOL_NOT_ASSIGNED already gets; a loop-safety cap
+    # breach reaches the identical outcome on any retry.
+    TOOL_NOT_BOUND_TO_VERSION = "TOOL_NOT_BOUND_TO_VERSION"
+    TOOL_LOOP_LIMIT_EXCEEDED = "TOOL_LOOP_LIMIT_EXCEEDED"
     MODEL_NOT_APPROVED = "MODEL_NOT_APPROVED"
     MODEL_PROVIDER_UNAVAILABLE = "MODEL_PROVIDER_UNAVAILABLE"
     # Model Provider Abstraction (Phase 5.7a.1).
@@ -474,6 +482,8 @@ _STATUS: dict[str, int] = {
     ErrorCode.TOOL_TIMEOUT: status.HTTP_504_GATEWAY_TIMEOUT,
     ErrorCode.TOOL_EXECUTION_FAILED: status.HTTP_502_BAD_GATEWAY,
     ErrorCode.TOOL_CONCURRENCY_LIMIT_EXCEEDED: status.HTTP_429_TOO_MANY_REQUESTS,
+    ErrorCode.TOOL_NOT_BOUND_TO_VERSION: status.HTTP_403_FORBIDDEN,
+    ErrorCode.TOOL_LOOP_LIMIT_EXCEEDED: status.HTTP_429_TOO_MANY_REQUESTS,
     ErrorCode.MODEL_NOT_APPROVED: status.HTTP_403_FORBIDDEN,
     ErrorCode.MODEL_PROVIDER_UNAVAILABLE: status.HTTP_503_SERVICE_UNAVAILABLE,
     ErrorCode.MODEL_CAPABILITY_UNSUPPORTED: status.HTTP_422_UNPROCESSABLE_ENTITY,

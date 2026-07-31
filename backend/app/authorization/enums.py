@@ -151,6 +151,15 @@ class AuthorizationAuditEvent(str, enum.Enum):
     # (TOOL_EGRESS_DENIED/TOOL_ACTION_NOT_ALLOWED/etc. keep their own,
     # unchanged 5.6a.1 event).
     RUNTIME_TOOL_FAILED = "RUNTIME_TOOL_FAILED"
+    # Model-driven tool invocation loop (Phase 5.6a.3) -- this platform's
+    # RUNTIME_*-convention realization of the SRS's conceptual
+    # "execution.loop.iteration"/"execution.loop.terminated" events.
+    # `_ITERATION` is per model turn (INFO); `_TERMINATED` carries the
+    # specific `termination_reason` and is CRITICAL only when it reflects a
+    # loop-safety cap breach (MAX_ITERATIONS/TOKEN_BUDGET/WALL_CLOCK/
+    # REPEATED_CALL) rather than a normal COMPLETED finish.
+    RUNTIME_LOOP_ITERATION = "RUNTIME_LOOP_ITERATION"
+    RUNTIME_LOOP_TERMINATED = "RUNTIME_LOOP_TERMINATED"
     RUNTIME_LIMIT_EXCEEDED = "RUNTIME_LIMIT_EXCEEDED"
     RUNTIME_KILL_SWITCH_ACTIVATED = "RUNTIME_KILL_SWITCH_ACTIVATED"
     RUNTIME_ROLLBACK_COMPLETED = "RUNTIME_ROLLBACK_COMPLETED"
