@@ -59,6 +59,7 @@ from app.models.runtime import (
     DeploymentHealth,
     ExecutionAttempt,
     ExecutionLock,
+    ExecutionMessage,
     IdempotencyRecord,
     ModelPricing,
     ProviderCredential,
@@ -1443,7 +1444,9 @@ class ModelGatewayService:
     key existing callers already read."""
 
     def invoke(self, version: AgentVersion, input_payload: dict, *, stream: bool | None = None,
-              resolved_credential: ResolvedCredential | None = None) -> tuple[dict, dict]:
+              resolved_credential: ResolvedCredential | None = None,
+              conversation: "tuple | None" = None,
+              tools: "tuple | None" = None) -> tuple[dict, dict]:
         """``resolved_credential`` (Phase 5.7a.5, ``ACT-MDL-FR-082``) is
         resolved by the *caller* — ``ExecutionWorkerService._execute``,
         synchronously, on the worker's own thread, via
@@ -1453,7 +1456,24 @@ class ModelGatewayService:
         comment on why), and a live SQLAlchemy ``Session`` is not safe to
         share across threads. ``None`` (every pre-5.7a.5 caller) falls
         back to ``settings.MODEL_PROVIDER_API_KEYS``/``MODEL_PROVIDER_
-        BASE_URLS`` exactly as before — this parameter is purely additive."""
+        BASE_URLS`` exactly as before — this parameter is purely additive.
+
+        ``conversation``/``tools`` (Phase 5.6a.3, ``ACT-TLX-FR-040``) are
+        both purely additive, mirroring ``resolved_credential``'s own
+        pattern exactly: every pre-5.6a.3 caller passes neither and gets
+        bit-for-bit the same single-user-message request this method
+        always built from ``input_payload``. ``ToolLoopOrchestrator`` is
+        the only caller that ever supplies them — ``conversation`` is the
+        full accumulated transcript (initial user message, prior assistant/
+        tool turns) as a tuple of ``ModelMessage``, and ``tools`` is the
+        set of ``ModelToolDefinition`` bound to this version's frozen
+        ``tools_snapshot``, built fresh by the orchestrator every call (a
+        provider that doesn't declare ``supports_tools`` in ``describe()``
+        — ``MOCK``, always — simply never receives any, so nothing about
+        MOCK's behavior changes here either). ``input_payload`` is still
+        threaded through unchanged for the returned ``output_payload``'s
+        ``"echo"`` field and the simulated-delay test hook below, even when
+        ``conversation`` overrides what's actually sent as messages."""
         from app.runtime.providers.registry import resolve as resolve_provider
         from app.runtime.providers.types import ModelMessage, ModelRequest, ProviderErrorClass
 
@@ -1480,8 +1500,17 @@ class ModelGatewayService:
         if simulated_delay:
             time.sleep(float(simulated_delay))
 
+        messages = conversation if conversation is not None else (
+            ModelMessage(role="user", content=json.dumps(input_payload, default=str)),
+        )
+        # ACT-MDL-FR-009 -- never offer tools to a provider that hasn't
+        # declared it supports them (validate_capabilities() would raise
+        # anyway; checked here too so a provider without tool support is
+        # simply never asked, rather than every caller needing to know to
+        # gate this itself).
+        offered_tools = tools if (tools and provider.describe().supports_tools) else ()
         request = ModelRequest(
-            messages=(ModelMessage(role="user", content=json.dumps(input_payload, default=str)),),
+            messages=messages, tools=offered_tools,
             sampling_parameters={k: v for k, v in config.items() if k not in ("provider", "model", "stream")},
         )
 
@@ -1522,6 +1551,14 @@ class ModelGatewayService:
             "time_to_first_token_ms": None,
             "generation_duration_ms": generation_duration_ms,
             "finish_reason": response.finish_reason.value,
+            # Phase 5.6a.3 (ACT-TLX-FR-040) -- a new, additive key; every
+            # pre-5.6a.3 reader of this dict simply never looks at it. Empty
+            # whenever the model didn't request a tool this turn (every
+            # existing caller/test, always, since none ever supplies
+            # `tools`). Plain, JSON-safe shape -- never the frozen
+            # ModelToolCall dataclass itself.
+            "tool_calls": [{"id": c.id, "name": c.name, "arguments": dict(c.arguments)}
+                          for c in response.tool_calls],
         }
         output_payload = {"result": response.content, "echo": input_payload}
         return output_payload, usage
@@ -2555,6 +2592,419 @@ class ExecutionRequestService:
 
 
 # --------------------------------------------------------------------------- #
+# Model-driven tool invocation loop (Phase 5.6a.3 SRS ACT-TLX-FR-040..049)
+# --------------------------------------------------------------------------- #
+@dataclass(frozen=True, slots=True)
+class _LoopToolCall:
+    """One tool call the model requested this turn — the plain, JSON-safe
+    shape ``ModelGatewayService.invoke()``'s ``usage["tool_calls"]`` already
+    returns, never the frozen ``ModelToolCall`` dataclass itself (this
+    module has no reason to import the provider types just for this)."""
+
+    id: str
+    name: str
+    arguments: dict
+
+
+@dataclass(frozen=True, slots=True)
+class _ToolCallSnapshot:
+    """A plain, immutable snapshot of one ``ToolCall`` row's outcome —
+    crosses out of a per-thread ``Session`` about to close (see
+    ``ToolLoopOrchestrator._execute_parallel``) the same "plain value, not
+    a live ORM object" discipline ``ResolvedCredential`` already
+    established for crossing the model-call thread boundary."""
+
+    status: str
+    error_code: str | None
+    error_class: str | None
+    output_summary: dict | None
+    validation_error: str | None
+
+
+class ToolLoopOrchestrator:
+    """Milestone 1's completion piece — the orchestration layer connecting
+    ``ModelGatewayService`` and ``ToolGatewayService``: the model requests
+    a tool, the platform executes it (through the exact same
+    authorization/validation/resilience path 5.6a.1/5.6a.2 already built —
+    ``ToolGatewayService.invoke()`` is called completely unchanged, whether
+    sequentially or, for a parallel-safe batch, through a fresh ``Session``
+    per call), the result is appended to the conversation, and the model is
+    called again — until a final answer or one of four independent
+    termination conditions (``ACT-TLX-FR-041..043, FR-048``) ends it.
+
+    **A single-turn execution behaves exactly as before this phase
+    (AC-02).** When this version has no tools bound, or its configured
+    provider doesn't declare ``supports_tools`` (``MOCK``, always — see
+    ``ModelGatewayService.invoke()``), no tools are ever offered to the
+    model; it returns ``finish_reason=STOP`` on the first call, exactly as
+    it always has, and this loop ends immediately with
+    ``termination_reason="COMPLETED"``, ``loop_iterations=1``. Every
+    5.6a.1/5.6a.2 test uses ``MOCK`` with the pre-existing, *separate*
+    explicit ``input_payload["tool_calls"]`` mechanism (still handled by
+    ``ExecutionWorkerService._execute`` immediately after this returns,
+    completely untouched) — this orchestrator never sees or touches that
+    field; its own ``tool_usage["calls"]`` counts only tool calls the
+    *model itself* requested, staying ``0`` for every one of those tests.
+
+    §10.4 is preserved by construction: the only thing this loop can ever
+    call is ``ToolGatewayService.invoke()``, bound to this version's frozen
+    ``tools_snapshot`` — never another agent, never an arbitrary execution
+    request. There is no code path here that reaches
+    ``ExecutionRequestService`` at all."""
+
+    def __init__(self, db: Session) -> None:
+        self.db = db
+
+    def run(self, execution: AgentExecution, agent: Agent, version: AgentVersion,
+           resolved_credential: ResolvedCredential | None, *, timeout_seconds: float,
+           ) -> tuple[dict, dict, dict]:
+        from app.runtime.providers.types import ModelMessage, ModelToolDefinition
+
+        input_payload = execution.input_payload if isinstance(execution.input_payload, dict) else {}
+        tool_entries = self._frozen_tool_entries(execution)
+        tool_defs = tuple(
+            ModelToolDefinition(name=name, description=entry.get("description") or "",
+                                parameters=(entry.get("input_schema") or {}))
+            for name, (_, entry) in tool_entries.items()
+        )
+
+        conversation: list = [ModelMessage(role="user", content=json.dumps(input_payload, default=str))]
+        self._append_message(execution, sequence=0, role="user",
+                            content=json.dumps(input_payload, default=str), loop_iteration=0)
+
+        seen_calls: set[str] = set()
+        max_iterations = self._max_iterations(execution)
+        loop_start = time.monotonic()
+        prompt_sum = completion_sum = total_sum = 0
+        accounting_complete = True
+        last_usage: dict | None = None
+        sequence = 1
+        iteration = 0
+
+        pool = ThreadPoolExecutor(max_workers=1)
+        try:
+            while True:
+                iteration += 1
+                if iteration > max_iterations:
+                    self._terminate(execution, "MAX_ITERATIONS", iteration - 1)
+                    raise IdentityError(ErrorCode.TOOL_LOOP_LIMIT_EXCEEDED,
+                                       f"Tool loop exceeded the maximum of {max_iterations} iterations.")
+                if (time.monotonic() - loop_start) > settings.TOOL_LOOP_MAX_WALL_CLOCK_SECONDS:
+                    self._terminate(execution, "WALL_CLOCK", iteration - 1)
+                    raise IdentityError(ErrorCode.TOOL_LOOP_LIMIT_EXCEEDED,
+                                       "Tool loop exceeded its wall-clock budget.")
+
+                turn_start = time.monotonic()
+                future = pool.submit(ModelGatewayService().invoke, version, input_payload,
+                                    resolved_credential=resolved_credential,
+                                    conversation=tuple(conversation), tools=tool_defs)
+                try:
+                    output_payload, usage = future.result(timeout=timeout_seconds)
+                except FutureTimeoutError:
+                    raise ModelGatewayError(
+                        ErrorCode.EXECUTION_TIMED_OUT, f"Execution exceeded its {timeout_seconds}s time budget.",
+                    ) from None
+                turn_duration_ms = int((time.monotonic() - turn_start) * 1000)
+                last_usage = usage
+
+                turn_complete = usage.get("token_accounting_complete", True)
+                accounting_complete = accounting_complete and turn_complete
+                turn_cost = None
+                if turn_complete:
+                    prompt_sum += usage["input_tokens"]
+                    completion_sum += usage["output_tokens"]
+                    total_sum += usage["total_tokens"]
+                    turn_cost = PricingService(self.db).calculate_cost(
+                        provider=usage["provider"], model=usage["model"],
+                        prompt_tokens=usage["input_tokens"], completion_tokens=usage["output_tokens"], at=_now(),
+                    ).amount
+
+                tool_calls_requested = usage.get("tool_calls") or []
+                self._append_message(
+                    execution, sequence=sequence, role="assistant", loop_iteration=iteration,
+                    content=output_payload.get("result", ""),
+                    tool_calls_requested=tool_calls_requested or None,
+                    prompt_tokens=usage.get("input_tokens") if turn_complete else None,
+                    completion_tokens=usage.get("output_tokens") if turn_complete else None,
+                    total_tokens=usage.get("total_tokens") if turn_complete else None,
+                    cost_amount=turn_cost, duration_ms=turn_duration_ms,
+                )
+                sequence += 1
+                conversation.append(ModelMessage(role="assistant", content=output_payload.get("result", "")))
+
+                if usage.get("finish_reason") != "TOOL_CALLS" or not tool_calls_requested:
+                    self._terminate(execution, "COMPLETED", iteration)
+                    tool_usage = {"calls": self._loop_tool_call_count(execution)}
+                    model_usage = self._aggregate_usage(last_usage, prompt_sum, completion_sum, total_sum,
+                                                        accounting_complete)
+                    return output_payload, model_usage, tool_usage
+
+                # --- Tool requests this turn ------------------------------ #
+                calls = [_LoopToolCall(id=c["id"], name=c["name"], arguments=c["arguments"])
+                        for c in tool_calls_requested]
+                for call in calls:
+                    if call.name not in tool_entries:
+                        # ACT-TLX-FR-045 -- the model cannot invent tools, or
+                        # use one bound to the agent but not to *this*
+                        # published version's frozen tools_snapshot. Treated
+                        # as a scope violation (like TOOL_NOT_ASSIGNED),
+                        # never as a recoverable, retryable-by-the-model
+                        # mistake -- letting a model freely probe for
+                        # tool names that don't exist is exactly the kind
+                        # of boundary-testing 5.6a.1's SSRF-conscious
+                        # posture already treats as something to stop, not
+                        # something to let a model iterate its way past.
+                        self._terminate(execution, "TOOL_DENIED", iteration)
+                        raise IdentityError(ErrorCode.TOOL_NOT_BOUND_TO_VERSION,
+                                           f"Tool '{call.name}' is not bound to this version.")
+                    key = self._canonical_key(call.name, call.arguments)
+                    if key in seen_calls:
+                        # ACT-TLX-FR-048 -- terminate before even issuing
+                        # this call, not after the iteration cap. A repeat
+                        # is non-productive by definition: the same
+                        # (tool, canonicalized arguments) pair reaches the
+                        # same outcome every time.
+                        self._terminate(execution, "REPEATED_CALL", iteration)
+                        raise IdentityError(ErrorCode.TOOL_LOOP_LIMIT_EXCEEDED,
+                                           f"Tool '{call.name}' was called again with identical arguments.")
+                    seen_calls.add(key)
+
+                snapshots = self._execute_calls(execution, agent, tool_entries, calls, iteration)
+                for call, snapshot in zip(calls, snapshots):
+                    result_payload = self._tool_result_payload(snapshot)
+                    content = json.dumps(result_payload, default=str)
+                    self._append_message(execution, sequence=sequence, role="tool", loop_iteration=iteration,
+                                        content=content, tool_call_id=call.id, tool_name=call.name)
+                    sequence += 1
+                    conversation.append(ModelMessage(role="tool", content=content, tool_call_id=call.id))
+
+                if (time.monotonic() - loop_start) > settings.TOOL_LOOP_MAX_WALL_CLOCK_SECONDS:
+                    self._terminate(execution, "WALL_CLOCK", iteration)
+                    raise IdentityError(ErrorCode.TOOL_LOOP_LIMIT_EXCEEDED,
+                                       "Tool loop exceeded its wall-clock budget.")
+                if total_sum > settings.TOOL_LOOP_MAX_TOTAL_TOKENS:
+                    self._terminate(execution, "TOKEN_BUDGET", iteration)
+                    raise IdentityError(ErrorCode.TOOL_LOOP_LIMIT_EXCEEDED, "Tool loop exceeded its token budget.")
+        finally:
+            pool.shutdown(wait=False)
+
+    # ------------------------------------------------------------------ #
+    # Snapshot / binding helpers
+    # ------------------------------------------------------------------ #
+    def _frozen_tool_entries(self, execution: AgentExecution) -> dict[str, tuple[str, dict]]:
+        """``ACT-TLX-FR-045`` — every tool the model may request this
+        execution, keyed by name, read from the *frozen* version snapshot
+        exactly the way ``ToolGatewayService._frozen_tool_entry`` already
+        does for a single tool — never from live, mutable ``Tool``/
+        ``AgentTool`` state. A tool assigned to the agent but not included
+        in this version's ``tools_snapshot`` at publish time has no entry
+        here and is rejected as ``TOOL_NOT_BOUND_TO_VERSION`` if the model
+        names it."""
+        snapshot_row = self.db.execute(
+            select(AgentVersionSnapshot).where(AgentVersionSnapshot.agent_version_id == execution.agent_version_id)
+        ).scalars().first()
+        if snapshot_row is None:
+            return {}
+        tool_configs = ((snapshot_row.snapshot or {}).get("runtime") or {}).get("tool_configs") or {}
+        return {entry["name"]: (tool_id, entry) for tool_id, entry in tool_configs.items()}
+
+    def _max_iterations(self, execution: AgentExecution) -> int:
+        deployment = self.db.get(AgentDeployment, execution.deployment_id) if execution.deployment_id else None
+        return ((deployment.runtime_limits or {}).get("maximum_loop_iterations")
+                if deployment else None) or settings.TOOL_LOOP_MAX_ITERATIONS
+
+    @staticmethod
+    def _canonical_key(name: str, arguments: dict) -> str:
+        """``ACT-TLX-FR-048`` — reuses Phase 5.2.4's canonical serialization
+        (the same discipline that makes a version's checksum reproducible)
+        so two calls with the same arguments in a different key order, or
+        a float argument, still compare equal."""
+        from app.runtime.versioning import canonical
+
+        return canonical.digest(canonical.stringify_floats({"tool": name, "arguments": arguments}))
+
+    # ------------------------------------------------------------------ #
+    # Transcript / accounting
+    # ------------------------------------------------------------------ #
+    def _append_message(self, execution: AgentExecution, *, sequence: int, role: str, loop_iteration: int,
+                        content: str | None = None, tool_call_id: str | None = None, tool_name: str | None = None,
+                        tool_calls_requested: list | None = None, prompt_tokens: int | None = None,
+                        completion_tokens: int | None = None, total_tokens: int | None = None,
+                        cost_amount: float | None = None, duration_ms: int | None = None) -> None:
+        self.db.add(ExecutionMessage(
+            execution_id=execution.id, sequence=sequence, role=role, content=content,
+            tool_call_id=tool_call_id, tool_name=tool_name, tool_calls_requested=tool_calls_requested,
+            loop_iteration=loop_iteration, prompt_tokens=prompt_tokens, completion_tokens=completion_tokens,
+            total_tokens=total_tokens, cost_amount=cost_amount, duration_ms=duration_ms,
+        ))
+        self.db.flush()
+        if role == "assistant":
+            _record_event(self.db, AuthorizationAuditEvent.RUNTIME_LOOP_ITERATION, None,
+                         organization_id=execution.organization_id, agent_id=execution.agent_id,
+                         execution_id=execution.id, meta={"loop_iteration": loop_iteration})
+
+    def _terminate(self, execution: AgentExecution, reason: str, iterations: int) -> None:
+        execution.loop_iterations = iterations
+        execution.termination_reason = reason
+        _record_event(self.db, AuthorizationAuditEvent.RUNTIME_LOOP_TERMINATED, None,
+                     organization_id=execution.organization_id, agent_id=execution.agent_id,
+                     execution_id=execution.id, severity="INFO" if reason == "COMPLETED" else "CRITICAL",
+                     meta={"reason": reason, "iterations": iterations})
+
+    def _loop_tool_call_count(self, execution: AgentExecution) -> int:
+        return self.db.execute(
+            select(func.count(ToolCall.id)).where(
+                ToolCall.execution_id == execution.id, ToolCall.loop_iteration.is_not(None))
+        ).scalar_one()
+
+    @staticmethod
+    def _aggregate_usage(last_usage: dict, prompt_sum: int, completion_sum: int, total_sum: int,
+                         complete: bool) -> dict:
+        """The final ``model_usage`` this loop returns, matching the exact
+        shape ``ModelGatewayService.invoke()`` always has -- ``_execute()``
+        downstream reads it exactly as it does for a single-turn call
+        (``AC-06``). Token fields are the *sum* across every iteration;
+        everything else (``provider``/``model``/``finish_reason``/
+        ``was_streamed``/etc.) reflects the *last* iteration, the one that
+        actually produced the final answer."""
+        usage = dict(last_usage)
+        if complete:
+            usage["input_tokens"] = prompt_sum
+            usage["output_tokens"] = completion_sum
+            usage["total_tokens"] = total_sum
+        usage["token_accounting_complete"] = complete
+        return usage
+
+    # ------------------------------------------------------------------ #
+    # Tool execution — sequential or parallel, always through
+    # ToolGatewayService.invoke() unchanged
+    # ------------------------------------------------------------------ #
+    def _execute_calls(self, execution: AgentExecution, agent: Agent, tool_entries: dict,
+                      calls: list[_LoopToolCall], iteration: int) -> list[_ToolCallSnapshot]:
+        """``ACT-TLX-FR-044`` — a batch of more than one call runs
+        concurrently only when *every* tool in it is declared idempotent
+        (``ACT-TLX-FR-026``'s flag, reused here for a second purpose: safe
+        to run more than once is the same property as safe to run
+        alongside its siblings without a coordination guarantee). A single
+        non-idempotent tool anywhere in the batch drops the *entire* batch
+        to sequential, model-given order — conservative by design (``AC-18``),
+        never assumed parallel-safe by default."""
+        if len(calls) > 1 and all(self._is_idempotent(tool_entries[c.name][1]) for c in calls):
+            return self._execute_parallel(execution, agent, calls, iteration)
+        return self._execute_sequential(execution, agent, calls, iteration)
+
+    @staticmethod
+    def _is_idempotent(entry: dict) -> bool:
+        if entry.get("tool_type") == "HTTP":
+            return bool((entry.get("http_config") or {}).get("idempotent", False))
+        return True  # FUNCTION/echo -- no real side effect to duplicate
+
+    def _execute_sequential(self, execution: AgentExecution, agent: Agent, calls: list[_LoopToolCall],
+                           iteration: int) -> list[_ToolCallSnapshot]:
+        results = []
+        for call in calls:
+            row = ToolGatewayService().invoke(self.db, execution, agent, call.name, "EXECUTE", call.arguments)
+            row.loop_iteration = iteration
+            self.db.flush()
+            results.append(self._snapshot(row))
+        return results
+
+    def _execute_parallel(self, execution: AgentExecution, agent: Agent, calls: list[_LoopToolCall],
+                         iteration: int) -> list[_ToolCallSnapshot]:
+        """Real concurrency, finally contending ``concurrency.py``'s
+        per-execution ceiling (``ACT-TLX-FR-029``, wired but never
+        exercised before this phase). Each call runs on its own thread with
+        its *own*, fresh ``Session`` — a live SQLAlchemy ``Session`` is not
+        safe to share across threads (the same pre-existing constraint
+        that already keeps model invocation off ``self.db``); only a plain
+        ``_ToolCallSnapshot`` crosses back out, never the ORM row itself.
+        Results are collected by original submission index, not completion
+        order, so they always reassemble in the model's expected order
+        (``ACT-TLX-FR-044``) regardless of which call actually finishes
+        first.
+
+        **Why ``self.db`` is committed before spawning any thread.**
+        ``ExecutionWorkerService.claim_next`` claims this execution's row
+        with ``SELECT ... FOR UPDATE SKIP LOCKED`` and never releases that
+        lock until the whole attempt's single, long-lived transaction
+        finally commits (``run_once``'s own ``finally`` block) -- correct
+        and untouched (the queue/worker model is not this phase's to
+        change). But once a fresh per-thread ``Session`` tries to
+        ``INSERT INTO tool_calls`` (which references this same, still
+        locked ``agent_executions`` row via a foreign key), Postgres's FK
+        check needs a ``FOR KEY SHARE`` lock on that row -- which
+        conflicts with the still-held ``FOR UPDATE`` and blocks. Meanwhile
+        the *main* thread is blocked inside ``future.result()`` waiting for
+        that same worker to finish: a genuine deadlock between an
+        application-level thread-join and a database-level lock wait that
+        Postgres's own deadlock detector cannot see (from its side, the
+        main connection looks merely idle, not waiting on anything).
+        Committing here is safe: `claim_next` already transitioned this
+        row out of ``QUEUED`` before this method could ever run, so the
+        lock has already done its one job (preventing a second worker from
+        claiming the same row) by this point; releasing it early costs
+        nothing. ``SessionLocal`` is configured ``expire_on_commit=False``
+        (``app/core/database.py``), so ``execution``/``agent`` stay fully
+        usable on the main thread afterward with no re-fetch needed."""
+        from app.core.database import SessionLocal
+
+        self.db.commit()
+
+        def worker(call: _LoopToolCall) -> _ToolCallSnapshot:
+            thread_db = SessionLocal()
+            try:
+                thread_execution = thread_db.get(AgentExecution, execution.id)
+                thread_agent = thread_db.get(Agent, agent.id)
+                row = ToolGatewayService().invoke(
+                    thread_db, thread_execution, thread_agent, call.name, "EXECUTE", call.arguments)
+                row.loop_iteration = iteration
+                thread_db.commit()
+                return self._snapshot(row)
+            except IdentityError:
+                thread_db.commit()  # persist whatever ToolGatewayService already wrote before raising
+                raise
+            finally:
+                thread_db.close()
+
+        results: list[_ToolCallSnapshot | None] = [None] * len(calls)
+        first_error: IdentityError | None = None
+        with ThreadPoolExecutor(max_workers=len(calls)) as pool:
+            future_index = {pool.submit(worker, call): index for index, call in enumerate(calls)}
+            for future, index in future_index.items():
+                try:
+                    results[index] = future.result()
+                except IdentityError as exc:
+                    if first_error is None:
+                        first_error = exc
+        if first_error is not None:
+            raise first_error
+        return results
+
+    @staticmethod
+    def _snapshot(row: ToolCall) -> _ToolCallSnapshot:
+        return _ToolCallSnapshot(status=row.status, error_code=row.error_code, error_class=row.error_class,
+                                 output_summary=row.output_summary, validation_error=row.validation_error)
+
+    @staticmethod
+    def _tool_result_payload(snapshot: _ToolCallSnapshot) -> dict:
+        """``ACT-TLX-FR-021``/5.6a.2's structured-error shape, fed back to
+        the model as the content of a ``role="tool"`` message — a
+        successful call's ``output_summary`` (the actual tool result) or,
+        for ``FAILED``/``DENIED``, the same ``error_code``/``error_class``/
+        ``validation_error`` an admin already sees on the ``ToolCall`` row,
+        so the model can act on precisely what went wrong."""
+        if snapshot.status == "ALLOWED":
+            return {"status": snapshot.status, "result": snapshot.output_summary}
+        payload = {"status": snapshot.status, "error_code": snapshot.error_code, "error_class": snapshot.error_class}
+        if snapshot.validation_error:
+            try:
+                payload["validation_error"] = json.loads(snapshot.validation_error)
+            except ValueError:
+                payload["validation_error"] = snapshot.validation_error
+        return payload
+
+
+# --------------------------------------------------------------------------- #
 # Worker runtime (§31-§37)
 # --------------------------------------------------------------------------- #
 class ExecutionWorkerService:
@@ -2672,30 +3122,24 @@ class ExecutionWorkerService:
         resolved_credential = ProviderCredentialService(self.db).resolve_for_version(
             execution.organization_id, version)
         try:
-            # §36 — a hung model call must not hang the worker forever. Only
-            # the model invocation is time-boxed: it's pure (no DB access),
-            # unlike ToolGatewayService.invoke below, which writes through
-            # ``self.db`` and is not safe to run on a second thread against
-            # the same (non-thread-safe) SQLAlchemy session — a timed-out
-            # future is *abandoned*, not killed, so anything it touches
-            # keeps running concurrently with the thread that gave up on it.
-            # ThreadPoolExecutor (not signal.alarm) so this works cross-platform;
-            # ``shutdown(wait=False)`` so a timeout doesn't itself block.
-            pool = ThreadPoolExecutor(max_workers=1)
-            try:
-                future = pool.submit(ModelGatewayService().invoke, version, execution.input_payload,
-                                    resolved_credential=resolved_credential)
-                try:
-                    output_payload, model_usage = future.result(timeout=timeout_seconds)
-                except FutureTimeoutError:
-                    raise ModelGatewayError(
-                        ErrorCode.EXECUTION_TIMED_OUT,
-                        f"Execution exceeded its {timeout_seconds}s time budget.",
-                    ) from None
-            finally:
-                pool.shutdown(wait=False)
+            # §36 — a hung model call must not hang the worker forever; the
+            # per-call timeout below still bounds *each* model invocation
+            # exactly as it always has. Phase 5.6a.3's own, new, additional
+            # cap (settings.TOOL_LOOP_MAX_WALL_CLOCK_SECONDS) bounds the
+            # *whole* loop across every iteration — see
+            # ToolLoopOrchestrator.run().
+            output_payload, model_usage, tool_usage = ToolLoopOrchestrator(self.db).run(
+                execution, agent, version, resolved_credential, timeout_seconds=timeout_seconds,
+            )
 
-            tool_usage = {"calls": 0}
+            # --- Pre-existing explicit `input_payload["tool_calls"]`
+            # mechanism (Phase 5.0, predates the model-driven loop) --
+            # completely unchanged: still handled here, still counted
+            # separately from whatever the model itself requested above.
+            # Every 5.6a.1/5.6a.2 test drives execution through exactly
+            # this field with the MOCK provider (which the loop above
+            # never offers tools to — see ToolLoopOrchestrator's own
+            # docstring), so this path, and those tests, are untouched.
             for call_request in execution.input_payload.get("tool_calls", []) if isinstance(
                 execution.input_payload, dict) else []:
                 ToolGatewayService().invoke(
@@ -2825,6 +3269,12 @@ class ExecutionWorkerService:
                          # one via the API, not an automatic requeue; same treatment as
                          # TOOL_NOT_ASSIGNED just above (a setup problem, not a transient one).
                          ErrorCode.PROVIDER_CREDENTIAL_REQUIRED,
+                         # Phase 5.6a.3 -- a model naming a tool outside this version's
+                         # frozen tools_snapshot is a scope violation, not a transient
+                         # failure (same treatment as TOOL_NOT_ASSIGNED); a loop-safety
+                         # cap breach (iteration/token/wall-clock/repeated-call) reaches
+                         # the identical outcome on any retry.
+                         ErrorCode.TOOL_NOT_BOUND_TO_VERSION, ErrorCode.TOOL_LOOP_LIMIT_EXCEEDED,
                          ProviderErrorClass.CONTENT_FILTERED.value, ProviderErrorClass.CONTEXT_LENGTH_EXCEEDED.value,
                          ProviderErrorClass.AUTHENTICATION_FAILED.value, ProviderErrorClass.INVALID_REQUEST.value,
                          ProviderErrorClass.UNKNOWN.value}

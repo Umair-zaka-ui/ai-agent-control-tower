@@ -213,8 +213,31 @@ class ExecutionRead(BaseModel):
     model_usage: dict | None
     tool_usage: dict | None
     cost: float
+    # Phase 5.6a.3 (ACT-TLX-FR-041..049) -- the model-driven tool loop.
+    loop_iterations: int
+    termination_reason: str | None
     created_at: datetime
     updated_at: datetime
+
+
+class ExecutionMessageRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    execution_id: uuid.UUID
+    sequence: int
+    role: str
+    content: str | None
+    tool_call_id: str | None
+    tool_name: str | None
+    tool_calls_requested: list | dict | None
+    loop_iteration: int
+    prompt_tokens: int | None
+    completion_tokens: int | None
+    total_tokens: int | None
+    cost_amount: float | None
+    duration_ms: int | None
+    created_at: datetime
 
 
 class ExecutionAttemptRead(BaseModel):
