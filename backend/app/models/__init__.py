@@ -35,6 +35,7 @@ from app.models.governance import (
     RemediationAction,
     SoDRule,
 )
+from app.models.integration import Connector, ConnectorInstance, ConnectorLifecycleEvent
 from app.models.organization import Organization
 from app.models.organization_hierarchy import (
     BusinessUnit,
@@ -178,4 +179,7 @@ __all__ = [
     "SigningKeyVersion",
     "AgentVersionSignature",
     "AgentVersionProvenance",
+    "Connector",
+    "ConnectorInstance",
+    "ConnectorLifecycleEvent",
 ]

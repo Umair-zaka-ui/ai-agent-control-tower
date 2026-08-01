@@ -170,6 +170,11 @@ PERMISSION_CATALOG: dict[str, str] = {
     "runtime.agent.import": "Bulk-import agent registrations",
     "runtime.agent.export": "Export agent registrations",
     "runtime.agent.audit.view": "View agent registry audit and lifecycle history",
+    # Enterprise Integration Framework -- Connector Abstraction & Lifecycle
+    # (Phase 2.1.1 SRS ACT-INT-FR §5.1). No auth-specific permission yet --
+    # authentication/credentials are Phase 2.1.2.
+    "integration.connector.view": "View connector types, instances and their lifecycle history",
+    "integration.connector.manage": "Create, configure, activate and disable connector instances",
 }
 
 _ALL = set(PERMISSION_CATALOG)

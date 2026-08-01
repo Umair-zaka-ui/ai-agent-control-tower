@@ -28,6 +28,7 @@ from app.authorization.abac.routes import router as abac_router
 from app.authorization.admin.routes import router as admin_router
 from app.governance.routes import router as governance_router
 from app.runtime.routes import router as runtime_router
+from app.integration.routes import router as integration_router
 from app.identity.errors import register_identity_exception_handlers
 
 app = FastAPI(
@@ -117,3 +118,9 @@ app.include_router(governance_router)
 # versions, deployments, the Runtime Gateway, executions, capabilities, tools,
 # runtime approvals, health/workers and the kill switch under /api/v1/runtime.
 app.include_router(runtime_router)
+
+# Milestone 2, Phase 2.1.1: Enterprise Integration Framework -- connector
+# types, tenant-scoped connector instances and their lifecycle under
+# /api/v1/integration. No authentication, registry/health, SDK or real
+# connector yet (2.1.2/2.1.3/2.1.4/2.2.x) -- this is the abstraction alone.
+app.include_router(integration_router)

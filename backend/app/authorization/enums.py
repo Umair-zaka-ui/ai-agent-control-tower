@@ -194,3 +194,10 @@ class AuthorizationAuditEvent(str, enum.Enum):
     # value or even its encrypted form (ACT-MDL-FR-081).
     RUNTIME_PROVIDER_CREDENTIAL_UPDATED = "RUNTIME_PROVIDER_CREDENTIAL_UPDATED"
     RUNTIME_PROVIDER_CREDENTIAL_DELETED = "RUNTIME_PROVIDER_CREDENTIAL_DELETED"
+    # Enterprise Integration Framework -- Connector Abstraction & Lifecycle
+    # (Phase 2.1.1, ACT-INT-FR-010). One event for every lifecycle
+    # transition (configure/activate/disable/mark_failed) -- `meta` carries
+    # `event`/`from_state`/`to_state`/`reason`, mirroring how
+    # RUNTIME_LOOP_TERMINATED carries its own transition detail in `meta`
+    # rather than needing a separate event per transition kind.
+    INTEGRATION_CONNECTOR_STATE_CHANGED = "INTEGRATION_CONNECTOR_STATE_CHANGED"
