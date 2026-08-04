@@ -83,6 +83,15 @@ class ConnectorCredentialService:
             raise ConnectorCredentialNotFoundError(connector_instance_id, auth_scheme.upper())
         return row
 
+    def has_credential(self, organization_id: uuid.UUID, connector_instance_id: uuid.UUID, auth_scheme: str) -> bool:
+        """Phase 2.1.3 — a public existence check ``ConnectorHealthService``
+        uses before calling ``validate()``, so "no credential configured"
+        reports as a clean, safe reason rather than surfacing whatever
+        exception an absent row would otherwise raise deeper in the
+        validation path."""
+        row = self._get_row(connector_instance_id, auth_scheme)
+        return row is not None and row.organization_id == organization_id
+
     def list_for_instance(self, organization_id: uuid.UUID, connector_instance_id: uuid.UUID) -> list[ConnectorCredential]:
         return list(self.db.execute(
             select(ConnectorCredential).where(
@@ -156,7 +165,7 @@ class ConnectorCredentialService:
         self.db.commit()
 
     def validate(
-        self, actor: User, organization_id: uuid.UUID, connector_instance_id: uuid.UUID, auth_scheme: str,
+        self, actor: User | None, organization_id: uuid.UUID, connector_instance_id: uuid.UUID, auth_scheme: str,
         *, transport=None,
     ) -> dict[str, Any]:
         """``ACT-INT-FR-028`` — records ``last_validated_at``/
@@ -167,7 +176,13 @@ class ConnectorCredentialService:
         there is no real connector to call yet this sub-phase (that's
         2.2.x), validation is a declared structural check — every
         required field is present and the stored bundle decrypts
-        cleanly — exactly as the build prompt's own §7 describes."""
+        cleanly — exactly as the build prompt's own §7 describes.
+
+        ``actor`` is optional as of Phase 2.1.3: ``ConnectorHealthService``
+        calls this from both the on-demand path (a real, authenticated
+        actor) and the interim scheduler's own sweep (no human actor —
+        ``None``, mirroring ``ConnectorService.mark_failed``'s own
+        precedent for system-triggered transitions)."""
         row = self._get_or_404(organization_id, connector_instance_id, auth_scheme)
         scheme_id = auth_scheme.upper()
         bundle = self._decrypt_bundle(row)
@@ -193,7 +208,7 @@ class ConnectorCredentialService:
         row.validation_status = validation_status
         AuthorizationAuditService(self.db).record_change(
             AuthorizationAuditEvent.INTEGRATION_CONNECTOR_CREDENTIAL_VALIDATED,
-            organization_id=organization_id, actor_id=actor.id,
+            organization_id=organization_id, actor_id=actor.id if actor else None,
             meta={"connector_instance_id": str(connector_instance_id), "auth_scheme": scheme_id,
                   "validation_status": validation_status},
         )

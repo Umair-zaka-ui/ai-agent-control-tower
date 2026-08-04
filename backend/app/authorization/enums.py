@@ -208,3 +208,12 @@ class AuthorizationAuditEvent(str, enum.Enum):
     INTEGRATION_CONNECTOR_CREDENTIAL_UPDATED = "INTEGRATION_CONNECTOR_CREDENTIAL_UPDATED"
     INTEGRATION_CONNECTOR_CREDENTIAL_DELETED = "INTEGRATION_CONNECTOR_CREDENTIAL_DELETED"
     INTEGRATION_CONNECTOR_CREDENTIAL_VALIDATED = "INTEGRATION_CONNECTOR_CREDENTIAL_VALIDATED"
+    # Connector Registry & Health (Phase 2.1.3, ACT-INT-FR-042..047).
+    # Emitted for every health check (healthy or not); `meta` carries
+    # `result`/`reachable`/`auth_valid`/`check_type` and a safe `reason`
+    # only -- never credential/token material. The alert-worthy signal
+    # for a `failed` transition specifically is
+    # INTEGRATION_CONNECTOR_STATE_CHANGED (reused unchanged from 2.1.1,
+    # now carrying a `severity` field -- see ConnectorService._transition),
+    # not a second, dedicated event.
+    INTEGRATION_CONNECTOR_HEALTH_CHECKED = "INTEGRATION_CONNECTOR_HEALTH_CHECKED"

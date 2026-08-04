@@ -5,7 +5,8 @@ itself (mirroring how ``app/runtime/services.py``'s
 ``_EXECUTION_TRANSITIONS`` is the one place execution status transitions
 are decided).
 
-Graph (exactly as drawn in the build prompt's §4.2)::
+Graph (extended in Phase 2.1.3 — the original diagram is in that phase's
+own history; ``recover`` is the one addition)::
 
     registered --configure--> configured --activate--> active
                                    ^                       |
@@ -14,15 +15,23 @@ Graph (exactly as drawn in the build prompt's §4.2)::
                                    +-------------------  disabled
                                                             |
             (any state) --mark_failed--> failed <----------+
+                                            |
+                                         recover
+                                            v
+                                          active
 
-Five states, four named transition events. ``mark_failed`` is reachable
+Five states, five named transition events. ``mark_failed`` is reachable
 from *any* state (including ``failed`` itself is not re-enterable from
-failed by this event — see ``_TRANSITIONS`` below) — the machine is
-complete per AC-16 even though nothing in this sub-phase *drives* it
-automatically; that is Phase 2.1.3's health monitoring. No HTTP endpoint
-calls ``mark_failed`` in this sub-phase (§7 lists no such route) — it
-exists as a real, tested service method so the state and the transition
-into it are both genuine, not merely documented.
+failed by this event) — the machine was already complete per Phase
+2.1.1's own AC-16 even before anything drove it automatically. Phase
+2.1.3's ``ConnectorHealthService`` is what actually drives both
+directions now: a failing health check calls the same, unchanged
+``mark_failed`` (``active -> failed``); a subsequent passing check calls
+the new ``recover`` (``failed -> active``) — see that module for the
+full policy. No HTTP endpoint calls ``mark_failed``/``recover`` directly
+(§7 of the 2.1.1/2.1.3 build prompts lists no such routes) — both exist
+as real, tested ``ConnectorService`` methods so the states and
+transitions are genuine, not merely documented.
 
 ``disabled -> configured`` reuses the same ``configure`` event name as
 ``registered -> configured``: re-enabling a disabled instance is exactly
@@ -31,7 +40,16 @@ the same operation (supply/re-validate ``configuration``, land in
 ``ConnectorService.update_configuration``'s docstring for the full
 API-to-transition mapping this sub-phase settled on, since the build
 prompt's §7 endpoint list underdetermines it (a genuine, documented
-judgment call)."""
+judgment call).
+
+**Phase 2.1.3 decision**: ``recover`` (``failed -> active``) is a new
+event, not folded into ``activate`` (``configured -> active``) — a
+health-driven recovery and an operator activating a freshly-configured
+connector are different operations with different preconditions (the
+former only ever fires after a passing health check; the latter never
+touches health at all), and conflating them would make the audit trail
+(``event`` in ``connector_lifecycle_events``/the audit meta) ambiguous
+about which actually happened."""
 
 from __future__ import annotations
 
@@ -57,6 +75,14 @@ _TRANSITIONS: dict[str, dict[str, str]] = {
         S.CONFIGURED.value: S.FAILED.value,
         S.ACTIVE.value: S.FAILED.value,
         S.DISABLED.value: S.FAILED.value,
+    },
+    # Phase 2.1.3, ACT-INT-FR-044 -- a passing health check recovers a
+    # failed instance back to active. Only reachable from `failed`,
+    # deliberately: recovering a `disabled` instance is an operator
+    # decision (re-`activate` after reconfiguring), not something a
+    # health check should ever do on its own.
+    "recover": {
+        S.FAILED.value: S.ACTIVE.value,
     },
 }
 

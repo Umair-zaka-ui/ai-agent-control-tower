@@ -38,6 +38,7 @@ from app.models.governance import (
 from app.models.integration import (
     Connector,
     ConnectorCredential,
+    ConnectorHealthCheck,
     ConnectorInstance,
     ConnectorLifecycleEvent,
     ConnectorOAuthToken,
@@ -190,4 +191,5 @@ __all__ = [
     "ConnectorLifecycleEvent",
     "ConnectorCredential",
     "ConnectorOAuthToken",
+    "ConnectorHealthCheck",
 ]

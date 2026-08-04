@@ -12,12 +12,16 @@ from app.api.deps import require_permission
 from app.core.database import get_db
 from app.integration.auth import registry as auth_registry
 from app.integration.auth.service import ConnectorCredentialService
+from app.integration.errors import ConnectorHealthCheckFailedError
+from app.integration.health import ConnectorHealthService
 from app.integration.schemas import (
     AuthSchemeRead,
     ConnectorCredentialRead,
     ConnectorCredentialUpsert,
     ConnectorCredentialValidationResult,
     ConnectorDisableRequest,
+    ConnectorHealthCheckRead,
+    ConnectorHealthRead,
     ConnectorInstanceConfigure,
     ConnectorInstanceCreate,
     ConnectorInstanceRead,
@@ -159,3 +163,38 @@ def oauth_callback_post(instance_id: uuid.UUID, payload: OAuthCallbackRequest,
     ConnectorCredentialService(db).complete_authorization_code_exchange(instance, code=payload.code)
     return OAuthCallbackResult(status="connected", connector_instance_id=instance_id,
                                auth_scheme="OAUTH2_AUTHORIZATION_CODE")
+
+
+# --------------------------------------------------------------------------- #
+# Phase 2.1.3 — Connector Registry & Health
+# --------------------------------------------------------------------------- #
+@router.get("/connectors/{instance_id}/health", response_model=ConnectorHealthRead)
+def get_connector_health(instance_id: uuid.UUID, actor: User = Depends(require_permission(_VIEW)),
+                         db: Session = Depends(get_db)):
+    """The cached current status — no check is run here, only read."""
+    instance = ConnectorService(db).get_or_404(actor.organization_id, instance_id)
+    return ConnectorHealthRead(
+        connector_instance_id=instance.id, lifecycle_state=instance.lifecycle_state,
+        current_health=instance.current_health, last_health_check_at=instance.last_health_check_at,
+    )
+
+
+@router.post("/connectors/{instance_id}/health/check", response_model=ConnectorHealthCheckRead)
+def run_connector_health_check(instance_id: uuid.UUID, actor: User = Depends(require_permission(_MANAGE)),
+                               db: Session = Depends(get_db)):
+    """Runs an on-demand check, records it, and drives any lifecycle
+    transition. A completed check — healthy or not — returns 200 with
+    the result; a check that could not complete at all raises
+    ``CONNECTOR_HEALTH_CHECK_FAILED`` (502), distinct from a completed
+    ``UNHEALTHY`` result (``ACT-INT-FR-042``, AC-09)."""
+    row = ConnectorHealthService(db).check(actor, actor.organization_id, instance_id, check_type="ON_DEMAND")
+    if row.result == "ERROR":
+        raise ConnectorHealthCheckFailedError(row.reason or "unknown error")
+    return row
+
+
+@router.get("/connectors/{instance_id}/health/history", response_model=list[ConnectorHealthCheckRead])
+def list_connector_health_history(instance_id: uuid.UUID, limit: int = Query(default=50, ge=1, le=200),
+                                  offset: int = Query(default=0, ge=0),
+                                  actor: User = Depends(require_permission(_VIEW)), db: Session = Depends(get_db)):
+    return ConnectorHealthService(db).history(actor.organization_id, instance_id, limit=limit, offset=offset)

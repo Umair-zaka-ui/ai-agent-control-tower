@@ -104,3 +104,36 @@ class ConnectorOAuthRefreshFailedError(IdentityError):
             ErrorCode.CONNECTOR_OAUTH_REFRESH_FAILED,
             f"OAuth2 token acquisition/refresh failed: {detail}",
         )
+
+
+class ConnectorUnavailableError(IdentityError):
+    """Raised at the registry's invocation-resolution boundary when an
+    instance is ``failed`` or ``disabled`` (Phase 2.1.3, ``ACT-INT-FR-044``)
+    — the fail-fast contract: raised immediately, before anything ever
+    attempts a real call, so a broken connector's tools reject instantly
+    instead of timing out. `app/integration/registry.py::
+    ConnectorRegistry.resolve_instance_for_invocation` is the one place
+    this is raised; 2.2.x's tool bridge inherits it for free by calling
+    that method first."""
+
+    def __init__(self, instance_id: object, lifecycle_state: str) -> None:
+        super().__init__(
+            ErrorCode.CONNECTOR_UNAVAILABLE,
+            f"Connector instance '{instance_id}' is '{lifecycle_state}' and cannot be invoked.",
+        )
+
+
+class ConnectorHealthCheckFailedError(IdentityError):
+    """Raised by the ``POST .../health/check`` route (never stored — the
+    row itself always records ``result='ERROR'`` regardless of how the
+    caller learns about it) when the check itself could not complete,
+    distinct from a completed check reporting ``UNHEALTHY`` (Phase 2.1.3,
+    ``ACT-INT-FR-042``). The message is the same safe, truncated reason
+    stored on the ``connector_health_checks`` row — never credential or
+    token material (``ACT-INT-FR-047``)."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(
+            ErrorCode.CONNECTOR_HEALTH_CHECK_FAILED,
+            f"Connector health check failed to complete: {detail}",
+        )

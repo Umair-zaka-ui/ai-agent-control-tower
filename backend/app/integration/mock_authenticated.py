@@ -46,3 +46,12 @@ class MockAuthenticatedConnector(Connector):
 
     def validate_configuration(self, configuration: Mapping[str, Any]) -> None:
         validate_configuration_schema(configuration, self.describe().config_schema)
+
+    def health_check(self, configuration: Mapping[str, Any]) -> bool:
+        """Phase 2.1.3 — same configurable simulation as ``MockConnector``;
+        this type's `API_KEY` `auth_requirements` is what actually lets a
+        health check exercise the credential-validity half too (see
+        ``app/integration/health.py``)."""
+        if configuration.get("simulate_error"):
+            raise RuntimeError("MockAuthenticatedConnector simulated a health-check execution error")
+        return not configuration.get("simulate_unreachable", False)

@@ -7,12 +7,16 @@ Swagger UI is then served at http://localhost:8000/docs
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.router import api_router
 from app.core.config import settings
 from app.core.middleware import install_http_middleware
+from app.integration import scheduler as connector_health_scheduler
 from app.identity.api import identity_router
 from app.identity.api.routes.registration import router as registration_router
 from app.identity.auth.routes import router as auth_v1_router
@@ -31,6 +35,18 @@ from app.runtime.routes import router as runtime_router
 from app.integration.routes import router as integration_router
 from app.identity.errors import register_identity_exception_handlers
 
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    # Phase 2.1.3: starts the interim in-process connector health
+    # scheduler -- a no-op unless CONNECTOR_HEALTH_SCHEDULER_ENABLED is
+    # set (default false, including every test run). See
+    # app/integration/scheduler.py's module docstring for why this exists
+    # and how it's meant to be replaced, not extended, by Milestone 3.
+    connector_health_scheduler.start()
+    yield
+    connector_health_scheduler.stop()
+
+
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version="0.1.0",
@@ -38,6 +54,7 @@ app = FastAPI(
         "Phase 1 MVP backend that tracks, controls, approves, blocks and "
         "audits actions performed by AI agents."
     ),
+    lifespan=lifespan,
 )
 
 if settings.BACKEND_CORS_ORIGINS:
@@ -119,8 +136,9 @@ app.include_router(governance_router)
 # runtime approvals, health/workers and the kill switch under /api/v1/runtime.
 app.include_router(runtime_router)
 
-# Milestone 2, Phase 2.1.1: Enterprise Integration Framework -- connector
-# types, tenant-scoped connector instances and their lifecycle under
-# /api/v1/integration. No authentication, registry/health, SDK or real
-# connector yet (2.1.2/2.1.3/2.1.4/2.2.x) -- this is the abstraction alone.
+# Milestone 2: Enterprise Integration Framework under /api/v1/integration --
+# connector types/instances/lifecycle (2.1.1), authentication schemes and
+# encrypted credentials (2.1.2), and the registry/health-check surface
+# (2.1.3: /auth-schemes, /credentials, /health*) all share this one router.
+# No SDK or real connector yet (2.1.4/2.2.x).
 app.include_router(integration_router)

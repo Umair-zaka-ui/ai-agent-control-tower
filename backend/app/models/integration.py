@@ -29,6 +29,11 @@ each ``encrypted_secret``/``encrypted_access_token``/
 ``encrypted_refresh_token`` column is a single Fernet ciphertext over a
 JSON-serialized bundle (or bare token string), decrypted only inline at
 the point of use, never assigned back onto a persisted row.
+
+**Phase 2.1.3 addendum** (SRS ACT-INT-FR-040..047): ``ConnectorInstance``
+gains a two-column health cache (``last_health_check_at``/
+``current_health``); ``ConnectorHealthCheck`` below is the append-only,
+bounded-retention history those two columns are derived from.
 """
 
 from __future__ import annotations
@@ -36,7 +41,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -106,6 +111,12 @@ class ConnectorInstance(Base, UUIDPrimaryKeyMixin):
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
     )
     created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    # Phase 2.1.3 (ACT-INT-FR-045) -- a fast-read cache of the most recent
+    # health check, so listing many instances never requires scanning
+    # connector_health_checks. The history table below is the record of
+    # truth; these two columns are derived, always overwritten together.
+    last_health_check_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    current_health: Mapped[str | None] = mapped_column(String(16), nullable=True)
 
 
 class ConnectorLifecycleEvent(Base, UUIDPrimaryKeyMixin):
@@ -212,4 +223,42 @@ class ConnectorOAuthToken(Base, UUIDPrimaryKeyMixin):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
+    )
+
+
+class ConnectorHealthCheck(Base, UUIDPrimaryKeyMixin):
+    """Phase 2.1.3 SRS ACT-INT-FR-042, FR-045, FR-047 — the append-only
+    history of every health check run against a connector instance
+    (on-demand or the interim scheduler's own sweep).
+
+    ``reason`` is asserted, everywhere this row is produced, to never
+    carry credential or token material (``ACT-INT-FR-047``) — it is
+    either ``None`` (healthy), a structural message from
+    ``ConnectorCredentialService.validate()`` (already safe by 2.1.2's
+    own design), or a truncated exception message from a connector's own
+    ``health_check()`` (never from the auth-resolution path, which never
+    reaches a connector's code at all — see ``app/integration/health.py``).
+
+    **Bounded retention**: `ConnectorHealthService` caps history at
+    ``_HEALTH_HISTORY_RETENTION`` rows per instance (newest kept), a
+    simple cap-at-N rollup rather than a time-based one — see that
+    module's docstring for the reasoning and where to revisit it if
+    volume ever grows enough to matter."""
+
+    __tablename__ = "connector_health_checks"
+
+    connector_instance_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("connector_instances.id", ondelete="CASCADE"), nullable=False, index=True,
+    )
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True,
+    )
+    check_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    reachable: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    auth_valid: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    result: Mapped[str] = mapped_column(String(16), nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    checked_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), index=True,
     )

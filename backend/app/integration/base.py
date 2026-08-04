@@ -11,15 +11,19 @@ gateway and ``ToolGatewayService`` core must never be able to tell a
 connector-backed Tool from an echo Tool. Everything crossing this
 boundary is expressed in the connector-neutral types in ``types.py``.
 
-``describe()`` and ``validate_configuration()`` are both abstract —
-every concrete connector must implement both, or it cannot be
-instantiated (AC-01, AC-02). Deliberately **no** ``authenticate()``,
-``execute()`` or ``health_check()`` method exists here — those belong to
-2.1.2 (authentication framework), 2.1.3 (registry & health) and the
-tool-bridge respectively, all explicitly out of scope for this
-sub-phase. If expressing ``MockConnector`` ever required adding one of
-those, that would be a sign the ABC had drifted ahead of its own
-sub-phase's scope; it does not (AC-03)."""
+``describe()``, ``validate_configuration()``, and — as of Phase 2.1.3 —
+``health_check()`` are all abstract: every concrete connector must
+implement all three, or it cannot be instantiated (AC-01, AC-02).
+Deliberately **still no** ``authenticate()`` or ``execute()`` method
+here — authentication is 2.1.2's `AuthScheme` framework (applied
+*outside* a connector's own code, never inside it), and actually
+invoking a connector is the tool-bridge's job, still out of scope until
+2.2.x. Adding `health_check()` now is expected and additive — unlike the
+auth-related methods 2.1.1 deliberately withheld, this sub-phase's own
+job is exactly to drive health monitoring, so the ABC grows the one
+capability it actually needs. If expressing ``MockConnector`` ever
+required adding `authenticate()`/`execute()`, that would be a sign the
+ABC had drifted ahead of its own sub-phase's scope; it does not (AC-21)."""
 
 from __future__ import annotations
 
@@ -73,3 +77,22 @@ class Connector(ABC):
         abstract, so a future connector *can* layer additional checks
         (e.g. cross-field consistency JSON Schema cannot express) without
         this base class needing to change to accommodate it."""
+
+    @abstractmethod
+    def health_check(self, configuration: Mapping[str, Any]) -> bool:
+        """Phase 2.1.3, ``ACT-INT-FR-042`` — returns whether this
+        connector's declared endpoint is *reachable*, given a live
+        instance's ``configuration``. Deliberately narrow: this method
+        answers reachability only, never authentication validity —
+        credential/token validity is checked separately by
+        ``ConnectorCredentialService.validate()`` (reusing all of 2.1.2's
+        own machinery), so a connector's ``health_check()`` is never
+        handed a decrypted credential at all (``ACT-INT-FR-047`` is
+        easier to guarantee when the method that could leak one never
+        receives it in the first place). May raise on an unexpected
+        failure (a bug, a malformed configuration) — ``ConnectorHealthService``
+        treats a raised exception as ``ERROR``, distinct from a clean
+        ``False`` return (``UNHEALTHY``); an implementation should reserve
+        raising for genuinely unexpected conditions, not ordinary
+        "the endpoint is down" outcomes, which are exactly what
+        returning ``False`` means."""
