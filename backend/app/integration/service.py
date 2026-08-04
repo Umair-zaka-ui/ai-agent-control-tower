@@ -12,7 +12,9 @@ specify (see the module docstring of ``lifecycle.py`` for the third):
 
 1. **Type resolution.** ``_CONNECTOR_TYPES`` below is a small, private,
    in-process mapping from a connector-type identifier to its Python
-   implementation (today: only ``"MOCK" -> MockConnector``). This is
+   implementation (``"MOCK" -> MockConnector``; Phase 2.1.2 added
+   ``"MOCK_AUTH" -> MockAuthenticatedConnector`` to exercise the new
+   authentication framework). This is
    *not* the connector registry ``ACT-INT-FR-040``/``FR-041`` describes —
    that is Phase 2.1.3's job (dynamic registration, health, a public
    resolution API). It exists only so this service can turn a
@@ -53,11 +55,17 @@ from app.integration.errors import (
 )
 from app.integration.lifecycle import target_state
 from app.integration.mock import MockConnector
+from app.integration.mock_authenticated import MockAuthenticatedConnector
 from app.models.integration import Connector, ConnectorInstance, ConnectorLifecycleEvent
 from app.models.user import User
 
 _CONNECTOR_TYPES: dict[str, type[ConnectorImplementation]] = {
     "MOCK": MockConnector,
+    # Phase 2.1.2 -- declares a real auth_requirements.scheme so the new
+    # authentication framework has something to resolve against besides
+    # "NONE". Added alongside MockConnector, not in place of it (2.1.1's
+    # tests assert MockConnector's own auth_requirements unchanged).
+    "MOCK_AUTH": MockAuthenticatedConnector,
 }
 
 

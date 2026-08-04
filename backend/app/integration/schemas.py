@@ -63,3 +63,60 @@ class ConnectorInstanceConfigure(BaseModel):
 
 class ConnectorDisableRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=2000)
+
+
+# --------------------------------------------------------------------------- #
+# Phase 2.1.2 — Connector Authentication Framework
+# --------------------------------------------------------------------------- #
+class ConnectorCredentialRead(BaseModel):
+    """Metadata and a masked hint only — **never** the credential value
+    (``ACT-INT-FR-025``)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    connector_instance_id: uuid.UUID
+    auth_scheme: str
+    secret_hint: str
+    status: str
+    last_validated_at: datetime | None
+    validation_status: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ConnectorCredentialUpsert(BaseModel):
+    auth_scheme: str = Field(min_length=1, max_length=48)
+    credential: dict[str, Any] = Field(min_length=1)
+
+
+class ConnectorCredentialValidationResult(BaseModel):
+    success: bool
+    validation_status: str
+    message: str
+
+
+class AuthSchemeRead(BaseModel):
+    identifier: str
+    required_fields: list[str]
+
+
+class OAuthCallbackRequest(BaseModel):
+    """Body for ``POST .../oauth/callback`` — the manual/API-driven
+    exchange entry point (the ``GET`` variant takes the same value as a
+    query parameter, matching a real OAuth2 redirect)."""
+
+    code: str = Field(min_length=1)
+    state: str | None = None
+
+
+class OAuthAuthorizationUrlRead(BaseModel):
+    authorization_url: str
+
+
+class OAuthCallbackResult(BaseModel):
+    """Never the token value — confirmation only (``ACT-INT-FR-025``)."""
+
+    status: str
+    connector_instance_id: uuid.UUID
+    auth_scheme: str

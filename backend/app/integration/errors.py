@@ -59,3 +59,48 @@ class ConnectorInvalidTransitionError(IdentityError):
             ErrorCode.CONNECTOR_INVALID_TRANSITION,
             f"Cannot '{event}' a connector instance currently in state '{from_state}'.",
         )
+
+
+class ConnectorCredentialNotFoundError(IdentityError):
+    """Raised when a requested connector credential (for a given instance
+    + scheme) has not been configured (Phase 2.1.2, ``ACT-INT-FR-022``)."""
+
+    def __init__(self, instance_id: object, auth_scheme: str) -> None:
+        super().__init__(
+            ErrorCode.CONNECTOR_CREDENTIAL_NOT_FOUND,
+            f"No '{auth_scheme}' credential is configured for connector instance '{instance_id}'.",
+        )
+
+
+class ConnectorAuthSchemeUnsupportedError(IdentityError):
+    """Raised when a caller names an authentication scheme identifier
+    with no registered implementation (Phase 2.1.2, ``ACT-INT-FR-021``)."""
+
+    def __init__(self, auth_scheme: str) -> None:
+        super().__init__(
+            ErrorCode.CONNECTOR_AUTH_SCHEME_UNSUPPORTED,
+            f"Authentication scheme '{auth_scheme}' is not supported.",
+        )
+
+
+class ConnectorCredentialInvalidError(IdentityError):
+    """Raised when a credential bundle is missing a field its scheme
+    declares required, or otherwise fails validation (Phase 2.1.2)."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(
+            ErrorCode.CONNECTOR_CREDENTIAL_INVALID,
+            f"Connector credential is invalid: {detail}",
+        )
+
+
+class ConnectorOAuthRefreshFailedError(IdentityError):
+    """Raised when an OAuth2 token acquisition or refresh call fails
+    (Phase 2.1.2, ``ACT-INT-FR-024``) — mirrors
+    ``ProviderRequestFailedError``'s "upstream call failed" treatment."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(
+            ErrorCode.CONNECTOR_OAUTH_REFRESH_FAILED,
+            f"OAuth2 token acquisition/refresh failed: {detail}",
+        )
