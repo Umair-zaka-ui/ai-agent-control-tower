@@ -4,6 +4,73 @@ All notable changes to the AI Agent Control Tower are documented here. The forma
 based on [Keep a Changelog](https://keepachangelog.com/); the project is pre-1.0 and
 versions track the roadmap phases rather than semver guarantees.
 
+## [Unreleased] — Phase 2.1.2 · Connector Authentication Framework
+
+- **Added** `app/integration/auth/` — a pluggable authentication scheme
+  framework: `base.py` (the `AuthScheme` abstract interface and the
+  connector-neutral `OutboundRequest` fixture), `registry.py` (explicit
+  `register()`/`resolve()`, mirroring the provider/connector registry
+  pattern), and six registered implementations under `schemes/` — static
+  API key, bearer token, HTTP basic, OAuth2 client-credentials, OAuth2
+  authorization-code, and mTLS.
+- **Added** `ConnectorCredentialService` (`auth/service.py`) storing one
+  encrypted JSON-bundle-per-`(connector_instance_id, auth_scheme)` row —
+  **reusing `app/runtime/providers/credential_crypto.py`'s
+  `encrypt_secret`/`decrypt_secret`/`mask_hint` directly**, verified by
+  object identity in tests, not just behavior. No extraction or
+  generalization was needed: those three functions already had zero
+  provider-specific logic in their own bodies, the same precedent Phase
+  5.6a.1's `ToolCredentialService` already set for tool credentials. The
+  platform-held-Fernet-key Known Deviation is inherited from
+  5.7a.5/5.6a.1, not newly introduced.
+- **Added** `app/integration/auth/token_manager.py` — OAuth2 token
+  acquisition, encrypted caching, and transparent refresh across all
+  three grant types (client-credentials, authorization-code, refresh-
+  token). **Concurrency-safe by design**: `get_valid_access_token` locks
+  the *parent* `connector_instances` row (not the token row, which may
+  not exist yet on a first acquisition) via `SELECT ... FOR UPDATE` —
+  proven with real threads against real Postgres connections
+  (`test_ac13_concurrent_refresh_does_not_double_refresh`, a fixture
+  transport with an artificial delay widening the race window, asserting
+  the token endpoint was hit exactly once).
+- **Added** the OAuth2 authorization-code flow's built half: stored
+  client configuration, `build_authorization_url()` (URL construction
+  only, no HTTP route since the build prompt's own endpoint table didn't
+  list one), the `GET`/`POST .../oauth/callback` code→token exchange,
+  and refresh-and-apply given a stored refresh token. **Stubbed, stated
+  plainly**: the interactive consent-redirect UI itself — an explicit
+  front-end concern, out of scope for this backend-only sub-phase.
+- **Added** `connector_credentials`/`connector_oauth_tokens` tables
+  (migration `0034_connector_auth`) — neither stores a structured
+  plaintext credential field, only ciphertext + a masked hint.
+- **Added** `MockAuthenticatedConnector` (`app/integration/mock_authenticated.py`)
+  alongside (not replacing) 2.1.1's `MockConnector`, declaring a real
+  `API_KEY` auth requirement so the framework is exercised end to end
+  against a mock — no real connector invokes anything yet (2.1.3/2.2.x).
+- **Added** 7 new routes under `/api/v1/integration` (`GET
+  /auth-schemes`, `GET`/`PUT`/`DELETE .../credentials`, `POST
+  .../credentials/validate`, `GET`/`POST .../oauth/callback`), reusing
+  2.1.1's two permissions rather than adding a finer
+  `integration.credential.manage` (stated as not warranted — a
+  credential is a property of a connector instance, not a separately
+  access-controlled resource).
+- **Added** 4 new error codes (`CONNECTOR_CREDENTIAL_NOT_FOUND`/
+  `CONNECTOR_AUTH_SCHEME_UNSUPPORTED`/`CONNECTOR_CREDENTIAL_INVALID`/
+  `CONNECTOR_OAUTH_REFRESH_FAILED`) and 3 new audit events
+  (`INTEGRATION_CONNECTOR_CREDENTIAL_UPDATED`/`_DELETED`/`_VALIDATED`).
+- **Explicitly out of scope, per the build prompt**: connector registry &
+  health (2.1.3), the connector SDK (2.1.4), any real connector, and
+  identity federation (2.3.1 — the opposite direction: a platform *user*
+  authenticating via an enterprise IdP, not the platform authenticating
+  itself to an external system).
+- 31 new backend tests (`tests/integration/test_connector_auth.py`),
+  including the real-thread OAuth2 concurrency proof and a full redaction
+  sweep (no credential value in logs, audit `meta`, or API responses).
+  Backend **1,025** green (994 + 31), 0 failed, 1 deselected; frontend
+  untouched by this backend-only phase, still **297** green. See
+  [docs/integration/connectors.md](docs/integration/connectors.md)'s
+  "Authentication" section.
+
 ## [Unreleased] — Phase 2.1.1 · Connector Abstraction & Lifecycle
 
 - **Added** `app/integration/` — a new sibling domain to `app/runtime/`

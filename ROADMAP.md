@@ -1155,18 +1155,66 @@ leans on it:
   green, 1 deselected); backend only. See
   [docs/integration/connectors.md](docs/integration/connectors.md).
 
-Next: 2.1.2 (Connector Authentication Framework) — 8 of 9 Milestone 2
+### Part 2.1.2 — Connector Authentication Framework ✅
+
+Connector instances can now hold real, encrypted credentials — six
+pluggable schemes, including transparent OAuth2. The hard reuse
+mandate this sub-phase had to satisfy: extend 5.7a.5's
+`credential_crypto.py`, never build a second encrypted-secret store.
+
+- **`AuthScheme` ABC + explicit registry** (`app/integration/auth/`) —
+  static API key, bearer token, HTTP basic, OAuth2 client-credentials,
+  OAuth2 authorization-code, mTLS. Adding a 7th scheme is a new
+  registered subclass and nothing else — mechanically proven, not just
+  claimed.
+- **Credential storage reuses `credential_crypto.py` directly** — no
+  extraction needed, since `encrypt_secret`/`decrypt_secret`/`mask_hint`
+  already had zero provider-specific logic in their own bodies. The
+  same three functions Phase 5.6a.1's `ToolCredentialService` already
+  reused, now a second time. The platform-held-Fernet-key Known
+  Deviation is inherited from 5.7a.5, not a new one.
+- **OAuth2 acquisition, caching and transparent refresh**
+  (`token_manager.py`) across all three grant types.
+  **Concurrency-safe by design**: a `SELECT ... FOR UPDATE` lock on the
+  *parent* `connector_instances` row (not the token row, which can't be
+  locked before it exists) serializes concurrent refreshers — proven
+  with real threads against real Postgres, not just argued.
+- **Authorization-code, built vs. stubbed, stated plainly**: client
+  config storage, authorization-URL construction, the callback code→
+  token exchange, and refresh-and-apply are built; the interactive
+  consent-redirect UI itself is an explicit front-end deferral.
+- **Rotation, mTLS, validation**: rotating a credential re-encrypts in
+  place without disrupting an in-flight invocation (mirrors 5.7a.5's
+  semantics exactly); an mTLS cert/key pair gets signing-key-grade
+  protection; `validate` records status without ever returning the
+  credential.
+- New tables `connector_credentials`/`connector_oauth_tokens`
+  (migration `0034_connector_auth`) — no structured plaintext credential
+  field on either. 7 new routes, reusing 2.1.1's two permissions.
+  `MockAuthenticatedConnector` added alongside `MockConnector` to
+  exercise the framework end to end.
+- 31 new backend tests, including a real-thread OAuth2 concurrency
+  proof and a full credential-redaction sweep (logs, audit `meta`, API
+  responses). Backend **1,025** total green (994 + 31), 1 deselected;
+  backend only. See
+  [docs/integration/connectors.md](docs/integration/connectors.md)'s
+  "Authentication" section.
+
+Next: 2.1.3 (Connector Registry & Health) — 7 of 9 Milestone 2
 sub-phases remain.
 
 ## Future (Phase 3+)
 
 **Milestone 3**: deployment & release strategies (canary, blue-green,
 actual rollback/traffic-shift execution — the former Milestone 2).
-**Milestone 2, remaining**: connector auth framework, registry & health,
-SDK (2.1.2-2.1.4); generic REST/database/storage/queue connectors
-(2.2.x); external identity federation (2.3.1 — covers the OAuth/SSO/
-enterprise-IdP need listed below). Beyond that: retiring the legacy
-`/auth/login` surface (now the platform's only non-revocable
+**Milestone 2, remaining**: connector registry & health, SDK
+(2.1.3-2.1.4); generic REST/database/storage/queue connectors (2.2.x);
+external identity federation (2.3.1 — covers the OAuth/SSO/
+enterprise-IdP need listed below, and is the opposite direction from
+2.1.2's platform-authenticates-to-external-systems framework: a
+platform *user* authenticating via an enterprise IdP). Beyond that:
+retiring the legacy `/auth/login` surface (now the platform's only
+non-revocable
 credential), MFA, Slack/webhook notifications, observability
 (Prometheus / OpenTelemetry), anomaly detection, load testing, a
 connector marketplace (Milestone 12), the visual Studio.
