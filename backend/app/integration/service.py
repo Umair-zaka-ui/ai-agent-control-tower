@@ -268,13 +268,30 @@ class ConnectorService:
     def mark_failed(
         self, actor: User | None, organization_id: uuid.UUID, instance_id: uuid.UUID, *, reason: str,
     ) -> ConnectorInstance:
-        """Not exposed over HTTP this sub-phase (no route in §7) — driving
-        this automatically from a real health check is Phase 2.1.3's job.
-        Exists as a real, directly callable/testable service method so
-        ``failed`` is a genuinely reachable state today (AC-16), not just
-        a value nothing can ever produce."""
+        """Still not exposed over HTTP directly (no dedicated route in
+        either the 2.1.1 or 2.1.3 build prompt's §7) — as of Phase 2.1.3
+        this is driven automatically by ``ConnectorHealthService`` on a
+        failing health check (``ACT-INT-FR-044``), and remains a real,
+        directly callable/testable service method for manual/test use."""
         instance = self.get_or_404(organization_id, instance_id)
         self._transition(actor, instance, event="mark_failed", reason=reason)
+        self.db.commit()
+        self.db.refresh(instance)
+        return instance
+
+    def recover(
+        self, actor: User | None, organization_id: uuid.UUID, instance_id: uuid.UUID,
+    ) -> ConnectorInstance:
+        """Phase 2.1.3, ``ACT-INT-FR-044`` — the ``failed -> active``
+        counterpart to ``mark_failed``, driven by
+        ``ConnectorHealthService`` on a subsequent passing health check.
+        No reason is recorded (mirrors ``activate``'s own signature) —
+        the fact that it recovered, and the health check that proved it,
+        is the record; ``state_reason`` is cleared to ``None`` since the
+        prior failure reason no longer describes the instance's current
+        state."""
+        instance = self.get_or_404(organization_id, instance_id)
+        self._transition(actor, instance, event="recover", reason=None)
         self.db.commit()
         self.db.refresh(instance)
         return instance
@@ -297,7 +314,14 @@ class ConnectorService:
         AuthorizationAuditService(self.db).record_change(
             AuthorizationAuditEvent.INTEGRATION_CONNECTOR_STATE_CHANGED,
             organization_id=instance.organization_id, actor_id=actor.id if actor else None,
+            # Phase 2.1.3, ACT-INT-FR-046 -- a transition *into* `failed`
+            # is the alert-worthy moment (see app/integration/health.py's
+            # docstring for why this event, not a dedicated one, is what
+            # this codebase uses as its alerting signal). `severity`
+            # mirrors the same field RUNTIME_TOOL_EGRESS_DENIED already
+            # carries in its own meta for the identical reason.
             meta={"connector_instance_id": str(instance.id), "event": event,
-                  "from_state": from_state, "to_state": to_state, "reason": reason},
+                  "from_state": from_state, "to_state": to_state, "reason": reason,
+                  "severity": "CRITICAL" if to_state == "failed" else "INFO"},
         )
         self.db.flush()

@@ -47,3 +47,14 @@ class MockConnector(Connector):
 
     def validate_configuration(self, configuration: Mapping[str, Any]) -> None:
         validate_configuration_schema(configuration, self.describe().config_schema)
+
+    def health_check(self, configuration: Mapping[str, Any]) -> bool:
+        """Phase 2.1.3 — configurable via the instance's own
+        ``configuration``, so tests drive both paths through the ordinary
+        API (``PATCH .../connectors/{id}``) rather than needing any
+        Python-level test hook: ``simulate_unreachable: true`` returns
+        ``False``; ``simulate_error: true`` raises, to exercise the
+        ``ERROR`` path distinctly from ``UNHEALTHY``."""
+        if configuration.get("simulate_error"):
+            raise RuntimeError("MockConnector simulated a health-check execution error")
+        return not configuration.get("simulate_unreachable", False)

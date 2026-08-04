@@ -36,6 +36,8 @@ class ConnectorInstanceRead(BaseModel):
     created_at: datetime
     updated_at: datetime
     created_by: uuid.UUID | None
+    last_health_check_at: datetime | None = None
+    current_health: str | None = None
 
 
 class ConnectorLifecycleEventRead(BaseModel):
@@ -120,3 +122,32 @@ class OAuthCallbackResult(BaseModel):
     status: str
     connector_instance_id: uuid.UUID
     auth_scheme: str
+
+
+# --------------------------------------------------------------------------- #
+# Phase 2.1.3 — Connector Registry & Health
+# --------------------------------------------------------------------------- #
+class ConnectorHealthCheckRead(BaseModel):
+    """``reason`` is always a safe, non-credential message
+    (``ACT-INT-FR-047``) — see ``app/integration/health.py``."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    connector_instance_id: uuid.UUID
+    check_type: str
+    reachable: bool
+    auth_valid: bool
+    result: str
+    reason: str | None
+    latency_ms: int | None
+    checked_at: datetime
+
+
+class ConnectorHealthRead(BaseModel):
+    """The cached current-status view — ``GET .../health``."""
+
+    connector_instance_id: uuid.UUID
+    lifecycle_state: str
+    current_health: str | None
+    last_health_check_at: datetime | None

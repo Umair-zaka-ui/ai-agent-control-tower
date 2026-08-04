@@ -1,12 +1,15 @@
-# Connector Abstraction, Lifecycle & Authentication (Phases 2.1.1 – 2.1.2)
+# Connector Abstraction, Lifecycle, Authentication & Health (Phases 2.1.1 – 2.1.3)
 
-`ACT-SRS-M2` §5.1–§5.2, `ACT-INT-FR-001` through `FR-028`. These are the
-first two sub-phases of Milestone 2 (Enterprise Integration Framework) —
+`ACT-SRS-M2` §5.1–§5.3, `ACT-INT-FR-001` through `FR-047`. The first
+three sub-phases of Milestone 2 (Enterprise Integration Framework) —
 2.1.1 is the spine every later connector is built on; 2.1.2 is the
 pluggable authentication framework that lets a connector instance hold
 real, encrypted credentials for six schemes, including transparent
-OAuth2. Both are covered in this one document since 2.1.2 extends,
-rather than replaces, everything below the "Authentication" heading.
+OAuth2; 2.1.3 makes a connector *discoverable and monitored* — a
+registry that resolves it, health checks that verify it, and an
+automated path into (and back out of) the `failed` state 2.1.1 defined
+but never drove. All three are covered in this one document since each
+extends, rather than replaces, what came before.
 
 ## What this sub-phase is, in one sentence
 
@@ -62,27 +65,42 @@ registered --configure--> configured --activate--> active
                                +-------------------  disabled
                                                         |
         (any state) --mark_failed--> failed <-----------+
+                                        |
+                                     recover
+                                        v
+                                      active
 ```
 
 `app/integration/lifecycle.py` is the single authority on which
 transitions are valid — `ConnectorService` never inlines the graph
-itself. Four named events: `configure`, `activate`, `disable`,
-`mark_failed`. Every actual transition (not every write) appends a
-`connector_lifecycle_events` row and an `AuthorizationAuditEvent
-.INTEGRATION_CONNECTOR_STATE_CHANGED` audit entry — the two supplement
-each other rather than one replacing the other: the table is the
-connector-specific queryable history (`GET /connectors/{id}/events`);
-the audit service call keeps this domain consistent with the platform-
-wide "every state change is audited" convention every other RUNTIME_*/
-ROLE_*/etc. event already follows.
+itself. Five named events: `configure`, `activate`, `disable`,
+`mark_failed`, and (Phase 2.1.3) `recover`. Every actual transition (not
+every write) appends a `connector_lifecycle_events` row and an
+`AuthorizationAuditEvent.INTEGRATION_CONNECTOR_STATE_CHANGED` audit
+entry — the two supplement each other rather than one replacing the
+other: the table is the connector-specific queryable history
+(`GET /connectors/{id}/events`); the audit service call keeps this
+domain consistent with the platform-wide "every state change is
+audited" convention every other RUNTIME_*/ROLE_*/etc. event already
+follows.
 
-`failed` is reachable from every other state (`mark_failed`) — the
-machine is complete per this sub-phase's own acceptance criteria — but
-nothing *drives* it automatically yet; that is Phase 2.1.3's health
-monitoring. No HTTP route exposes `mark_failed` in this sub-phase (see
-§7 of the build prompt, which lists no such endpoint); it exists as a
-real, directly-tested `ConnectorService` method so `failed` is genuinely
-reachable today, not a documented-but-unreachable value.
+`failed` was reachable from every other state (`mark_failed`) from
+2.1.1 onward — the machine was already complete per that sub-phase's own
+acceptance criteria — but nothing *drove* it automatically until Phase
+2.1.3's `ConnectorHealthService`, which now calls the same, unchanged
+`mark_failed` on a failing check (`active -> failed`) and the new
+`recover` on a subsequent passing one (`failed -> active`). Neither is
+exposed as a dedicated HTTP route in either sub-phase's own §7 — both
+exist as real, directly-tested `ConnectorService` methods, driven
+automatically by health checks and, before 2.1.3, only by direct/test
+calls.
+
+**Why `recover` is a new event, not folded into `activate`**: a
+health-driven recovery and an operator activating a freshly-configured
+connector are different operations with different preconditions (the
+former only ever follows a passing health check; the latter never
+touches health at all) — conflating them would make the audit trail
+ambiguous about which actually happened.
 
 ### A decision the build prompt's own API list left open
 
@@ -123,30 +141,32 @@ express.
 
 | Deferred | Sub-phase |
 |---|---|
-| Connector registry (dynamic type registration/resolution), health monitoring | 2.1.3 |
 | Connector SDK | 2.1.4 |
 | Any real connector (REST, database, storage, queue) | 2.2.x |
 | Identity federation (platform *user* login via an enterprise IdP — the opposite direction from connector auth, see below) | 2.3.1 |
-| Converting a declared tool contract into an actual invokable `Tool` row bound into `tools_snapshot` (the "tool bridge") | lands once 2.1.3 exists |
+| Converting a declared tool contract into an actual invokable `Tool` row bound into `tools_snapshot` (the "tool bridge") — 2.1.3 built the fail-fast *resolution* boundary it will call, not the bridge itself | 2.2.x |
 | Any change to model or tool execution — Milestone 1 is untouched | done |
 | Deployment strategies | Milestone 3 |
+| A distributed job scheduler | Milestone 3 — 2.1.3's own health-check scheduler is explicitly interim, see below |
 
 Two things worth calling out explicitly since they are easy to mistake
 for scope creep: `_CONNECTOR_TYPES` in `app/integration/service.py` is a
-small, private, in-process dict (`"MOCK" -> MockConnector`, and, as of
-2.1.2, `"MOCK_AUTH" -> MockAuthenticatedConnector`) letting
-`ConnectorService` turn a `connectors` row back into a live `Connector`
-instance when it needs to call `validate_configuration()` — it is
-explicitly **not** the connector registry `ACT-INT-FR-040`/`FR-041`
-describes (no dynamic registration, no public resolution API, no health
-awareness) and is expected to be superseded entirely once 2.1.3 lands.
-And the `Connector` ABC deliberately has no `authenticate()`, `execute()`
-or `health_check()` method — adding one now would be building ahead of
-the sub-phase that actually needs it, exactly the temptation the build
-prompt warned against. (2.1.2 added an `AuthScheme` framework, but a
-connector's own `authenticate()` — actually *invoking* a scheme against
-a real outbound call — is still absent, since no real connector invokes
-anything yet.)
+small, private, in-process dict (`"MOCK" -> MockConnector`,
+`"MOCK_AUTH" -> MockAuthenticatedConnector`) letting `ConnectorService`
+turn a `connectors` row back into a live `Connector` instance when it
+needs to call `validate_configuration()` — it is still not the
+*dynamic-registration* half of what `ACT-INT-FR-040` describes (adding a
+real connector type in 2.2.x still means adding a line to this dict, not
+calling a public `register()`), though as of 2.1.3 the *lookup* half
+(resolving an identifier to its implementation/config, listing
+types/instances) has a real, dedicated surface —
+`app/integration/registry.py`'s `ConnectorRegistry` — see below. And the
+`Connector` ABC still has no `authenticate()` or `execute()` method
+(2.1.2's `AuthScheme` framework applies a credential to a request
+*outside* a connector's own code, never inside it; actually invoking a
+connector is still the tool bridge's job, still out of scope until
+2.2.x) — only `health_check()` was added, in 2.1.3, deliberately and
+additively (see below).
 
 ## Data model
 
@@ -353,3 +373,162 @@ was 994) passes unmodified — `app/runtime/` was not touched, and every
 2.1.1 test still passes with zero changes to `lifecycle.py`'s transition
 graph or `ConnectorService`'s existing methods (only additive: one new
 `_CONNECTOR_TYPES` entry).
+
+---
+
+## Registry & Health (Phase 2.1.3)
+
+`ACT-INT-FR-040` through `FR-047`. A connector is now *discoverable and
+monitored* — the missing piece between "configured and authenticated"
+(2.1.1/2.1.2) and "invocable" (2.2.x).
+
+### The registry — one lookup surface
+
+`app/integration/registry.py`'s `ConnectorRegistry` wraps 2.1.1's
+`ConnectorTypeService`/`ConnectorService` under a single surface rather
+than duplicating their logic — type resolution (`resolve_type`/
+`list_types`, platform-wide) and instance resolution (`list_instances`,
+tenant-scoped). Its one genuinely new method,
+`resolve_instance_for_invocation`, is the **fail-fast wiring point**
+(`ACT-INT-FR-044`): it raises `ConnectorUnavailableError` immediately for
+a `failed` or `disabled` instance, before anything downstream ever
+attempts a real call. Phase 2.2.x's tool bridge is expected to call this
+method first and inherit the fail-fast guarantee for free — with no
+fail-fast logic of its own to write.
+
+**Deliberately narrow, stated explicitly**: this only enforces the
+`failed`/`disabled` guarantee `ACT-INT-FR-044` names. It does not also
+require `active` — whether a merely `registered`/`configured` instance
+may be invoked is 2.2.x's own invocation-semantics decision, not this
+registry's job.
+
+### Health checks — two independent probes, structurally separated
+
+A check answers two questions, kept deliberately separate:
+
+1. **Reachability** — `Connector.health_check(configuration)`, the one
+   new abstract method the ABC gained this sub-phase (additive, expected
+   — see below). Receives only the instance's own `configuration`,
+   **never a credential**.
+2. **Authentication validity** — reuses `ConnectorCredentialService.
+   validate()` (2.1.2) entirely, rather than duplicating credential
+   logic here or ever handing a connector's own code a decrypted secret.
+
+This split is a deliberate security property: nothing in
+`ConnectorHealthService`, and nothing in any connector's own
+`health_check()`, ever sees a decrypted credential — only
+`ConnectorCredentialService` itself does, exactly as before 2.1.3
+existed. `MockConnector`/`MockAuthenticatedConnector`'s own
+`health_check()` implementations are configurable via the instance's own
+`configuration` (`simulate_unreachable`/`simulate_error`), so tests drive
+every path through the ordinary API rather than a Python-level test
+hook.
+
+**`HEALTHY` vs `UNHEALTHY` vs `ERROR`**: `HEALTHY` only when both probes
+pass (or auth is declared `NONE`); `UNHEALTHY` when a probe cleanly
+reports false; `ERROR` when a probe *raises* — a distinct outcome,
+since an error means the check itself couldn't reach a conclusion, not
+that it concluded "down." `POST .../health/check` reflects this at the
+HTTP layer too: a completed check (healthy or not) returns 200; a check
+that couldn't complete raises `CONNECTOR_HEALTH_CHECK_FAILED` (502).
+
+### The `Connector` ABC gained `health_check()` — additive, expected
+
+Unlike the authentication-related methods 2.1.1 deliberately withheld
+from the ABC (which belonged to 2.1.2, and still don't exist —
+`authenticate()`/`execute()` remain absent), adding `health_check()` now
+is this sub-phase's own explicit job, not scope creep. Every concrete
+connector must implement it or cannot be instantiated — a genuine,
+necessary contract change. This *did* require updating one already-shipped
+2.1.1 test (`test_ac03_mock_connector_satisfies_the_interface_without_an_abc_change`,
+which asserted the ABC's method set was exactly `{describe,
+validate_configuration}`) — not a weakening: the assertion's actual
+intent (MockConnector needs nothing beyond what the ABC declares) still
+holds and is still checked; only the enumerated set was updated to match
+the ABC's own, deliberate growth.
+
+### Automated `failed`/`recover` transitions
+
+`ConnectorHealthService` drives the state machine, never bypasses it: a
+failing check on an `active` instance calls the same, unchanged
+`ConnectorService.mark_failed` (already existed since 2.1.1); a passing
+check on a `failed` instance calls the new `ConnectorService.recover`
+(`failed -> active`, one new lifecycle event added this sub-phase — see
+"The lifecycle state machine" above). Both go through
+`ConnectorService._transition`, so the append-only lifecycle-event
+history and the `INTEGRATION_CONNECTOR_STATE_CHANGED` audit trail cover
+health-driven transitions identically to operator-driven ones.
+
+### Alerting — no new channel built
+
+`ACT-INT-FR-046` asks for an alert on `active -> failed`. This codebase's
+only existing outbound-notification mechanism
+(`app/services/notification_service.py`) is a direct SMTP sender with no
+subscription/recipient-list concept to hook a per-connector, per-org
+health event into — building one would be its own sub-phase's worth of
+work, not a one-line addition. Instead, this sub-phase follows the exact
+precedent Phase 5.6a.1 already set for `RUNTIME_TOOL_EGRESS_DENIED`: a
+severity-tagged audit event, reviewed via a dashboard/query, not pushed.
+Every health check emits `INTEGRATION_CONNECTOR_HEALTH_CHECKED`
+(informational, every result); the *existing*
+`INTEGRATION_CONNECTOR_STATE_CHANGED` event — unchanged from 2.1.1,
+`ConnectorService._transition` now tags its `meta.severity` as
+`CRITICAL` when `to_state == "failed"` (`INFO` otherwise) — **is** this
+codebase's alerting signal for a failed connector. Not a dedicated new
+event.
+
+### Bounded history — a simple cap, not a time-based policy
+
+`connector_health_checks` is append-only; after recording a check,
+`ConnectorHealthService` deletes rows beyond the 200 most recent *per
+instance*, always explicitly keeping the just-inserted row (guarding
+against a same-transaction `checked_at` ordering tie rolling off the
+very check that triggered the cleanup). A flat per-instance cap, not a
+time window — revisit if per-instance check volume ever grows enough for
+that distinction to matter; at the interim scheduler's own default
+5-minute interval, 200 rows is the better part of a day's history,
+comfortably more when checks are mostly on-demand.
+
+### The interim scheduler — in-process, off by default, explicitly replaceable
+
+REPO_STATE §10.2 is explicit: this codebase has no distributed job
+scheduler, deliberately — Milestone 3 owns building one.
+`app/integration/scheduler.py` is the simplest mechanism consistent with
+that: one `asyncio` background task (started from `app/main.py`'s
+`lifespan`), gated entirely by `settings.
+CONNECTOR_HEALTH_SCHEDULER_ENABLED` (**default `false`, including every
+test run** — AC-19's determinism requirement is satisfied structurally,
+not by a test-only override). When enabled, it wakes on a plain interval
+(`CONNECTOR_HEALTH_CHECK_INTERVAL_SECONDS`, default 300s) and calls
+`run_sweep_once()` — a synchronous function that iterates every
+currently-`active` instance across every organization and runs an
+on-demand-equivalent check against each. No persistence of "which check
+is due," no distributed lock, no retry queue. **Intended replacement
+path**: delete this module and its one call site in `main.py`'s
+lifespan; register the same iteration as a real Milestone-3 job. Nothing
+here is designed to be extended in place into that system — tests call
+`run_sweep_once()` directly rather than waiting on the loop's sleep, the
+same "on-demand is the deterministic path" discipline the rest of this
+sub-phase already follows.
+
+### API (2.1.3)
+
+Three new endpoints under `/api/v1/integration`, reusing 2.1.1/2.1.2's
+two permissions: `GET .../health` (cached current status, no check run),
+`POST .../health/check` (on-demand, records + transitions), `GET
+.../health/history` (paginated, newest first).
+
+## Testing (2.1.3)
+
+`backend/tests/integration/test_connector_health.py`, 24 tests, grouped
+exactly as the build prompt's own §8 groups its acceptance criteria:
+registry (AC-01..04), health check (AC-05..10), transition & fail-fast
+(AC-11..15), history & alerting (AC-16..18), scheduler & integrity
+(AC-19..27 — the suite-level ones are proven by the full-suite run, not
+duplicated here). Every pre-existing test (1,049 total after this phase,
+was 1,025) passes unmodified except the one, documented, necessary
+update to a 2.1.1 test described above — `app/runtime/` was not touched,
+and 2.1.2's credential/auth handling is unchanged (`ConnectorCredentialService.
+validate()`'s `actor` parameter became optional, additively, so the
+scheduler's system-triggered checks can call it with no human actor —
+every existing caller still passes a real one).

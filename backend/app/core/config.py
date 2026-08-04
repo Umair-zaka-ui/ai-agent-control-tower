@@ -287,6 +287,15 @@ class Settings(BaseSettings):
     TOOL_LOOP_MAX_TOTAL_TOKENS: int = 50_000
     TOOL_LOOP_MAX_WALL_CLOCK_SECONDS: float = 120.0
 
+    # --- Phase 2.1.3: interim in-process connector health scheduler ---
+    # Deliberately off by default -- everywhere, including every test run
+    # (REPO_STATE §10.2: no distributed scheduler exists yet; Milestone 3
+    # owns building one). On-demand checks are the deterministic path
+    # this codebase actually relies on; this is a convenience a real
+    # deployment opts into explicitly. See app/integration/scheduler.py.
+    CONNECTOR_HEALTH_SCHEDULER_ENABLED: bool = False
+    CONNECTOR_HEALTH_CHECK_INTERVAL_SECONDS: float = 300.0
+
     # --- Phase 2: email notifications (SMTP / Mailtrap for development) ---
     NOTIFICATIONS_ENABLED: bool = False
     SMTP_HOST: str = "sandbox.smtp.mailtrap.io"

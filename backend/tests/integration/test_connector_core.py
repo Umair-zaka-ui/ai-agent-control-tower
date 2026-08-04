@@ -61,11 +61,16 @@ def test_ac03_mock_connector_satisfies_the_interface_without_an_abc_change():
     descriptor = connector.describe()
     connector.validate_configuration({"endpoint": "https://example.internal"})
     # No method exists on MockConnector beyond what Connector declares --
-    # proof expressing it required no extra surface (and, structurally,
-    # no later-phase method like authenticate/execute/health_check exists
-    # on the ABC at all).
+    # proof expressing it required no extra surface. Phase 2.1.3
+    # deliberately added `health_check` to the ABC (an expected, additive
+    # change per that sub-phase's own build prompt -- unlike
+    # `authenticate`/`execute`, which still do not exist here); this set
+    # was updated once, then, to match -- not weakened, since the
+    # assertion's actual intent (MockConnector needs nothing beyond what
+    # the ABC declares) is unchanged and still holds.
     abc_methods = {name for name, _ in inspect.getmembers(Connector, predicate=inspect.isfunction)}
-    assert abc_methods == {"describe", "validate_configuration"}
+    assert abc_methods == {"describe", "validate_configuration", "health_check"}
+    assert "authenticate" not in abc_methods and "execute" not in abc_methods
     assert descriptor.connector_type == CONNECTOR_TYPE
 
 
