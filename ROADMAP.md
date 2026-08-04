@@ -914,9 +914,13 @@ The final Phase 5.2 sub-phase — closes the platform's integrity story:
 
 Closes the gap every phase above rested on an untested assumption about:
 the platform can register, version, sign, authorize, govern and audit an
-agent — and then executes a *mock*. Eight sub-phases, built in order so
-each interface is proven by a trivial implementation before a real one
-leans on it.
+agent — and then executes a *mock*. Eight sub-phases were originally
+planned, built in order so each interface is proven by a trivial
+implementation before a real one leans on it; the first five (5.7a.1-5)
+closed "the model half" of Milestone 1 completely — 5.7a.6-5.7a.8 remain
+NOT STARTED and were not required for Milestone 1 to complete (see
+below; Phase 5.6a's tool-execution half was the other, and last,
+prerequisite).
 
 ### Part 5.7a.1 — Model Provider Abstraction & Registry ✅
 
@@ -949,13 +953,220 @@ being designed):
   backend tests (766 total green); backend only — frontend untouched,
   still 297 green.
 
-Next: 5.7a.2 (a real OpenAI-compatible provider implementation).
+### Part 5.7a.2 — First Real Provider Adapter ✅
 
-Next: production readiness (MFA, OAuth/SSO, observability), or Phase 5.3
-(detailed release APIs, actual rollback/canary execution).
+The first real, network-calling provider — no longer just an interface:
 
-## Future (Phase 4+)
+- **`OpenAICompatibleProvider`** (`app/runtime/providers/openai_compatible.py`)
+  speaks the OpenAI chat-completions wire protocol against any `base_url`
+  — Ollama, vLLM, LM Studio, or OpenAI itself. Registered as
+  `"OPENAI_COMPATIBLE"` (names the protocol, not a vendor — `"OPENAI"`
+  stays free for a future vendor-specific adapter).
+- **Registry gained real `model`/`api_key` forwarding** to the provider
+  instance — a genuine 5.7a.1 gap where neither reached further than
+  usage-reporting strings.
+- Message/tool-call/finish-reason translation, sampling-parameter
+  filtering, tolerant parsing of responses missing optional fields.
+- **Fixture-replay test infrastructure**: `httpx.MockTransport`, six
+  committed wire-format fixtures, a manual recorder script, and a
+  `live_provider` pytest marker excluded by default.
+- One coarse `MODEL_PROVIDER_REQUEST_FAILED` error code — classifying
+  failure modes for retry is 5.7a.4's job, deliberately not this one's.
+- 34 new backend tests (800 total green, 1 deselected); backend only —
+  frontend untouched, still 297 green.
 
-Retiring the legacy `/auth/login` surface (now the platform's only non-revocable
-credential), MFA, OAuth/SSO, enterprise IdPs, Slack/webhook notifications,
-observability (Prometheus / OpenTelemetry), anomaly detection, and load testing.
+### Part 5.7a.3 — Streaming & Token Accounting ✅
+
+- **Real SSE streaming** replaces 5.7a.2's placeholder: incremental
+  content deltas, tool-call reassembly across fragmented/interleaved
+  chunks; an interrupted stream persists a partial (`FinishReason.ERROR`)
+  rather than raising.
+- **`ModelGatewayService.invoke()` gained an opt-in streaming path**
+  (`model_configuration.stream=true`) — the `(output_payload, usage)`
+  contract stays unchanged for every non-streaming caller.
+- **Real token/cost accounting**: new `model_pricing` table with
+  effective dating (a price change inserts and closes a row, never
+  mutates one in place) backs `PricingService`, replacing the flat
+  placeholder rate. A provider that omits usage now honestly reports
+  `{}` — never zero-filled or estimated (`ACT-MDL-FR-046`).
+- Migration `0028_streaming_and_pricing`: new `model_pricing` table
+  (seeded), 12 new columns on `agent_executions`, 4 on
+  `execution_attempts`; 1,538 pre-existing non-zero-cost rows marked
+  `cost_is_estimated=true`, never recomputed.
+- 22 new backend tests (822 total green, 1 deselected); backend only.
+
+### Part 5.7a.4 — Error Taxonomy & Resilience ✅
+
+- **Eight-class provider-neutral error taxonomy** (`ProviderErrorClass`):
+  `RATE_LIMITED`/`PROVIDER_UNAVAILABLE`/`TIMEOUT` retryable;
+  `CONTEXT_LENGTH_EXCEEDED`/`CONTENT_FILTERED`/`AUTHENTICATION_FAILED`/
+  `INVALID_REQUEST`/`UNKNOWN` never retried.
+- Classification lives in the adapter; retry/backoff/circuit-breaking
+  live in the service layer, so a future second adapter inherits both
+  with zero new retry code of its own.
+- Exponential-with-jitter backoff, a provider's own `Retry-After` header
+  honored over computed backoff, a per-provider three-state circuit
+  breaker, and a streaming pre-/post-first-token retry boundary.
+- Credential/base-URL scrubbing before anything reaches a log or caller.
+- No schema migration — `error_code` (already present) now stores the
+  taxonomy class string in place of a generic code.
+- 36 new backend tests plus 9 committed error fixtures (858 total green,
+  1 deselected); backend only.
+
+### Part 5.7a.5 — Per-Organization Provider Credentials ✅
+
+**Completes the model half of Milestone 1** — only tool execution
+(Phase 5.6a) remained before the platform genuinely executes end to end:
+
+- New `provider_credentials` table (migration `0029_provider_credentials`):
+  one row per `(organization_id, provider)`, Fernet-encrypted at rest
+  (`credential_crypto.py`).
+- **Resolution order**: this org's own stored credential →
+  `MODEL_PROVIDER_API_KEYS` fallback → none. A real provider rejecting an
+  unauthenticated call with nothing configured anywhere reports the new,
+  specific `PROVIDER_CREDENTIAL_REQUIRED` rather than a generic auth
+  failure.
+- Resolved synchronously on the worker's own thread, before the model
+  call crosses into its `ThreadPoolExecutor` — only the resulting plain
+  `ResolvedCredential` value crosses the thread boundary, never a live
+  `Session`.
+- 4 new routes under `/api/v1/runtime/providers/{provider}/credentials`,
+  2 new permissions (`runtime.provider.view`/`.manage`).
+- 25 new backend tests (883 total green, 1 deselected); backend only.
+
+Next: the tool-execution half of Milestone 1 (Phase 5.6a).
+
+## Milestone 1 — Tool Execution (Phase 5.6a)
+
+Closes the other half of the same untested assumption every phase above
+rested on: every agent so far could only call the built-in `FUNCTION`/
+`echo` action. Three sub-phases, built in the same "prove the interface
+with a trivial case first" order as the model half.
+
+### Part 5.6a.1 — HTTP Tool Execution & Egress Control ✅
+
+- **`ToolGatewayService` gains a real `HTTP` action** behind a hardened,
+  exhaustively-tested SSRF egress guard (`app/runtime/tools/egress_guard.py`)
+  — address validation across encodings (decimal/octal/hex loopback),
+  DNS-rebinding connection pinning (verified empirically against the
+  installed `httpx`/`httpcore`), redirect re-validation.
+- Egress policy is read from the version's *frozen* snapshot
+  (`tool_configs`), never live, mutable `Tool` state.
+- New `tool_credentials` table, reusing 5.7a.5's `credential_crypto.py`
+  directly.
+- New `TOOL_EGRESS_DENIED` error code; an egress denial is
+  `CRITICAL`-severity audited (a signal someone may be probing the SSRF
+  boundary).
+- Migration `0030_http_tool_egress`; 51 new backend tests (934 total
+  green, 1 deselected); backend only.
+
+### Part 5.6a.2 — Tool Schema Validation & Resilience ✅
+
+- **Argument validation against `Tool.input_schema`** runs before any
+  side effect; a response is validated against an optional
+  `output_schema`. Both frozen into the version snapshot at publish time.
+- **Reuses — never duplicates —** 5.7a.4's error taxonomy and
+  retry/circuit-breaker machinery for a tool's own HTTP-level failures.
+- **Idempotency is explicit, opt-in** (`http_config.idempotent`) — never
+  inferred from HTTP method; undeclared or `false` means a transient
+  failure is never retried.
+- New per-execution concurrency ceiling (not genuinely contended until
+  5.6a.3's parallel execution).
+- **Behavior change**: a `FAILED` tool call no longer aborts the whole
+  execution — only a `DENIED` one (egress/authorization) still does.
+- Migration `0031_tool_resilience`; 19 new backend tests (953 total
+  green, 1 deselected); backend only.
+
+### Part 5.6a.3 — Model-Driven Tool Invocation Loop ✅
+
+**Completes Milestone 1** — an agent registered, versioned, signed and
+deployed now genuinely executes end to end (calls a real model, the
+model requests a real tool, the tool runs safely, the result feeds back,
+the loop resolves to a final answer, every token/call/decision audited):
+
+- **`ToolLoopOrchestrator`** drives model → tool → model, reusing
+  `ModelGatewayService.invoke()` and `ToolGatewayService.invoke()`
+  entirely unchanged for every call.
+- **Four independent termination caps**: max iterations, token budget,
+  wall-clock, repeated-identical-call (reusing Phase 5.2.4's canonical
+  serialization) — each ends in a distinct, audited outcome.
+- **Real parallel execution** of tool calls the model requests together,
+  gated by the same `idempotent` flag 5.6a.2 introduced, reused for a
+  second purpose (safe-to-retry ⟺ safe-to-run-alongside-siblings).
+- A tool named outside the version's frozen `tools_snapshot` is a scope
+  violation (`TOOL_NOT_BOUND_TO_VERSION`), not a recoverable mistake —
+  this is also where "no agent-to-agent chaining" is structurally
+  enforced, since a tool is the only thing this loop can ever name.
+- New `execution_messages` table — the full conversation transcript,
+  exposed at `GET /executions/{id}/messages`.
+- **A genuine deadlock was found and fixed**, not merely designed
+  around: the first parallel-execution version deadlocked a fresh
+  per-thread `Session`'s insert against the still-held `claim_next` lock
+  — reproduced directly against `pg_stat_activity`, fixed by committing
+  the claiming session before any parallel dispatch.
+- Migration `0032_tool_loop`; 17 new backend tests (970 total green, 1
+  deselected); backend only.
+
+**Milestone 1 is complete.** See
+[docs/runtime/gateways.md](docs/runtime/gateways.md)'s "Milestone 1 —
+complete" section.
+
+Next: Milestone 2 — Enterprise Integration Framework.
+
+## Milestone 2 — Enterprise Integration Framework (Phase 2.x)
+
+*Revises the prior roadmap: the former Milestone 2 (deployment &
+release strategies) moves to Milestone 3 — controlled rollout only
+matters once agents do consequential things against real enterprise
+systems, which integration is what creates. See `ACT-SRS-M2` §2.3.*
+
+The platform never replaces an enterprise's SAP/Salesforce/database
+estate — it becomes the governed AI layer on top, and every external
+system is reached through a Connector that becomes a Tool the runtime
+already knows how to invoke. Nine sub-phases: the connector framework
+(2.1.x), four universal generic connectors (2.2.x — REST, database,
+storage, queue; vendor-specific connectors like SAP/Salesforce are
+deliberate fast-follow work per named buyer demand, never built
+speculatively), and external identity federation (2.3.1).
+
+### Part 2.1.1 — Connector Abstraction & Lifecycle ✅
+
+**Milestone 2's first sub-phase**, structural twin of 5.7a.1 — interface
+first, proven by a trivial implementation, before any real connector
+leans on it:
+
+- **`Connector` ABC** (`app/integration/base.py`) — abstract
+  `describe()`/`validate_configuration()` only; deliberately no
+  `authenticate()`/`execute()`/`health_check()`, all left to the
+  sub-phases that actually need them (2.1.2/2.1.3/the tool bridge).
+- **Five-state tenant-instance lifecycle**
+  (`registered → configured → active → disabled → failed`), one
+  authority (`lifecycle.py`), never inlined elsewhere.
+- **`MockConnector`** — trivial reference implementation, proving the
+  ABC without distortion, exactly as `MockProvider` did for 5.7a.1.
+- **Runtime-never-knows enforced by construction**: a test greps every
+  file under `app/runtime/` for the substring `"connector"` and fails
+  the build if it finds one (`ACT-INT-FR-006`).
+- New tables `connectors` (registered types), `connector_instances`
+  (tenant-scoped), `connector_lifecycle_events` (append-only audit) — no
+  credential column; that's 2.1.2.
+- 8 routes under `/api/v1/integration`, 2 new permissions.
+- Migration `0033_connector_core`; 24 new backend tests (994 total
+  green, 1 deselected); backend only. See
+  [docs/integration/connectors.md](docs/integration/connectors.md).
+
+Next: 2.1.2 (Connector Authentication Framework) — 8 of 9 Milestone 2
+sub-phases remain.
+
+## Future (Phase 3+)
+
+**Milestone 3**: deployment & release strategies (canary, blue-green,
+actual rollback/traffic-shift execution — the former Milestone 2).
+**Milestone 2, remaining**: connector auth framework, registry & health,
+SDK (2.1.2-2.1.4); generic REST/database/storage/queue connectors
+(2.2.x); external identity federation (2.3.1 — covers the OAuth/SSO/
+enterprise-IdP need listed below). Beyond that: retiring the legacy
+`/auth/login` surface (now the platform's only non-revocable
+credential), MFA, Slack/webhook notifications, observability
+(Prometheus / OpenTelemetry), anomaly detection, load testing, a
+connector marketplace (Milestone 12), the visual Studio.
