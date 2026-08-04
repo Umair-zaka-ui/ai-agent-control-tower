@@ -1200,21 +1200,71 @@ mandate this sub-phase had to satisfy: extend 5.7a.5's
   [docs/integration/connectors.md](docs/integration/connectors.md)'s
   "Authentication" section.
 
-Next: 2.1.3 (Connector Registry & Health) — 7 of 9 Milestone 2
-sub-phases remain.
+### Part 2.1.3 — Connector Registry & Health ✅
+
+A connector is now *discoverable and monitored* — the missing piece
+between "configured and authenticated" (2.1.1/2.1.2) and "invocable"
+(2.2.x). A broken connector goes `failed` with a recorded cause instead
+of silently hanging every agent execution that touches it.
+
+- **`ConnectorRegistry`** (`app/integration/registry.py`) — the single
+  lookup surface for type resolution/listing and tenant-scoped instance
+  resolution/listing, wrapping 2.1.1's own services rather than
+  duplicating them. Its `resolve_instance_for_invocation` is the
+  **fail-fast wiring point**: raises `CONNECTOR_UNAVAILABLE` immediately
+  for a `failed`/`disabled` instance, before any real call is ever
+  attempted — Phase 2.2.x's tool bridge inherits the guarantee for free,
+  with no fail-fast logic of its own to write.
+- **`Connector.health_check(configuration)`** — a new, additive ABC
+  method (expected and deliberate this sub-phase, unlike the still-absent
+  `authenticate()`/`execute()`). Answers reachability only, **never
+  handed a credential** — auth validity is checked entirely separately,
+  reusing `ConnectorCredentialService.validate()` (2.1.2) whole, not
+  duplicated. A genuine security property: nothing in a connector's own
+  code, or in the new `ConnectorHealthService`, ever sees a decrypted
+  secret.
+- **`HEALTHY`/`UNHEALTHY`/`ERROR`, three distinct outcomes**: `ERROR`
+  (a probe raised) surfaces `CONNECTOR_HEALTH_CHECK_FAILED` (502) —
+  distinct from a completed, negative `UNHEALTHY` result (200).
+- **Automated `active -> failed` / `failed -> active`**, through the
+  unchanged 2.1.1 state machine, never bypassed: a failing check calls
+  the pre-existing `mark_failed`; a passing check calls a new `recover`
+  event this sub-phase added.
+- **Alerting reuses the existing precedent — no new channel built**:
+  `INTEGRATION_CONNECTOR_STATE_CHANGED` (unchanged event) now carries
+  `severity: CRITICAL` on a failed transition, the same pattern Phase
+  5.6a.1's `RUNTIME_TOOL_EGRESS_DENIED` already established.
+  `notification_service.py` was examined and rejected — no
+  subscription/recipient-list concept to hook a connector event into.
+- **Interim in-process scheduler**, off by default everywhere including
+  every test run, explicitly documented as Milestone-3-replaceable —
+  REPO_STATE §10.2's no-distributed-scheduler constraint honored, not
+  worked around.
+- New table `connector_health_checks` (append-only, capped at 200
+  rows/instance) plus a two-column health cache on `connector_instances`.
+  3 new routes reusing 2.1.1/2.1.2's permissions. One pre-existing 2.1.1
+  test updated, not weakened, to match the ABC's deliberate growth.
+- 24 new backend tests. Backend **1,049** total green (1,025 + 24), 1
+  deselected; backend only. See
+  [docs/integration/connectors.md](docs/integration/connectors.md)'s
+  "Registry & Health" section.
+
+Next: 2.1.4 (Connector SDK) — 6 of 9 Milestone 2 sub-phases remain.
 
 ## Future (Phase 3+)
 
 **Milestone 3**: deployment & release strategies (canary, blue-green,
-actual rollback/traffic-shift execution — the former Milestone 2).
-**Milestone 2, remaining**: connector registry & health, SDK
-(2.1.3-2.1.4); generic REST/database/storage/queue connectors (2.2.x);
-external identity federation (2.3.1 — covers the OAuth/SSO/
-enterprise-IdP need listed below, and is the opposite direction from
-2.1.2's platform-authenticates-to-external-systems framework: a
-platform *user* authenticating via an enterprise IdP). Beyond that:
-retiring the legacy `/auth/login` surface (now the platform's only
-non-revocable
+actual rollback/traffic-shift execution — the former Milestone 2), and
+a real distributed job scheduler (2.1.3's own health-check scheduler is
+explicitly interim and built to be replaced, not extended, when this
+lands).
+**Milestone 2, remaining**: the connector SDK (2.1.4); generic
+REST/database/storage/queue connectors (2.2.x); external identity
+federation (2.3.1 — covers the OAuth/SSO/enterprise-IdP need listed
+below, and is the opposite direction from 2.1.2's
+platform-authenticates-to-external-systems framework: a platform *user*
+authenticating via an enterprise IdP). Beyond that: retiring the legacy
+`/auth/login` surface (now the platform's only non-revocable
 credential), MFA, Slack/webhook notifications, observability
 (Prometheus / OpenTelemetry), anomaly detection, load testing, a
 connector marketplace (Milestone 12), the visual Studio.

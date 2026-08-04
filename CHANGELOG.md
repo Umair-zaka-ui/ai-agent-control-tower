@@ -4,6 +4,81 @@ All notable changes to the AI Agent Control Tower are documented here. The forma
 based on [Keep a Changelog](https://keepachangelog.com/); the project is pre-1.0 and
 versions track the roadmap phases rather than semver guarantees.
 
+## [Unreleased] — Phase 2.1.3 · Connector Registry & Health
+
+- **Added** `app/integration/registry.py` — `ConnectorRegistry`, the
+  single lookup surface for type resolution/listing (platform-wide) and
+  tenant-scoped instance resolution/listing, wrapping 2.1.1's own
+  services rather than duplicating them. Its `resolve_instance_for_invocation`
+  is the **fail-fast wiring point** (`ACT-INT-FR-044`): raises
+  `CONNECTOR_UNAVAILABLE` immediately for a `failed`/`disabled` instance,
+  before any real call is ever attempted — Phase 2.2.x's tool bridge
+  inherits this guarantee for free.
+- **Added** `Connector.health_check(configuration) -> bool` — a new,
+  additive abstract method on the ABC (deliberate and expected this
+  sub-phase, unlike the still-absent `authenticate()`/`execute()`).
+  Answers reachability only; receives only the instance's own
+  `configuration`, **never a credential** — auth validity is checked
+  entirely separately, by reusing `ConnectorCredentialService.validate()`
+  (2.1.2), not duplicated. `MockConnector`/`MockAuthenticatedConnector`
+  both implement it, configurable via `simulate_unreachable`/
+  `simulate_error` in the instance's own stored configuration.
+- **Added** `app/integration/health.py` — `ConnectorHealthService.check()`
+  combines both probes into `HEALTHY`/`UNHEALTHY`/`ERROR`: `ERROR`
+  (a probe raised) is distinct from a completed `UNHEALTHY` result —
+  `POST .../health/check` returns 502 (`CONNECTOR_HEALTH_CHECK_FAILED`)
+  for the former, 200 with the result body for the latter.
+- **Added** automated `active -> failed`/`failed -> active` transitions:
+  a failing check on an `active` instance calls the pre-existing,
+  unchanged `ConnectorService.mark_failed`; a passing check on a
+  `failed` instance calls a new `ConnectorService.recover` method and a
+  new `recover` event added to `lifecycle.py`'s transition graph — both
+  through the same, unbypassed 2.1.1 state machine.
+- **Added** alerting via the *existing* audit-event mechanism, not a new
+  channel: `ConnectorService._transition` now tags
+  `INTEGRATION_CONNECTOR_STATE_CHANGED`'s `meta.severity` as `CRITICAL`
+  when `to_state == "failed"` — the same severity-tagged, dashboard-
+  reviewed (not pushed) pattern Phase 5.6a.1's `RUNTIME_TOOL_EGRESS_DENIED`
+  already established. `app/services/notification_service.py` was
+  examined and rejected (no subscription/recipient-list concept to hook
+  a connector event into).
+- **Added** `app/integration/scheduler.py` — an interim, in-process
+  `asyncio` background task, off by default everywhere including every
+  test run (`CONNECTOR_HEALTH_SCHEDULER_ENABLED=false`), explicitly
+  documented as replaceable by Milestone 3's real scheduler rather than
+  extended toward a distributed system (REPO_STATE §10.2). `run_sweep_once()`
+  is a plain synchronous function tests call directly instead of waiting
+  on the loop's sleep.
+- **Added** `connector_health_checks` (migration `0035_connector_health`)
+  — append-only history, capped at 200 rows per instance (a simple
+  rollup, not a time-based policy); `connector_instances` gained a
+  two-column health cache (`last_health_check_at`, `current_health`).
+- **Added** 3 new routes under `/api/v1/integration` (`GET .../health`,
+  `POST .../health/check`, `GET .../health/history`), reusing 2.1.1/
+  2.1.2's permissions; 2 new error codes (`CONNECTOR_UNAVAILABLE`,
+  `CONNECTOR_HEALTH_CHECK_FAILED`); 1 new audit event
+  (`INTEGRATION_CONNECTOR_HEALTH_CHECKED`).
+- **Changed** `ConnectorCredentialService.validate()`'s `actor` parameter
+  to optional (`User | None`), additively, so the scheduler's
+  system-triggered checks can call it with no human actor — every
+  existing caller still passes a real one.
+- **Fixed** (test-authoring, not production code): one pre-existing 2.1.1
+  test (`test_ac03_mock_connector_satisfies_the_interface_without_an_abc_change`)
+  asserted the ABC's method set was exactly `{describe,
+  validate_configuration}` — updated to include the deliberately grown
+  `health_check`, not a weakening (the test's actual intent still holds
+  and is still checked).
+- **Explicitly out of scope, per the build prompt**: the connector SDK
+  (2.1.4), any real connector, the connector-to-tool bridge's actual
+  invocation logic (2.1.3 built the fail-fast resolution boundary it
+  will call, not the bridge itself), identity federation (2.3.1), and
+  any distributed job scheduler (Milestone 3).
+- 24 new backend tests (`tests/integration/test_connector_health.py`).
+  Backend **1,049** green (1,025 + 24), 0 failed, 1 deselected; frontend
+  untouched by this backend-only phase, still **297** green. See
+  [docs/integration/connectors.md](docs/integration/connectors.md)'s
+  "Registry & Health" section.
+
 ## [Unreleased] — Phase 2.1.2 · Connector Authentication Framework
 
 - **Added** `app/integration/auth/` — a pluggable authentication scheme
