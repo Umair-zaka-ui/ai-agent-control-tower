@@ -17,6 +17,18 @@ update/delete path for this table).
 No credential, authentication, health-check or tool-execution concept
 appears here — those are 2.1.2/2.1.3/the tool bridge, deliberately out of
 scope for this sub-phase.
+
+**Phase 2.1.2 addendum** (SRS ACT-INT-FR-020..028): ``ConnectorCredential``
+and ``ConnectorOAuthToken`` below extend this domain with per-instance
+encrypted authentication material, reusing
+``app/runtime/providers/credential_crypto.py`` directly — the same
+encryption utility Phase 5.7a.5 (model-provider credentials) and Phase
+5.6a.1 (``ToolCredential``) already reuse, not a new encrypted-secret
+store. Neither table stores a structured plaintext credential field —
+each ``encrypted_secret``/``encrypted_access_token``/
+``encrypted_refresh_token`` column is a single Fernet ciphertext over a
+JSON-serialized bundle (or bare token string), decrypted only inline at
+the point of use, never assigned back onto a persisted row.
 """
 
 from __future__ import annotations
@@ -115,3 +127,89 @@ class ConnectorLifecycleEvent(Base, UUIDPrimaryKeyMixin):
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     actor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class ConnectorCredential(Base, UUIDPrimaryKeyMixin):
+    """Phase 2.1.2 SRS ACT-INT-FR-020..023, FR-025..028 — a per-instance,
+    per-scheme authentication credential, encrypted at rest.
+
+    ``encrypted_secret`` holds a single Fernet ciphertext over a
+    JSON-serialized bundle of whatever fields the scheme declares it
+    needs (``AuthScheme.required_fields()``) — an API key, a
+    username/password pair, an OAuth2 client id/secret/token URL, or an
+    mTLS cert/key pair. Never structured plaintext columns per field
+    (``ACT-INT-FR-025`` — nothing here can accidentally log or serialize
+    a plaintext credential because nothing here ever holds one outside
+    ``ConnectorCredentialService``'s own decrypt call). ``organization_id``
+    is denormalized from the parent instance for the same reason
+    ``ProviderCredential``/``ToolCredential`` scope by organization
+    directly — every query filters by it, never trusting the instance
+    FK alone to enforce tenant isolation.
+
+    Unique on ``(connector_instance_id, auth_scheme)`` — an instance may
+    hold stored credentials for more than one scheme (e.g. mid-rotation
+    to a different auth method), but exactly one is ever the *active*
+    scheme actually applied, per the connector type's declared
+    ``auth_requirements``."""
+
+    __tablename__ = "connector_credentials"
+    __table_args__ = (
+        UniqueConstraint("connector_instance_id", "auth_scheme", name="uq_connector_credentials_instance_scheme"),
+    )
+
+    connector_instance_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("connector_instances.id", ondelete="CASCADE"), nullable=False, index=True,
+    )
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True,
+    )
+    auth_scheme: Mapped[str] = mapped_column(String(48), nullable=False)
+    encrypted_secret: Mapped[str] = mapped_column(Text, nullable=False)
+    secret_hint: Mapped[str] = mapped_column(String(8), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="ACTIVE")
+    last_validated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    validation_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
+    )
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True,
+    )
+
+
+class ConnectorOAuthToken(Base, UUIDPrimaryKeyMixin):
+    """Phase 2.1.2 SRS ACT-INT-FR-024 — a cached OAuth2 token pair for one
+    connector instance. A token is a credential exactly like any other
+    (``ACT-INT-FR-025``): both ``encrypted_access_token`` and
+    ``encrypted_refresh_token`` are independent Fernet ciphertexts (never
+    a shared bundle with the scheme's stored client id/secret in
+    ``ConnectorCredential`` — a token's lifecycle, refreshed on its own
+    schedule, is a distinct concern from the long-lived client
+    credentials used to obtain it).
+
+    Unique on ``connector_instance_id`` — one cached token pair per
+    instance, refreshed in place. ``app/integration/auth/token_manager.py``
+    is the only code that ever reads or writes this table, and does so
+    under a row lock on the *parent* ``connector_instances`` row (not
+    this one — see that module's docstring for why) so two concurrent
+    invocations needing a refresh can never race into a double refresh."""
+
+    __tablename__ = "connector_oauth_tokens"
+    __table_args__ = (
+        UniqueConstraint("connector_instance_id", name="uq_connector_oauth_tokens_instance"),
+    )
+
+    connector_instance_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("connector_instances.id", ondelete="CASCADE"), nullable=False, index=True,
+    )
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True,
+    )
+    encrypted_access_token: Mapped[str] = mapped_column(Text, nullable=False)
+    encrypted_refresh_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
+    )

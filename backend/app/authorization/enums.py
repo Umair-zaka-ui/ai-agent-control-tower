@@ -201,3 +201,10 @@ class AuthorizationAuditEvent(str, enum.Enum):
     # RUNTIME_LOOP_TERMINATED carries its own transition detail in `meta`
     # rather than needing a separate event per transition kind.
     INTEGRATION_CONNECTOR_STATE_CHANGED = "INTEGRATION_CONNECTOR_STATE_CHANGED"
+    # Connector Authentication Framework (Phase 2.1.2, ACT-INT-FR-020..028).
+    # `meta` carries connector_instance_id/auth_scheme only -- never a
+    # credential value or its ciphertext, mirroring
+    # RUNTIME_PROVIDER_CREDENTIAL_UPDATED's own redaction discipline.
+    INTEGRATION_CONNECTOR_CREDENTIAL_UPDATED = "INTEGRATION_CONNECTOR_CREDENTIAL_UPDATED"
+    INTEGRATION_CONNECTOR_CREDENTIAL_DELETED = "INTEGRATION_CONNECTOR_CREDENTIAL_DELETED"
+    INTEGRATION_CONNECTOR_CREDENTIAL_VALIDATED = "INTEGRATION_CONNECTOR_CREDENTIAL_VALIDATED"
