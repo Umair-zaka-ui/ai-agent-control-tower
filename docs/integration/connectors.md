@@ -1,20 +1,19 @@
-# Connector Abstraction, Lifecycle, Authentication, Health & SDK (Phases 2.1.1 – 2.1.4)
+# Connector Abstraction, Lifecycle, Authentication, Health, SDK & Generic REST Connector (Phases 2.1.1 – 2.2.1)
 
-`ACT-SRS-M2` §5.1–§5.4, `ACT-INT-FR-001` through `FR-066`. The four
-sub-phases that make up Milestone 2's connector framework —
-2.1.1 is the spine every later connector is built on; 2.1.2 is the
-pluggable authentication framework that lets a connector instance hold
-real, encrypted credentials for six schemes, including transparent
-OAuth2; 2.1.3 makes a connector *discoverable and monitored* — a
-registry that resolves it, health checks that verify it, and an
-automated path into (and back out of) the `failed` state 2.1.1 defined
-but never drove; 2.1.4 formalizes everything the first three sub-phases
-already established into a documented, containment-first **SDK** so a
-trusted developer outside the platform core can author a connector at
-all. All four are covered in this one document since each extends,
-rather than replaces, what came before — with 2.1.4, the connector
-framework itself (Phase 2.1) is complete; what remains in Milestone 2 is
-*using* it (2.2.x's generic connectors, 2.3.1's identity federation).
+`ACT-SRS-M2` §5.1–§5.4, §6.1, `ACT-INT-FR-001` through `FR-066`, and
+`FR-100` through `FR-106`. The connector *framework* (2.1.1's spine,
+2.1.2's pluggable authentication, 2.1.3's registry/health, 2.1.4's
+containment-first SDK) is Phase 2.1, complete as of 2.1.4. This document
+now also covers Phase 2.2.1, Milestone 2's **first real connector**: a
+generic REST connector, built entirely through the 2.1.4 SDK surface,
+that turns any HTTP/JSON API into governed tools by declaration — proof
+that the framework, not merely a toy example, actually works, and the
+template every later REST-based vendor connector (Salesforce, ServiceNow,
+most SAP interfaces) will follow as a configuration document rather than
+new code. All five sub-phases are covered in this one document since each
+extends, rather than replaces, what came before. What remains in
+Milestone 2: 2.2.2/2.2.3/2.2.4 (database/storage/queue connectors) and
+2.3.1 (identity federation).
 
 ## What this sub-phase is, in one sentence
 
@@ -146,9 +145,11 @@ express.
 
 | Deferred | Sub-phase |
 |---|---|
-| Any real connector (REST, database, storage, queue) | 2.2.x |
+| Database, storage, and queue connectors | 2.2.2 / 2.2.3 / 2.2.4 |
+| GraphQL, and any vendor-specific connector (SAP/Salesforce/ServiceNow/etc.) | fast-follow, same REST framework, triggered by named demand |
 | Identity federation (platform *user* login via an enterprise IdP — the opposite direction from connector auth, see below) | 2.3.1 |
-| Converting a declared tool contract into an actual invokable `Tool` row bound into `tools_snapshot` (the "tool bridge") — 2.1.3 built the fail-fast *resolution* boundary it will call, not the bridge itself | 2.2.x |
+| Connector marketplace, publishing, signing, sandboxing of untrusted third-party code | Milestone 12 |
+| Wiring a connector-derived tool into `tools_snapshot`/`AgentTool`/the model-driven tool loop — 2.2.1 built a real, direct, database-backed invocation bridge (`app/integration/connectors/rest/invoker.py`) but did not touch `ToolGatewayService` or execution | not yet scheduled |
 | Any change to model or tool execution — Milestone 1 is untouched | done |
 | Deployment strategies | Milestone 3 |
 | A distributed job scheduler | Milestone 3 — 2.1.3's own health-check scheduler is explicitly interim, see below |
@@ -156,26 +157,30 @@ express.
 Two things worth calling out explicitly since they are easy to mistake
 for scope creep: `_CONNECTOR_TYPES` in `app/integration/service.py` is a
 small, private, in-process dict (`"MOCK" -> MockConnector`,
-`"MOCK_AUTH" -> MockAuthenticatedConnector`, and — as of 2.1.4 —
-`"SDK_EXAMPLE_WEBHOOK" -> WebhookConnector`) letting `ConnectorService`
-turn a `connectors` row back into a live `Connector` instance when it
-needs to call `validate_configuration()`. As of 2.1.4, `ConnectorTypeService.
-register()` *is* a real, public, single registration path — every
-`_CONNECTOR_TYPES` entry goes through it via `ensure_seeded()`, and an
-author may call it directly too (see "Connector SDK", below) — but adding
-a *new* first-party entry to the dict itself still means editing this
-module's source, not a runtime `POST /connector-types` call; the
-dict remains process-local, not a database-driven catalog an operator
-edits without a deploy. As of 2.1.3, the *lookup* half of
-`ACT-INT-FR-040` (resolving an identifier to its implementation/config,
-listing types/instances) has a real, dedicated surface —
-`app/integration/registry.py`'s `ConnectorRegistry` — see below. And the
-`Connector` ABC still has no `authenticate()` or `execute()` method
-(2.1.2's `AuthScheme` framework applies a credential to a request
-*outside* a connector's own code, never inside it; actually invoking a
-connector is still the tool bridge's job, still out of scope until
-2.2.x) — only `health_check()` was added, in 2.1.3, deliberately and
-additively (see below).
+`"MOCK_AUTH" -> MockAuthenticatedConnector`, `"SDK_EXAMPLE_WEBHOOK" ->
+WebhookConnector`, and — as of 2.2.1 — `"REST" -> RestConnector`) letting
+`ConnectorService` turn a `connectors` row back into a live `Connector`
+instance when it needs to call `validate_configuration()`. As of 2.1.4,
+`ConnectorTypeService.register()` *is* a real, public, single
+registration path — every `_CONNECTOR_TYPES` entry goes through it via
+`ensure_seeded()`, and an author may call it directly too (see "Connector
+SDK", below) — but adding a *new* first-party entry to the dict itself
+still means editing this module's source, not a runtime
+`POST /connector-types` call; the dict remains process-local, not a
+database-driven catalog an operator edits without a deploy. As of 2.1.3,
+the *lookup* half of `ACT-INT-FR-040` (resolving an identifier to its
+implementation/config, listing types/instances) has a real, dedicated
+surface — `app/integration/registry.py`'s `ConnectorRegistry` — see
+below. The `Connector` ABC still has no `authenticate()` or `execute()`
+method (2.1.2's `AuthScheme` framework applies a credential to a request
+*outside* a connector's own code, never inside it) — only
+`health_check()` was added, in 2.1.3, deliberately and additively (see
+below). As of 2.2.1, a connector's declared endpoints **are** genuinely
+invocable — through `app/integration/connectors/rest/invoker.py`, a
+platform bridge sitting above the connector, never a method on the ABC
+itself — see "Generic REST Connector", below, for what that bridge is
+and, just as importantly, is not (it does not touch
+`ToolGatewayService`/`tools_snapshot`/the model-driven tool loop).
 
 ## Data model
 
@@ -723,3 +728,232 @@ here). Every pre-existing test passes unmodified — no ABC method
 changed, no existing service method's signature changed beyond the
 purely additive `ConnectorTypeService.register()`, and `app/runtime/`
 was not touched.
+
+## Generic REST Connector (Phase 2.2.1)
+
+`ACT-SRS-M2` §6.1, `ACT-INT-FR-100` through `FR-106`. The connector
+framework's first real job, and the SDK's first real proving ground: a
+`RestConnector` that turns any typical HTTP/JSON API into governed tools
+by declaration — no vendor-specific code, ever, in the runtime or
+anywhere else.
+
+### What "the declaration" actually is
+
+A REST connector *instance*'s `configuration` (validated by
+`RestConnector.validate_configuration`, both structurally via a JSON
+Schema and semantically via
+`app/integration/connectors/rest/declaration.py::parse_declaration`) is
+exactly:
+
+```jsonc
+{
+  "base_url": "https://api.vendor-crm.example.com",
+  "auth_scheme": "BEARER",                    // one of SUPPORTED_AUTH_SCHEMES
+  "additional_allowed_hosts": ["auth.vendor-crm.example.com"],  // optional
+  "allow_plaintext_http": false,               // optional, mirrors Tool.http_config's own escape hatch
+  "endpoints": [
+    {
+      "name": "get_ticket", "method": "GET", "path": "/v1/tickets/{ticket_id}",
+      "description": "Fetch a single ticket by id.",
+      "parameters": {"type": "object", "properties": {"ticket_id": {"type": "string"}}, "required": ["ticket_id"]},
+      "path_params": ["ticket_id"],
+      "response_field": "data"
+    },
+    {
+      "name": "list_tickets", "method": "GET", "path": "/v1/tickets",
+      "description": "List tickets, optionally filtered by status.",
+      "parameters": {"type": "object", "properties": {"status": {"type": "string"}}},
+      "query_params": {"status": "status"},
+      "pagination": {"style": "offset_limit", "page_size": 25, "items_field": "data.items"}
+    }
+  ]
+}
+```
+
+Every endpoint becomes one distinct tool contract (`ACT-INT-FR-102`) —
+name, description, and `parameters` (the tool's own argument schema)
+carried straight through by
+`declaration.py::tool_contracts_for(configuration)`. `path_params`/
+`query_params`/`header_params`/`body_fields` say *where* each named
+argument goes; `response_field` (a dotted path, or absent for "the whole
+body") and an optional `output_schema` say how the response becomes the
+tool's output; `pagination` declares one of three bounded strategies.
+
+**Why `RestConnector.describe()` (the type-level, zero-argument call
+every connector type answers) carries only a structural placeholder tool
+contract, not the real per-instance ones.** `Connector.describe()` has no
+configuration parameter — it can't know an instance's endpoints, because
+no instance exists yet when a *type* registers. Rather than widen the
+`Connector` ABC itself (which would ripple into `MockConnector`/
+`WebhookConnector` too, for a capability only REST needs), the type-level
+descriptor declares one honest, self-documenting placeholder purely to
+satisfy `ACT-INT-FR-064`'s completeness check; `tool_contracts_for()` is
+the real, per-instance mechanism `ACT-INT-FR-102` means. A deliberate,
+reported design decision — see `connector.py`'s own docstring.
+
+### Built through the SDK surface — proven, not asserted
+
+`app/integration/connectors/rest/{declaration,templating,extraction,
+pagination,connector}.py` import only from `app.integration.sdk` (or each
+other) — the exact discipline 2.1.4's `WebhookConnector` established,
+now proven against a connector that does a real job, via the same
+AST-import-inspection test
+(`test_rest_connector.py::test_ac15_the_connector_package_imports_only_from_the_sdk_surface_or_itself`).
+`GovernedHttpClient` is the *only* outbound mechanism anywhere in the
+package, including the invocation bridge (`invoker.py`) — no file imports
+`httpx`/`requests`/a raw socket, verified the same way.
+
+**A real SDK gap this connector found, and the fix.** `GovernedHttpClient
+.request()` forwarded a caller's `url` straight to `execute_http_tool` as
+`base_url` — but `execute_http_tool`'s own `_build_target_url` only ever
+honors a query string supplied through its dedicated `query` parameter,
+silently dropping one embedded in `base_url` itself. 2.1.4's
+`WebhookConnector` never used a query string, so this never surfaced.
+`list_tickets` (paginated, above) does. Rather than reach around the SDK
+surface, `GovernedHttpClient.request()` gained one new, optional `query:
+str | None` parameter (an already-encoded query string), forwarded
+straight through — a small, deliberate, backward-compatible surface
+addition, not a workaround. See `sdk/http.py`'s updated docstring.
+
+### Injection-safe templating
+
+Tool arguments are always *data*: a path argument is percent-encoded with
+**no** safe characters (`urllib.parse.quote(value, safe="")`), so
+`"123/../admin"` becomes the single, inert path segment
+`"123%2F..%2Fadmin"` — it can never introduce an extra `/` and escape the
+declared endpoint. A header or query argument containing `\r`/`\n`/NUL is
+rejected outright before it ever reaches a request (header-injection
+defense). A body argument is placed into the JSON body as its own
+key/value — never string-interpolated — so its value can never alter the
+body's own shape. See `templating.py`.
+
+### Egress inheritance — nothing reimplemented
+
+The declared `base_url`'s host, plus any `additional_allowed_hosts`, are
+the only hosts `invoker.py` ever builds a `GovernedHttpClient` with — the
+exact same SSRF-hardened allowlist/resolution/redirect-revalidation path
+Milestone 1's own HTTP tool action uses, reused directly. A call to a
+host the instance never declared is denied `HOST_NOT_ALLOWLISTED`; a
+declared host that resolves to a private/link-local/loopback address
+(the cloud-metadata vector, `169.254.169.254`, among them) is denied
+`PRIVATE_ADDRESS` — before any socket is ever opened, exactly as for a
+first-party tool call. `TOOL_EGRESS_DENIED` is reused for both, per the
+build prompt's own instruction not to invent a REST-specific egress code.
+
+### Bounded pagination
+
+Three declared styles — `offset_limit`, `page_number`, `cursor` — each
+walking pages until a short/empty one signals "done." All three share one
+hard rule: the number of pages fetched is capped at
+`min(declared max_pages, 100)` regardless of what the declaration or the
+remote server claims, so a misconfigured or actively misbehaving API that
+always signals "more" cannot force an unbounded fetch. See
+`pagination.py`.
+
+### The tool-invocation bridge — real, but deliberately narrow
+
+**Finding**: as of 2.1.4, nothing converted a connector's declared
+`ToolContract` into an actual invocation — `ConnectorRegistry.
+resolve_instance_for_invocation` (2.1.3) resolves an instance to a plain,
+fail-fast-checked snapshot, and its own docstring says "2.2.x's tool
+bridge is expected to call this method first," but no such bridge existed
+anywhere. A REST connector nobody can invoke proves nothing (build prompt
+§3), so this sub-phase built one: `app/integration/connectors/rest/
+invoker.py`'s `invoke_tool(db, organization_id, instance_id, tool_name,
+arguments, ...)` — fail-fast resolves the instance, parses its
+declaration, applies its declared `auth_scheme` via the existing
+authentication framework, renders and dispatches the request through
+`GovernedHttpClient`, drives pagination where declared, and extracts the
+result. Proven completely end to end against a real local HTTP server in
+`test_rest_connector_invocation.py` — including a genuine, stored,
+encrypted `BEARER` credential (`ConnectorCredentialService`) actually
+appearing as a real `Authorization` header on the request the server
+receives, `RestConnector`'s own code never seeing it.
+
+**Deliberately not wired into `ToolGatewayService`/`tools_snapshot`/the
+model-driven tool loop** — Milestone 1's tool execution is untouched, per
+this sub-phase's own working constraints. `invoke_tool` is a complete,
+independently useful, independently tested capability in its own right;
+a future milestone that assigns connector-derived tools to agents can
+call it (or an equivalent) from wherever that wiring eventually lives,
+without this bridge needing to change.
+
+**Credentials, per-instance, generalized from 2.1.2's own precedent.**
+Every connector type before 2.2.1 declared one fixed `auth_requirements.
+scheme` for every instance of that type (`ConnectorCredentialService.
+resolve_and_apply` reads it from the *type* row). A generic REST connector
+serves many vendor APIs, each with its own scheme — so `auth_scheme` lives
+in the *instance's* declaration instead (`ACT-INT-FR-101`), and
+`ConnectorCredentialService` gained one small, additive public method,
+`resolve_and_apply_for_scheme(instance, request, auth_scheme, ...)`, doing
+exactly what `resolve_and_apply` always did but for an explicitly supplied
+scheme; `resolve_and_apply` itself is now a one-line wrapper over it, and
+every existing caller/test is unaffected. `RestConnector`'s own code still
+never imports `app.integration.auth` at all — only `invoker.py` (the
+bridge) does, proven by AST inspection alongside the SDK-surface check.
+
+### The vendor-like declaration — the `ACT-INT-FR-106` proof
+
+`test_rest_connector.py`'s `VENDOR_DECLARATION` is a plausible support-
+ticketing CRM API — `create_ticket` (POST + body), `get_ticket` (GET +
+path param), `list_tickets` (GET, offset/limit-paginated), `update_ticket`
+(PATCH + path param + body) — configured entirely as the JSON shown
+above, with no code, and (in `test_rest_connector_invocation.py`) driven
+end to end against a real local fixture server. This is the concrete
+claim `ACT-INT-FR-106` makes: a typical vendor REST integration is a
+configuration document, not an engineering project.
+
+### The expressiveness boundary — stated, not implied
+
+This declaration model covers the common REST shapes: path/query/header/
+body parameters, JSON bodies and responses, the six existing
+authentication schemes, and three pagination styles. It does **not**
+attempt streaming responses, multipart/form uploads, non-JSON content
+types (XML, CSV), HATEOAS link traversal, or GraphQL (a fast-follow on
+the same framework, not this connector's job). A vendor API needing any
+of those needs either an extension to this declaration model (a
+deliberate, future addition) or a dedicated connector — not a reason to
+bend this one past what `ACT-INT-FR-106` actually asks for ("typical,"
+not "universal").
+
+### No migration
+
+Every table this connector touches (`connectors`, `connector_instances`,
+`connector_credentials`) already exists. A REST connector instance's
+entire declaration lives in `connector_instances.configuration` — the
+same JSONB column every connector instance already has. Migration head
+remains `0035_connector_health`.
+
+### API (2.2.1)
+
+No new HTTP route. Registering the `REST` connector type reuses the
+existing type-registration path (`ensure_seeded()`); configuring a REST
+instance uses the existing `POST /connectors` /
+`PATCH /connectors/{id}` endpoints with a REST declaration as the
+`configuration` body. The invocation bridge (`invoker.invoke_tool`) is a
+direct, database-backed Python entry point, not (yet) an HTTP route —
+see "The tool-invocation bridge," above, for why.
+
+New error codes: `REST_ENDPOINT_NOT_DECLARED` (a tool name with no
+matching declared endpoint), `REST_TEMPLATE_INVALID` (a templating
+failure — a missing required argument, or one that would alter request
+structure), `REST_EXTRACTION_FAILED` (a response that doesn't match its
+own declared `response_field`/`output_schema`, or isn't valid JSON at
+all). `TOOL_EGRESS_DENIED` is reused for allowlist/SSRF denials, per the
+build prompt's own instruction.
+
+## Testing (2.2.1)
+
+`backend/tests/integration/test_rest_connector.py` (declaration & tool
+contracts AC-01..04, templating & extraction AC-05..09, pagination
+AC-13..14 — pure, no HTTP at all — SDK-surface & integrity AC-15..25) and
+`test_rest_connector_invocation.py` (the live half of AC-10..12, AC-18,
+and AC-19 — every test that talks to "a server" talks to a real
+`http.server` bound to `127.0.0.1` on an OS-assigned port, reached via an
+injected DNS resolver, mirroring `test_http_tool_execution.py`'s own
+established fixture-server convention; no test makes a real outbound call
+to a non-local host). 41 new tests; every pre-existing test passes
+unmodified — the one behavioral change outside the new package
+(`GovernedHttpClient.request()`'s new `query` parameter) is additive and
+backward compatible, and 2.1.4's own SDK test suite passes unchanged
+against it.

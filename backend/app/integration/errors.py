@@ -159,3 +159,41 @@ class ConnectorDeclarationIncompleteError(IdentityError):
             ErrorCode.CONNECTOR_DECLARATION_INCOMPLETE,
             f"Connector type '{connector_type}' declaration is incomplete: {'; '.join(missing)}.",
         )
+
+
+class RestEndpointNotDeclaredError(IdentityError):
+    """Raised at invocation (Phase 2.2.1, ``ACT-INT-FR-102``) when a caller
+    names a tool that has no matching entry in a REST connector instance's
+    own declared ``endpoints`` — the framework never guesses or falls back
+    to a "closest match"; an undeclared endpoint simply cannot be called."""
+
+    def __init__(self, tool_name: str) -> None:
+        super().__init__(
+            ErrorCode.REST_ENDPOINT_NOT_DECLARED,
+            f"No endpoint named '{tool_name}' is declared on this REST connector instance.",
+        )
+
+
+class RestTemplateInvalidError(IdentityError):
+    """Raised at invocation (Phase 2.2.1, ``ACT-INT-FR-104``) when a REST
+    endpoint's request cannot be safely rendered from the supplied tool
+    arguments — a missing required path/query/header/body argument, or a
+    value that would otherwise alter the request's structure (an embedded
+    path separator, a header-injecting control character). The connector's
+    own templating layer (``app/integration/connectors/rest/templating.py``)
+    never lets such a value reach a real request; this is the platform
+    error a caller sees instead."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(ErrorCode.REST_TEMPLATE_INVALID, f"REST request templating failed: {detail}")
+
+
+class RestExtractionFailedError(IdentityError):
+    """Raised at invocation (Phase 2.2.1, ``ACT-INT-FR-104``) when a REST
+    endpoint's response cannot be extracted or validated per its own
+    declared ``response_field``/``output_schema`` — a response that isn't
+    valid JSON, a declared field path absent from the body, or an
+    extracted value that fails the endpoint's own output schema."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(ErrorCode.REST_EXTRACTION_FAILED, f"REST response extraction failed: {detail}")

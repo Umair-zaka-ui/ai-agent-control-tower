@@ -54,6 +54,7 @@ from app.integration.errors import (
     ConnectorTypeNotFoundError,
 )
 from app.integration.lifecycle import target_state
+from app.integration.connectors.rest.connector import RestConnector
 from app.integration.mock import MockConnector
 from app.integration.mock_authenticated import MockAuthenticatedConnector
 from app.integration.sdk.example.webhook_connector import WebhookConnector
@@ -75,6 +76,11 @@ _CONNECTOR_TYPES: dict[str, type[ConnectorImplementation]] = {
     # WebhookConnector goes through the identical code first-party
     # connectors always have.
     "SDK_EXAMPLE_WEBHOOK": WebhookConnector,
+    # Phase 2.2.1 -- the first real, generic connector; registers through
+    # this exact same dict/`ensure_seeded` path as every connector before
+    # it (registration parity, ACT-INT-FR-062's guarantee extending to
+    # real connectors too, not only SDK examples).
+    "REST": RestConnector,
 }
 
 

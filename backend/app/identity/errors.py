@@ -302,6 +302,10 @@ class ErrorCode:
     CONNECTOR_HEALTH_CHECK_FAILED = "CONNECTOR_HEALTH_CHECK_FAILED"
     # Connector SDK (Phase 2.1.4).
     CONNECTOR_DECLARATION_INCOMPLETE = "CONNECTOR_DECLARATION_INCOMPLETE"
+    # Generic REST Connector (Phase 2.2.1).
+    REST_ENDPOINT_NOT_DECLARED = "REST_ENDPOINT_NOT_DECLARED"
+    REST_TEMPLATE_INVALID = "REST_TEMPLATE_INVALID"
+    REST_EXTRACTION_FAILED = "REST_EXTRACTION_FAILED"
 
 
 # Map error codes → HTTP status.
@@ -587,6 +591,15 @@ _STATUS: dict[str, int] = {
     # the caller (a connector author, at registration time) supplied an
     # incomplete declaration, not a server-side failure.
     ErrorCode.CONNECTOR_DECLARATION_INCOMPLETE: status.HTTP_422_UNPROCESSABLE_ENTITY,
+    # Generic REST Connector (Phase 2.2.1). A tool name with no matching
+    # declared endpoint is a not-found (mirrors CONNECTOR_TYPE_NOT_FOUND);
+    # a templating failure (missing/invalid argument) is a client input
+    # error (422, mirrors CONNECTOR_CONFIG_INVALID); an extraction failure
+    # is an attempt against an external response that didn't match its own
+    # declaration (502, mirrors CONNECTOR_HEALTH_CHECK_FAILED/TOOL_EXECUTION_FAILED).
+    ErrorCode.REST_ENDPOINT_NOT_DECLARED: status.HTTP_404_NOT_FOUND,
+    ErrorCode.REST_TEMPLATE_INVALID: status.HTTP_422_UNPROCESSABLE_ENTITY,
+    ErrorCode.REST_EXTRACTION_FAILED: status.HTTP_502_BAD_GATEWAY,
 }
 
 

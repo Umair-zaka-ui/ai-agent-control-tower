@@ -76,6 +76,7 @@ class GovernedHttpClient:
         *,
         headers: Mapping[str, str] | None = None,
         json_body: dict | None = None,
+        query: str | None = None,
         timeout_seconds: float = 30.0,
         resolver: Resolver | None = None,
     ) -> HttpExecutionResult:
@@ -83,8 +84,21 @@ class GovernedHttpClient:
         returned ``HttpExecutionResult.egress_decision`` reports it, the
         same contract ``execute_http_tool`` already gives first-party
         tools, so a connector author handles a denial the same way this
-        platform's own tool executor does."""
+        platform's own tool executor does.
+
+        ``query`` — Phase 2.2.1 addition, discovered while building the
+        REST connector (``ACT-INT-FR-104``): ``execute_http_tool``'s own
+        ``_build_target_url`` only ever honors a query string supplied
+        through its dedicated ``query`` parameter — any query string
+        embedded directly in ``url`` itself is silently dropped (it reads
+        only ``base_url``'s scheme/netloc/path, never its query
+        component). 2.1.4's worked example never surfaced this gap since
+        it had no query parameters at all; a paginated REST endpoint does.
+        Rather than have every caller learn this the hard way, ``query``
+        is now a first-class, optional parameter here, forwarded straight
+        through — pass an already-encoded query string (e.g.
+        ``urllib.parse.urlencode(...)``); leave ``url`` itself query-free."""
         return execute_http_tool(
-            method=method, base_url=url, headers=dict(headers or {}), json_body=json_body,
+            method=method, base_url=url, query=query, headers=dict(headers or {}), json_body=json_body,
             policy=self._policy, timeout_seconds=timeout_seconds, resolver=resolver,
         )

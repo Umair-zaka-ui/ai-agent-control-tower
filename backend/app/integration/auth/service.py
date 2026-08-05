@@ -220,17 +220,35 @@ class ConnectorCredentialService:
     def resolve_and_apply(
         self, connector_instance: ConnectorInstance, request: OutboundRequest, *, transport=None,
     ) -> OutboundRequest:
-        """The proof this framework actually works end to end (against a
-        fixture request, per the build prompt — no real connector
-        invokes yet). Reads the connector *type*'s declared
-        ``auth_requirements.scheme`` (2.1.1), resolves the matching
-        stored credential, and — for the two OAuth2 schemes only —
-        obtains a valid access token via ``token_manager`` first,
-        merging it into the credential mapping before the scheme ever
-        sees it (``ACT-INT-FR-023``: a credential is resolved at
-        invocation time, never a step earlier)."""
+        """Reads the connector *type*'s declared ``auth_requirements.scheme``
+        (2.1.1) and delegates to ``resolve_and_apply_for_scheme`` below —
+        the shape every connector type through 2.1.3 needed, since each one
+        registered with exactly one fixed scheme (``MOCK_AUTH`` -> ``API_KEY``,
+        etc.). Unchanged behavior, now a thin wrapper (Phase 2.2.1)."""
         type_row = self.db.get(Connector, connector_instance.connector_id)
         scheme_id = (type_row.auth_requirements or {}).get("scheme", _NO_AUTH_SCHEME)
+        return self.resolve_and_apply_for_scheme(connector_instance, request, scheme_id, transport=transport)
+
+    def resolve_and_apply_for_scheme(
+        self, connector_instance: ConnectorInstance, request: OutboundRequest, auth_scheme: str, *, transport=None,
+    ) -> OutboundRequest:
+        """Phase 2.2.1 — the same resolve-then-apply mechanics as
+        ``resolve_and_apply``, generalized to an explicitly supplied scheme
+        rather than the connector *type*'s single fixed
+        ``auth_requirements.scheme``. Needed because a generic, declarative
+        connector (the REST connector) serves many different vendor APIs —
+        each with its own instance-declared authentication scheme — from
+        one registered type, unlike every 2.1.x connector type's
+        one-scheme-per-type precedent. Resolves the matching stored
+        credential and — for the two OAuth2 schemes only — obtains a valid
+        access token via ``token_manager`` first, merging it into the
+        credential mapping before the scheme ever sees it (``ACT-INT-FR-023``:
+        a credential is resolved at invocation time, never a step earlier).
+        No connector's own code ever calls this directly — it is invoked by
+        the platform bridge sitting above a connector (e.g.
+        ``app/integration/connectors/rest/invoker.py``), exactly as
+        ``resolve_and_apply`` itself always was."""
+        scheme_id = (auth_scheme or _NO_AUTH_SCHEME).upper()
         if scheme_id == _NO_AUTH_SCHEME:
             return request
 
