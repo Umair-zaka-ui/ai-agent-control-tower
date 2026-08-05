@@ -4,6 +4,21 @@ All notable changes to the AI Agent Control Tower are documented here. The forma
 based on [Keep a Changelog](https://keepachangelog.com/); the project is pre-1.0 and
 versions track the roadmap phases rather than semver guarantees.
 
+## [Unreleased] — Phase 2.1.4 · Connector SDK
+
+**Completes the connector framework (Milestone 2, Phase 2.1).** A `Connector` now has an abstraction, a lifecycle, six authentication schemes, a registry, health monitoring, and a documented, containment-first SDK a trusted developer can author one through.
+
+- **Added** `app/integration/sdk/` — the connector-authoring surface, explicit `__all__` re-exports only: `Connector`, the declaration types (`ConnectorDescriptor`/`ToolContract`/`ConnectorLifecycleState`), `SUPPORTED_AUTH_SCHEMES`, `validate_configuration_schema`/`ConnectorConfigInvalidError`, `GovernedHttpClient`, and the testing harness (`ConnectorTestHarness`/`HealthCheckOutcome`). Importing from `app.integration.sdk` is the supported contract; every other `app.integration.*`/`app.runtime.*` import is not, and may change without notice.
+- **Added** `app/integration/sdk/http.py`'s `GovernedHttpClient` — the *only* network primitive the surface exposes, reusing Milestone 1's `egress_guard`/`http_executor` directly (not reimplemented). `allowed_hosts` is fixed at construction, never a per-call argument — a connector's own code cannot widen what it may reach at call time.
+- **Added** the containment core (`ACT-INT-FR-066`): the SDK surface exposes no database session, no credential-resolution machinery (`AuthScheme`/`OutboundRequest`/`ConnectorCredentialService` all withheld), no raw HTTP client, no audit-suppression hook, and no route-registration mechanism — mechanically proven by a dedicated governance-inheritance test suite (AC-10..AC-15), not merely documented. An SDK connector cannot make an undeclared outbound call, receive a decrypted credential, suppress audit, or reach another tenant's data, because the SDK does not offer a method to do any of those.
+- **Added** `app/integration/validation.py`'s `validate_declaration_complete()` — the single completeness check both the real registration path (`ConnectorTypeService.register()`, a new public method) and the SDK harness's pre-registration self-check call. A connector missing its config schema, capabilities, tool contracts, a declared/registered auth scheme, or a real `health_check()` implementation fails registration with `CONNECTOR_DECLARATION_INCOMPLETE`, naming exactly what's missing.
+- **Added** `app/integration/sdk/example/webhook_connector.py`'s `WebhookConnector` (`SDK_EXAMPLE_WEBHOOK`) — a worked example built and tested using **only** the SDK surface, verified by an AST-based import-inspection test, not just by behavior. Registered through the identical `_CONNECTOR_TYPES`/`ensure_seeded` path as `MOCK`/`MOCK_AUTH` — registration parity proven by construction, not asserted.
+- **Added** `ConnectorTypeService.register()` — the single, now genuinely public registration path; `ensure_seeded()` calls it once per `_CONNECTOR_TYPES` entry with no per-identifier branch.
+- **Added** `CONNECTOR_DECLARATION_INCOMPLETE` error code (422).
+- **Explicitly out of scope, per the build prompt**: the generic REST/database/storage/queue connectors (2.2.x — this SDK's own real proving ground), a distributable PyPI package (the surface isn't battle-tested yet), a connector marketplace/publishing/signing (Milestone 12), untrusted-third-party-code sandboxing (this SDK targets trusted, first-party authors — the module's own docstring states this boundary directly), identity federation (2.3.1).
+- **No migration** — the SDK is an authoring surface over the existing schema. **No new HTTP route** — a code-authoring capability, not an API.
+- 31 new backend tests (`tests/integration/test_connector_sdk.py`, 26; `test_connector_sdk_example.py`, 5 — kept in its own file so its import list is an isolated proof that the example's own tests use only the SDK harness). Backend **1,080** green (1,049 + 31), 0 failed, 1 deselected; frontend untouched by this backend-only phase, still **297** green. See [docs/integration/connectors.md](docs/integration/connectors.md)'s "Connector SDK" section.
+
 ## [Unreleased] — Phase 2.1.3 · Connector Registry & Health
 
 - **Added** `app/integration/registry.py` — `ConnectorRegistry`, the

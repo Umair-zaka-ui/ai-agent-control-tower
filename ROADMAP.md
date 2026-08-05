@@ -1249,7 +1249,57 @@ of silently hanging every agent execution that touches it.
   [docs/integration/connectors.md](docs/integration/connectors.md)'s
   "Registry & Health" section.
 
-Next: 2.1.4 (Connector SDK) — 6 of 9 Milestone 2 sub-phases remain.
+### Part 2.1.4 — Connector SDK ✅
+
+**Completes the connector framework (Phase 2.1) in full.** Not a new
+capability so much as a formalization and hardening of the surface
+`MockConnector` was already using — the boundary between "our
+connectors" and "anyone's connectors," and the precondition for the
+connector marketplace in Milestone 12.
+
+- **`app/integration/sdk/`** — the author-facing surface, explicit
+  `__all__` re-exports only: `Connector`, the declaration types,
+  `SUPPORTED_AUTH_SCHEMES`, config validation, one governed network
+  primitive (`GovernedHttpClient`), and a testing harness
+  (`ConnectorTestHarness`). Importing from `app.integration.sdk` is the
+  supported contract; every other internal import is not.
+- **The containment core, proven not asserted**: the surface exposes no
+  database session, no credential-resolution machinery, no raw HTTP
+  client, no audit-suppression hook, no route-registration mechanism —
+  a dedicated governance-inheritance test suite (AC-10..AC-15) proves an
+  SDK connector *cannot* make an undeclared outbound call, receive a
+  decrypted credential, suppress audit, or reach another tenant's data,
+  because the SDK offers no method to do any of those.
+- **`GovernedHttpClient`** — the only network primitive on the surface,
+  reusing Milestone 1's `egress_guard`/`http_executor` directly.
+  `allowed_hosts` is fixed at construction, never a per-call argument.
+- **Completeness enforcement**: one function,
+  `validate_declaration_complete()`, called both at real registration
+  and by the SDK harness's own pre-flight check — an incompletely
+  declared connector fails loudly, at registration, naming exactly
+  what's missing (`CONNECTOR_DECLARATION_INCOMPLETE`).
+- **Registration parity proven by construction**: the worked example,
+  `WebhookConnector` (`SDK_EXAMPLE_WEBHOOK`), sits in the *same*
+  `_CONNECTOR_TYPES` dict as `MOCK`/`MOCK_AUTH` and registers through
+  the identical path — there is one registration mechanism, not two
+  kept in sync.
+- **The worked example is built and tested using only the SDK
+  surface** — one tool contract, `BEARER` auth, a governed health
+  check — verified by an AST-based import-inspection test, not just by
+  behavior.
+- **Scope stated explicitly**: trusted, first-party/enterprise authors
+  only — not a sandbox for adversarial third-party code. That
+  containment problem is Milestone 12's, building on these guarantees
+  but assuming hostile intent this sub-phase does not.
+- No migration; no new HTTP route (a code-authoring capability, not an
+  API).
+- 31 new backend tests. Backend **1,080** total green (1,049 + 31), 1
+  deselected; backend only. See
+  [docs/integration/connectors.md](docs/integration/connectors.md)'s
+  "Connector SDK" section.
+
+Next: 2.2.1 (Generic REST Connector) — the SDK's own real proving
+ground. 5 of 9 Milestone 2 sub-phases remain.
 
 ## Future (Phase 3+)
 
@@ -1258,8 +1308,9 @@ actual rollback/traffic-shift execution — the former Milestone 2), and
 a real distributed job scheduler (2.1.3's own health-check scheduler is
 explicitly interim and built to be replaced, not extended, when this
 lands).
-**Milestone 2, remaining**: the connector SDK (2.1.4); generic
-REST/database/storage/queue connectors (2.2.x); external identity
+**Milestone 2, remaining**: generic REST/database/storage/queue
+connectors (2.2.x — built on the now-complete 2.1.x connector
+framework, and its real proving ground); external identity
 federation (2.3.1 — covers the OAuth/SSO/enterprise-IdP need listed
 below, and is the opposite direction from 2.1.2's
 platform-authenticates-to-external-systems framework: a platform *user*
