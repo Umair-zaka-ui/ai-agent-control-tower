@@ -1,15 +1,20 @@
-# Connector Abstraction, Lifecycle, Authentication & Health (Phases 2.1.1 – 2.1.3)
+# Connector Abstraction, Lifecycle, Authentication, Health & SDK (Phases 2.1.1 – 2.1.4)
 
-`ACT-SRS-M2` §5.1–§5.3, `ACT-INT-FR-001` through `FR-047`. The first
-three sub-phases of Milestone 2 (Enterprise Integration Framework) —
+`ACT-SRS-M2` §5.1–§5.4, `ACT-INT-FR-001` through `FR-066`. The four
+sub-phases that make up Milestone 2's connector framework —
 2.1.1 is the spine every later connector is built on; 2.1.2 is the
 pluggable authentication framework that lets a connector instance hold
 real, encrypted credentials for six schemes, including transparent
 OAuth2; 2.1.3 makes a connector *discoverable and monitored* — a
 registry that resolves it, health checks that verify it, and an
 automated path into (and back out of) the `failed` state 2.1.1 defined
-but never drove. All three are covered in this one document since each
-extends, rather than replaces, what came before.
+but never drove; 2.1.4 formalizes everything the first three sub-phases
+already established into a documented, containment-first **SDK** so a
+trusted developer outside the platform core can author a connector at
+all. All four are covered in this one document since each extends,
+rather than replaces, what came before — with 2.1.4, the connector
+framework itself (Phase 2.1) is complete; what remains in Milestone 2 is
+*using* it (2.2.x's generic connectors, 2.3.1's identity federation).
 
 ## What this sub-phase is, in one sentence
 
@@ -141,7 +146,6 @@ express.
 
 | Deferred | Sub-phase |
 |---|---|
-| Connector SDK | 2.1.4 |
 | Any real connector (REST, database, storage, queue) | 2.2.x |
 | Identity federation (platform *user* login via an enterprise IdP — the opposite direction from connector auth, see below) | 2.3.1 |
 | Converting a declared tool contract into an actual invokable `Tool` row bound into `tools_snapshot` (the "tool bridge") — 2.1.3 built the fail-fast *resolution* boundary it will call, not the bridge itself | 2.2.x |
@@ -152,14 +156,19 @@ express.
 Two things worth calling out explicitly since they are easy to mistake
 for scope creep: `_CONNECTOR_TYPES` in `app/integration/service.py` is a
 small, private, in-process dict (`"MOCK" -> MockConnector`,
-`"MOCK_AUTH" -> MockAuthenticatedConnector`) letting `ConnectorService`
+`"MOCK_AUTH" -> MockAuthenticatedConnector`, and — as of 2.1.4 —
+`"SDK_EXAMPLE_WEBHOOK" -> WebhookConnector`) letting `ConnectorService`
 turn a `connectors` row back into a live `Connector` instance when it
-needs to call `validate_configuration()` — it is still not the
-*dynamic-registration* half of what `ACT-INT-FR-040` describes (adding a
-real connector type in 2.2.x still means adding a line to this dict, not
-calling a public `register()`), though as of 2.1.3 the *lookup* half
-(resolving an identifier to its implementation/config, listing
-types/instances) has a real, dedicated surface —
+needs to call `validate_configuration()`. As of 2.1.4, `ConnectorTypeService.
+register()` *is* a real, public, single registration path — every
+`_CONNECTOR_TYPES` entry goes through it via `ensure_seeded()`, and an
+author may call it directly too (see "Connector SDK", below) — but adding
+a *new* first-party entry to the dict itself still means editing this
+module's source, not a runtime `POST /connector-types` call; the
+dict remains process-local, not a database-driven catalog an operator
+edits without a deploy. As of 2.1.3, the *lookup* half of
+`ACT-INT-FR-040` (resolving an identifier to its implementation/config,
+listing types/instances) has a real, dedicated surface —
 `app/integration/registry.py`'s `ConnectorRegistry` — see below. And the
 `Connector` ABC still has no `authenticate()` or `execute()` method
 (2.1.2's `AuthScheme` framework applies a credential to a request
@@ -532,3 +541,185 @@ and 2.1.2's credential/auth handling is unchanged (`ConnectorCredentialService.
 validate()`'s `actor` parameter became optional, additively, so the
 scheduler's system-triggered checks can call it with no human actor —
 every existing caller still passes a real one).
+
+---
+
+## Connector SDK (Phase 2.1.4)
+
+`ACT-INT-FR-060` through `FR-066`. With this sub-phase, the connector
+*framework* (Phase 2.1) is complete: a `Connector` has an abstraction, a
+lifecycle, six authentication schemes, a registry, health monitoring,
+and now a documented, stable surface through which a trusted developer —
+a customer's own integration engineer, not yet an adversarial
+marketplace author (see "Scope", below) — can author one, safely,
+without touching platform internals.
+
+### What "the SDK" actually is
+
+Not a new capability layered on top of 2.1.1–2.1.3 — a **formalization**
+of the surface `MockConnector` was already using. `app/integration/sdk/
+__init__.py` re-exports, by explicit name, exactly what an author needs:
+the `Connector` base to subclass, the declaration types
+(`ConnectorDescriptor`, `ToolContract`, `ConnectorLifecycleState`), a
+`SUPPORTED_AUTH_SCHEMES` set to validate a declared `auth_requirements.
+scheme` against, the one JSON-Schema config validator
+(`validate_configuration_schema`), one governed network primitive
+(`GovernedHttpClient`), and the testing harness
+(`ConnectorTestHarness`/`HealthCheckOutcome`). Importing from
+`app.integration.sdk` is the supported contract; importing from any
+other `app.integration.*`/`app.runtime.*` module directly is not, and
+those may change without notice — stated as the module's own first line
+of documentation, not left implicit.
+
+### The governing tension, and how the surface resolves it
+
+An SDK invites code an author, not a platform maintainer, wrote. That
+code must be easy to write correctly and *structurally* incapable of
+being written dangerously — not "an author is told not to bypass egress,
+skip authorization, opt out of audit, or mishandle credentials," but "the
+SDK does not offer a method that would let them." Concretely, what is
+**not** re-exported and why:
+
+| Withheld | Why |
+|---|---|
+| Any database `Session`, `ConnectorService`/`ConnectorRegistry`/`ConnectorCredentialService` | A connector's own code (`describe`/`validate_configuration`/`health_check`) never receives a session, an organization id, or any handle that could reach another tenant's data — the ABC's own method signatures are structurally incapable of it |
+| `AuthScheme`/`OutboundRequest`, credential resolution, a way to register a new scheme | An author *declares* a scheme identifier; they never see, handle, or apply a decrypted credential — that happens entirely in `app.integration.auth`, outside a connector's own code, exactly as 2.1.2 already established |
+| `httpx`/`requests`/raw sockets, `egress_guard`/`http_executor` directly | `GovernedHttpClient` is the *only* network primitive on the surface — every call is policy-checked against the host(s) it was built with, before any DNS lookup or socket opens |
+| `AuthorizationAuditService`, any audit-suppression flag | No method on the surface accepts anything resembling "skip audit" |
+| Any route-registration mechanism | A connector's actions reach the platform exclusively through the existing, permission-gated `app/integration/routes.py` surface — the SDK offers no way to add a second, ungated entry point |
+
+### `GovernedHttpClient` — the one network primitive
+
+`app/integration/sdk/http.py`, a thin, connector-facing wrapper over
+Milestone 1's own SSRF-hardened path
+(`app.runtime.tools.egress_guard`/`http_executor`) — **reused directly,
+not reimplemented**, per the build prompt's own instruction. Two
+properties make it safe by construction rather than by convention:
+
+1. **`allowed_hosts` is fixed at construction, never a per-call
+   argument.** Neither `request()` nor `evaluate()` accepts a host
+   override — a connector's own code cannot widen what it may reach at
+   the moment it makes a call, only at the moment it builds the client,
+   which in every intended usage is derived from the instance's own
+   declared configuration (exactly the shape the worked example's
+   `webhook_url` already is).
+2. **`evaluate()` is a pure, offline policy check** — no socket, and no
+   DNS unless a host actually clears the allowlist first (`evaluate_url`
+   checks the allowlist *before* resolving). This is what makes "a call
+   to an undeclared host is denied" (AC-11) verifiable with zero live
+   network or mocked transport: the denial happens at the allowlist
+   check alone.
+
+### Completeness enforcement — one check, two callers, no privileged path
+
+`app/integration/validation.py`'s `validate_declaration_complete()` is
+the single place a connector type's declaration is checked before
+registration: non-empty `config_schema`/`capabilities`/`tool_contracts`
+(each tool contract itself well-formed), a declared `auth_requirements.
+scheme` that is either `NONE` or a real, registered identifier, and a
+`health_check()` that is more than a placeholder. Two callers, both
+calling this exact function — `ConnectorTypeService.register()` (the
+real registration path) and `ConnectorTestHarness.
+assert_declaration_complete()` (so an author proves their connector will
+register *before* ever touching a database) — there is no second,
+weaker check for SDK-authored connectors.
+
+**Detecting an unimplemented `health_check()`.** The ABC already
+guarantees the method exists (`TypeError` at instantiation otherwise,
+2.1.1's own AC-02) — what it cannot guarantee is that the method does
+anything real. `validate_declaration_complete` calls `health_check({})`
+once, as a smoke probe; a placeholder body that raises
+`app.integration.validation.HealthCheckNotImplemented` (a dedicated
+marker — deliberately **not** Python's own generic "unimplemented
+method" builtin, since an existing 2.1.3 test greps this entire package
+for exactly that builtin's name as a leftover-stub signal, and colliding
+with it would make that check meaningless) is treated as incomplete; any
+other exception is treated as ordinary `ERROR`-path behavior — the same
+distinction `ConnectorHealthService` itself already draws between
+`ERROR` (a probe raised) and `UNHEALTHY` (a probe cleanly returned
+`False`) — not a sign the method was never written.
+
+### Registration parity — proven by construction, not asserted
+
+`ACT-INT-FR-062` requires no privileged path for an SDK-authored
+connector. Rather than build a parallel registration mechanism and then
+prove it behaves identically to the first-party one, this sub-phase
+registers its own worked example (`SDK_EXAMPLE_WEBHOOK`) in the *same*
+`_CONNECTOR_TYPES` dict, right alongside `MOCK`/`MOCK_AUTH`, so it flows
+through the identical `ensure_seeded()` → `register()` → database-insert
+path every prior connector type already used. There is nothing to keep
+in sync between "the first-party path" and "the SDK path" because there
+is only one path.
+
+### The worked example — `WebhookConnector`
+
+`app/integration/sdk/example/webhook_connector.py`: a minimal outbound
+webhook connector — one declared tool (`send_notification`), `BEARER`
+authentication, and a `health_check()` that pre-flights its own declared
+`webhook_url` host through a `GovernedHttpClient` built from *that same
+host* — built and tested using **only** names imported from
+`app.integration.sdk` (plus the standard library). This is not a style
+choice; it is the sub-phase's own required proof (AC-02): if expressing
+a real, if minimal, connector had required reaching past
+`app.integration.sdk`, the surface would have been incomplete, and the
+build prompt's own instruction was to fix the surface, not route around
+it. It did not — confirmed by an AST-based test
+(`test_ac02_example_imports_only_from_the_sdk_surface`) that inspects
+the file's own import statements, not just its behavior. Its own tests,
+in a dedicated `test_connector_sdk_example.py`, are held to the same
+standard for *their* imports (AC-03) — kept in a separate file
+specifically so that file's own import list is a clean, isolated proof,
+undiluted by the broader platform-internal imports this sub-phase's
+other, governance-proving tests legitimately need.
+
+### Testing utilities — the pattern `MockConnector` already used, packaged
+
+`app/integration/sdk/testing.py`'s `ConnectorTestHarness` wraps one
+connector instance under test and exercises `describe()`/
+`validate_configuration()`/`health_check()`/a named `ToolContract`
+directly, in-process — no live external system, no database, no network
+call of the harness's own (a connector's own `health_check()` may choose
+to make one through `GovernedHttpClient`; the harness neither requires
+nor prevents that). `HealthCheckOutcome.reachable` is `None` when the
+call raised, mirroring `ConnectorHealthService`'s own `ERROR`/`UNHEALTHY`
+split, so a harness caller asserts either outcome without writing its
+own `try`/`except`.
+
+### Scope — trusted authors, not an adversarial marketplace (stated explicitly)
+
+This SDK targets **first-party and trusted-enterprise authors**: a
+customer's own integration engineers, writing connectors they deploy in
+their own tenant, in good faith, against a contract that makes the
+dangerous mistakes structurally unavailable. It is **not** a sandbox for
+running actively adversarial third-party code — the containment problem
+of a connector *deliberately* trying to escape or exfiltrate belongs to
+Milestone 12's marketplace, which builds on these guarantees but must
+additionally assume hostile intent (arbitrary code execution inside the
+platform process is not, today, sandboxed at the OS/process level for
+connectors any more than it is for any other in-process Python code).
+The SDK module's own docstring states this boundary directly rather than
+leaving it implied — "the SDK offers no dangerous affordance" is not the
+same claim as "arbitrary code is safe to execute here."
+
+### No migration
+
+Every table this sub-phase's authoring surface touches already exists
+(`connectors`, `connector_instances`, and everything 2.1.2/2.1.3 added).
+The SDK is an authoring surface over that existing schema, not a new
+concept requiring storage of its own — migration head remains
+`0035_connector_health`.
+
+## Testing (2.1.4)
+
+`backend/tests/integration/test_connector_sdk.py` (surface, registration
+parity & completeness, governance inheritance, testing utilities,
+integrity) and `test_connector_sdk_example.py` (the worked example's own
+SDK-harness-only tests), grouped exactly as the build prompt's own §8
+groups its acceptance criteria: surface (AC-01..04), registration parity
+& completeness (AC-05..09), governance inheritance (AC-10..15 — the
+containment core), testing utilities (AC-16..18), integrity (AC-19..24 —
+the suite-level ones are proven by the full-suite run, not duplicated
+here). Every pre-existing test passes unmodified — no ABC method
+changed, no existing service method's signature changed beyond the
+purely additive `ConnectorTypeService.register()`, and `app/runtime/`
+was not touched.

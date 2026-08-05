@@ -137,3 +137,25 @@ class ConnectorHealthCheckFailedError(IdentityError):
             ErrorCode.CONNECTOR_HEALTH_CHECK_FAILED,
             f"Connector health check failed to complete: {detail}",
         )
+
+
+class ConnectorDeclarationIncompleteError(IdentityError):
+    """Raised at registration (Phase 2.1.4, ``ACT-INT-FR-064``) when a
+    connector type's own ``describe()`` declaration is missing something
+    required to be safely registered — no config schema, no capabilities,
+    no tool contracts, a malformed tool contract, an undeclared or
+    unregistered auth scheme, or a ``health_check()`` that was never really
+    implemented (signals so via
+    ``app.integration.validation.HealthCheckNotImplemented``). Raised by
+    ``app/integration/validation.py::validate_declaration_complete``, the
+    single completeness check both ``ConnectorTypeService.register`` (the
+    real registration path) and the SDK test harness's
+    ``assert_declaration_complete`` call — no separate, weaker check exists
+    for SDK-authored connectors (``ACT-INT-FR-062``'s parity extends here
+    too)."""
+
+    def __init__(self, connector_type: str, missing: list[str]) -> None:
+        super().__init__(
+            ErrorCode.CONNECTOR_DECLARATION_INCOMPLETE,
+            f"Connector type '{connector_type}' declaration is incomplete: {'; '.join(missing)}.",
+        )

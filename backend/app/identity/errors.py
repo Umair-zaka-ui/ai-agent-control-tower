@@ -300,6 +300,8 @@ class ErrorCode:
     # Connector Registry & Health (Phase 2.1.3).
     CONNECTOR_UNAVAILABLE = "CONNECTOR_UNAVAILABLE"
     CONNECTOR_HEALTH_CHECK_FAILED = "CONNECTOR_HEALTH_CHECK_FAILED"
+    # Connector SDK (Phase 2.1.4).
+    CONNECTOR_DECLARATION_INCOMPLETE = "CONNECTOR_DECLARATION_INCOMPLETE"
 
 
 # Map error codes → HTTP status.
@@ -581,6 +583,10 @@ _STATUS: dict[str, int] = {
     # or unexpected didn't complete).
     ErrorCode.CONNECTOR_UNAVAILABLE: status.HTTP_503_SERVICE_UNAVAILABLE,
     ErrorCode.CONNECTOR_HEALTH_CHECK_FAILED: status.HTTP_502_BAD_GATEWAY,
+    # Connector SDK (Phase 2.1.4) -- mirrors CONNECTOR_CONFIG_INVALID (422):
+    # the caller (a connector author, at registration time) supplied an
+    # incomplete declaration, not a server-side failure.
+    ErrorCode.CONNECTOR_DECLARATION_INCOMPLETE: status.HTTP_422_UNPROCESSABLE_ENTITY,
 }
 
 
