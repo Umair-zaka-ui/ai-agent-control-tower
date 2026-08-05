@@ -1301,6 +1301,52 @@ connector marketplace in Milestone 12.
 Next: 2.2.1 (Generic REST Connector) — the SDK's own real proving
 ground. 5 of 9 Milestone 2 sub-phases remain.
 
+### Part 2.2.1 — Generic REST Connector ✅
+
+**Milestone 2's first real connector, and the SDK's first real proving
+ground.** Everything through 2.1.4 built the connector *framework*; this
+is the first proof it actually does a job — any typical HTTP/JSON API
+becomes governed tools by declaration, no code.
+
+- **`RestConnector`** (`app/integration/connectors/rest/`) built entirely
+  through the 2.1.4 SDK surface. A configured instance declares a base
+  URL, a per-instance authentication scheme, and one or more endpoints
+  (method, path template, argument mapping, response extraction, optional
+  pagination) — each endpoint becomes one distinct tool contract
+  (`ACT-INT-FR-102`).
+- **Injection-safe templating**: a path argument is percent-encoded with
+  no safe characters (`"123/../admin"` renders as the single, inert
+  segment `"123%2F..%2Fadmin"` — never escapes the declared endpoint); a
+  header/query value containing a control character is rejected outright.
+- **Bounded pagination** — offset/limit, page-number, cursor — hard-capped
+  at `min(declared max_pages, 100)` regardless of server behavior.
+- **The first tool-invocation bridge built anywhere in this codebase**
+  (`invoker.py`): fail-fast resolves an instance, applies its declared
+  auth scheme via the existing 2.1.2 framework, dispatches through
+  `GovernedHttpClient`, drives pagination, extracts the result — proven
+  end to end against a real local server, including a genuine stored,
+  encrypted credential reaching the server as a real header.
+  **Deliberately not wired into the model-driven tool loop** — Milestone 1
+  stays untouched.
+- **One real SDK-surface fix, found by real use**: `GovernedHttpClient
+  .request()` was silently dropping a query string embedded in its URL —
+  invisible to 2.1.4's query-free worked example, fatal to a paginated
+  endpoint. Fixed with a new, optional, backward-compatible `query`
+  parameter.
+- A realistic four-endpoint vendor-like declaration (a support-ticketing
+  CRM API) is the concrete proof that a typical vendor REST integration
+  is a configuration document, not an engineering project.
+- No migration; no new HTTP route (instance configuration reuses the
+  existing connector endpoints; the invocation bridge is a direct Python
+  entry point).
+- 41 new backend tests. Backend **1,121** total green (1,080 + 41), 1
+  deselected; backend only. See
+  [docs/integration/connectors.md](docs/integration/connectors.md)'s
+  "Generic REST Connector" section.
+
+Next: 2.2.2 (Generic Database Connector). 4 of 9 Milestone 2 sub-phases
+remain.
+
 ## Future (Phase 3+)
 
 **Milestone 3**: deployment & release strategies (canary, blue-green,
@@ -1308,11 +1354,10 @@ actual rollback/traffic-shift execution — the former Milestone 2), and
 a real distributed job scheduler (2.1.3's own health-check scheduler is
 explicitly interim and built to be replaced, not extended, when this
 lands).
-**Milestone 2, remaining**: generic REST/database/storage/queue
-connectors (2.2.x — built on the now-complete 2.1.x connector
-framework, and its real proving ground); external identity
-federation (2.3.1 — covers the OAuth/SSO/enterprise-IdP need listed
-below, and is the opposite direction from 2.1.2's
+**Milestone 2, remaining**: generic database/storage/queue connectors
+(2.2.2-2.2.4 — built on the same REST-proven framework); external
+identity federation (2.3.1 — covers the OAuth/SSO/enterprise-IdP need
+listed below, and is the opposite direction from 2.1.2's
 platform-authenticates-to-external-systems framework: a platform *user*
 authenticating via an enterprise IdP). Beyond that: retiring the legacy
 `/auth/login` surface (now the platform's only non-revocable
