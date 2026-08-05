@@ -56,6 +56,8 @@ from app.integration.errors import (
 from app.integration.lifecycle import target_state
 from app.integration.mock import MockConnector
 from app.integration.mock_authenticated import MockAuthenticatedConnector
+from app.integration.sdk.example.webhook_connector import WebhookConnector
+from app.integration.validation import validate_declaration_complete
 from app.models.integration import Connector, ConnectorInstance, ConnectorLifecycleEvent
 from app.models.user import User
 
@@ -66,6 +68,13 @@ _CONNECTOR_TYPES: dict[str, type[ConnectorImplementation]] = {
     # "NONE". Added alongside MockConnector, not in place of it (2.1.1's
     # tests assert MockConnector's own auth_requirements unchanged).
     "MOCK_AUTH": MockAuthenticatedConnector,
+    # Phase 2.1.4 -- the SDK's own worked example, registered through this
+    # exact same dict/`ensure_seeded` path as MOCK/MOCK_AUTH. This *is* the
+    # registration-parity proof (ACT-INT-FR-062): there is no separate
+    # "SDK-authored connector" registration mechanism to demonstrate --
+    # WebhookConnector goes through the identical code first-party
+    # connectors always have.
+    "SDK_EXAMPLE_WEBHOOK": WebhookConnector,
 }
 
 
@@ -86,28 +95,49 @@ class ConnectorTypeService:
     def __init__(self, db: Session) -> None:
         self.db = db
 
+    def register(self, implementation: ConnectorImplementation) -> Connector:
+        """Phase 2.1.4, ``ACT-INT-FR-062``/``FR-064`` -- the single
+        registration path. ``ensure_seeded`` below calls this once per
+        ``_CONNECTOR_TYPES`` entry (first-party and SDK-authored alike,
+        indistinguishably); an SDK author's own test/registration code may
+        also call it directly with a fresh implementation instance that
+        was never added to that dict at all. There is no second,
+        privileged, or more lenient path either way.
+
+        Validates completeness first (``validate_declaration_complete`` --
+        raises ``ConnectorDeclarationIncompleteError`` naming everything
+        missing) *before* anything is written, then upserts by
+        ``(connector_type, version)`` exactly as the previous inline
+        seeding loop did -- idempotent, never edits an existing row in
+        place (``ACT-INT-FR-008``)."""
+        validate_declaration_complete(implementation)
+        descriptor = implementation.describe()
+        existing = self.db.execute(
+            select(Connector).where(
+                Connector.connector_type == descriptor.connector_type,
+                Connector.version == descriptor.version,
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            return existing
+        row = Connector(
+            connector_type=descriptor.connector_type,
+            version=descriptor.version,
+            capabilities=dict(descriptor.capabilities),
+            config_schema=dict(descriptor.config_schema),
+            auth_requirements=dict(descriptor.auth_requirements),
+            tool_contracts=[
+                {"name": tc.name, "description": tc.description, "parameters": dict(tc.parameters)}
+                for tc in descriptor.tool_contracts
+            ],
+        )
+        self.db.add(row)
+        self.db.flush()
+        return row
+
     def ensure_seeded(self) -> None:
-        for identifier, impl_cls in _CONNECTOR_TYPES.items():
-            descriptor = impl_cls().describe()
-            existing = self.db.execute(
-                select(Connector).where(
-                    Connector.connector_type == descriptor.connector_type,
-                    Connector.version == descriptor.version,
-                )
-            ).scalar_one_or_none()
-            if existing is not None:
-                continue
-            self.db.add(Connector(
-                connector_type=descriptor.connector_type,
-                version=descriptor.version,
-                capabilities=dict(descriptor.capabilities),
-                config_schema=dict(descriptor.config_schema),
-                auth_requirements=dict(descriptor.auth_requirements),
-                tool_contracts=[
-                    {"name": tc.name, "description": tc.description, "parameters": dict(tc.parameters)}
-                    for tc in descriptor.tool_contracts
-                ],
-            ))
+        for impl_cls in _CONNECTOR_TYPES.values():
+            self.register(impl_cls())
         self.db.flush()
 
     def list_types(self) -> list[Connector]:
