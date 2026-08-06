@@ -1347,6 +1347,52 @@ becomes governed tools by declaration, no code.
 Next: 2.2.2 (Generic Database Connector). 4 of 9 Milestone 2 sub-phases
 remain.
 
+### Part 2.2.2 — Generic Database Connector ✅
+
+**Milestone 2's second real connector — and the one carrying its single
+sharpest security rule.** The model never writes SQL. Not sanitized, not
+escaped, not validated-then-run — absent. There is no code path anywhere
+in this codebase that takes model-derived text and places it into SQL
+structure.
+
+- **`DatabaseConnector`** (`app/integration/connectors/database/`) turns
+  declared, parameterized queries against PostgreSQL/MySQL into governed
+  tools. SQL Server is recognized but driver-pending (`pyodbc` needs a
+  system ODBC driver, not added this phase).
+- **The executor's only public entry point takes a declared query object
+  and a parameter mapping — never a raw string.** No parameter position
+  anywhere in this connector could accept SQL text from a caller —
+  containment by absence, the same principle the SDK used for the raw
+  HTTP client and 2.2.1 used for request templating, applied here at its
+  most consequential.
+- **Proven against this platform's own real dev Postgres, not mocked**: a
+  bound parameter value of `"'; DROP TABLE users; --"` (plus the classic
+  UNION/comment/stacked-query/boolean-blind injection family) comes back
+  as an inert literal string every time.
+- **Read-only by default** (`ACT-INT-FR-125`) — a read-only instance
+  declaring a mutating query (classified by inspecting its own *declared,
+  trusted* SQL, never model output) is rejected outright at configuration
+  time.
+- **Row limit and timeout, enforced twice each** — rows fetched
+  incrementally and rejected (never truncated) past the limit; timeout
+  enforced by both a server-side database GUC and a client-side backstop.
+- **The first tool-invocation bridge for a database connector**
+  (`invoker.py`, mirroring 2.2.1's own exactly) — proven end to end
+  against this platform's own dev Postgres, including a genuine stored,
+  encrypted credential actually authenticating the connection.
+  **Deliberately not wired into the model-driven tool loop** — Milestone
+  1 stays untouched.
+- One new dependency (`PyMySQL`, pure-Python, no system client library)
+  for the MySQL dialect; no new dependency needed for PostgreSQL.
+- No migration; no new HTTP route.
+- 42 new backend tests. Backend **1,163** total green (1,121 + 42), 1
+  deselected; backend only. See
+  [docs/integration/connectors.md](docs/integration/connectors.md)'s
+  "Generic Database Connector" section.
+
+Next: 2.2.3 (Generic File & Object Storage Connector). 3 of 9 Milestone 2
+sub-phases remain.
+
 ## Future (Phase 3+)
 
 **Milestone 3**: deployment & release strategies (canary, blue-green,
@@ -1354,8 +1400,9 @@ actual rollback/traffic-shift execution — the former Milestone 2), and
 a real distributed job scheduler (2.1.3's own health-check scheduler is
 explicitly interim and built to be replaced, not extended, when this
 lands).
-**Milestone 2, remaining**: generic database/storage/queue connectors
-(2.2.2-2.2.4 — built on the same REST-proven framework); external
+**Milestone 2, remaining**: generic storage/queue connectors
+(2.2.3-2.2.4 — built on the same REST/database-proven framework); SQL
+Server support for the database connector (driver-pending); external
 identity federation (2.3.1 — covers the OAuth/SSO/enterprise-IdP need
 listed below, and is the opposite direction from 2.1.2's
 platform-authenticates-to-external-systems framework: a platform *user*
