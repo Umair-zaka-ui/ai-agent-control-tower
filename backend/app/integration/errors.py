@@ -273,3 +273,79 @@ class DbConnectionFailedError(IdentityError):
 
     def __init__(self, detail: str) -> None:
         super().__init__(ErrorCode.DB_CONNECTION_FAILED, f"Database operation failed: {detail}")
+
+
+class StoragePathDeniedError(IdentityError):
+    """Raised at invocation (Phase 2.2.3, ``ACT-INT-FR-141``/``FR-143``)
+    when a supplied path/key cannot be proven to resolve inside its
+    declared scope — a traversal attempt, an absolute path, an
+    encoded/normalized variant of either, or a symlink pointing outside
+    a filesystem scope's declared base directory. The message never
+    includes the declared scope's own absolute root/bucket value or the
+    raw supplied input (see ``scope.ScopeViolationError``, which this
+    wraps) — only a safe, generic description of which check failed."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(ErrorCode.STORAGE_PATH_DENIED, f"Storage path denied: {detail}")
+
+
+class StorageObjectTooLargeError(IdentityError):
+    """Raised at invocation (Phase 2.2.3, ``ACT-INT-FR-142``) when an
+    object being read, or a payload being written, exceeds its scope's
+    effective size limit. Rejected outright, never truncated — a
+    truncated object handed to a model could read as complete and
+    mislead it, the same principle 2.2.2's ``DbResultLimitExceededError``
+    already established for an oversized query result."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(ErrorCode.STORAGE_OBJECT_TOO_LARGE, f"Storage object size limit exceeded: {detail}")
+
+
+class StorageWriteNotPermittedError(IdentityError):
+    """Raised at **configuration** time (Phase 2.2.3, ``ACT-INT-FR-144``)
+    when a read-only storage connector instance declares one or more
+    write scopes. A connector author fixes this by either removing the
+    write scope or explicitly configuring the instance for write
+    access — mirrors 2.2.2's ``DbWriteNotPermittedError`` exactly."""
+
+    def __init__(self, scope_names: list[str]) -> None:
+        super().__init__(
+            ErrorCode.STORAGE_WRITE_NOT_PERMITTED,
+            f"Read-only storage connector instance declares write scop{'e' if len(scope_names) == 1 else 'es'}: "
+            f"{', '.join(scope_names)}.",
+        )
+
+
+class StorageObjectNotFoundError(IdentityError):
+    """Raised at invocation (Phase 2.2.3, ``ACT-INT-FR-140``) when a
+    validated, in-scope target does not exist at the backend — distinct
+    from a scope *denial*: the path was legitimately in bounds, the
+    object simply is not there."""
+
+    def __init__(self, relative_path: str) -> None:
+        super().__init__(ErrorCode.STORAGE_OBJECT_NOT_FOUND, f"No object found at '{relative_path}'.")
+
+
+class StorageScopeInvalidError(IdentityError):
+    """Raised at **configuration** time (Phase 2.2.3) when a declared
+    scope is semantically invalid — a backend-pending value, a scope
+    missing the field its backend requires (``base_directory`` for
+    ``FILESYSTEM``, ``bucket`` for ``S3``/``AZURE_BLOB``), a duplicate
+    scope name, or a size limit that doesn't fit its own instance-level
+    caps. See ``declaration.py``'s own module docstring for why this is
+    a dedicated type rather than the SDK's generic
+    ``ConnectorConfigInvalidError``."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(ErrorCode.STORAGE_SCOPE_INVALID, f"Storage scope declaration is invalid: {detail}")
+
+
+class StorageBackendFailedError(IdentityError):
+    """Raised at invocation (Phase 2.2.3) when a storage backend
+    operation fails for any reason other than "not found," "too large,"
+    or a scope denial — a filesystem I/O error, an S3 client error, or a
+    connectivity failure. The message is always a generic, safe summary —
+    never a path, bucket, credential, or raw driver/SDK exception text."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(ErrorCode.STORAGE_BACKEND_FAILED, f"Storage operation failed: {detail}")

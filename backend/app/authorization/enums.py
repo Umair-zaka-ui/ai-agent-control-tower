@@ -217,3 +217,12 @@ class AuthorizationAuditEvent(str, enum.Enum):
     # now carrying a `severity` field -- see ConnectorService._transition),
     # not a second, dedicated event.
     INTEGRATION_CONNECTOR_HEALTH_CHECKED = "INTEGRATION_CONNECTOR_HEALTH_CHECKED"
+    # Generic File & Object Storage Connector (Phase 2.2.3, ACT-INT-FR-145).
+    # Emitted for every object access attempt through the tool-invocation
+    # bridge -- allowed or denied, read or write -- `meta` carries
+    # `backend`/`scope_name`/`operation`/`path` (the *validated* path, never
+    # the raw supplied string)/`size_bytes`/`outcome`. Never a credential.
+    # This is 2.2.x's first invocation-level audit event -- 2.2.1/2.2.2's own
+    # tool bridges did not audit individual calls, since neither build
+    # prompt required it; this one (FR-145) explicitly does.
+    INTEGRATION_CONNECTOR_OBJECT_ACCESSED = "INTEGRATION_CONNECTOR_OBJECT_ACCESSED"

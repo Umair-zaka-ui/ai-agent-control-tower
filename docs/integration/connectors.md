@@ -1,23 +1,23 @@
-# Connector Abstraction, Lifecycle, Authentication, Health, SDK, Generic REST & Database Connectors (Phases 2.1.1 – 2.2.2)
+# Connector Abstraction, Lifecycle, Authentication, Health, SDK, Generic REST, Database & Storage Connectors (Phases 2.1.1 – 2.2.3)
 
-`ACT-SRS-M2` §5.1–§5.4, §6.1–§6.2, `ACT-INT-FR-001` through `FR-066`,
-`FR-100` through `FR-106`, and `FR-120` through `FR-127`. The connector
-*framework* (2.1.1's spine, 2.1.2's pluggable authentication, 2.1.3's
-registry/health, 2.1.4's containment-first SDK) is Phase 2.1, complete as
-of 2.1.4. Phase 2.2.1 proved the framework with the first real connector
-(REST). Phase 2.2.2 adds the second, and the one that carries this
-milestone's single sharpest security rule: a **generic database
-connector** — PostgreSQL and MySQL today, SQL Server driver-pending — that
-turns declared, parameterized queries into governed tools. **The model
-never writes SQL.** Not sanitized, not escaped, not validated-then-run —
-absent: there is no code path anywhere in this connector that takes
-model-derived text and places it into SQL structure. See "Generic Database
-Connector (Phase 2.2.2)" below for exactly how, and why that is the
-connector's actual value proposition to a security-conscious enterprise,
-not a limitation. All six sub-phases are covered in this one document
-since each extends, rather than replaces, what came before. What remains
-in Milestone 2: 2.2.3/2.2.4 (storage/queue connectors) and 2.3.1
-(identity federation).
+`ACT-SRS-M2` §5.1–§5.4, §6.1–§6.3, `ACT-INT-FR-001` through `FR-066`,
+`FR-100` through `FR-106`, `FR-120` through `FR-127`, and `FR-140` through
+`FR-145`. The connector *framework* (2.1.1's spine, 2.1.2's pluggable
+authentication, 2.1.3's registry/health, 2.1.4's containment-first SDK) is
+Phase 2.1, complete as of 2.1.4. Phase 2.2.1 proved the framework with the
+first real connector (REST). Phase 2.2.2 added the second, carrying this
+milestone's sharpest SQL-specific rule: a **generic database connector**
+where **the model never writes SQL.** Phase 2.2.3 adds the third — a
+**generic file & object storage connector** — carrying that same rule's
+direct analogue for a different kind of structure: **a model-supplied
+path can never escape its declared scope.** Filesystem, and S3-compatible
+object storage today; Azure Blob backend-pending. See "Generic File &
+Object Storage Connector (Phase 2.2.3)" below for exactly how, and why
+that is the connector's actual value proposition to a security-conscious
+enterprise, not a limitation. All seven sub-phases are covered in this one
+document since each extends, rather than replaces, what came before. What
+remains in Milestone 2: 2.2.4 (queue connector) and 2.3.1 (identity
+federation).
 
 ## What this sub-phase is, in one sentence
 
@@ -149,13 +149,15 @@ express.
 
 | Deferred | Sub-phase |
 |---|---|
-| Storage and queue connectors | 2.2.3 / 2.2.4 |
+| Queue connector | 2.2.4 |
 | SQL Server support for the database connector (`pyodbc`/system ODBC driver — driver-pending, abstraction ready) | not yet scheduled |
+| Azure Blob support for the storage connector (`azure-storage-blob` — backend-pending, abstraction ready) | not yet scheduled |
 | Natural-language-to-SQL of any kind | **permanently out of scope — the database connector's entire reason to exist is preventing exactly this** |
-| GraphQL, and any vendor-specific connector (SAP/Salesforce/ServiceNow/etc.) | fast-follow, same REST/database framework, triggered by named demand |
+| Content parsing/extraction (PDF text, image analysis, chunking) through the storage connector — it moves bytes; the Knowledge Engine (Milestone 7) parses | Milestone 7 |
+| GraphQL, and any vendor-specific connector (SAP/Salesforce/ServiceNow/etc.) | fast-follow, same REST/database/storage framework, triggered by named demand |
 | Identity federation (platform *user* login via an enterprise IdP — the opposite direction from connector auth, see below) | 2.3.1 |
 | Connector marketplace, publishing, signing, sandboxing of untrusted third-party code | Milestone 12 |
-| Wiring a connector-derived tool into `tools_snapshot`/`AgentTool`/the model-driven tool loop — 2.2.1/2.2.2 each built a real, direct, database-backed invocation bridge but neither touches `ToolGatewayService` or execution | not yet scheduled |
+| Wiring a connector-derived tool into `tools_snapshot`/`AgentTool`/the model-driven tool loop — 2.2.1/2.2.2/2.2.3 each built a real, direct invocation bridge but none touches `ToolGatewayService` or execution | not yet scheduled |
 | Any change to model or tool execution — Milestone 1 is untouched | done |
 | Deployment strategies | Milestone 3 |
 | A distributed job scheduler | Milestone 3 — 2.1.3's own health-check scheduler is explicitly interim, see below |
@@ -164,8 +166,9 @@ Two things worth calling out explicitly since they are easy to mistake
 for scope creep: `_CONNECTOR_TYPES` in `app/integration/service.py` is a
 small, private, in-process dict (`"MOCK" -> MockConnector`,
 `"MOCK_AUTH" -> MockAuthenticatedConnector`, `"SDK_EXAMPLE_WEBHOOK" ->
-WebhookConnector`, `"REST" -> RestConnector` as of 2.2.1, and — as of
-2.2.2 — `"DATABASE" -> DatabaseConnector`) letting
+WebhookConnector`, `"REST" -> RestConnector` as of 2.2.1, `"DATABASE" ->
+DatabaseConnector` as of 2.2.2, and — as of 2.2.3 — `"STORAGE" ->
+StorageConnector`) letting
 `ConnectorService` turn a `connectors` row back into a live `Connector`
 instance when it needs to call `validate_configuration()`. As of 2.1.4,
 `ConnectorTypeService.register()` *is* a real, public, single
@@ -190,7 +193,12 @@ and, just as importantly, is not (it does not touch
 `ToolGatewayService`/`tools_snapshot`/the model-driven tool loop). Phase
 2.2.2 gives the database connector its own analogous bridge
 (`app/integration/connectors/database/invoker.py`) — the same shape,
-same boundary, same thing it deliberately does not touch.
+same boundary, same thing it deliberately does not touch. Phase 2.2.3
+gives the storage connector a third
+(`app/integration/connectors/storage/invoker.py`) — identical shape,
+plus a new element none of the prior bridges needed: it records every
+access attempt, allowed or denied, in the platform audit trail
+(`ACT-INT-FR-145`) — see below.
 
 ## Data model
 
@@ -1261,3 +1269,359 @@ future phase (or whenever a live MySQL instance becomes available in
 CI) should add the same live-injection proof MySQL currently lacks —
 noted here rather than left silently implied as equivalent to
 PostgreSQL's.
+
+## Generic File & Object Storage Connector (Phase 2.2.3)
+
+`ACT-SRS-M2` §6.3, `ACT-INT-FR-140` through `FR-145`. The database
+connector's direct analogue applied to a structurally different kind of
+danger: not a query language a model could inject into, but a
+filesystem/object-store namespace a model could walk out of.
+
+### A model-supplied path can never escape its declared scope — this connector's actual security promise
+
+Not sanitized. Not escaped. Not validated-then-allowed-anyway. **A path
+argument is canonicalized, then proven to resolve inside its declared
+boundary, before any read or write is attempted — anything that cannot be
+proven in-scope is denied outright, never "best-effort cleaned up and let
+through."** The enforcement lives in exactly one module,
+`app/integration/connectors/storage/scope.py`, and its one public
+function, `resolve_and_contain(boundary, supplied_path)`, has no code
+path that returns a value the caller hasn't already proven safe — it
+either returns a validated, in-scope target or raises
+`ScopeViolationError`. There is no method anywhere in this connector
+package that performs a read or write against an unvalidated path; every
+backend call in `backends.py` takes the *validated* target
+`resolve_and_contain` produced, never the model's raw string. This is the
+same containment-by-construction principle 2.2.2 used for SQL, applied
+here to a namespace-escape instead of a syntax-injection: a
+security-conscious enterprise can point this connector at a bucket of
+customer documents specifically *because* no prompt, however crafted, can
+make an agent read outside the folder it was scoped to — not because it
+is told not to.
+
+### Canonicalize, then contain — the enforcement pipeline
+
+Every supplied path/key goes through the same four-stage pipeline before
+any backend-specific logic runs:
+
+1. **Reject control characters** in the raw input (including a literal
+   NUL — `file.txt\0.png`).
+2. **Percent-decode iteratively**, bounded rounds, so a supplied value is
+   fully revealed before any traversal check runs against it — checking
+   the raw string and decoding *afterward* would let an encoded `..`
+   slip past a check that only ever saw the encoded form. This is what
+   catches both single- (`%2e%2e%2f`) and double-encoded (`..%252f`)
+   traversal in one pass: decode once, `%2e%2e%2f` → `../`, caught;
+   decode twice, `..%252f` → `..%2f` → `../`, caught.
+3. **Reject control characters revealed by decoding** (an encoded NUL,
+   `file.txt%00.png`, is exactly as denied as a literal one).
+4. **Unicode-normalize (NFKC)** so a homoglyph/fullwidth variant of `.`
+   or `/` (U+FF0E, U+FF0F) collapses to its canonical ASCII form before
+   the traversal check runs, rather than slipping through a naive
+   `".." in path` check that never recognized the character in the first
+   place.
+
+Only *then* does backend-specific canonicalization run — and **the
+canonicalized result, never the raw or partially-processed string, is
+what gets contained-checked and returned as the operation's real
+target.** This closes the TOCTOU/rebinding-shaped gap explicitly (the
+storage analogue of validating a DNS name and then connecting to a
+different, later-resolved IP): a caller cannot validate one string and
+operate on a different, later-resolved one, because the function that
+validates is the same function that hands back the only value a backend
+is ever given.
+
+### Two backends, one contract, different enforcement underneath
+
+Filesystem paths and object-store keys are canonicalized differently
+because they mean different things:
+
+- **Filesystem** — real hierarchical paths, real directories, real
+  symlinks. Canonicalization is `os.path.realpath`, which resolves both
+  `..` segments *and* symlinks in one pass. Containment is then a
+  straightforward prefix check against the declared base directory's own
+  realpath. Because `realpath` resolves symlinks, **a path that is
+  legitimately inside the declared scope but is itself a symlink
+  pointing outside it is caught for free** — the same resolution step
+  that defeats `../../etc/passwd` also defeats a symlink escape, proven
+  live with a real temporary symlink (or, where creating one needs a
+  privilege this environment doesn't grant by default, a Windows
+  directory junction — also a reparse point `realpath` resolves
+  identically).
+- **Object storage** (S3-compatible, and Azure Blob once implemented) —
+  keys are *flat strings* that only *look* hierarchical; there is no
+  real directory to resolve against, so there is nothing for `realpath`
+  to do. Canonicalization is lexical (`posixpath.normpath` on the
+  prefix+supplied-key combination), and containment is a
+  segment-respecting prefix check — `"reports"` does not wrongly contain
+  `"reports-2/x"`, and a key that normalizes to `"../secrets/x"` or
+  further still (`"../../../etc/passwd"`) is denied whether it only
+  escapes the declared *prefix* or the *bucket* entirely.
+
+One call signature, `resolve_and_contain(boundary, supplied_path)`,
+dispatches to whichever canonicalization the declared backend needs —
+mirroring exactly the "one abstraction, per-backend enforcement
+underneath" shape 2.2.2's `drivers.py` established for SQL dialects,
+applied here to scope enforcement instead of placeholder translation.
+
+### Built and tested in complete isolation from any backend
+
+`scope.py` has **zero dependencies on this platform** — not the SDK, not
+`app.integration.errors`, not a database session, nothing beyond the
+Python standard library (`os`, `posixpath`, `re`, `unicodedata`,
+`urllib.parse`). It is importable and fully testable with no live
+storage of any kind, the same isolation Milestone 1's egress guard was
+built and tested with. `test_storage_scope.py` proves every traversal
+vector named by this phase's own acceptance criteria — relative
+traversal, absolute paths (POSIX, Windows drive-letter, UNC), percent-
+and double-percent-encoding, backslash variants, null-byte truncation
+(literal and encoded), Unicode homoglyph normalization, object-store
+prefix/bucket escape (including the sibling-prefix boundary case,
+`"reports"` vs. `"reports-2"`), and the filesystem symlink escape — with
+a real temporary symlink/junction, never a mock — with **no live storage
+anywhere in the file**.
+
+### Declared scopes — one example
+
+```jsonc
+{
+  "backend": "FILESYSTEM",
+  "read_only": true,                     // the default; write requires an explicit override
+  "default_max_object_size_bytes": 10000000, "max_max_object_size_bytes": 100000000,
+  "scopes": [
+    {
+      "name": "read_customer_reports",
+      "description": "Read a report file by its relative path.",
+      "operation": "READ",
+      "base_directory": "/srv/reports/acme-corp"
+    }
+  ]
+}
+```
+
+```jsonc
+{
+  "backend": "S3",
+  "endpoint_url": null,                  // real AWS S3; set to a MinIO URL for an S3-compatible target
+  "region": "us-east-1",
+  "auth_scheme": "BASIC",                // access_key_id/secret_access_key -- see below
+  "scopes": [
+    {
+      "name": "read_q1_documents",
+      "description": "Read a document from the Q1 reports prefix.",
+      "operation": "READ",
+      "bucket": "acme-data",
+      "prefix": "reports/2026-q1"
+    }
+  ]
+}
+```
+
+Each declared scope becomes one distinct tool contract (`ACT-INT-FR-141`)
+whose only parameter is `path` — the bounded remainder of the key/path a
+model supplies, exactly the value `resolve_and_contain` validates before
+anything runs. `declaration.py::tool_contracts_for()` derives these
+per-instance, mirroring 2.2.1/2.2.2's identical pattern —
+`StorageConnector.describe()` itself carries only a structural
+completeness placeholder, for the same reason those connectors' own
+`describe()` methods do.
+
+### Size limits, checked before any full transfer
+
+A read checks the object's size via metadata *first* —
+`os.path.getsize` for the filesystem backend, a `head_object` HEAD call
+(never a GET) for S3 — and rejects with `STORAGE_OBJECT_TOO_LARGE`
+before ever opening the file or fetching the object's bytes if it is
+already too large. Both reads additionally bound the actual transfer
+itself (`read(max_bytes + 1)`) as a second, defense-in-depth check
+against a size that changes between the metadata check and the transfer
+— the same "reject, never truncate" discipline 2.2.2 established for an
+oversized query result. A write checks the in-memory payload's length
+before ever calling the backend. Every size limit is two-tiered exactly
+like the database connector's row limit: a scope's own
+`max_object_size_bytes` (optional), capped by the instance's
+`max_max_object_size_bytes`, falling back to
+`default_max_object_size_bytes` when unset.
+
+### Read-only by default, with defense in depth
+
+An instance is read-only unless its configuration explicitly sets
+`"read_only": false`. At **configuration time**, a read-only instance
+declaring one or more `"WRITE"` scopes is rejected outright with
+`STORAGE_WRITE_NOT_PERMITTED` before it is ever stored — mirroring
+`DB_WRITE_NOT_PERMITTED` exactly. **Defense in depth, stated plainly**:
+this platform-level enforcement is a second layer, not a substitute for
+the storage credential itself being read-scoped (an S3 access key with
+only `GetObject`, a read-only SAS token for Azure Blob) — an enterprise
+should configure both.
+
+### Backends — filesystem and S3-compatible fully supported, Azure Blob backend-pending
+
+The filesystem backend needs no new dependency (`os`/`pathlib`, already
+the standard library). The S3-compatible backend uses `boto3` — a new
+dependency added specifically for this connector — via one small
+dispatch layer (`backends.py`) that builds a client from the
+declaration's `endpoint_url`/`region` (so the identical backend serves
+real AWS S3 *or* any S3-compatible target, e.g. MinIO, by declaration,
+never a code change) and the resolved credential.
+
+**Azure Blob is a recognized, backend-pending value, not a silent gap.**
+`"AZURE_BLOB"` is accepted by the JSON Schema so a misconfigured instance
+gets a specific "backend-pending" message instead of a bare "invalid
+enum value" — but no `azure-storage-blob` dependency was added this
+phase. That SDK is a genuinely heavy dependency this environment cannot
+exercise live, exactly the build prompt's own explicit allowance to mark
+a backend pending with the abstraction ready rather than half-implement
+it — the same treatment 2.2.2 gave SQL Server. Adding it later is a new
+dispatch branch in `backends.py` plus the dependency; nothing else in
+the abstraction changes.
+
+### Credential protection
+
+A storage credential resolves through the identical encrypted-storage
+machinery every other connector credential already uses
+(`ConnectorCredentialService`, `connector_credentials`, Fernet
+encryption) via the same `resolve_credential_bundle()` method 2.2.2
+added — an S3 access key id / secret access key is not naturally
+HTTP-header-shaped any more than a database username/password is. The
+`BASIC` auth scheme's generic `username`/`password` fields carry the
+access key id / secret access key respectively — a deliberate,
+documented reuse (no S3-specific field forcing a new `AuthScheme`),
+exactly the generalization 2.2.2 established for a non-HTTP-shaped
+credential. The credential is never in the connector's own code
+(`StorageConnector` imports no auth machinery, no `boto3`, and does not
+even receive a credential in its `health_check()` — see below), never in
+a returned object's bytes, and never in any raised error message
+(`backends.py`'s `_safe_message` reduces every backend-level failure to
+a generic, safe summary — the exception's class name only) or audit
+record (see below).
+
+### `health_check()` — reachability only, no credential, no object access
+
+For the filesystem backend, `health_check` checks that every declared
+scope's own base directory actually exists as a real directory — no
+credential involved, since a local filesystem has none. For the
+S3-compatible backend, mirroring the database connector's own TCP-only
+reachability check exactly, `health_check` opens a raw TCP connection to
+the configured (or default AWS) endpoint host and closes it — proving
+network-level reachability without authenticating or listing anything.
+
+### The tool-invocation bridge, and its own new element: per-access audit
+
+`app/integration/connectors/storage/invoker.py` mirrors 2.2.2's
+`invoker.py` exactly: fail-fast resolves the instance (the unchanged
+2.1.3 registry), resolves its credential bundle, validates the caller's
+supplied `path` against the named scope's own declared boundary via
+`scope.resolve_and_contain` **before any backend call**, and dispatches
+through `backends.py`. **Deliberately not wired into
+`ToolGatewayService`/`tools_snapshot`/the model-driven tool loop** — the
+same boundary 2.2.1/2.2.2 drew, for the same reason.
+
+**New this phase (`ACT-INT-FR-145`)**: every access attempt — allowed or
+denied, read or write — is recorded in the platform audit trail
+(`INTEGRATION_CONNECTOR_OBJECT_ACCESSED`, via the same
+`AuthorizationAuditService` every other domain in this codebase already
+writes through), carrying the backend, scope name, operation, the
+*validated* path (never the raw supplied string — a denied traversal
+attempt's audit record correctly carries no path at all, since none was
+ever validated), size, and outcome (`SUCCESS`/`DENIED`/`NOT_FOUND`/
+`TOO_LARGE`/`ERROR`) — via a `finally` block, so a denial is audited
+exactly as reliably as a success. This is 2.2.x's first invocation-level
+audit event; neither 2.2.1's nor 2.2.2's own build prompt required
+auditing individual calls, so neither bridge does — this one's own build
+prompt (`FR-145`) explicitly does, so this bridge is the first to.
+Credentials are never part of the recorded `meta` — proven live against
+a real, stored, encrypted credential.
+
+### Two narrow, justified deviations from the SDK-surface-only discipline
+
+Unlike 2.2.1's and 2.2.2's own `declaration.py` modules (which needed
+none beyond the SDK's generic `ConnectorConfigInvalidError`), this
+phase's own acceptance criteria explicitly require a distinguishable
+`STORAGE_SCOPE_INVALID` code for a badly-shaped scope declaration —
+`declaration.py::parse_declaration` raises it directly for its own
+semantic checks (a scope missing the field its backend requires, a
+duplicate scope name, a backend-pending value, a size limit that doesn't
+fit its own instance-level caps). `connector.py` carries the second,
+narrower deviation: `StorageWriteNotPermittedError`, for the one
+config-time check that needs its own distinct code — exactly the shape
+2.2.2's `connector.py` established for `DbWriteNotPermittedError`.
+`scope.py` and `backends.py` both stay entirely free of
+`app.integration.errors` — `scope.py` has zero platform dependencies at
+all (see above), and `backends.py` raises only its own local exceptions,
+translated to platform errors exclusively by `invoker.py`, mirroring
+2.2.2's `executor.py` discipline exactly.
+
+### Expressiveness boundary
+
+This connector moves bytes within a declared scope: read an object,
+write an object (if configured), bounded by a declared size limit. It
+does not parse PDF text, analyze images, chunk documents for retrieval,
+or offer directory listing, recursive copy, or streaming of arbitrarily
+large objects through the model — a read returns size-bounded object
+bytes; what happens to them is the Knowledge Engine's concern
+(Milestone 7), not this connector's. None of that is missing by
+oversight — each is either out of this sub-phase's scope (§3) or
+contradicts the bounded-transfer model this connector exists to enforce.
+
+### No migration
+
+Every table this connector touches (`connectors`, `connector_instances`,
+`connector_credentials`, `authorization_audit`) already exists. A
+storage connector instance's entire declaration lives in
+`connector_instances.configuration`, the same JSONB column every
+connector instance already has. Migration head remains
+`0035_connector_health`.
+
+### API (2.2.3)
+
+No new HTTP route. Registering the `STORAGE` connector type reuses the
+existing type-registration path; configuring an instance uses the
+existing `POST`/`PATCH /connectors` endpoints with a storage declaration
+as the `configuration` body. The invocation bridge
+(`invoker.invoke_tool`) is a direct, database-backed Python entry point,
+mirroring 2.2.1/2.2.2's own API scope exactly.
+
+New error codes: `STORAGE_PATH_DENIED`, `STORAGE_OBJECT_TOO_LARGE`,
+`STORAGE_WRITE_NOT_PERMITTED`, `STORAGE_OBJECT_NOT_FOUND`,
+`STORAGE_SCOPE_INVALID`, and one addition beyond the build prompt's own
+list — `STORAGE_BACKEND_FAILED` — needed so a backend-level failure that
+isn't "not found," "too large," or a scope denial has a distinct,
+assertable, safe-message-only code (mirrors `DB_CONNECTION_FAILED`).
+There is deliberately **no** "sanitization failed" code: a supplied path
+is canonicalized then proven in-scope or denied outright — there is no
+partial-sanitize outcome to name.
+
+## Testing (2.2.3)
+
+`test_storage_scope.py` (the isolated security core — every traversal
+vector named by this phase's own acceptance criteria, with **no live
+storage anywhere in the file**, including a real temporary symlink/
+junction for the filesystem escape case), `test_storage_connector.py`
+(scope/operations/limits, backend dispatch — filesystem against real
+`tmp_path` I/O, S3 against a mocked `boto3.client` — SDK-surface &
+integrity), and `test_storage_connector_invocation.py` (the live-database
+half: end-to-end bridge invocation, per-access audit trail verification,
+and credential-protection proof, against this platform's own real dev
+database exactly as `db_session`/`SessionLocal` already do elsewhere in
+this codebase — never a mock). 82 new tests; every pre-existing test
+passes unmodified.
+
+**S3/MinIO coverage boundary, stated explicitly**: no S3-compatible
+server (MinIO or otherwise) is reachable in this environment, so the S3
+backend's dispatch correctness (`head_object`/`get_object`/`put_object`
+called with exactly the scope-validated bucket and key, and S3
+not-found/error translation) is proven against a mocked `boto3.client`,
+never a live object store. The *containment logic itself* — which key a
+supplied value resolves to, and whether that resolution stays in
+bounds — has full, unmocked coverage in `test_storage_scope.py`, since
+that logic is backend-agnostic pure Python with no dependency on `boto3`
+at all; only the "does this connector correctly call the S3 SDK with the
+already-validated value" question is covered by a mock rather than a
+live server. Azure Blob has no coverage beyond the "recognized but
+backend-pending" rejection test, since it has no live implementation
+this phase (see above). A future phase (or whenever a local MinIO
+instance becomes available in this environment) should add the same
+live-object-store proof PostgreSQL already has for the database
+connector — noted here rather than left silently implied as
+equivalent.
