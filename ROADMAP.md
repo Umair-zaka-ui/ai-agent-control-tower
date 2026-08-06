@@ -1393,6 +1393,56 @@ structure.
 Next: 2.2.3 (Generic File & Object Storage Connector). 3 of 9 Milestone 2
 sub-phases remain.
 
+### Part 2.2.3 — Generic File & Object Storage Connector ✅
+
+**Milestone 2's third real connector — carrying this milestone's second
+sharpest security rule.** A model-supplied path can never escape its
+declared scope. Not sanitized, not best-effort cleaned up and let
+through — a supplied path is canonicalized, then proven to resolve
+inside its declared boundary, before any read or write is attempted;
+anything that cannot be proven in-scope is denied outright.
+
+- **`StorageConnector`** (`app/integration/connectors/storage/`) turns
+  declared, scoped filesystem/S3-compatible access into governed tools.
+  Azure Blob is recognized but backend-pending (`azure-storage-blob`
+  deliberately not added this phase).
+- **The scope enforcer (`scope.py`) has zero dependencies on this
+  platform — not even the SDK.** Its one public function canonicalizes
+  (percent-decoding, Unicode normalization, then `os.path.realpath` for
+  filesystem or `posixpath.normpath` for object storage) and only then
+  contains-checks — the canonicalized result, never the raw string, is
+  what a caller ever receives. No TOCTOU gap.
+- **Proven against every named traversal vector with no live storage
+  anywhere in the test file**: relative, absolute (POSIX/Windows-drive/
+  UNC), single- and double-percent-encoded, backslash, null-byte
+  (literal and encoded), Unicode homoglyph, object-store prefix/bucket
+  escape — plus a filesystem symlink escape using a real temporary
+  symlink (or, on this environment's unprivileged Windows user, a
+  directory junction — genuinely exercised, not skipped).
+- **Read-only by default** (`ACT-INT-FR-144`) — a read-only instance
+  declaring a write scope is rejected outright at configuration time.
+- **Size limits checked via metadata before any full transfer** — never
+  loads an oversized object to find out it's too large.
+- **New this phase: every object access is audited** — allowed or
+  denied, read or write, via a `finally` block, carrying the validated
+  path (never the raw supplied string) and never a credential. 2.2.x's
+  first invocation-level audit event.
+- **The second tool-invocation bridge to reuse `resolve_credential_bundle()`
+  unchanged** (`invoker.py`, mirroring 2.2.2's own exactly) — proven end
+  to end against this platform's own dev database, including a genuine
+  stored, encrypted credential. **Deliberately not wired into the
+  model-driven tool loop** — Milestone 1 stays untouched.
+- One new dependency (`boto3`) for the S3-compatible backend; no new
+  dependency needed for the filesystem backend.
+- No migration; no new HTTP route.
+- 82 new backend tests. Backend **1,245** total green (1,163 + 82), 1
+  deselected; backend only. See
+  [docs/integration/connectors.md](docs/integration/connectors.md)'s
+  "Generic File & Object Storage Connector" section.
+
+Next: 2.2.4 (Generic Message Queue Connector). 2 of 9 Milestone 2
+sub-phases remain.
+
 ## Future (Phase 3+)
 
 **Milestone 3**: deployment & release strategies (canary, blue-green,
@@ -1400,11 +1450,12 @@ actual rollback/traffic-shift execution — the former Milestone 2), and
 a real distributed job scheduler (2.1.3's own health-check scheduler is
 explicitly interim and built to be replaced, not extended, when this
 lands).
-**Milestone 2, remaining**: generic storage/queue connectors
-(2.2.3-2.2.4 — built on the same REST/database-proven framework); SQL
-Server support for the database connector (driver-pending); external
-identity federation (2.3.1 — covers the OAuth/SSO/enterprise-IdP need
-listed below, and is the opposite direction from 2.1.2's
+**Milestone 2, remaining**: a generic message queue connector (2.2.4 —
+built on the same REST/database/storage-proven framework); SQL Server
+support for the database connector and Azure Blob support for the
+storage connector (both driver-/backend-pending); external identity
+federation (2.3.1 — covers the OAuth/SSO/enterprise-IdP need listed
+below, and is the opposite direction from 2.1.2's
 platform-authenticates-to-external-systems framework: a platform *user*
 authenticating via an enterprise IdP). Beyond that: retiring the legacy
 `/auth/login` surface (now the platform's only non-revocable
