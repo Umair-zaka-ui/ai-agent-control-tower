@@ -251,12 +251,44 @@ class ConnectorCredentialService:
         scheme_id = (auth_scheme or _NO_AUTH_SCHEME).upper()
         if scheme_id == _NO_AUTH_SCHEME:
             return request
+        scheme = auth_registry.resolve(scheme_id)
+        bundle = self._resolve_bundle_for_scheme(connector_instance, scheme_id, transport=transport)
+        return scheme.apply(request, bundle)
 
+    def resolve_credential_bundle(
+        self, connector_instance: ConnectorInstance, auth_scheme: str, *, transport=None,
+    ) -> dict[str, Any]:
+        """Phase 2.2.2 — the same resolve mechanics as
+        ``resolve_and_apply_for_scheme``, returning the decrypted
+        credential bundle itself rather than an HTTP-header-shaped
+        ``OutboundRequest``. Needed for a connector whose credential isn't
+        naturally an HTTP header at all — a database connector's
+        username/password, applied by handing it straight to a DBAPI
+        driver's own ``connect()`` call, not by mutating a request object.
+        Still resolves through the identical storage/decryption/OAuth2-
+        refresh path every other credential resolution in this codebase
+        uses; only the final "apply" step differs by caller. Returns
+        ``{}`` for ``"NONE"``. Like ``resolve_and_apply_for_scheme``, no
+        connector's own code ever calls this — only the platform bridge
+        sitting above one (e.g.
+        ``app/integration/connectors/database/invoker.py``)."""
+        scheme_id = (auth_scheme or _NO_AUTH_SCHEME).upper()
+        if scheme_id == _NO_AUTH_SCHEME:
+            return {}
+        return self._resolve_bundle_for_scheme(connector_instance, scheme_id, transport=transport)
+
+    def _resolve_bundle_for_scheme(
+        self, connector_instance: ConnectorInstance, scheme_id: str, *, transport=None,
+    ) -> dict[str, Any]:
+        """Shared by ``resolve_and_apply_for_scheme`` and
+        ``resolve_credential_bundle`` — look up the stored credential,
+        decrypt it, and (for the two OAuth2 schemes only) merge in a
+        freshly obtained access token. Never called with ``"NONE"`` —
+        both public callers handle that case themselves before reaching
+        here."""
         row = self._get_row(connector_instance.id, scheme_id)
         if row is None:
             raise ConnectorCredentialNotFoundError(connector_instance.id, scheme_id)
-
-        scheme = auth_registry.resolve(scheme_id)
         bundle = self._decrypt_bundle(row)
         if scheme_id in auth_registry.OAUTH2_SCHEME_IDENTIFIERS:
             access_token = token_manager.get_valid_access_token(
@@ -264,7 +296,7 @@ class ConnectorCredentialService:
                 scheme=scheme_id, config=bundle, transport=transport,
             )
             bundle = {**bundle, "access_token": access_token}
-        return scheme.apply(request, bundle)
+        return bundle
 
     # --- OAuth2 authorization-code: URL + callback ---------------------- #
     def build_authorization_url(self, connector_instance: ConnectorInstance, *, state: str) -> str:

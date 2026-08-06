@@ -54,6 +54,7 @@ from app.integration.errors import (
     ConnectorTypeNotFoundError,
 )
 from app.integration.lifecycle import target_state
+from app.integration.connectors.database.connector import DatabaseConnector
 from app.integration.connectors.rest.connector import RestConnector
 from app.integration.mock import MockConnector
 from app.integration.mock_authenticated import MockAuthenticatedConnector
@@ -81,6 +82,9 @@ _CONNECTOR_TYPES: dict[str, type[ConnectorImplementation]] = {
     # it (registration parity, ACT-INT-FR-062's guarantee extending to
     # real connectors too, not only SDK examples).
     "REST": RestConnector,
+    # Phase 2.2.2 -- the second real, generic connector; same registration
+    # path, no branching.
+    "DATABASE": DatabaseConnector,
 }
 
 

@@ -6,6 +6,11 @@ uvicorn[standard]==0.34.0
 SQLAlchemy==2.0.36
 alembic==1.14.0
 psycopg2-binary==2.9.10
+# Phase 2.2.2 — pure-Python MySQL driver for the generic database connector's
+# MySQL dialect (`mysql+pymysql`); no system-level client library needed,
+# unlike SQL Server's `pyodbc` (which requires a system ODBC driver install —
+# deliberately not added this phase, see docs/integration/connectors.md).
+PyMySQL==1.1.1
 
 # --- Validation / Settings ---
 pydantic==2.10.4

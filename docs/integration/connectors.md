@@ -1,19 +1,23 @@
-# Connector Abstraction, Lifecycle, Authentication, Health, SDK & Generic REST Connector (Phases 2.1.1 – 2.2.1)
+# Connector Abstraction, Lifecycle, Authentication, Health, SDK, Generic REST & Database Connectors (Phases 2.1.1 – 2.2.2)
 
-`ACT-SRS-M2` §5.1–§5.4, §6.1, `ACT-INT-FR-001` through `FR-066`, and
-`FR-100` through `FR-106`. The connector *framework* (2.1.1's spine,
-2.1.2's pluggable authentication, 2.1.3's registry/health, 2.1.4's
-containment-first SDK) is Phase 2.1, complete as of 2.1.4. This document
-now also covers Phase 2.2.1, Milestone 2's **first real connector**: a
-generic REST connector, built entirely through the 2.1.4 SDK surface,
-that turns any HTTP/JSON API into governed tools by declaration — proof
-that the framework, not merely a toy example, actually works, and the
-template every later REST-based vendor connector (Salesforce, ServiceNow,
-most SAP interfaces) will follow as a configuration document rather than
-new code. All five sub-phases are covered in this one document since each
-extends, rather than replaces, what came before. What remains in
-Milestone 2: 2.2.2/2.2.3/2.2.4 (database/storage/queue connectors) and
-2.3.1 (identity federation).
+`ACT-SRS-M2` §5.1–§5.4, §6.1–§6.2, `ACT-INT-FR-001` through `FR-066`,
+`FR-100` through `FR-106`, and `FR-120` through `FR-127`. The connector
+*framework* (2.1.1's spine, 2.1.2's pluggable authentication, 2.1.3's
+registry/health, 2.1.4's containment-first SDK) is Phase 2.1, complete as
+of 2.1.4. Phase 2.2.1 proved the framework with the first real connector
+(REST). Phase 2.2.2 adds the second, and the one that carries this
+milestone's single sharpest security rule: a **generic database
+connector** — PostgreSQL and MySQL today, SQL Server driver-pending — that
+turns declared, parameterized queries into governed tools. **The model
+never writes SQL.** Not sanitized, not escaped, not validated-then-run —
+absent: there is no code path anywhere in this connector that takes
+model-derived text and places it into SQL structure. See "Generic Database
+Connector (Phase 2.2.2)" below for exactly how, and why that is the
+connector's actual value proposition to a security-conscious enterprise,
+not a limitation. All six sub-phases are covered in this one document
+since each extends, rather than replaces, what came before. What remains
+in Milestone 2: 2.2.3/2.2.4 (storage/queue connectors) and 2.3.1
+(identity federation).
 
 ## What this sub-phase is, in one sentence
 
@@ -145,11 +149,13 @@ express.
 
 | Deferred | Sub-phase |
 |---|---|
-| Database, storage, and queue connectors | 2.2.2 / 2.2.3 / 2.2.4 |
-| GraphQL, and any vendor-specific connector (SAP/Salesforce/ServiceNow/etc.) | fast-follow, same REST framework, triggered by named demand |
+| Storage and queue connectors | 2.2.3 / 2.2.4 |
+| SQL Server support for the database connector (`pyodbc`/system ODBC driver — driver-pending, abstraction ready) | not yet scheduled |
+| Natural-language-to-SQL of any kind | **permanently out of scope — the database connector's entire reason to exist is preventing exactly this** |
+| GraphQL, and any vendor-specific connector (SAP/Salesforce/ServiceNow/etc.) | fast-follow, same REST/database framework, triggered by named demand |
 | Identity federation (platform *user* login via an enterprise IdP — the opposite direction from connector auth, see below) | 2.3.1 |
 | Connector marketplace, publishing, signing, sandboxing of untrusted third-party code | Milestone 12 |
-| Wiring a connector-derived tool into `tools_snapshot`/`AgentTool`/the model-driven tool loop — 2.2.1 built a real, direct, database-backed invocation bridge (`app/integration/connectors/rest/invoker.py`) but did not touch `ToolGatewayService` or execution | not yet scheduled |
+| Wiring a connector-derived tool into `tools_snapshot`/`AgentTool`/the model-driven tool loop — 2.2.1/2.2.2 each built a real, direct, database-backed invocation bridge but neither touches `ToolGatewayService` or execution | not yet scheduled |
 | Any change to model or tool execution — Milestone 1 is untouched | done |
 | Deployment strategies | Milestone 3 |
 | A distributed job scheduler | Milestone 3 — 2.1.3's own health-check scheduler is explicitly interim, see below |
@@ -158,7 +164,8 @@ Two things worth calling out explicitly since they are easy to mistake
 for scope creep: `_CONNECTOR_TYPES` in `app/integration/service.py` is a
 small, private, in-process dict (`"MOCK" -> MockConnector`,
 `"MOCK_AUTH" -> MockAuthenticatedConnector`, `"SDK_EXAMPLE_WEBHOOK" ->
-WebhookConnector`, and — as of 2.2.1 — `"REST" -> RestConnector`) letting
+WebhookConnector`, `"REST" -> RestConnector` as of 2.2.1, and — as of
+2.2.2 — `"DATABASE" -> DatabaseConnector`) letting
 `ConnectorService` turn a `connectors` row back into a live `Connector`
 instance when it needs to call `validate_configuration()`. As of 2.1.4,
 `ConnectorTypeService.register()` *is* a real, public, single
@@ -180,7 +187,10 @@ invocable — through `app/integration/connectors/rest/invoker.py`, a
 platform bridge sitting above the connector, never a method on the ABC
 itself — see "Generic REST Connector", below, for what that bridge is
 and, just as importantly, is not (it does not touch
-`ToolGatewayService`/`tools_snapshot`/the model-driven tool loop).
+`ToolGatewayService`/`tools_snapshot`/the model-driven tool loop). Phase
+2.2.2 gives the database connector its own analogous bridge
+(`app/integration/connectors/database/invoker.py`) — the same shape,
+same boundary, same thing it deliberately does not touch.
 
 ## Data model
 
@@ -957,3 +967,297 @@ unmodified — the one behavioral change outside the new package
 (`GovernedHttpClient.request()`'s new `query` parameter) is additive and
 backward compatible, and 2.1.4's own SDK test suite passes unchanged
 against it.
+
+## Generic Database Connector (Phase 2.2.2)
+
+`ACT-SRS-M2` §6.2, `ACT-INT-FR-120` through `FR-127`. The connector
+enterprises want most and fear most — and the one carrying this
+milestone's single sharpest security rule.
+
+### The model never writes SQL — this connector's actual security promise
+
+Not sanitized SQL. Not escaped SQL. Not SQL passed through a validator.
+**No model-authored SQL, ever, anywhere in this codebase.** An integration
+engineer declares named, parameterized queries at *configuration* time —
+reviewed, fixed, human-authored SQL text. A model's entire surface through
+this connector is a query *name* (which must match a declaration exactly)
+and parameter *values* (bound by the database driver, never interpolated
+into SQL text). There is no method anywhere in
+`app/integration/connectors/database/` that accepts a raw SQL string from
+an invocation caller — not a weaker one, not an "advanced mode," not a
+debug endpoint. `executor.py`'s `execute_declared_query` is the *only*
+function that ever runs SQL against a real database, and its signature is
+`(engine, dialect, query: DeclaredQuery, params, row_limit,
+timeout_seconds)` — there is no parameter position a raw string could
+occupy. This is containment by **absence**, not by a check that runs and
+rejects — the same principle the SDK used for the raw HTTP client
+(2.1.4) and 2.2.1 used for request templating, applied here at its most
+consequential: a security-conscious enterprise can adopt this connector
+specifically *because* it structurally cannot run model-authored SQL, not
+merely because it is told not to.
+
+### The declaration — one example
+
+```jsonc
+{
+  "dialect": "POSTGRESQL",
+  "host": "orders-db.internal.example.com",
+  "port": 5432,
+  "database": "orders",
+  "auth_scheme": "BASIC",           // username/password, resolved via the existing credential framework
+  "read_only": true,                // the default; write requires an explicit override
+  "pool_size": 5, "max_overflow": 5,
+  "default_row_limit": 500, "max_row_limit": 5000,
+  "default_timeout_seconds": 10, "max_timeout_seconds": 60,
+  "queries": [
+    {
+      "name": "get_order_status",
+      "description": "Look up an order's current status by id.",
+      "sql": "SELECT id, status, updated_at FROM orders WHERE id = :order_id",
+      "parameters": {"type": "object", "properties": {"order_id": {"type": "string"}}, "required": ["order_id"]},
+      "row_limit": 1
+    }
+  ]
+}
+```
+
+`:name` is SQLAlchemy's own dialect-agnostic named bind-parameter syntax —
+declared once, translated to each dialect's native placeholder style
+(`%(name)s` for psycopg2/PyMySQL, `?` for a future `pyodbc`) entirely
+inside SQLAlchemy's own dialect layer (`drivers.py`). Every declared
+query becomes one distinct tool contract (`ACT-INT-FR-121`), derived
+per-instance by `declaration.py::tool_contracts_for()` — `DatabaseConnector
+.describe()` itself (a zero-argument, type-level call) carries only a
+structural completeness placeholder, for exactly the reason 2.2.1's
+`RestConnector.describe()` does — see that section, above.
+
+### Bound parameters, proven against a real database
+
+`executor.py` passes the declared SQL text and the parameter mapping to
+SQLAlchemy's `text()` construct *separately* — the SQL string and a
+parameter's value never touch each other in Python code, so there is
+nothing that could turn a value into structure even by accident. Proven,
+not just asserted: `test_database_connector.py` binds
+`"'; DROP TABLE users; --"` as a parameter value against this platform's
+own real dev Postgres and asserts it comes back as an inert, literal
+string — the `users` table is still there afterward — plus the classic
+injection family (UNION, comment, stacked-query, boolean-blind) as
+parameter values, all inert. A dedicated test also inspects the literal
+SQL text SQLAlchemy hands to the DBAPI driver (via its own
+`before_cursor_execute` event) and confirms it still contains the
+placeholder token, never the substituted value — "bound, not
+interpolated" verified by watching execution, not just checking the
+outcome.
+
+### Read-only by default, with defense in depth
+
+An instance is read-only unless its configuration explicitly sets
+`"read_only": false`. At **configuration time**, every declared query's
+SQL is classified read/write by inspecting its first real (comment-
+stripped) keyword — `SELECT`/`WITH`/`SHOW`/`EXPLAIN` read, anything else
+write, fail-closed (an unrecognized statement is treated as a write, never
+assumed safe). Inspecting this SQL is legitimate specifically because it
+is *declared and trusted* — authored by a human at configuration time,
+never derived from model output; this is the same distinction the build
+prompt itself draws, and the reason this classification does not
+contradict "the model never writes SQL." A read-only instance declaring a
+mutating query is rejected outright with `DB_WRITE_NOT_PERMITTED` before
+it is ever stored. **Defense in depth, stated plainly**: this platform-
+level enforcement is a second layer, not a substitute for the DBA also
+granting the connection's own database role read-only privileges — an
+enterprise should do both.
+
+### Limits, enforced two ways
+
+**Row limit** — every declared query fetches via `fetchmany(row_limit +
+1)`, never a bare `fetchall()`, so memory use is bounded regardless of the
+true result size. A result exceeding the limit is **rejected outright**,
+never silently truncated — a truncated result handed to a model could
+read as a complete, misleading answer, the same reasoning behind
+Milestone 1's `TOOL_RESPONSE_TOO_LARGE`.
+
+**Timeout** — enforced twice, not once: a server-side statement-timeout
+GUC (`SET LOCAL statement_timeout` for PostgreSQL, `SET SESSION
+MAX_EXECUTION_TIME` for MySQL) bounds the query at the database itself,
+and a client-side wall-clock bound (a single-worker thread +
+`Future.result(timeout=...)`) is the backstop that guarantees
+`DB_QUERY_TIMEOUT` is raised even if a dialect's own setting somehow
+doesn't fire. Python cannot forcibly cancel a blocked DBAPI call, so a
+client-side timeout doesn't kill the worker thread outright — it stops
+waiting on it; the thread itself exits once the (already-set) server-side
+timeout aborts the query moments later, a bounded, self-resolving
+condition, not a permanent leak. Verified live: a `pg_sleep(3)` query
+declared with a 1-second timeout is terminated in just over one second,
+not three.
+
+### Drivers — PostgreSQL and MySQL fully supported, SQL Server driver-pending
+
+Built on SQLAlchemy Core (already this codebase's own database toolkit,
+not a new dependency introduced for this connector). `drivers.py` maps
+each supported dialect to its own SQLAlchemy drivername
+(`postgresql+psycopg2`, `mysql+pymysql`) and builds connection URLs via
+`sqlalchemy.engine.URL.create()` — a structured object, never a bare
+string, so a password never has to be concatenated into (and risk being
+logged from) a connection string anywhere in this codebase.
+
+**SQL Server is a recognized, driver-pending value, not a silent gap.**
+`"SQLSERVER"` is accepted by the JSON Schema so a misconfigured instance
+gets a specific "driver-pending" message instead of a bare "invalid enum
+value" — but no `pyodbc`/ODBC driver dependency was added this phase.
+`mssql+pyodbc` requires the Microsoft ODBC Driver for SQL Server installed
+at the *system* level (not a pip package), genuinely heavy and
+platform-awkward to add sight-unseen in this environment — the build
+prompt's own explicit allowance. Adding it later is a new
+`_DIALECT_DRIVERNAME` entry plus the system driver; nothing else in the
+abstraction changes.
+
+**One new dependency**: `PyMySQL` (pure-Python MySQL DBAPI driver, no
+system client library needed, unlike `pyodbc`) — added to
+`requirements.txt` specifically for the MySQL dialect. PostgreSQL support
+needed no new dependency (`psycopg2-binary` already backs the platform's
+own database).
+
+### Connection pooling and credential protection
+
+Each connector instance gets its own SQLAlchemy `Engine` (and therefore
+its own connection pool, sized by the instance's own `pool_size`/
+`max_overflow`), cached per-instance in-process so repeated invocations
+reuse the pool rather than rebuilding it on every call — an `Engine` is
+meant to be a long-lived, per-target factory, not recreated per
+invocation. A configuration change does not currently evict a cached
+engine — a documented, known limitation, acceptable since reconfiguration
+is rare relative to invocation volume.
+
+A database credential (username/password) resolves through the identical
+encrypted-storage machinery every other connector credential already
+uses (`ConnectorCredentialService`, `connector_credentials`, Fernet
+encryption) — but not through `resolve_and_apply_for_scheme()` itself,
+which returns an HTTP-header-shaped `OutboundRequest` that has no natural
+meaning for a database connection. `ConnectorCredentialService` gained
+one new, small, additive public method, `resolve_credential_bundle()`,
+returning the decrypted bundle itself rather than an applied HTTP
+request — the same resolve-then-refresh mechanics (including the OAuth2
+access-token step, for parity), just handed to a DBAPI driver's own
+`connect()` call instead of a header. Proven live: a stored, encrypted
+`BASIC` (username/password) credential is what the bridge actually
+connects to this platform's own dev Postgres with — confirmed by asking
+the database itself who is connected (`SELECT current_user`), not by
+inspecting internals. The credential is never in the connector's own
+code (`DatabaseConnector` imports no auth machinery, no SQLAlchemy, no
+database driver, and does not even receive a credential in its
+`health_check()` — see below), never in a returned row, and never in any
+raised error message (`executor.py`'s `_safe_message` reduces every
+driver-level failure to a generic, safe summary — the exception's class
+name only, never its own message text, which can embed a DSN, host, or
+credential fragment depending on the failure).
+
+### `health_check()` — TCP reachability only, no credential, no query
+
+A database connector's `health_check(configuration)` never receives a
+credential in the first place (the ABC's own contract — a credential
+lives in the separate, encrypted `connector_credentials` store, never in
+`configuration`), so unlike a REST connector's offline `GovernedHttpClient
+.evaluate()`, there is no equivalent "check without connecting" path for
+a database protocol. Instead, `health_check` opens a raw TCP connection
+to the declared `(host, port)` with a short timeout and closes it —
+proving "the database server is reachable at the network level" without
+attempting authentication or running any query at all.
+
+### The tool-invocation bridge
+
+`app/integration/connectors/database/invoker.py` mirrors 2.2.1's own
+`invoker.py` exactly: fail-fast resolves the instance (the unchanged
+2.1.3 registry), resolves its credential bundle, gets or creates its
+per-instance connection pool, validates the caller's parameters against
+the named query's own declared JSON Schema (`DB_PARAMETER_INVALID` on
+failure), and executes through `executor.py`. **Deliberately not wired
+into `ToolGatewayService`/`tools_snapshot`/the model-driven tool loop** —
+the same boundary 2.2.1 drew, for the same reason (Milestone 1 stays
+untouched).
+
+### The one justified SDK-surface deviation
+
+`declaration.py` stays exactly as SDK-surface-restricted as 2.2.1's own
+`declaration.py` — it imports only from `app.integration.sdk` and the
+standard library, raising only `ConnectorConfigInvalidError` for every
+structural/semantic problem. `connector.py` has **one** additional,
+specific, documented import beyond the SDK surface:
+`DbWriteNotPermittedError` from `app.integration.errors`, needed because
+`ACT-INT-FR-125` requires its own distinct, stable error code at
+*configuration* time (`DB_WRITE_NOT_PERMITTED`) — something 2.2.1 never
+needed, since nothing about a REST declaration is rejected at
+configuration time with its own dedicated code. Widening the SDK's own
+`ConnectorConfigInvalidError` to carry a distinguishable reason for every
+connector type would have been a larger, riskier change for a need only
+this one connector has; importing one additional, narrow exception type
+is the smaller, more honest alternative — exactly the kind of "justified,
+reported surface addition" this sub-phase's own acceptance criteria (AC-20)
+anticipate.
+
+### Expressiveness boundary
+
+This connector runs exactly what is declared: named, parameterized,
+single-statement SQL queries with a JSON-Schema parameter contract, a row
+limit, and a timeout. It does not offer query building, ORM-style
+composition, schema introspection, multi-statement transactions spanning
+more than one declared query, or streaming/cursor-based pagination of
+enormous result sets (the row-limit-reject policy exists precisely so
+"the result was too big" is a loud, explicit failure, not something this
+connector tries to paper over with partial pages). None of that is
+missing by oversight — each is either out of this sub-phase's scope
+(§3) or contradicts the containment model this connector exists to
+enforce.
+
+### No migration
+
+Every table this connector touches (`connectors`, `connector_instances`,
+`connector_credentials`) already exists. A database connector instance's
+entire declaration lives in `connector_instances.configuration`, the same
+JSONB column every connector instance already has; its credential uses
+the existing `connector_credentials` table unchanged. Migration head
+remains `0035_connector_health`.
+
+### API (2.2.2)
+
+No new HTTP route. Registering the `DATABASE` connector type reuses the
+existing type-registration path; configuring an instance uses the
+existing `POST`/`PATCH /connectors` endpoints with a database declaration
+as the `configuration` body. The invocation bridge
+(`invoker.invoke_tool`) is a direct, database-backed Python entry point,
+mirroring 2.2.1's own API scope exactly.
+
+New error codes: `DB_QUERY_NOT_DECLARED`, `DB_PARAMETER_INVALID`,
+`DB_WRITE_NOT_PERMITTED`, `DB_RESULT_LIMIT_EXCEEDED`, `DB_QUERY_TIMEOUT`,
+and one addition beyond the build prompt's own list —
+`DB_CONNECTION_FAILED` — needed so a connection-level failure has a
+distinct, assertable code that never echoes a connection string. There is
+deliberately **no** "raw SQL rejected" error code: no code path accepts
+raw SQL in the first place, so no error is ever needed to reject it.
+
+## Testing (2.2.2)
+
+`backend/tests/integration/test_database_connector.py` (the security core
+AC-01..06, declared queries & parameters AC-07..10, read-only & limits
+AC-11..14 — most running directly against this platform's own real dev
+Postgres, not mocks — drivers/pooling/credentials AC-15..19, SDK-surface &
+integrity AC-20..29) and `test_database_connector_invocation.py` (the
+live-credential half of AC-18/AC-21 and the end-to-end bridge proof,
+AC-23 — a real, database-backed `ConnectorInstance` with a real, stored,
+encrypted `BASIC` credential, connecting to this platform's own dev
+Postgres exactly as `db_session`/`SessionLocal` already do elsewhere in
+this codebase — never a second database, never a mock). 42 new tests;
+every pre-existing test passes unmodified.
+
+**MySQL/SQL Server coverage boundary, stated explicitly**: the injection-
+safety, bound-parameter, row-limit, and timeout tests all run against
+real PostgreSQL — the only dialect this test environment has a live
+server for. MySQL coverage in this phase is the driver-abstraction and
+declaration-parsing level only (dialect dispatch, drivername mapping,
+identical `:name` declaration syntax) — proven structurally, not against
+a live MySQL server, since none is available in this environment. SQL
+Server has no driver at all this phase (see above) and therefore no
+coverage beyond the "recognized but driver-pending" rejection test. A
+future phase (or whenever a live MySQL instance becomes available in
+CI) should add the same live-injection proof MySQL currently lacks —
+noted here rather than left silently implied as equivalent to
+PostgreSQL's.
