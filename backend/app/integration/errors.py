@@ -197,3 +197,79 @@ class RestExtractionFailedError(IdentityError):
 
     def __init__(self, detail: str) -> None:
         super().__init__(ErrorCode.REST_EXTRACTION_FAILED, f"REST response extraction failed: {detail}")
+
+
+class DbQueryNotDeclaredError(IdentityError):
+    """Raised at invocation (Phase 2.2.2, ``ACT-INT-FR-121``) when a caller
+    names a query that has no matching entry in a database connector
+    instance's own declared ``queries`` — there is no fallback, no partial
+    match, and (deliberately) no way to supply SQL instead."""
+
+    def __init__(self, query_name: str) -> None:
+        super().__init__(
+            ErrorCode.DB_QUERY_NOT_DECLARED,
+            f"No query named '{query_name}' is declared on this database connector instance.",
+        )
+
+
+class DbParameterInvalidError(IdentityError):
+    """Raised at invocation (Phase 2.2.2, ``ACT-INT-FR-121``) when the
+    supplied parameters fail validation against a declared query's own
+    parameter schema — a missing required parameter, or one of the wrong
+    type. Never raised for "wrong SQL": there is no SQL to supply."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(ErrorCode.DB_PARAMETER_INVALID, f"Database query parameters are invalid: {detail}")
+
+
+class DbWriteNotPermittedError(IdentityError):
+    """Raised at **configuration** time (Phase 2.2.2, ``ACT-INT-FR-125``)
+    when a read-only database connector instance declares one or more
+    mutating queries (INSERT/UPDATE/DELETE/DDL/etc., classified by
+    inspecting the *declared, trusted* SQL — never model output). A
+    connector author fixes this by either removing the mutating query or
+    explicitly configuring the instance for write access."""
+
+    def __init__(self, query_names: list[str]) -> None:
+        super().__init__(
+            ErrorCode.DB_WRITE_NOT_PERMITTED,
+            f"Read-only database connector instance declares mutating quer{'y' if len(query_names) == 1 else 'ies'}: "
+            f"{', '.join(query_names)}.",
+        )
+
+
+class DbResultLimitExceededError(IdentityError):
+    """Raised at invocation (Phase 2.2.2, ``ACT-INT-FR-124``) when a
+    declared query's result would exceed its configured row limit — the
+    result is rejected outright, never silently truncated (a truncated
+    result could mislead a model into acting on partial data)."""
+
+    def __init__(self, query_name: str, row_limit: int) -> None:
+        super().__init__(
+            ErrorCode.DB_RESULT_LIMIT_EXCEEDED,
+            f"Query '{query_name}' returned more than its {row_limit}-row limit; rejected rather than truncated.",
+        )
+
+
+class DbQueryTimeoutError(IdentityError):
+    """Raised at invocation (Phase 2.2.2, ``ACT-INT-FR-124``) when a
+    declared query exceeds its configured timeout — the database analogue
+    of Milestone 1's HTTP tool timeout."""
+
+    def __init__(self, query_name: str, timeout_seconds: float) -> None:
+        super().__init__(
+            ErrorCode.DB_QUERY_TIMEOUT,
+            f"Query '{query_name}' exceeded its {timeout_seconds}s timeout.",
+        )
+
+
+class DbConnectionFailedError(IdentityError):
+    """Raised at invocation (Phase 2.2.2, ``ACT-INT-FR-127``) when a
+    database connector instance cannot connect or a query otherwise fails
+    at the driver level. The message is always a generic, safe summary —
+    never the connection string, host, credential, or raw driver
+    exception text, any of which could leak topology or secret material
+    (``ACT-INT-FR-127``)."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(ErrorCode.DB_CONNECTION_FAILED, f"Database operation failed: {detail}")

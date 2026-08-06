@@ -306,6 +306,19 @@ class ErrorCode:
     REST_ENDPOINT_NOT_DECLARED = "REST_ENDPOINT_NOT_DECLARED"
     REST_TEMPLATE_INVALID = "REST_TEMPLATE_INVALID"
     REST_EXTRACTION_FAILED = "REST_EXTRACTION_FAILED"
+    # Generic Database Connector (Phase 2.2.2). There is deliberately no
+    # "raw SQL rejected" code -- no code path accepts raw SQL in the first
+    # place, so no error is ever needed for rejecting it (ACT-INT-FR-122).
+    DB_QUERY_NOT_DECLARED = "DB_QUERY_NOT_DECLARED"
+    DB_PARAMETER_INVALID = "DB_PARAMETER_INVALID"
+    DB_WRITE_NOT_PERMITTED = "DB_WRITE_NOT_PERMITTED"
+    DB_RESULT_LIMIT_EXCEEDED = "DB_RESULT_LIMIT_EXCEEDED"
+    DB_QUERY_TIMEOUT = "DB_QUERY_TIMEOUT"
+    # Not in the build prompt's own §7 list -- a small, justified addition:
+    # AC-19 ("a connection-failure error does not echo the connection
+    # string") needs a distinct code to assert against; reusing a generic
+    # code would either not exist or force a misleading label.
+    DB_CONNECTION_FAILED = "DB_CONNECTION_FAILED"
 
 
 # Map error codes → HTTP status.
@@ -600,6 +613,16 @@ _STATUS: dict[str, int] = {
     ErrorCode.REST_ENDPOINT_NOT_DECLARED: status.HTTP_404_NOT_FOUND,
     ErrorCode.REST_TEMPLATE_INVALID: status.HTTP_422_UNPROCESSABLE_ENTITY,
     ErrorCode.REST_EXTRACTION_FAILED: status.HTTP_502_BAD_GATEWAY,
+    # Generic Database Connector (Phase 2.2.2).
+    ErrorCode.DB_QUERY_NOT_DECLARED: status.HTTP_404_NOT_FOUND,
+    ErrorCode.DB_PARAMETER_INVALID: status.HTTP_422_UNPROCESSABLE_ENTITY,
+    # A read-only instance rejecting a mutating declared query is an
+    # authorization-shaped denial (this instance may not do that), not a
+    # not-found/validation error -- 403, mirroring TOOL_ACTION_NOT_ALLOWED.
+    ErrorCode.DB_WRITE_NOT_PERMITTED: status.HTTP_403_FORBIDDEN,
+    ErrorCode.DB_RESULT_LIMIT_EXCEEDED: status.HTTP_502_BAD_GATEWAY,
+    ErrorCode.DB_QUERY_TIMEOUT: status.HTTP_504_GATEWAY_TIMEOUT,
+    ErrorCode.DB_CONNECTION_FAILED: status.HTTP_502_BAD_GATEWAY,
 }
 
 
