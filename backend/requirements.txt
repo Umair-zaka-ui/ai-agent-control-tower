@@ -11,6 +11,13 @@ psycopg2-binary==2.9.10
 # unlike SQL Server's `pyodbc` (which requires a system ODBC driver install —
 # deliberately not added this phase, see docs/integration/connectors.md).
 PyMySQL==1.1.1
+# Phase 2.2.3 — S3-compatible object storage client for the generic file &
+# object storage connector's S3 backend (also serves MinIO/other
+# S3-compatible targets via a declared endpoint_url). Azure Blob is
+# backend-pending this phase (azure-storage-blob deliberately not added —
+# see docs/integration/connectors.md); the filesystem backend needs no new
+# dependency.
+boto3==1.43.66
 
 # --- Validation / Settings ---
 pydantic==2.10.4

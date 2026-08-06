@@ -319,6 +319,20 @@ class ErrorCode:
     # string") needs a distinct code to assert against; reusing a generic
     # code would either not exist or force a misleading label.
     DB_CONNECTION_FAILED = "DB_CONNECTION_FAILED"
+    # Generic File & Object Storage Connector (Phase 2.2.3). There is
+    # deliberately no "sanitization failed" code -- a supplied path is
+    # canonicalized then proven in-scope or denied outright; there is no
+    # partial-sanitize outcome to name (ACT-INT-FR-143).
+    STORAGE_PATH_DENIED = "STORAGE_PATH_DENIED"
+    STORAGE_OBJECT_TOO_LARGE = "STORAGE_OBJECT_TOO_LARGE"
+    STORAGE_WRITE_NOT_PERMITTED = "STORAGE_WRITE_NOT_PERMITTED"
+    STORAGE_OBJECT_NOT_FOUND = "STORAGE_OBJECT_NOT_FOUND"
+    STORAGE_SCOPE_INVALID = "STORAGE_SCOPE_INVALID"
+    # Not in the build prompt's own §7 list -- a small, justified addition
+    # mirroring DB_CONNECTION_FAILED: a backend-level failure (a
+    # filesystem/S3 error that isn't "not found," "too large," or a scope
+    # denial) needs its own distinct, safe-message-only code.
+    STORAGE_BACKEND_FAILED = "STORAGE_BACKEND_FAILED"
 
 
 # Map error codes → HTTP status.
@@ -623,6 +637,18 @@ _STATUS: dict[str, int] = {
     ErrorCode.DB_RESULT_LIMIT_EXCEEDED: status.HTTP_502_BAD_GATEWAY,
     ErrorCode.DB_QUERY_TIMEOUT: status.HTTP_504_GATEWAY_TIMEOUT,
     ErrorCode.DB_CONNECTION_FAILED: status.HTTP_502_BAD_GATEWAY,
+    # Generic File & Object Storage Connector (Phase 2.2.3). A denied
+    # traversal/scope-escape attempt is an authorization-shaped denial,
+    # mirroring DB_WRITE_NOT_PERMITTED -- 403, not a 4xx validation error.
+    ErrorCode.STORAGE_PATH_DENIED: status.HTTP_403_FORBIDDEN,
+    # Mirrors DB_RESULT_LIMIT_EXCEEDED/TOOL_RESPONSE_TOO_LARGE (502) --
+    # applies uniformly whether the oversized object was being read from,
+    # or written to, the external store.
+    ErrorCode.STORAGE_OBJECT_TOO_LARGE: status.HTTP_502_BAD_GATEWAY,
+    ErrorCode.STORAGE_WRITE_NOT_PERMITTED: status.HTTP_403_FORBIDDEN,
+    ErrorCode.STORAGE_OBJECT_NOT_FOUND: status.HTTP_404_NOT_FOUND,
+    ErrorCode.STORAGE_SCOPE_INVALID: status.HTTP_422_UNPROCESSABLE_ENTITY,
+    ErrorCode.STORAGE_BACKEND_FAILED: status.HTTP_502_BAD_GATEWAY,
 }
 
 

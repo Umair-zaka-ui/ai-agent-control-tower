@@ -56,6 +56,7 @@ from app.integration.errors import (
 from app.integration.lifecycle import target_state
 from app.integration.connectors.database.connector import DatabaseConnector
 from app.integration.connectors.rest.connector import RestConnector
+from app.integration.connectors.storage.connector import StorageConnector
 from app.integration.mock import MockConnector
 from app.integration.mock_authenticated import MockAuthenticatedConnector
 from app.integration.sdk.example.webhook_connector import WebhookConnector
@@ -85,6 +86,9 @@ _CONNECTOR_TYPES: dict[str, type[ConnectorImplementation]] = {
     # Phase 2.2.2 -- the second real, generic connector; same registration
     # path, no branching.
     "DATABASE": DatabaseConnector,
+    # Phase 2.2.3 -- the third real, generic connector; same registration
+    # path, no branching.
+    "STORAGE": StorageConnector,
 }
 
 
