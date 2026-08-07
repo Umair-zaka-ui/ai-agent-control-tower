@@ -1443,6 +1443,58 @@ anything that cannot be proven in-scope is denied outright.
 Next: 2.2.4 (Generic Message Queue Connector). 2 of 9 Milestone 2
 sub-phases remain.
 
+### Part 2.2.4 — Generic Message Queue Connector ✅
+
+**Milestone 2's fourth and last generic connector — completing the
+connector framework and every generic connector.** Two-sided
+containment: publish is scoped to a queue fixed by the tool contract
+itself (never a model-supplied name), and consume is always bounded to
+at most N messages within a bounded wait, never an unbounded stream.
+
+- **`QueueConnector`** (`app/integration/connectors/queue/`) turns
+  declared queue bindings into governed publish/consume tools. AMQP
+  (RabbitMQ) and SQS fully supported; Azure Service Bus recognized but
+  backend-pending.
+- **A publish tool contract has no queue-name parameter at all** — the
+  target is fixed by the tool contract itself, so "the model cannot
+  redirect a publish outside its declared queue" holds by absence of the
+  affordance, not by validating a supplied name.
+- **The scope check (`scope.py`) has zero imports of any kind** —
+  simpler than 2.2.3's path enforcer by design, since there is no
+  queue-name value to canonicalize. Its one job: does a resolved
+  binding's declared operation match what is being attempted against it.
+- **Consume is bounded on two axes, proven live against a fixtured
+  transport**: never more than the binding's batch cap regardless of how
+  many messages the queue holds, never past its wait timeout regardless
+  of what the caller asks for.
+- **An oversized consumed message is truncated and flagged, not
+  discarded** — a deliberate departure from the database/storage
+  connectors' own "reject the whole operation" precedent, since a
+  consume batch is a set of otherwise-independent messages.
+- **Acknowledgment policy is explicit: ack-on-retrieve, at-most-once** —
+  documented per backend (AMQP `auto_ack=True`; SQS `delete_message`
+  right after `receive_message`), not left implicit.
+- **Zero SDK-surface deviations** — a first among the generic
+  connectors, since this phase's own error codes are entirely
+  invocation-time.
+- **The fourth tool-invocation bridge, reusing 2.2.3's audit event** —
+  two entry points (`publish_message`/`consume_messages`) rather than
+  one, each checking permission before touching a broker. **Deliberately
+  not wired into the model-driven tool loop** — Milestone 1 stays
+  untouched.
+- One new dependency (`pika`) for AMQP; SQS reuses 2.2.3's `boto3`.
+- No migration; no new HTTP route.
+- 50 new backend tests. Backend **1,295** total green (1,245 + 50), 1
+  deselected; backend only. See
+  [docs/integration/connectors.md](docs/integration/connectors.md)'s
+  "Generic Message Queue Connector" section.
+
+**Milestone 2's connector framework and all four generic connectors are
+now complete — 8 of 9 sub-phases done.**
+
+Next: 2.3.1 (External Identity Federation) — the last Milestone 2
+sub-phase.
+
 ## Future (Phase 3+)
 
 **Milestone 3**: deployment & release strategies (canary, blue-green,
@@ -1450,14 +1502,16 @@ actual rollback/traffic-shift execution — the former Milestone 2), and
 a real distributed job scheduler (2.1.3's own health-check scheduler is
 explicitly interim and built to be replaced, not extended, when this
 lands).
-**Milestone 2, remaining**: a generic message queue connector (2.2.4 —
-built on the same REST/database/storage-proven framework); SQL Server
-support for the database connector and Azure Blob support for the
-storage connector (both driver-/backend-pending); external identity
-federation (2.3.1 — covers the OAuth/SSO/enterprise-IdP need listed
-below, and is the opposite direction from 2.1.2's
+**Milestone 2, remaining**: external identity federation (2.3.1 — the
+last sub-phase; covers the OAuth/SSO/enterprise-IdP need listed below,
+and is the opposite direction from 2.1.2's
 platform-authenticates-to-external-systems framework: a platform *user*
-authenticating via an enterprise IdP). Beyond that: retiring the legacy
+authenticating via an enterprise IdP). The connector framework and all
+four generic connectors (REST, database, storage, queue) are complete;
+SQL Server support for the database connector, Azure Blob support for
+the storage connector, and Azure Service Bus support for the queue
+connector all remain driver-/backend-pending, not yet scheduled. Beyond
+that: retiring the legacy
 `/auth/login` surface (now the platform's only non-revocable
 credential), MFA, Slack/webhook notifications, observability
 (Prometheus / OpenTelemetry), anomaly detection, load testing, a
