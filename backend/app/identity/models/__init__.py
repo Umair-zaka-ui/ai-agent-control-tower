@@ -29,6 +29,7 @@ from app.identity.models.enums import (
     SessionStatus,
 )
 from app.identity.models.external_client import ExternalClient
+from app.identity.models.federation import FederatedIdentity, FederationConfig
 from app.identity.models.login_history import LoginHistory
 from app.identity.models.registration import (
     EmailVerification,
@@ -71,4 +72,6 @@ __all__ = [
     "BlockedIp",
     "IdentityProtectionRule",
     "IdentityRiskEvent",
+    "FederationConfig",
+    "FederatedIdentity",
 ]

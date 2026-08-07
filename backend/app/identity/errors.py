@@ -350,6 +350,19 @@ class ErrorCode:
     # failure that isn't a scope denial or a size violation needs its own
     # distinct, safe-message-only code.
     QUEUE_BACKEND_FAILED = "QUEUE_BACKEND_FAILED"
+    # External Identity Federation (Phase 2.3.1, ACT-INT-FR-180..187).
+    FEDERATION_CONFIG_NOT_FOUND = "FEDERATION_CONFIG_NOT_FOUND"
+    FEDERATION_CONFIG_INVALID = "FEDERATION_CONFIG_INVALID"
+    # The bypass-prevention code: an OIDC ID token or SAML assertion that
+    # failed signature/issuer/audience/expiry/nonce verification. Deliberately
+    # one shared code for both protocols -- a caller reacting to a federation
+    # failure should not need to branch on which protocol was configured.
+    FEDERATION_ASSERTION_INVALID = "FEDERATION_ASSERTION_INVALID"
+    # CSRF/replay defense on the callback -- a state/RelayState token that does
+    # not verify (forged, expired, or minted for a different flow/purpose).
+    FEDERATION_STATE_INVALID = "FEDERATION_STATE_INVALID"
+    FEDERATION_USER_NOT_PROVISIONED = "FEDERATION_USER_NOT_PROVISIONED"
+    FEDERATION_CLAIM_MAPPING_FAILED = "FEDERATION_CLAIM_MAPPING_FAILED"
 
 
 # Map error codes → HTTP status.
@@ -675,6 +688,20 @@ _STATUS: dict[str, int] = {
     ErrorCode.QUEUE_OPERATION_NOT_PERMITTED: status.HTTP_403_FORBIDDEN,
     ErrorCode.QUEUE_CONSUME_TIMEOUT: status.HTTP_504_GATEWAY_TIMEOUT,
     ErrorCode.QUEUE_BACKEND_FAILED: status.HTTP_502_BAD_GATEWAY,
+    # External Identity Federation (Phase 2.3.1).
+    ErrorCode.FEDERATION_CONFIG_NOT_FOUND: status.HTTP_404_NOT_FOUND,
+    ErrorCode.FEDERATION_CONFIG_INVALID: status.HTTP_422_UNPROCESSABLE_ENTITY,
+    # An unverifiable assertion is an authentication failure, not a client
+    # input-validation error -- 401, mirroring INVALID_CREDENTIALS exactly
+    # (never confirms *why* verification failed, the same "generic failure"
+    # discipline local login's own INVALID_CREDENTIALS already established).
+    ErrorCode.FEDERATION_ASSERTION_INVALID: status.HTTP_401_UNAUTHORIZED,
+    ErrorCode.FEDERATION_STATE_INVALID: status.HTTP_401_UNAUTHORIZED,
+    # The credential was fine (the IdP vouched for this person); the
+    # organization simply has not provisioned them -- an authorization-shaped
+    # denial, 403, mirroring ACCOUNT_PENDING_APPROVAL.
+    ErrorCode.FEDERATION_USER_NOT_PROVISIONED: status.HTTP_403_FORBIDDEN,
+    ErrorCode.FEDERATION_CLAIM_MAPPING_FAILED: status.HTTP_422_UNPROCESSABLE_ENTITY,
 }
 
 

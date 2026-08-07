@@ -435,7 +435,9 @@ def test_ac26_migration_head_unchanged_no_new_migration_needed():
     """AC-26 — every table this connector touches already exists."""
     migrations_dir = Path(__file__).resolve().parents[2] / "migrations" / "versions"
     versions = sorted(p.name for p in migrations_dir.glob("00*.py"))
-    assert versions[-1] == "0035_connector_health.py"
+    # Updated Phase 2.3.1: a genuinely new migration landed for identity
+    # federation (0036).
+    assert versions[-1] == "0036_identity_federation.py"
 
 
 def test_ac29_no_stub_markers_in_this_phases_new_files():

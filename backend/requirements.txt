@@ -33,6 +33,16 @@ PyYAML==6.0.2        # agent registry import/export, YAML format (Phase 5.1 §39
 
 # --- Security / Auth ---
 python-jose[cryptography]==3.3.0
+# Phase 2.3.1 — SAML 2.0 web SSO for external identity federation. XML
+# signature verification (and resistance to XML signature-wrapping) is a
+# security-audited C library (libxmlsec1, via the `xmlsec` binding) doing the
+# actual cryptographic/DOM work -- this is deliberately NOT hand-rolled, see
+# docs/identity/federation.md. `lxml`/`isodate` are its own direct
+# dependencies, pinned transitively.
+python3-saml==1.16.0
+xmlsec==1.3.17
+lxml==6.1.1
+isodate==0.7.2
 # Already resolved transitively via python-jose[cryptography]; pinned
 # explicitly now that Phase 5.2.4 depends on it directly (Ed25519 signing —
 # app/runtime/versioning/signing/local.py) rather than only through jose.
