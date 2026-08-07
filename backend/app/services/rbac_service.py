@@ -175,6 +175,12 @@ PERMISSION_CATALOG: dict[str, str] = {
     # authentication/credentials are Phase 2.1.2.
     "integration.connector.view": "View connector types, instances and their lifecycle history",
     "integration.connector.manage": "Create, configure, activate and disable connector instances",
+    # External Identity Federation (Phase 2.3.1 SRS ACT-INT-FR-185). Federation
+    # config includes the IdP's own public signing certificate/JWKS reference --
+    # not secret, but integrity-critical (tampering with it is an authentication
+    # bypass), so it is gated by this permission like any other admin-only config.
+    "identity.federation.view": "View an organization's identity federation (SSO) configurations",
+    "identity.federation.manage": "Create, configure and remove identity federation (SSO) connections",
 }
 
 _ALL = set(PERMISSION_CATALOG)

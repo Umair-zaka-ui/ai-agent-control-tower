@@ -468,8 +468,11 @@ def test_ac19_mock_connectors_unchanged(db_session: Session):
 def test_ac21_no_migration_was_added():
     versions_dir = Path(__file__).resolve().parents[2] / "migrations" / "versions"
     revisions = sorted(p.name for p in versions_dir.glob("00*.py"))
-    assert revisions[-1] == "0035_connector_health.py", (
-        f"expected migration head to remain 0035_connector_health.py, found {revisions[-1]}"
+    # Updated Phase 2.3.1: a genuinely new migration landed for identity
+    # federation (0036) -- this assertion's own intent is preserved by
+    # pointing at the new, correct head.
+    assert revisions[-1] == "0036_identity_federation.py", (
+        f"expected migration head to be 0036_identity_federation.py, found {revisions[-1]}"
     )
 
 

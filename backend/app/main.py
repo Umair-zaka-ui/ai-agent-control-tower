@@ -20,6 +20,7 @@ from app.integration import scheduler as connector_health_scheduler
 from app.identity.api import identity_router
 from app.identity.api.routes.registration import router as registration_router
 from app.identity.auth.routes import router as auth_v1_router
+from app.identity.federation.routes import router as federation_router
 from app.identity.credentials.routes import router as credentials_router
 from app.identity.credentials.routes import security_router as credentials_security_router
 from app.identity.recovery.routes import router as recovery_router
@@ -86,6 +87,11 @@ app.include_router(identity_router)
 
 # Phase 4 Part 4.2.2.1: human authentication endpoints under /api/v1/auth.
 app.include_router(auth_v1_router)
+
+# Phase 2.3.1: external identity federation (OIDC/SAML SSO) login endpoints
+# under /api/v1/auth/federation; admin config CRUD is mounted via
+# identity_router above (/api/v1/identity/federation/configs).
+app.include_router(federation_router)
 
 # Phase 4 Part 4.2.2.3.1: public registration & email verification under /api/v1/auth.
 app.include_router(registration_router)

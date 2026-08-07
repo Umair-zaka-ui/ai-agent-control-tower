@@ -8,6 +8,7 @@ from app.identity.api.routes import (
     agent_identities,
     departments,
     external_clients,
+    federation_configs,
     invitations,
     organizations,
     roles,
@@ -29,3 +30,4 @@ identity_router.include_router(invitations.email_router)
 identity_router.include_router(agent_identities.router)
 identity_router.include_router(service_accounts.router)
 identity_router.include_router(external_clients.router)
+identity_router.include_router(federation_configs.router)
