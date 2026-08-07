@@ -1495,6 +1495,64 @@ now complete — 8 of 9 sub-phases done.**
 Next: 2.3.1 (External Identity Federation) — the last Milestone 2
 sub-phase.
 
+### Part 2.3.1 — External Identity Federation ✅
+
+**Milestone 2's ninth and final sub-phase — the Enterprise Integration
+Framework is now complete.** The inversion from every 2.2.x connector:
+a connector authenticates the *platform* outward to an external system,
+holding a platform secret and presenting it; federation authenticates a
+*user* inward to the platform, verifying a signed assertion, and holds
+none of the user's own credential, ever.
+
+- **OIDC (authorization-code flow) and SAML 2.0 (web-browser SSO)**,
+  configurable per organization for Entra ID, Okta, or generic
+  OIDC/SAML providers. Lives under `app/identity/federation/`, not
+  `app/integration/` — this is identity's own concern, not the
+  connector framework's.
+- **Neither protocol's signature verification is hand-rolled.** OIDC
+  via `python-jose` (already a dependency): the accepted algorithm set
+  is fixed by the org's own stored config, never the token's own `alg`
+  header (closing algorithm-confusion); the signing key is resolved
+  from the IdP's JWKS by `kid`, no fallback. SAML via
+  `python3-saml`/`xmlsec`: signature verification delegated entirely to
+  the security-audited `libxmlsec1` C library, `strict: True` always
+  set. Both proven against real cryptographic material — a freshly
+  generated RSA keypair for OIDC, real `xmlsec`-signed XML (including
+  two distinct signature-wrapping attack shapes) for SAML — never a
+  mock signer.
+- **Maps into the platform's existing user/RBAC model, never a parallel
+  one.** Linked by stable subject id (OIDC `sub`/SAML `NameID`), never
+  email. An existing local account is always linked by email on first
+  login; JIT-provisioning a genuinely *new* user is gated per-org by a
+  `jit_provisioning_enabled` flag, reusing the existing
+  `UserProvisioningService` seam verbatim.
+- **Session issuance terminates in the platform's existing pipeline** —
+  the same `SessionLifecycleService`/`RefreshRotationService`/
+  `IdentityContextResolver`/`TokenService` quartet password login uses
+  — never a parallel session/token mechanism. Always `AAL1`: the
+  platform cannot verify what MFA the IdP itself enforced, and never
+  claims a stronger assurance level than it can stand behind.
+- **Stateless CSRF/replay defense** — OIDC `state`/SAML `RelayState` are
+  short-lived, platform-signed JWTs reusing the existing
+  `JWT_SECRET_KEY`, not a new "pending requests" table.
+- 4 public routes (login/callback/SAML ACS/metadata) + 6 admin CRUD
+  routes; two new permissions. Two new tables
+  (`identity_federation_configs`, `federated_identities` — the latter
+  with **no credential column of any kind**); migration
+  `0036_identity_federation`. Route count 474 → 484; schema 107 → 109
+  tables.
+- **Local authentication keeps working unchanged, proven, alongside
+  federation.**
+- New dependencies: `python3-saml`, `xmlsec`, `lxml`, `isodate`.
+- 57 new backend tests. Backend **1,352** total green (1,295 + 57), 1
+  deselected; backend only. See
+  [docs/identity/federation.md](docs/identity/federation.md).
+
+**Milestone 2 — the Enterprise Integration Framework — is now COMPLETE:
+9 of 9 sub-phases done.**
+
+Next: Milestone 3 (Deployment & Release).
+
 ## Future (Phase 3+)
 
 **Milestone 3**: deployment & release strategies (canary, blue-green,
@@ -1502,17 +1560,14 @@ actual rollback/traffic-shift execution — the former Milestone 2), and
 a real distributed job scheduler (2.1.3's own health-check scheduler is
 explicitly interim and built to be replaced, not extended, when this
 lands).
-**Milestone 2, remaining**: external identity federation (2.3.1 — the
-last sub-phase; covers the OAuth/SSO/enterprise-IdP need listed below,
-and is the opposite direction from 2.1.2's
-platform-authenticates-to-external-systems framework: a platform *user*
-authenticating via an enterprise IdP). The connector framework and all
-four generic connectors (REST, database, storage, queue) are complete;
-SQL Server support for the database connector, Azure Blob support for
-the storage connector, and Azure Service Bus support for the queue
-connector all remain driver-/backend-pending, not yet scheduled. Beyond
-that: retiring the legacy
+**Milestone 2 is complete** (connector framework, all four generic
+connectors — REST, database, storage, queue — and external identity
+federation). SQL Server support for the database connector, Azure Blob
+support for the storage connector, and Azure Service Bus support for
+the queue connector all remain driver-/backend-pending, not yet
+scheduled. Beyond that: retiring the legacy
 `/auth/login` surface (now the platform's only non-revocable
-credential), MFA, Slack/webhook notifications, observability
-(Prometheus / OpenTelemetry), anomaly detection, load testing, a
-connector marketplace (Milestone 12), the visual Studio.
+credential), platform-layer MFA, SCIM bulk sync, Slack/webhook
+notifications, observability (Prometheus / OpenTelemetry), anomaly
+detection, load testing, a connector marketplace (Milestone 12), the
+visual Studio.
