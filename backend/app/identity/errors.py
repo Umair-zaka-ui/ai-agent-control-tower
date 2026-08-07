@@ -333,6 +333,23 @@ class ErrorCode:
     # filesystem/S3 error that isn't "not found," "too large," or a scope
     # denial) needs its own distinct, safe-message-only code.
     STORAGE_BACKEND_FAILED = "STORAGE_BACKEND_FAILED"
+    # Generic Message Queue Connector (Phase 2.2.4).
+    QUEUE_NOT_DECLARED = "QUEUE_NOT_DECLARED"
+    QUEUE_MESSAGE_TOO_LARGE = "QUEUE_MESSAGE_TOO_LARGE"
+    QUEUE_OPERATION_NOT_PERMITTED = "QUEUE_OPERATION_NOT_PERMITTED"
+    # Reserved, not raised by either backend this phase: a bounded consume's
+    # "nothing arrived within the wait window" is an empty successful
+    # result, never an error (ACT-INT-FR-162) -- AMQP's basic_get and SQS's
+    # receive_message both observe "no messages" identically to "timed out
+    # waiting," so there is no distinct failure to raise this code for
+    # today. Kept in the vocabulary for a future backend where the
+    # distinction is real and needs its own signal.
+    QUEUE_CONSUME_TIMEOUT = "QUEUE_CONSUME_TIMEOUT"
+    # Not in the build prompt's own §7 list -- a small, justified addition
+    # mirroring DB_CONNECTION_FAILED/STORAGE_BACKEND_FAILED: a broker-level
+    # failure that isn't a scope denial or a size violation needs its own
+    # distinct, safe-message-only code.
+    QUEUE_BACKEND_FAILED = "QUEUE_BACKEND_FAILED"
 
 
 # Map error codes → HTTP status.
@@ -649,6 +666,15 @@ _STATUS: dict[str, int] = {
     ErrorCode.STORAGE_OBJECT_NOT_FOUND: status.HTTP_404_NOT_FOUND,
     ErrorCode.STORAGE_SCOPE_INVALID: status.HTTP_422_UNPROCESSABLE_ENTITY,
     ErrorCode.STORAGE_BACKEND_FAILED: status.HTTP_502_BAD_GATEWAY,
+    # Generic Message Queue Connector (Phase 2.2.4).
+    ErrorCode.QUEUE_NOT_DECLARED: status.HTTP_404_NOT_FOUND,
+    ErrorCode.QUEUE_MESSAGE_TOO_LARGE: status.HTTP_502_BAD_GATEWAY,
+    # A denied operation (consume on a publish-only binding, or vice versa)
+    # is an authorization-shaped denial, mirroring DB_WRITE_NOT_PERMITTED/
+    # STORAGE_WRITE_NOT_PERMITTED -- 403, not a 4xx validation error.
+    ErrorCode.QUEUE_OPERATION_NOT_PERMITTED: status.HTTP_403_FORBIDDEN,
+    ErrorCode.QUEUE_CONSUME_TIMEOUT: status.HTTP_504_GATEWAY_TIMEOUT,
+    ErrorCode.QUEUE_BACKEND_FAILED: status.HTTP_502_BAD_GATEWAY,
 }
 
 

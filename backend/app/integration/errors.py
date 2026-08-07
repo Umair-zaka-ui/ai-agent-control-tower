@@ -349,3 +349,62 @@ class StorageBackendFailedError(IdentityError):
 
     def __init__(self, detail: str) -> None:
         super().__init__(ErrorCode.STORAGE_BACKEND_FAILED, f"Storage operation failed: {detail}")
+
+
+class QueueBindingNotDeclaredError(IdentityError):
+    """Raised at invocation (Phase 2.2.4, ``ACT-INT-FR-161``) when a
+    caller names a binding that has no matching entry in a queue
+    connector instance's own declared ``bindings`` — there is no
+    fallback, no partial match, and no way to name an undeclared queue
+    instead."""
+
+    def __init__(self, binding_name: str) -> None:
+        super().__init__(
+            ErrorCode.QUEUE_NOT_DECLARED,
+            f"No binding named '{binding_name}' is declared on this queue connector instance.",
+        )
+
+
+class QueueMessageTooLargeError(IdentityError):
+    """Raised at invocation (Phase 2.2.4, ``ACT-INT-FR-163``) when a
+    published message exceeds its binding's effective size limit —
+    rejected before any send is attempted."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(ErrorCode.QUEUE_MESSAGE_TOO_LARGE, f"Queue message size limit exceeded: {detail}")
+
+
+class QueueOperationNotPermittedError(IdentityError):
+    """Raised at invocation (Phase 2.2.4, ``ACT-INT-FR-161``/``FR-164``)
+    when a caller attempts an operation (``PUBLISH``/``CONSUME``) a
+    resolved binding was not declared for — e.g. a consume attempt
+    against a publish-only binding. Mirrors ``DbWriteNotPermittedError``/
+    ``StorageWriteNotPermittedError`` exactly, except this check happens
+    at invocation time, not configuration time, since each binding is
+    already fully self-describing at declaration time (there is no
+    instance-level posture flag for it to conflict with)."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(ErrorCode.QUEUE_OPERATION_NOT_PERMITTED, f"Queue operation not permitted: {detail}")
+
+
+class QueueConsumeTimeoutError(IdentityError):
+    """Reserved (Phase 2.2.4) — not raised by either backend this phase.
+    A bounded consume finding nothing within its wait window returns an
+    empty, successful batch, never this error (``ACT-INT-FR-162``); kept
+    in the vocabulary for a future backend where "timed out" is a
+    genuinely distinct outcome from "queue was empty."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(ErrorCode.QUEUE_CONSUME_TIMEOUT, f"Queue consume timed out: {detail}")
+
+
+class QueueBackendFailedError(IdentityError):
+    """Raised at invocation (Phase 2.2.4) when a queue backend operation
+    fails for any reason other than a declaration/scope/size problem —
+    a broker connection failure, an AMQP protocol error, or an SQS
+    client error. The message is always a generic, safe summary — never
+    a host, queue URL, credential, or raw driver/SDK exception text."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(ErrorCode.QUEUE_BACKEND_FAILED, f"Queue operation failed: {detail}")

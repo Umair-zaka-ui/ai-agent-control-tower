@@ -18,6 +18,11 @@ PyMySQL==1.1.1
 # see docs/integration/connectors.md); the filesystem backend needs no new
 # dependency.
 boto3==1.43.66
+# Phase 2.2.4 — AMQP (RabbitMQ) client for the generic message queue
+# connector's AMQP backend. The SQS backend reuses the boto3 dependency
+# already added above; Azure Service Bus is backend-pending this phase
+# (azure-servicebus deliberately not added — see docs/integration/connectors.md).
+pika==1.4.4
 
 # --- Validation / Settings ---
 pydantic==2.10.4

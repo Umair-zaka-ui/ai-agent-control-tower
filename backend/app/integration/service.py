@@ -55,6 +55,7 @@ from app.integration.errors import (
 )
 from app.integration.lifecycle import target_state
 from app.integration.connectors.database.connector import DatabaseConnector
+from app.integration.connectors.queue.connector import QueueConnector
 from app.integration.connectors.rest.connector import RestConnector
 from app.integration.connectors.storage.connector import StorageConnector
 from app.integration.mock import MockConnector
@@ -89,6 +90,9 @@ _CONNECTOR_TYPES: dict[str, type[ConnectorImplementation]] = {
     # Phase 2.2.3 -- the third real, generic connector; same registration
     # path, no branching.
     "STORAGE": StorageConnector,
+    # Phase 2.2.4 -- the fourth and last generic connector; same
+    # registration path, no branching.
+    "QUEUE": QueueConnector,
 }
 
 
