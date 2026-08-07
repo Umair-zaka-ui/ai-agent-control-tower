@@ -1,23 +1,26 @@
-# Connector Abstraction, Lifecycle, Authentication, Health, SDK, Generic REST, Database & Storage Connectors (Phases 2.1.1 – 2.2.3)
+# Connector Abstraction, Lifecycle, Authentication, Health, SDK, Generic REST, Database, Storage & Queue Connectors (Phases 2.1.1 – 2.2.4)
 
-`ACT-SRS-M2` §5.1–§5.4, §6.1–§6.3, `ACT-INT-FR-001` through `FR-066`,
-`FR-100` through `FR-106`, `FR-120` through `FR-127`, and `FR-140` through
-`FR-145`. The connector *framework* (2.1.1's spine, 2.1.2's pluggable
-authentication, 2.1.3's registry/health, 2.1.4's containment-first SDK) is
-Phase 2.1, complete as of 2.1.4. Phase 2.2.1 proved the framework with the
-first real connector (REST). Phase 2.2.2 added the second, carrying this
-milestone's sharpest SQL-specific rule: a **generic database connector**
-where **the model never writes SQL.** Phase 2.2.3 adds the third — a
-**generic file & object storage connector** — carrying that same rule's
-direct analogue for a different kind of structure: **a model-supplied
-path can never escape its declared scope.** Filesystem, and S3-compatible
-object storage today; Azure Blob backend-pending. See "Generic File &
-Object Storage Connector (Phase 2.2.3)" below for exactly how, and why
-that is the connector's actual value proposition to a security-conscious
-enterprise, not a limitation. All seven sub-phases are covered in this one
-document since each extends, rather than replaces, what came before. What
-remains in Milestone 2: 2.2.4 (queue connector) and 2.3.1 (identity
-federation).
+`ACT-SRS-M2` §5.1–§5.4, §6.1–§6.4, `ACT-INT-FR-001` through `FR-066`,
+`FR-100` through `FR-106`, `FR-120` through `FR-127`, `FR-140` through
+`FR-145`, and `FR-160` through `FR-164`. The connector *framework* (2.1.1's
+spine, 2.1.2's pluggable authentication, 2.1.3's registry/health, 2.1.4's
+containment-first SDK) is Phase 2.1, complete as of 2.1.4. Phase 2.2.1
+proved the framework with the first real connector (REST). Phase 2.2.2
+added the second, carrying this milestone's sharpest SQL-specific rule: a
+**generic database connector** where **the model never writes SQL.**
+Phase 2.2.3 added the third — a **generic file & object storage
+connector** — carrying that same rule's direct analogue for a different
+kind of structure: **a model-supplied path can never escape its declared
+scope.** Phase 2.2.4 adds the fourth and last generic connector — a
+**generic message queue connector** — carrying a two-sided version of the
+same idea: **publish is scoped to declared queues, and consume is always
+bounded, never a stream.** See "Generic Message Queue Connector
+(Phase 2.2.4)" below for exactly how, and why that is the connector's
+actual value proposition to a security-conscious enterprise, not a
+limitation. All eight sub-phases are covered in this one document since
+each extends, rather than replaces, what came before. **Milestone 2's
+connector framework and all four generic connectors are now complete**;
+what remains in Milestone 2 is 2.3.1 (identity federation) alone.
 
 ## What this sub-phase is, in one sentence
 
@@ -149,15 +152,17 @@ express.
 
 | Deferred | Sub-phase |
 |---|---|
-| Queue connector | 2.2.4 |
 | SQL Server support for the database connector (`pyodbc`/system ODBC driver — driver-pending, abstraction ready) | not yet scheduled |
 | Azure Blob support for the storage connector (`azure-storage-blob` — backend-pending, abstraction ready) | not yet scheduled |
+| Azure Service Bus support for the queue connector (`azure-servicebus` — backend-pending, abstraction ready) | not yet scheduled |
 | Natural-language-to-SQL of any kind | **permanently out of scope — the database connector's entire reason to exist is preventing exactly this** |
 | Content parsing/extraction (PDF text, image analysis, chunking) through the storage connector — it moves bytes; the Knowledge Engine (Milestone 7) parses | Milestone 7 |
-| GraphQL, and any vendor-specific connector (SAP/Salesforce/ServiceNow/etc.) | fast-follow, same REST/database/storage framework, triggered by named demand |
+| Long-lived consumers, consumer groups, offset management, subscriptions, or stream processing through the queue connector — a tool call is one bounded, discrete publish or consume, never a reactive process | Milestone 3 (the worker/scheduler system this would actually belong to) |
+| Queue administration (create/delete queues) through the queue connector — it publishes/consumes declared queues, it does not manage the broker | not this connector |
+| GraphQL, and any vendor-specific connector (SAP/Salesforce/ServiceNow/etc.) | fast-follow, same REST/database/storage/queue framework, triggered by named demand |
 | Identity federation (platform *user* login via an enterprise IdP — the opposite direction from connector auth, see below) | 2.3.1 |
 | Connector marketplace, publishing, signing, sandboxing of untrusted third-party code | Milestone 12 |
-| Wiring a connector-derived tool into `tools_snapshot`/`AgentTool`/the model-driven tool loop — 2.2.1/2.2.2/2.2.3 each built a real, direct invocation bridge but none touches `ToolGatewayService` or execution | not yet scheduled |
+| Wiring a connector-derived tool into `tools_snapshot`/`AgentTool`/the model-driven tool loop — 2.2.1/2.2.2/2.2.3/2.2.4 each built a real, direct invocation bridge but none touches `ToolGatewayService` or execution | not yet scheduled |
 | Any change to model or tool execution — Milestone 1 is untouched | done |
 | Deployment strategies | Milestone 3 |
 | A distributed job scheduler | Milestone 3 — 2.1.3's own health-check scheduler is explicitly interim, see below |
@@ -167,8 +172,8 @@ for scope creep: `_CONNECTOR_TYPES` in `app/integration/service.py` is a
 small, private, in-process dict (`"MOCK" -> MockConnector`,
 `"MOCK_AUTH" -> MockAuthenticatedConnector`, `"SDK_EXAMPLE_WEBHOOK" ->
 WebhookConnector`, `"REST" -> RestConnector` as of 2.2.1, `"DATABASE" ->
-DatabaseConnector` as of 2.2.2, and — as of 2.2.3 — `"STORAGE" ->
-StorageConnector`) letting
+DatabaseConnector` as of 2.2.2, `"STORAGE" -> StorageConnector` as of
+2.2.3, and — as of 2.2.4 — `"QUEUE" -> QueueConnector`) letting
 `ConnectorService` turn a `connectors` row back into a live `Connector`
 instance when it needs to call `validate_configuration()`. As of 2.1.4,
 `ConnectorTypeService.register()` *is* a real, public, single
@@ -198,7 +203,14 @@ gives the storage connector a third
 (`app/integration/connectors/storage/invoker.py`) — identical shape,
 plus a new element none of the prior bridges needed: it records every
 access attempt, allowed or denied, in the platform audit trail
-(`ACT-INT-FR-145`) — see below.
+(`ACT-INT-FR-145`) — see below. Phase 2.2.4 gives the queue connector a
+fourth (`app/integration/connectors/queue/invoker.py`) — the same
+audited shape 2.2.3 established, reusing its
+`INTEGRATION_CONNECTOR_OBJECT_ACCESSED` event rather than adding a new
+one, but with two distinct entry points (`publish_message`/
+`consume_messages`) instead of one, since a queue binding's permitted
+operation must be checked against what the caller is actually
+attempting — see "Generic Message Queue Connector", below.
 
 ## Data model
 
@@ -1624,4 +1636,272 @@ this phase (see above). A future phase (or whenever a local MinIO
 instance becomes available in this environment) should add the same
 live-object-store proof PostgreSQL already has for the database
 connector — noted here rather than left silently implied as
+equivalent.
+
+## Generic Message Queue Connector (Phase 2.2.4)
+
+`ACT-SRS-M2` §6.4, `ACT-INT-FR-160` through `FR-164`. The fourth and last
+generic connector — after this, only identity federation (2.3.1) remains
+before Milestone 2 is complete in full.
+
+### Two-sided containment — publish scoped, consume bounded
+
+Where 2.2.2's danger was a language to inject into and 2.2.3's was a
+namespace to escape, this connector's danger is **unboundedness, on two
+sides**:
+
+- **Publish** is a lateral-movement/spoofing surface — an agent that can
+  publish to any queue can trigger downstream workflows, spoof events, or
+  flood a system it was never granted access to. Defended by scoping
+  publish to declared bindings, with the target **fixed by the tool
+  contract itself, never a value the model supplies** (`ACT-INT-FR-161`/
+  `FR-164`) — the queue analogue of the egress allowlist (REST) and the
+  path scope (storage), taken one step further: there is no queue-name
+  parameter for a model to redirect through in the first place, so
+  "the model cannot publish outside its declared queue" is true by
+  absence of the affordance, not by validating an input against a list.
+- **Consume** is a resource-exhaustion/data-firehose surface — an agent
+  that can consume without limit can drain a queue, flood the model's
+  own context, or starve other consumers. Defended by bounding every
+  consume call to **at most N messages within a bounded wait, never an
+  unbounded stream** (`ACT-INT-FR-162`) — the queue analogue of the row
+  limit (database) and the size cap (storage).
+
+### Not stream processing — the Milestone 3 boundary, kept sharp
+
+This connector provides **bounded publish and bounded consume as tool
+contracts** — a tool call publishes one message, or retrieves up to N
+messages and returns. It does not run a long-lived consumer, manage
+consumer-group offsets, or process a stream. A use case that wants a
+persistent, reactive consumer belongs to Milestone 3's worker/scheduler
+system, not a connector tool contract — crossing that line would
+entangle queue semantics with a milestone this one does not own, and
+would exceed what a discrete, bounded, request-response tool operation
+can cleanly be. This boundary is enforced by what the connector simply
+does not offer: no subscription API, no offset/consumer-group concept
+anywhere in the declaration model, no queue administration (create/
+delete queues — this connector publishes/consumes *declared* queues, it
+does not manage the broker).
+
+### Declared bindings — one example
+
+```jsonc
+{
+  "backend": "AMQP",
+  "host": "orders-broker.internal.example.com", "port": 5672, "virtual_host": "/",
+  "auth_scheme": "BASIC",
+  "default_max_message_size_bytes": 262144, "max_max_message_size_bytes": 1048576,
+  "default_max_batch_size": 10, "max_max_batch_size": 100,
+  "bindings": [
+    {
+      "name": "publish_order_events",
+      "description": "Publish a new order event.",
+      "operation": "PUBLISH",
+      "queue_name": "orders"
+    },
+    {
+      "name": "consume_order_events",
+      "description": "Retrieve up to N pending order events.",
+      "operation": "CONSUME",
+      "queue_name": "orders",
+      "max_batch_size": 10,
+      "wait_timeout_seconds": 5
+    }
+  ]
+}
+```
+
+Each declared binding becomes one distinct tool contract
+(`ACT-INT-FR-161`), derived per-instance by
+`declaration.py::tool_contracts_for()` exactly as every prior generic
+connector's own instance-derived contracts are. **The model never sees a
+queue-name parameter, on either side**: a `PUBLISH` binding's only
+parameter is `message` (the payload); a `CONSUME` binding's only
+parameter is an optional `max_messages` cap, itself still bounded by the
+binding's own effective batch size regardless of what a caller asks for.
+A queue reachable both ways is declared twice, once per operation, under
+two distinct binding names — exactly the pattern 2.2.3's storage
+connector already established for a bucket needing both read and write
+scopes.
+
+### Scoped publish, proven by absence, checked again by construction
+
+There is no `resolve_and_contain`-shaped enforcer for the publish target
+the way storage needed one for a path — because there is nothing to
+canonicalize. The target queue is baked into the tool contract at
+declaration time; the model's entire surface through a publish contract
+is the message body. What *is* checked, isolated in
+`app/integration/connectors/queue/scope.py` and unit-tested with zero
+live-broker dependency, is whether a *resolved* binding's own declared
+operation actually matches what is being attempted against it — a
+binding declared `PUBLISH` must reject a `CONSUME` attempt, and vice
+versa. The bridge (`invoker.py`) exposes this as two distinct entry
+points, `publish_message`/`consume_messages`, each checking before
+touching a broker — defense in depth on top of a tool-contract shape
+that already makes the mismatch unreachable through ordinary model use.
+
+### Bounded consume — capped batch, bounded wait, never a subscription
+
+A consume call never returns more than the binding's effective
+`max_batch_size`, regardless of how many messages the queue actually
+holds or what the caller asks for, and never waits past the binding's
+effective `wait_timeout_seconds` — verified live (against a fixtured
+transport, see Testing below): a queue with five available messages and
+a batch cap of three yields exactly three; an empty queue with a 0.3s
+wait returns an empty list in about 0.3s, not indefinitely. Each
+backend's own bounded primitive (AMQP's `basic_get`, SQS's
+`receive_message`) is wrapped in an explicit wall-clock deadline check
+rather than trusted alone, so the bound holds even across multiple
+underlying calls (SQS's own per-call cap is 10 messages; a binding
+requesting more triggers additional bounded calls, never an unbounded
+loop).
+
+### Message size — checked before send, truncated-and-flagged on consume
+
+A published message exceeding the binding's effective size limit is
+rejected with `QUEUE_MESSAGE_TOO_LARGE` before any connection is even
+attempted — mirrors the write-side discipline every prior connector's
+own size cap established. A **consumed** oversized message is handled
+differently, deliberately: rather than failing the whole bounded batch
+over one large message (which would defeat the point of batching, the
+database/storage precedent of "reject the whole operation" does not fit
+here), the message is **truncated to the limit and marked
+`truncated: true`** in the returned result — visible and bounded, never
+silently passed whole, and never silently dropped either (this
+connector's ack-on-retrieve policy, below, means a dropped message would
+simply be lost with no redelivery mechanism to recover it).
+
+### Acknowledgment policy — explicit, ack-on-retrieve, at-most-once
+
+Every backend acknowledges a message **as part of the same call that
+returns it to the caller** — AMQP's `basic_get(auto_ack=True)`; SQS's
+explicit `delete_message` immediately after `receive_message`. From the
+queue's own perspective this is **at-most-once**: a crash between the
+ack and the caller actually using the returned batch loses those
+messages. This is a deliberate default for a *bounded, discrete tool
+operation* — the same "reject/return outright rather than leave a system
+in an ambiguous partial state" instinct behind the database connector's
+row-limit-reject policy and the storage connector's read/write size
+checks. A use case needing at-least-once or transactional delivery
+guarantees needs a real, stateful consumer — explicitly out of this
+connector's scope (see "Not stream processing," above).
+
+### Backends — AMQP and SQS fully supported, Azure Service Bus backend-pending
+
+AMQP uses `pika` (a new dependency, pure-Python, no system client
+library) against RabbitMQ or any AMQP-0-9-1-compatible broker. SQS
+reuses the `boto3` dependency 2.2.3 already added, via the same
+`endpoint_url`/`region` declaration shape that lets one backend serve
+real AWS SQS or a compatible target (e.g. localstack) without a code
+change. Both backends' credential resolution reuses the `BASIC` scheme's
+generic `username`/`password` fields — an AMQP broker's own
+username/password on one side, an SQS access key id/secret access key
+on the other — the same non-vendor-specific-field reuse 2.2.3
+established for S3.
+
+**Azure Service Bus is a recognized, backend-pending value, not a silent
+gap.** `"SERVICE_BUS"` is accepted by the JSON Schema so a misconfigured
+instance gets a specific "backend-pending" message instead of a bare
+"invalid enum value" — but no `azure-servicebus` dependency was added
+this phase, mirroring 2.2.2's SQL Server / 2.2.3's Azure Blob precedent
+exactly.
+
+### `health_check()` — TCP reachability only, no credential, no message
+
+A raw TCP connect to the declared broker host/port (AMQP: `host`/`port`;
+SQS: the configured/default endpoint host) proves network-level
+reachability without authenticating or touching a queue at all — the
+same "TCP reachability only" contract every prior generic connector's
+`health_check` established.
+
+### Zero SDK-surface deviations — a first, contrasted with 2.2.2's one and 2.2.3's two
+
+Neither `declaration.py` nor `connector.py` imports anything beyond the
+SDK surface (plus each other) this phase. This isn't an oversight — it
+follows directly from this phase's own required error-code vocabulary
+(`QUEUE_NOT_DECLARED`, `QUEUE_MESSAGE_TOO_LARGE`,
+`QUEUE_OPERATION_NOT_PERMITTED`, `QUEUE_CONSUME_TIMEOUT`), which is
+entirely *invocation*-time: none of it names a *declaration*-time
+outcome the SDK's own generic `ConnectorConfigInvalidError` cannot
+already express, unlike 2.2.2's/2.2.3's own write-permission-at-
+configuration-time codes. There is also no instance-level posture flag
+here (no `read_only` equivalent) for a per-binding operation to
+conflict with — each binding is already fully self-describing. This
+phase's shape matches 2.2.1's REST connector precedent, not 2.2.2's/
+2.2.3's.
+
+### Expressiveness boundary
+
+This connector runs exactly what is declared: a fixed-target publish of
+one message, or a bounded, single retrieval of up to N messages. It does
+not offer routing/exchange configuration beyond a declared queue name,
+message filtering, priority queues, delayed/scheduled delivery, dead-
+letter-queue management, or any subscription/streaming mode. None of
+that is missing by oversight — each is either out of this sub-phase's
+scope (§3) or contradicts the bounded, discrete-operation model this
+connector exists to enforce.
+
+### No migration
+
+Every table this connector touches (`connectors`, `connector_instances`,
+`connector_credentials`, `authorization_audit`) already exists. A queue
+connector instance's entire declaration lives in
+`connector_instances.configuration`, the same JSONB column every
+connector instance already has. Migration head remains
+`0035_connector_health`.
+
+### API (2.2.4)
+
+No new HTTP route. Registering the `QUEUE` connector type reuses the
+existing type-registration path; configuring an instance uses the
+existing `POST`/`PATCH /connectors` endpoints with a queue declaration
+as the `configuration` body. The invocation bridge
+(`invoker.publish_message`/`consume_messages`) is a pair of direct,
+database-backed Python entry points, mirroring every prior generic
+connector's own API scope exactly.
+
+New error codes: `QUEUE_NOT_DECLARED`, `QUEUE_MESSAGE_TOO_LARGE`,
+`QUEUE_OPERATION_NOT_PERMITTED`, `QUEUE_CONSUME_TIMEOUT` (defined for
+vocabulary completeness but **not raised by either backend this
+phase** — a bounded consume finding nothing within its wait window is a
+successful empty result, not a timeout error; reserved for a future
+backend where the distinction is real), and one addition beyond the
+build prompt's own list — `QUEUE_BACKEND_FAILED` — mirroring
+`DB_CONNECTION_FAILED`/`STORAGE_BACKEND_FAILED` for a broker-level
+failure that isn't a scope/size/declaration problem.
+
+## Testing (2.2.4)
+
+`test_queue_scope.py` (the isolated scope-permission check — zero
+imports of any kind, no live broker anywhere in the file),
+`test_queue_connector.py` (scoped-publish/bounded-consume/size/ack
+mechanics against mocked `pika`/`boto3` transports, SDK-surface &
+integrity), and `test_queue_connector_invocation.py` (the live-database
+half: end-to-end bridge invocation via both `publish_message` and
+`consume_messages`, per-attempt audit trail verification, and
+credential-protection proof, against this platform's own real dev
+database exactly as `db_session`/`SessionLocal` already do elsewhere in
+this codebase — never a mock; the broker connection itself is still
+mocked in this file, only the database half is live). 50 new tests;
+every pre-existing test passes unmodified.
+
+**RabbitMQ/SQS/localstack coverage boundary, stated explicitly**: no
+live RabbitMQ broker or SQS-compatible endpoint (localstack or
+otherwise) is reachable in this environment, so both backends' dispatch
+correctness — scoped-publish success, the bounded-consume cap actually
+capping a queue that holds more than the cap, the bounded-wait actually
+returning within its window on an empty queue, size-limit rejection
+before send, oversized-message truncation-and-flagging on consume, and
+the ack-on-retrieve policy (`auto_ack=True` for AMQP; an explicit
+`delete_message` immediately after `receive_message` for SQS) — are all
+proven against a fixtured/mocked transport, never a live broker. This is
+the same, explicitly stated coverage boundary 2.2.2 (MySQL) and 2.2.3
+(S3/MinIO) already established for a backend this environment cannot
+exercise live. The *scope-permission logic itself* has full, unmocked
+coverage in `test_queue_scope.py`, since it has no backend dependency at
+all. Azure Service Bus has no coverage beyond the "recognized but
+backend-pending" rejection test. A future phase (or whenever a local
+RabbitMQ/localstack instance becomes available in this environment)
+should add the same live-broker proof PostgreSQL already has for the
+database connector — noted here rather than left silently implied as
 equivalent.
