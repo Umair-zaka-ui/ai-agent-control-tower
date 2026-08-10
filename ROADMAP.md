@@ -1553,13 +1553,74 @@ none of the user's own credential, ever.
 
 Next: Milestone 3 (Deployment & Release).
 
+## Milestone 3 — Deployment & Release (Phase 3.x)
+
+Ten sub-phases (`ACT-SRS-M3`): the deployment lifecycle core (3.1),
+environments/promotion (3.2), preflight/release gates (3.3), traffic
+allocation and the version-resolver/execution gate (3.4), canary/
+progressive rollout (3.5), blue-green/recreate strategies (3.6),
+rollback (3.7), a real distributed scheduler (3.8), distributed
+workers and the rolling strategy (3.9), and an operator frontend
+(3.10).
+
+### Part 3.1 — Enterprise Deployment Core ✅
+
+**The first sub-phase — builds the deployment state machine and its
+authority, not traffic, not canary, not workers.** Turns the existing,
+partially-wired `agent_deployments` table into a governed domain: a
+real 15-state lifecycle with one transition authority, append-only
+event lineage, optimistic-concurrency protection, and idempotent
+commands — while leaving the pre-existing `status` field, every legacy
+`DeploymentService` method, and the Milestone 1 execution gate
+completely untouched.
+
+- **`lifecycle_state`** (new, second, independent field on
+  `agent_deployments`) — 15 states, one transition authority
+  (`DeploymentLifecycleService.transition()`), mechanically checked as
+  the only write site. The pre-existing `status` column keeps being
+  read/written, unmodified, by every legacy method, including the one
+  place execution actually gates on deployment state.
+- **Ruling #6 (suspension/kill integration)**: reads — never writes —
+  the platform's existing `Agent.lifecycle_status == "SUSPENDED"`
+  mechanism every time a deployment would reach `ACTIVE`. No parallel
+  kill-switch built.
+- **The reusable `Idempotency-Key` contract**, claim-then-poll (not
+  naive check-then-act) — closes a genuine TOCTOU race under real
+  concurrency, proven with two real threads racing the same key.
+- **Optimistic concurrency** via a genuine SQLAlchemy `version_id_col`
+  — proven live with two threads racing one transition, exactly one
+  succeeds.
+- **Two real conflicts between the build prompt and the shipped
+  codebase, found and resolved, not silently redesigned around**: the
+  literal `/pause`/`/resume`/`/retire` paths collide with routes
+  already shipped in Phase 5.0 (resolved by nesting the new routes
+  under `/lifecycle/...`); the suggested permission names don't match
+  this platform's actual `runtime.deployment.*` convention (resolved
+  by reuse).
+- New tables `deployment_events` (append-only lineage) and
+  `idempotency_keys`; four new `agent_deployments` columns; the §15
+  deterministic migration backfilling every existing deployment's
+  legacy `status` into an initial `lifecycle_state`, once, live.
+- 5 new routes; no new permissions. Route count 484 → 489.
+- 27 new backend tests. Backend **1,379** total green (1,352 + 27), 1
+  deselected; backend only. See
+  [docs/deployment/lifecycle.md](docs/deployment/lifecycle.md).
+
+**Milestone 3 now has 1 of 10 sub-phases done.**
+
+Next: 3.2 (environments/promotion).
+
 ## Future (Phase 3+)
 
-**Milestone 3**: deployment & release strategies (canary, blue-green,
-actual rollback/traffic-shift execution — the former Milestone 2), and
-a real distributed job scheduler (2.1.3's own health-check scheduler is
-explicitly interim and built to be replaced, not extended, when this
-lands).
+**Milestone 3, remaining**: environments/promotion (3.2), preflight/
+release gates (3.3), traffic allocation and the version-resolver/
+execution gate (3.4 — the one change to the Milestone 1 execution
+entry path this whole milestone builds toward), canary/progressive
+rollout (3.5), blue-green/recreate strategies (3.6), rollback (3.7), a
+real distributed job scheduler (3.8 — 2.1.3's own health-check
+scheduler is explicitly interim and built to be replaced, not
+extended, when this lands), distributed workers and the rolling
+strategy (3.9), an operator frontend (3.10).
 **Milestone 2 is complete** (connector framework, all four generic
 connectors — REST, database, storage, queue — and external identity
 federation). SQL Server support for the database connector, Azure Blob
