@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi import APIRouter, Depends, Header, Query, Request, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -22,6 +22,7 @@ from app.models.runtime import (
     ToolCall,
 )
 from app.models.user import User
+from app.runtime.deployment.service import DeploymentLifecycleService
 from app.runtime.registry.duplicates import AgentDuplicateDetectionService
 from app.runtime.registry.identity import AgentIdentityAssociationService
 from app.runtime.registry.imports_exports import AgentExportService, AgentImportService
@@ -66,9 +67,12 @@ from app.runtime.schemas import (
     CapabilityCreate,
     CapabilityRead,
     DeploymentCreate,
+    DeploymentEventRead,
     DeploymentHealthRead,
+    DeploymentLifecycleActionRequest,
     DeploymentRead,
     DeploymentRollbackRequest,
+    DeploymentTransitionRequest,
     ExecutionAttemptRead,
     ExecutionCreate,
     ExecutionMessageRead,
@@ -997,10 +1001,15 @@ def list_deployments(agent_id: uuid.UUID | None = Query(default=None), status_fi
 
 @router.post("/deployments", response_model=DeploymentRead, status_code=status.HTTP_201_CREATED)
 def create_deployment(payload: DeploymentCreate, agent_id: uuid.UUID = Query(...),
+                      idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
                       actor: User = Depends(require_permission(_DEPLOY_CREATE)), db: Session = Depends(get_db)):
     agent = AgentRegistryService(db).get_or_404(actor, agent_id)
     version = AgentVersionService(db).get_or_404(actor, agent_id, payload.agent_version_id)
-    return DeploymentService(db).create(actor, agent, version, payload.model_dump(exclude={"agent_version_id"}))
+    result, _replayed = DeploymentLifecycleService(db).create(
+        actor, agent, version, payload.model_dump(exclude={"agent_version_id"}),
+        idempotency_key=idempotency_key,
+    )
+    return result
 
 
 @router.get("/deployments/{deployment_id}", response_model=DeploymentRead)
@@ -1037,6 +1046,122 @@ def rollback_deployment(deployment_id: uuid.UUID, payload: DeploymentRollbackReq
 def retire_deployment(deployment_id: uuid.UUID, actor: User = Depends(require_permission(_DEPLOY_ACTION)),
                       db: Session = Depends(get_db)):
     return DeploymentService(db).retire(actor, deployment_id)
+
+
+# --------------------------------------------------------------------------- #
+# Phase 3.1 (ACT-SRS-M3 §3.1) -- the new governed deployment lifecycle.
+# Nested under "/lifecycle" rather than reusing the legacy "/resume" and
+# "/retire" paths directly above: FastAPI cannot register two handlers on
+# one (path, method) pair, and those two legacy paths already exist,
+# operating on the pre-existing `status` field. This phase deliberately
+# leaves that legacy `DeploymentService`/`.status` machinery untouched
+# (see app.runtime.deployment.service's own module docstring) rather than
+# merge the two concepts, so a real conflict between this build prompt's
+# literal `/pause`/`/resume`/`/retire` paths and the already-shipped routes
+# above is resolved this way -- reported in docs/deployment/lifecycle.md
+# rather than silently reusing the same path for two different machines.
+# --------------------------------------------------------------------------- #
+def _run_idempotent_lifecycle_command(db: Session, actor: User, *, operation: str,
+                                      idempotency_key: str | None, payload: dict, fn) -> dict:
+    from app.runtime.deployment.idempotency import IdempotencyService
+    result, _replayed = IdempotencyService(db).execute(
+        organization_id=actor.organization_id, operation=operation,
+        key=idempotency_key, payload=payload, fn=fn,
+    )
+    return result
+
+
+@router.post("/deployments/{deployment_id}/lifecycle/transition", response_model=DeploymentRead)
+def transition_deployment(deployment_id: uuid.UUID, payload: DeploymentTransitionRequest,
+                          idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+                          actor: User = Depends(require_permission(_DEPLOY_ACTION)),
+                          db: Session = Depends(get_db)):
+    service = DeploymentLifecycleService(db)
+
+    def _do() -> dict:
+        deployment = service.get_or_404(actor, deployment_id)
+        # "DEPLOYING" from READY/APPROVED is the one transition with real
+        # side effects beyond a bare state change (the READY-stage
+        # approval-reroute, and the synchronous DEPLOYING->ACTIVE completion
+        # -- there is no distributed worker in this phase to do it
+        # out-of-band) -- see DeploymentLifecycleService.start_deploying's
+        # own docstring for why this is not just another graph edge.
+        if payload.to_state == "DEPLOYING" and deployment.lifecycle_state in ("READY", "APPROVED"):
+            deployment = service.start_deploying(actor, deployment, reason=payload.reason,
+                                                 expected_revision=payload.expected_revision)
+        else:
+            deployment = service.transition(actor, deployment, payload.to_state, reason=payload.reason,
+                                            expected_revision=payload.expected_revision)
+        return DeploymentRead.model_validate(deployment).model_dump(mode="json")
+
+    return _run_idempotent_lifecycle_command(
+        db, actor, operation="deployment.transition", idempotency_key=idempotency_key,
+        payload={"deployment_id": str(deployment_id), **payload.model_dump()}, fn=_do,
+    )
+
+
+@router.post("/deployments/{deployment_id}/lifecycle/pause", response_model=DeploymentRead)
+def pause_deployment_lifecycle(deployment_id: uuid.UUID, payload: DeploymentLifecycleActionRequest,
+                               idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+                               actor: User = Depends(require_permission(_DEPLOY_ACTION)),
+                               db: Session = Depends(get_db)):
+    service = DeploymentLifecycleService(db)
+
+    def _do() -> dict:
+        deployment = service.get_or_404(actor, deployment_id)
+        deployment = service.pause(actor, deployment, reason=payload.reason,
+                                   expected_revision=payload.expected_revision)
+        return DeploymentRead.model_validate(deployment).model_dump(mode="json")
+
+    return _run_idempotent_lifecycle_command(
+        db, actor, operation="deployment.pause", idempotency_key=idempotency_key,
+        payload={"deployment_id": str(deployment_id), **payload.model_dump()}, fn=_do,
+    )
+
+
+@router.post("/deployments/{deployment_id}/lifecycle/resume", response_model=DeploymentRead)
+def resume_deployment_lifecycle(deployment_id: uuid.UUID, payload: DeploymentLifecycleActionRequest,
+                                idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+                                actor: User = Depends(require_permission(_DEPLOY_ACTION)),
+                                db: Session = Depends(get_db)):
+    service = DeploymentLifecycleService(db)
+
+    def _do() -> dict:
+        deployment = service.get_or_404(actor, deployment_id)
+        deployment = service.resume(actor, deployment, reason=payload.reason,
+                                    expected_revision=payload.expected_revision)
+        return DeploymentRead.model_validate(deployment).model_dump(mode="json")
+
+    return _run_idempotent_lifecycle_command(
+        db, actor, operation="deployment.resume", idempotency_key=idempotency_key,
+        payload={"deployment_id": str(deployment_id), **payload.model_dump()}, fn=_do,
+    )
+
+
+@router.post("/deployments/{deployment_id}/lifecycle/retire", response_model=DeploymentRead)
+def retire_deployment_lifecycle(deployment_id: uuid.UUID, payload: DeploymentLifecycleActionRequest,
+                                idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+                                actor: User = Depends(require_permission(_DEPLOY_ACTION)),
+                                db: Session = Depends(get_db)):
+    service = DeploymentLifecycleService(db)
+
+    def _do() -> dict:
+        deployment = service.get_or_404(actor, deployment_id)
+        deployment = service.retire(actor, deployment, reason=payload.reason,
+                                    expected_revision=payload.expected_revision)
+        return DeploymentRead.model_validate(deployment).model_dump(mode="json")
+
+    return _run_idempotent_lifecycle_command(
+        db, actor, operation="deployment.retire", idempotency_key=idempotency_key,
+        payload={"deployment_id": str(deployment_id), **payload.model_dump()}, fn=_do,
+    )
+
+
+@router.get("/deployments/{deployment_id}/lifecycle/events", response_model=list[DeploymentEventRead])
+def list_deployment_lifecycle_events(deployment_id: uuid.UUID,
+                                     actor: User = Depends(require_permission(_DEPLOY_VIEW)),
+                                     db: Session = Depends(get_db)):
+    return DeploymentLifecycleService(db).list_events(actor, deployment_id)
 
 
 @router.post("/deployments/{deployment_id}/heartbeat", response_model=DeploymentHealthRead)

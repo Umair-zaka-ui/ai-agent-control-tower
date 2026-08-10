@@ -3343,6 +3343,14 @@ class RuntimeApprovalService:
                 # REJECTED -> FAILED, a terminal state that never silently
                 # becomes deployable again.
                 deployment.status = "FAILED" if decision == "REJECTED" else "CREATED"
+            # Phase 3.1 -- additively drives the *new* lifecycle_state machine
+            # too, alongside (never instead of) the legacy .status handling
+            # just above. A no-op for a deployment never routed through the
+            # new PENDING_APPROVAL state (see DeploymentLifecycleService
+            # .apply_approval_decision's own docstring).
+            if deployment:
+                from app.runtime.deployment.service import DeploymentLifecycleService
+                DeploymentLifecycleService(self.db).apply_approval_decision(actor, deployment, decision)
         self.db.commit()
         self.db.refresh(approval)
         if (approval.requested_action == "EXECUTION" and decision == "APPROVED"

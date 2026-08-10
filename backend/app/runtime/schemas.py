@@ -140,6 +140,37 @@ class DeploymentRead(BaseModel):
     deployed_at: datetime | None
     updated_at: datetime
     retired_at: datetime | None
+    # Phase 3.1 — the new governed lifecycle (app.runtime.deployment).
+    lifecycle_state: str
+    revision: int
+    state_reason: str | None
+    superseded_by_deployment_id: uuid.UUID | None
+
+
+class DeploymentTransitionRequest(BaseModel):
+    to_state: str = Field(min_length=1, max_length=24)
+    reason: str | None = Field(default=None, max_length=2000)
+    expected_revision: int | None = Field(default=None, ge=1)
+
+
+class DeploymentLifecycleActionRequest(BaseModel):
+    reason: str | None = Field(default=None, max_length=2000)
+    expected_revision: int | None = Field(default=None, ge=1)
+
+
+class DeploymentEventRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    deployment_id: uuid.UUID
+    organization_id: uuid.UUID
+    from_state: str | None
+    to_state: str
+    event_type: str
+    reason: str | None
+    actor_id: uuid.UUID | None
+    idempotency_key: str | None
+    created_at: datetime
 
 
 class DeploymentHealthRead(BaseModel):
