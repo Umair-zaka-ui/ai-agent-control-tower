@@ -21,6 +21,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     LargeBinary,
     Numeric,
@@ -460,6 +461,29 @@ class AgentDeployment(Base, UUIDPrimaryKeyMixin):
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
     retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Phase 3.1 (ACT-SRS-M3 §3.1) -- the new governed lifecycle. Deliberately a
+    # *second* status field, not a widening of ``status`` above: ``status`` is
+    # the pre-existing, narrower Phase 5.0 field every legacy DeploymentService
+    # method (deploy/suspend/resume/rollback/retire) still reads and writes
+    # unchanged; ``lifecycle_state`` is the new 15-state machine and is written
+    # in exactly one place, ``app.runtime.deployment.service.DeploymentLifecycleService``
+    # (see that module for the full transition graph). The two fields are
+    # reconciled once, deterministically, by migration 0037's own mapping and
+    # then evolve independently -- see docs/deployment/lifecycle.md.
+    lifecycle_state: Mapped[str] = mapped_column(String(24), nullable=False, default="DRAFT", index=True)
+    # Optimistic-concurrency guard (``version_id_col`` below) -- SQLAlchemy
+    # includes ``WHERE revision = <loaded value>`` on every UPDATE of this row
+    # and raises ``StaleDataError`` (translated to ``DEPLOYMENT_REVISION_CONFLICT``
+    # by the lifecycle service) when a concurrent writer already moved it,
+    # rather than silently last-write-winning.
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    state_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    superseded_by_deployment_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agent_deployments.id", ondelete="SET NULL"), nullable=True
+    )
+
+    __mapper_args__ = {"version_id_col": revision}
 
 
 class AgentExecution(Base, UUIDPrimaryKeyMixin):
@@ -1053,3 +1077,73 @@ class RuntimeApproval(Base, UUIDPrimaryKeyMixin):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class DeploymentEvent(Base, UUIDPrimaryKeyMixin):
+    """Phase 3.1 (ACT-SRS-M3 §3.1, §13, §15) -- append-only lineage of every
+    deployment lifecycle transition. Complementary to, not a replacement for,
+    the pre-existing ``runtime_events``/``AuthorizationAuditEvent`` streams
+    (also still written on every transition, via ``_record_event`` unchanged):
+    this table is the typed, deployment-specific record (``from_state``/
+    ``to_state``/``idempotency_key``), while the audit stream is the
+    platform-wide security record and ``runtime_events`` feeds the Operations
+    Center timeline -- see docs/deployment/lifecycle.md.
+
+    Append-only by construction: no service method in this codebase ever
+    updates or deletes a row here (mirrors ``connector_lifecycle_events``'
+    and ``agent_lifecycle_events``' own precedent); the migration additionally
+    revokes UPDATE/DELETE at the database level."""
+
+    __tablename__ = "deployment_events"
+    __table_args__ = (
+        Index("ix_deployment_events_deployment_created", "deployment_id", "created_at"),
+    )
+
+    deployment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agent_deployments.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    from_state: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    to_state: Mapped[str] = mapped_column(String(24), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(48), nullable=False, index=True)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    idempotency_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class IdempotencyKey(Base, UUIDPrimaryKeyMixin):
+    """Phase 3.1 (ACT-SRS-M3 §3.1, §10) -- the reusable, platform-wide
+    idempotency contract every later Milestone 3 command reuses. Deliberately
+    a *different* table from the pre-existing, narrower ``idempotency_records``
+    (Phase 5.0 §33): that one dedupes execution requests specifically (scoped
+    to ``agent_id``, resolving to an ``AgentExecution`` row via a hard FK) and
+    is untouched by this phase, since it sits on the M1 execution path this
+    phase must not modify. This table is generic across any
+    ``(organization, operation)`` pair and resolves to an opaque, JSON-encoded
+    ``result_ref`` rather than a typed FK, so any future command -- deployment
+    or otherwise -- can adopt it without a schema change."""
+
+    __tablename__ = "idempotency_keys"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "operation", "idempotency_key", name="uq_idempotency_keys_scope"),
+    )
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    operation: Mapped[str] = mapped_column(String(64), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    result_ref: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
