@@ -569,6 +569,38 @@ class PromotionPath(Base, UUIDPrimaryKeyMixin):
     )
 
 
+class DeploymentPreflightResult(Base, UUIDPrimaryKeyMixin):
+    """Phase 3.3 (ACT-SRS-M3 §Phase-3.3, M3-3.3-FR-030..031) -- one persisted
+    ``ReleaseGateService.evaluate()`` verdict for a deployment. A snapshot,
+    not a queryable-by-finding entity: ``findings`` is a JSONB list of
+    ``{code, severity, source, explanation, remediation}`` objects (see
+    ``app.runtime.deployment.gate``), not normalized into rows, because a
+    finding only ever matters in the context of the one evaluation that
+    produced it -- see docs/deployment/release-gates.md."""
+
+    __tablename__ = "deployment_preflight_results"
+
+    deployment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agent_deployments.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    verdict: Mapped[str] = mapped_column(String(12), nullable=False)
+    findings: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    evaluated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    evaluated_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+
+    __table_args__ = (
+        Index("ix_deployment_preflight_results_deployment_evaluated",
+             "deployment_id", "evaluated_at"),
+    )
+
+
 class AgentExecution(Base, UUIDPrimaryKeyMixin):
     """§7.5, §27 — one runtime invocation and its queue/state-machine record."""
 

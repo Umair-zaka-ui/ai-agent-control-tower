@@ -234,6 +234,29 @@ class DeploymentPromoteRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=2000)
 
 
+# --------------------------------------------------------------------------- #
+# Deployment preflight / release gate (ACT-SRS-M3 §Phase-3.3)
+# --------------------------------------------------------------------------- #
+class PreflightFindingRead(BaseModel):
+    code: str
+    severity: str
+    source: str
+    explanation: str
+    remediation: str
+
+
+class DeploymentPreflightRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    deployment_id: uuid.UUID
+    organization_id: uuid.UUID
+    verdict: str
+    findings: list[PreflightFindingRead]
+    evaluated_at: datetime
+    evaluated_by: uuid.UUID | None
+
+
 class DeploymentHealthRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

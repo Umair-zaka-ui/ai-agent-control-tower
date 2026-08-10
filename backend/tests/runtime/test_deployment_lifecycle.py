@@ -387,12 +387,25 @@ def test_ac09_suspended_agent_blocks_activation(client: TestClient, admin: dict)
     r = client.post(f"{RT}/deployments/{deployment['id']}/lifecycle/transition", headers=admin["headers"],
                     json={"to_state": "DEPLOYING"})
     assert r.status_code == 409, r.text
-    assert r.json()["error"]["code"] == "DEPLOYMENT_AGENT_SUSPENDED"
+    # Phase 3.3 (ACT-SRS-M3 §Phase-3.3) -- ``start_deploying`` now runs the
+    # release gate *before* the READY->DEPLOYING mutation (previously the
+    # first thing this method did), so a suspended agent is now rejected
+    # up front with the gate's own code, richer/more specific than -- but
+    # never weaker than -- the pre-existing ``DEPLOYMENT_AGENT_SUSPENDED``
+    # (still the code ``_assert_can_reach_active`` raises when reached via
+    # a path that bypasses the gate, e.g. ``resume()`` below): see
+    # ``app.runtime.release_gate.checks.check_agent_active_and_kill_switch``.
+    assert r.json()["error"]["code"] == "DEPLOYMENT_PREFLIGHT_BLOCKED"
 
-    # The deployment itself is left exactly where it was (DEPLOYING, not
-    # silently advanced or reverted) -- "changes nothing" per M3-3.1-FR-003.
+    # The deployment is left exactly where it was -- READY, not DEPLOYING:
+    # a strict improvement over 3.1's own original behavior (which left the
+    # deployment "stuck" at DEPLOYING after a partial READY->DEPLOYING
+    # mutation, since that transition ran *before* the suspension check).
+    # The gate now blocks before any state mutation at all -- "changes
+    # nothing" per M3-3.1-FR-003, now true in the stronger sense of never
+    # even starting.
     r = client.get(f"{RT}/deployments/{deployment['id']}", headers=admin["headers"])
-    assert r.json()["lifecycle_state"] == "DEPLOYING"
+    assert r.json()["lifecycle_state"] == "READY"
 
 
 def test_ac09_paused_reactivation_also_blocked_once_agent_is_suspended(client: TestClient, admin: dict):

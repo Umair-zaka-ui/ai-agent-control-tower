@@ -24,6 +24,7 @@ from app.models.runtime import (
 from app.models.user import User
 from app.runtime.deployment.service import DeploymentLifecycleService
 from app.runtime.environment.service import EnvironmentService, PromotionPathService, PromotionService
+from app.runtime.release_gate.service import ReleaseGateService
 from app.runtime.registry.duplicates import AgentDuplicateDetectionService
 from app.runtime.registry.identity import AgentIdentityAssociationService
 from app.runtime.registry.imports_exports import AgentExportService, AgentImportService
@@ -71,6 +72,7 @@ from app.runtime.schemas import (
     DeploymentEventRead,
     DeploymentHealthRead,
     DeploymentLifecycleActionRequest,
+    DeploymentPreflightRead,
     DeploymentPromoteRequest,
     DeploymentRead,
     DeploymentRollbackRequest,
@@ -1191,6 +1193,34 @@ def promote_deployment(deployment_id: uuid.UUID, payload: DeploymentPromoteReque
         actor, deployment, payload.to_environment_id, reason=payload.reason, idempotency_key=idempotency_key,
     )
     return result
+
+
+# --------------------------------------------------------------------------- #
+# Phase 3.3 (ACT-SRS-M3 §Phase-3.3) -- deployment preflight / release gate.
+# Reuses "_DEPLOY_ACTION"/"_DEPLOY_VIEW" verbatim (build prompt §6): running
+# an evaluation is a deployment operation, viewing one is a deployment read
+# -- no third permission code. The API is the explicit/preview path;
+# enforcement happens in-lifecycle (DeploymentLifecycleService.start_deploying).
+# --------------------------------------------------------------------------- #
+@router.post("/deployments/{deployment_id}/preflight", response_model=DeploymentPreflightRead)
+def run_deployment_preflight(deployment_id: uuid.UUID, actor: User = Depends(require_permission(_DEPLOY_ACTION)),
+                             db: Session = Depends(get_db)):
+    deployment = DeploymentLifecycleService(db).get_or_404(actor, deployment_id)
+    return ReleaseGateService(db).evaluate(actor, deployment)
+
+
+@router.get("/deployments/{deployment_id}/preflight", response_model=DeploymentPreflightRead | None)
+def get_deployment_preflight(deployment_id: uuid.UUID, actor: User = Depends(require_permission(_DEPLOY_VIEW)),
+                             db: Session = Depends(get_db)):
+    return ReleaseGateService(db).get_latest(actor, deployment_id)
+
+
+@router.get("/deployments/{deployment_id}/preflight/history", response_model=list[DeploymentPreflightRead])
+def get_deployment_preflight_history(deployment_id: uuid.UUID, limit: int = Query(default=50, ge=1, le=200),
+                                     offset: int = Query(default=0, ge=0),
+                                     actor: User = Depends(require_permission(_DEPLOY_VIEW)),
+                                     db: Session = Depends(get_db)):
+    return ReleaseGateService(db).get_history(actor, deployment_id, limit=limit, offset=offset)
 
 
 @router.post("/deployments/{deployment_id}/heartbeat", response_model=DeploymentHealthRead)
