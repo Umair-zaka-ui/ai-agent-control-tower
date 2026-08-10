@@ -483,7 +483,90 @@ class AgentDeployment(Base, UUIDPrimaryKeyMixin):
         UUID(as_uuid=True), ForeignKey("agent_deployments.id", ondelete="SET NULL"), nullable=True
     )
 
+    # Phase 3.2 (ACT-SRS-M3 §3.2) -- the governed environment entity this
+    # deployment targets. Additive, nullable: the pre-existing ``environment``
+    # string column above is left in place unchanged (every legacy read --
+    # in particular the M1 execution-path check in
+    # ``RuntimePolicyService.evaluate`` -- keeps reading that string, never
+    # this column), and migration 0038 backfills this column for every
+    # existing row from that same string. New rows created through
+    # ``app.runtime.environment.service.PromotionService`` always set both
+    # columns together, in sync; the legacy ``POST /deployments`` create path
+    # additionally does a best-effort string->row lookup on create,
+    # opportunistically closing the loop for orgs whose environments are
+    # already seeded (see docs/deployment/environments.md).
+    environment_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("environments.id", ondelete="SET NULL"), nullable=True, index=True,
+    )
+
     __mapper_args__ = {"version_id_col": revision}
+
+
+class Environment(Base, UUIDPrimaryKeyMixin):
+    """Phase 3.2 (ACT-SRS-M3 §3.2, M3-3.2-FR-001..004) -- a governed,
+    tenant-scoped deployment target (DEVELOPMENT/TEST/STAGING/PRODUCTION/
+    SANDBOX, or an org-defined custom name). Turns ``agent_deployments.
+    environment`` from a bare, unvalidated string into a first-class,
+    policy-bearing entity -- see ``app.runtime.environment`` and
+    docs/deployment/environments.md.
+
+    ``policy`` (free-form JSONB, evaluated by ``app.runtime.environment.
+    policy``) may declare ``allowed_models``, ``allowed_data_classifications``,
+    ``requires_approval``, ``maximum_concurrent_deployments`` and
+    ``change_window`` -- see that module's own docstring for the exact shape
+    and which of these are actually enforced this phase versus only modeled.
+    Never holds a secret (FR rule shared with every other policy JSONB in
+    this codebase)."""
+
+    __tablename__ = "environments"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "name", name="uq_environments_org_name"),
+    )
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+    display_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    is_production: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    policy: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class PromotionPath(Base, UUIDPrimaryKeyMixin):
+    """Phase 3.2 (ACT-SRS-M3 §3.2, M3-3.2-FR-020..021) -- one org-configured,
+    directed edge between two ``Environment`` rows a version's deployment
+    eligibility may be promoted along (e.g. STAGING -> PRODUCTION).
+    Promoting between two environments with no row here is rejected
+    (``PROMOTION_PATH_NOT_DEFINED``) -- see ``app.runtime.environment.service.
+    PromotionService``."""
+
+    __tablename__ = "promotion_paths"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "from_environment_id", "to_environment_id",
+                        name="uq_promotion_paths_org_edge"),
+    )
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    from_environment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("environments.id", ondelete="CASCADE"), nullable=False, index=True,
+    )
+    to_environment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("environments.id", ondelete="CASCADE"), nullable=False, index=True,
+    )
+    requires_approval: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
 
 
 class AgentExecution(Base, UUIDPrimaryKeyMixin):

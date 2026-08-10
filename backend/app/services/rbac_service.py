@@ -137,6 +137,12 @@ PERMISSION_CATALOG: dict[str, str] = {
     "runtime.deployment.create": "Create deployments",
     "runtime.deployment.deploy": "Deploy, suspend, resume and retire deployments",
     "runtime.deployment.rollback": "Roll back a deployment to a previous version",
+    # Environment & Promotion Model (Phase 3.2, ACT-SRS-M3 §3.2). Promoting a
+    # deployment reuses "runtime.deployment.deploy" (below/above) rather than
+    # a third code, since a promotion *is* a deployment operation; these two
+    # are for the environment/promotion-path catalog itself.
+    "runtime.environment.view": "View environments, their policy and configured promotion paths",
+    "runtime.environment.manage": "Create and configure environments, their policy and promotion paths",
     "runtime.execution.view": "View executions, tool calls and telemetry",
     "runtime.execution.create": "Request agent executions",
     "runtime.execution.cancel": "Cancel queued or running executions",

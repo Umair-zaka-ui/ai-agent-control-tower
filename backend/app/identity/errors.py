@@ -193,6 +193,21 @@ class ErrorCode:
     DEPLOYMENT_INVALID_TRANSITION = "DEPLOYMENT_INVALID_TRANSITION"
     DEPLOYMENT_REVISION_CONFLICT = "DEPLOYMENT_REVISION_CONFLICT"
     DEPLOYMENT_AGENT_SUSPENDED = "DEPLOYMENT_AGENT_SUSPENDED"
+    # Phase 3.2 (ACT-SRS-M3 §3.2) -- environments and promotion.
+    # DEPLOYMENT_NOT_FOUND (above) is reused for a deployment looked up by
+    # id ahead of a promotion; there is no separate "promotion not found"
+    # code since a promotion is not itself a stored, independently-addressable
+    # resource -- see docs/deployment/environments.md.
+    ENVIRONMENT_NOT_FOUND = "ENVIRONMENT_NOT_FOUND"
+    ENVIRONMENT_POLICY_VIOLATION = "ENVIRONMENT_POLICY_VIOLATION"
+    PROMOTION_PATH_NOT_DEFINED = "PROMOTION_PATH_NOT_DEFINED"
+    PROMOTION_WINDOW_CLOSED = "PROMOTION_WINDOW_CLOSED"
+    # Defensive only -- by construction, promotion always sets the new
+    # deployment's ``agent_version_id`` to the exact source version's id and
+    # never inserts or mutates an ``AgentVersion`` row, so this should be
+    # unreachable; it exists so a future regression fails loudly instead of
+    # silently shipping a re-pointed version into an environment.
+    PROMOTION_IMMUTABILITY_VIOLATION = "PROMOTION_IMMUTABILITY_VIOLATION"
     EXECUTION_NOT_FOUND = "EXECUTION_NOT_FOUND"
     EXECUTION_ALREADY_COMPLETED = "EXECUTION_ALREADY_COMPLETED"
     EXECUTION_CANCELLED = "EXECUTION_CANCELLED"
@@ -552,6 +567,11 @@ _STATUS: dict[str, int] = {
     ErrorCode.DEPLOYMENT_INVALID_TRANSITION: status.HTTP_409_CONFLICT,
     ErrorCode.DEPLOYMENT_REVISION_CONFLICT: status.HTTP_409_CONFLICT,
     ErrorCode.DEPLOYMENT_AGENT_SUSPENDED: status.HTTP_409_CONFLICT,
+    ErrorCode.ENVIRONMENT_NOT_FOUND: status.HTTP_404_NOT_FOUND,
+    ErrorCode.ENVIRONMENT_POLICY_VIOLATION: status.HTTP_409_CONFLICT,
+    ErrorCode.PROMOTION_PATH_NOT_DEFINED: status.HTTP_409_CONFLICT,
+    ErrorCode.PROMOTION_WINDOW_CLOSED: status.HTTP_409_CONFLICT,
+    ErrorCode.PROMOTION_IMMUTABILITY_VIOLATION: status.HTTP_409_CONFLICT,
     ErrorCode.EXECUTION_NOT_FOUND: status.HTTP_404_NOT_FOUND,
     ErrorCode.EXECUTION_ALREADY_COMPLETED: status.HTTP_409_CONFLICT,
     ErrorCode.EXECUTION_CANCELLED: status.HTTP_409_CONFLICT,

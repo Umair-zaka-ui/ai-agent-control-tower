@@ -145,6 +145,10 @@ class DeploymentRead(BaseModel):
     revision: int
     state_reason: str | None
     superseded_by_deployment_id: uuid.UUID | None
+    # Phase 3.2 — the governed environment entity (app.runtime.environment),
+    # null until backfilled/resolved (see AgentDeployment.environment_id's
+    # own docstring for exactly when).
+    environment_id: uuid.UUID | None
 
 
 class DeploymentTransitionRequest(BaseModel):
@@ -171,6 +175,63 @@ class DeploymentEventRead(BaseModel):
     actor_id: uuid.UUID | None
     idempotency_key: str | None
     created_at: datetime
+
+
+# --------------------------------------------------------------------------- #
+# Environments & Promotion (ACT-SRS-M3 §3.2)
+# --------------------------------------------------------------------------- #
+_ENVIRONMENT_NAME = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z][A-Za-z0-9_]*$")
+
+
+class EnvironmentCreate(BaseModel):
+    name: str = _ENVIRONMENT_NAME
+    display_name: str | None = Field(default=None, max_length=128)
+    is_production: bool = False
+    policy: dict = Field(default_factory=dict)
+
+
+class EnvironmentUpdate(BaseModel):
+    display_name: str | None = Field(default=None, max_length=128)
+    is_production: bool | None = None
+
+
+class EnvironmentPolicyUpdate(BaseModel):
+    policy: dict = Field(default_factory=dict)
+
+
+class EnvironmentRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    organization_id: uuid.UUID
+    name: str
+    display_name: str
+    is_production: bool
+    policy: dict
+    created_at: datetime
+    updated_at: datetime
+
+
+class PromotionPathCreate(BaseModel):
+    from_environment_id: uuid.UUID
+    to_environment_id: uuid.UUID
+    requires_approval: bool = False
+
+
+class PromotionPathRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    organization_id: uuid.UUID
+    from_environment_id: uuid.UUID
+    to_environment_id: uuid.UUID
+    requires_approval: bool
+    created_at: datetime
+
+
+class DeploymentPromoteRequest(BaseModel):
+    to_environment_id: uuid.UUID
+    reason: str | None = Field(default=None, max_length=2000)
 
 
 class DeploymentHealthRead(BaseModel):
