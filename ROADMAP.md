@@ -1608,19 +1608,69 @@ completely untouched.
 
 **Milestone 3 now has 1 of 10 sub-phases done.**
 
-Next: 3.2 (environments/promotion).
+### Part 3.2 — Environment & Promotion Model ✅
+
+**The second sub-phase.** Turns `agent_deployments.environment` — a
+bare, unvalidated string — into a governed, tenant-scoped `Environment`
+entity with real policy, and adds a promotion operation that moves a
+version's deployment eligibility between environments while
+**preserving the exact same immutable version**, never cloning, never
+modifying.
+
+- **`environment_id`** (new, second, additive field on
+  `agent_deployments`) — a real FK to the new `environments` table.
+  The pre-existing `environment` string keeps being read, unmodified,
+  by the one place execution actually reads it (the Milestone 1
+  policy engine).
+- **Governed `Environment` entities**: tenant-scoped, standard
+  `DEVELOPMENT`/`TEST`/`STAGING`/`PRODUCTION`/`SANDBOX` plus custom,
+  each carrying a policy document (allowed models/data
+  classifications, required approvals, concurrency limits, change
+  windows). `PromotionPath` — the org-configured graph of legal
+  promotions.
+- **Immutability preserved by construction, not just by test**: the
+  source version is loaded once and passed straight into the
+  pre-existing deployment constructor — nothing in the new module can
+  construct, copy, or mutate a version row. Verified live: same
+  version id, unchanged version count, byte-identical
+  checksum/digest/signature before and after.
+- **Both mandatory inspections completed and integrated, not
+  paralleled**: `prohibited_environments` reads the exact same
+  version-policy field the Milestone 1 execution-time policy engine
+  already reads; release channels found orthogonal to environments (a
+  stability track vs. a deployment target) — promotion never touches
+  a version's channel.
+- **Approval folded into the existing single funnel** — a governed
+  environment's own approval requirement is one more condition on the
+  same reroute Phase 3.1 already built, never a second mechanism.
+- **The previously declared-but-undriven `ACTIVE`/`PAUSED` →
+  `SUPERSEDED` lifecycle edge is now driven** by promotion, when a
+  newer deployment lands in the same agent+environment slot.
+- New tables `environments`/`promotion_paths`; one new
+  `agent_deployments` column; the §15 deterministic migration seeding
+  the standard environments and a default promotion chain, and
+  backfilling every existing deployment's `environment_id`, once,
+  live, for 4,559 organizations.
+- 10 new routes; two new permissions
+  (`runtime.environment.view`/`.manage`). Route count 489 → 499.
+- 29 new backend tests. Backend **1,408** total green (1,379 + 29), 1
+  deselected; backend only. See
+  [docs/deployment/environments.md](docs/deployment/environments.md).
+
+**Milestone 3 now has 2 of 10 sub-phases done.**
+
+Next: 3.3 (preflight/release gates).
 
 ## Future (Phase 3+)
 
-**Milestone 3, remaining**: environments/promotion (3.2), preflight/
-release gates (3.3), traffic allocation and the version-resolver/
-execution gate (3.4 — the one change to the Milestone 1 execution
-entry path this whole milestone builds toward), canary/progressive
-rollout (3.5), blue-green/recreate strategies (3.6), rollback (3.7), a
-real distributed job scheduler (3.8 — 2.1.3's own health-check
-scheduler is explicitly interim and built to be replaced, not
-extended, when this lands), distributed workers and the rolling
-strategy (3.9), an operator frontend (3.10).
+**Milestone 3, remaining**: preflight/release gates (3.3), traffic
+allocation and the version-resolver/execution gate (3.4 — the one
+change to the Milestone 1 execution entry path this whole milestone
+builds toward), canary/progressive rollout (3.5), blue-green/recreate
+strategies (3.6), rollback (3.7), a real distributed job scheduler
+(3.8 — 2.1.3's own health-check scheduler is explicitly interim and
+built to be replaced, not extended, when this lands), distributed
+workers and the rolling strategy (3.9), an operator frontend (3.10).
 **Milestone 2 is complete** (connector framework, all four generic
 connectors — REST, database, storage, queue — and external identity
 federation). SQL Server support for the database connector, Azure Blob
