@@ -468,11 +468,11 @@ def test_ac19_mock_connectors_unchanged(db_session: Session):
 def test_ac21_no_migration_was_added():
     versions_dir = Path(__file__).resolve().parents[2] / "migrations" / "versions"
     revisions = sorted(p.name for p in versions_dir.glob("00*.py"))
-    # Updated Phase 3.1: a genuinely new migration landed for the deployment
-    # lifecycle (0037) -- this assertion's own intent is preserved by
+    # Updated Phase 3.2: a genuinely new migration landed for environments &
+    # promotion (0038) -- this assertion's own intent is preserved by
     # pointing at the new, correct head.
-    assert revisions[-1] == "0037_deployment_lifecycle.py", (
-        f"expected migration head to be 0037_deployment_lifecycle.py, found {revisions[-1]}"
+    assert revisions[-1] == "0038_environments_promotion.py", (
+        f"expected migration head to be 0038_environments_promotion.py, found {revisions[-1]}"
     )
 
 

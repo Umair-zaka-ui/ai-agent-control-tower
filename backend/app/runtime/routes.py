@@ -23,6 +23,7 @@ from app.models.runtime import (
 )
 from app.models.user import User
 from app.runtime.deployment.service import DeploymentLifecycleService
+from app.runtime.environment.service import EnvironmentService, PromotionPathService, PromotionService
 from app.runtime.registry.duplicates import AgentDuplicateDetectionService
 from app.runtime.registry.identity import AgentIdentityAssociationService
 from app.runtime.registry.imports_exports import AgentExportService, AgentImportService
@@ -70,15 +71,22 @@ from app.runtime.schemas import (
     DeploymentEventRead,
     DeploymentHealthRead,
     DeploymentLifecycleActionRequest,
+    DeploymentPromoteRequest,
     DeploymentRead,
     DeploymentRollbackRequest,
     DeploymentTransitionRequest,
+    EnvironmentCreate,
+    EnvironmentPolicyUpdate,
+    EnvironmentRead,
+    EnvironmentUpdate,
     ExecutionAttemptRead,
     ExecutionCreate,
     ExecutionMessageRead,
     ExecutionRead,
     HeartbeatSubmit,
     KillSwitchRequest,
+    PromotionPathCreate,
+    PromotionPathRead,
     ProviderCredentialRead,
     ProviderCredentialTestResult,
     ProviderCredentialUpsert,
@@ -163,6 +171,8 @@ _DEPLOY_VIEW = "runtime.deployment.view"
 _DEPLOY_CREATE = "runtime.deployment.create"
 _DEPLOY_ACTION = "runtime.deployment.deploy"
 _DEPLOY_ROLLBACK = "runtime.deployment.rollback"
+_ENV_VIEW = "runtime.environment.view"
+_ENV_MANAGE = "runtime.environment.manage"
 _EXEC_VIEW = "runtime.execution.view"
 _EXEC_CREATE = "runtime.execution.create"
 _EXEC_CANCEL = "runtime.execution.cancel"
@@ -1164,6 +1174,25 @@ def list_deployment_lifecycle_events(deployment_id: uuid.UUID,
     return DeploymentLifecycleService(db).list_events(actor, deployment_id)
 
 
+# --------------------------------------------------------------------------- #
+# Phase 3.2 (ACT-SRS-M3 §3.2) -- promotion. "/deployments/{id}/promote" does
+# not collide with any pre-existing path (unlike 3.1's own
+# pause/resume/retire conflict), so it is used directly, exactly as the
+# build prompt's own §6 suggests, rather than needing "/lifecycle/..."
+# nesting. Reuses "_DEPLOY_ACTION" (runtime.deployment.deploy) rather than a
+# third permission code -- a promotion *is* a deployment operation.
+# --------------------------------------------------------------------------- #
+@router.post("/deployments/{deployment_id}/promote", response_model=DeploymentRead)
+def promote_deployment(deployment_id: uuid.UUID, payload: DeploymentPromoteRequest,
+                       idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+                       actor: User = Depends(require_permission(_DEPLOY_ACTION)), db: Session = Depends(get_db)):
+    deployment = DeploymentLifecycleService(db).get_or_404(actor, deployment_id)
+    result, _replayed = PromotionService(db).promote(
+        actor, deployment, payload.to_environment_id, reason=payload.reason, idempotency_key=idempotency_key,
+    )
+    return result
+
+
 @router.post("/deployments/{deployment_id}/heartbeat", response_model=DeploymentHealthRead)
 def submit_heartbeat(deployment_id: uuid.UUID, payload: HeartbeatSubmit,
                      actor: User = Depends(require_permission(_DEPLOY_ACTION)), db: Session = Depends(get_db)):
@@ -1174,6 +1203,66 @@ def submit_heartbeat(deployment_id: uuid.UUID, payload: HeartbeatSubmit,
 def deployment_health(deployment_id: uuid.UUID, actor: User = Depends(require_permission(_HEALTH)),
                       db: Session = Depends(get_db)):
     return HealthMonitoringService(db).deployment_health(actor, deployment_id)
+
+
+# --------------------------------------------------------------------------- #
+# Environments & Promotion Paths (ACT-SRS-M3 §3.2)
+# --------------------------------------------------------------------------- #
+@router.get("/environments", response_model=list[EnvironmentRead])
+def list_environments(actor: User = Depends(require_permission(_ENV_VIEW)), db: Session = Depends(get_db)):
+    service = EnvironmentService(db)
+    service.ensure_seeded(actor.organization_id)
+    db.commit()
+    return service.list(actor)
+
+
+@router.post("/environments", response_model=EnvironmentRead, status_code=status.HTTP_201_CREATED)
+def create_environment(payload: EnvironmentCreate, actor: User = Depends(require_permission(_ENV_MANAGE)),
+                       db: Session = Depends(get_db)):
+    return EnvironmentService(db).create(actor, payload.model_dump())
+
+
+@router.get("/environments/{environment_id}", response_model=EnvironmentRead)
+def get_environment(environment_id: uuid.UUID, actor: User = Depends(require_permission(_ENV_VIEW)),
+                    db: Session = Depends(get_db)):
+    return EnvironmentService(db).get_or_404(actor, environment_id)
+
+
+@router.patch("/environments/{environment_id}", response_model=EnvironmentRead)
+def update_environment(environment_id: uuid.UUID, payload: EnvironmentUpdate,
+                       actor: User = Depends(require_permission(_ENV_MANAGE)), db: Session = Depends(get_db)):
+    return EnvironmentService(db).update(actor, environment_id, payload.model_dump(exclude_unset=True))
+
+
+@router.get("/environments/{environment_id}/policy", response_model=EnvironmentRead)
+def get_environment_policy(environment_id: uuid.UUID, actor: User = Depends(require_permission(_ENV_VIEW)),
+                           db: Session = Depends(get_db)):
+    return EnvironmentService(db).get_or_404(actor, environment_id)
+
+
+@router.put("/environments/{environment_id}/policy", response_model=EnvironmentRead)
+def set_environment_policy(environment_id: uuid.UUID, payload: EnvironmentPolicyUpdate,
+                           actor: User = Depends(require_permission(_ENV_MANAGE)), db: Session = Depends(get_db)):
+    return EnvironmentService(db).set_policy(actor, environment_id, payload.policy)
+
+
+@router.get("/promotion-paths", response_model=list[PromotionPathRead])
+def list_promotion_paths(actor: User = Depends(require_permission(_ENV_VIEW)), db: Session = Depends(get_db)):
+    return PromotionPathService(db).list(actor)
+
+
+@router.post("/promotion-paths", response_model=PromotionPathRead, status_code=status.HTTP_201_CREATED)
+def create_promotion_path(payload: PromotionPathCreate, actor: User = Depends(require_permission(_ENV_MANAGE)),
+                          db: Session = Depends(get_db)):
+    return PromotionPathService(db).create(actor, payload.from_environment_id, payload.to_environment_id,
+                                           requires_approval=payload.requires_approval)
+
+
+@router.delete("/promotion-paths/{path_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_promotion_path(path_id: uuid.UUID, actor: User = Depends(require_permission(_ENV_MANAGE)),
+                          db: Session = Depends(get_db)):
+    PromotionPathService(db).delete(actor, path_id)
+    return None
 
 
 # --------------------------------------------------------------------------- #

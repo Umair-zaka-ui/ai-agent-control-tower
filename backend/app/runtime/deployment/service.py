@@ -33,10 +33,11 @@ from sqlalchemy.orm.exc import StaleDataError
 from app.authorization.enums import AuthorizationAuditEvent
 from app.identity.errors import ErrorCode, IdentityError
 from app.models.agent import Agent
-from app.models.runtime import AgentDeployment, AgentVersion, DeploymentEvent, RuntimeApproval
+from app.models.runtime import AgentDeployment, AgentVersion, DeploymentEvent, Environment, RuntimeApproval
 from app.models.user import User
 from app.runtime.deployment import lifecycle
 from app.runtime.deployment.idempotency import IdempotencyService
+from app.runtime.environment import policy as environment_policy
 from app.runtime.services import DeploymentService, _now, _record_event
 
 # One default audit event per lifecycle state, used whenever a caller (in
@@ -89,8 +90,20 @@ class DeploymentLifecycleService:
         version = self.db.get(AgentVersion, deployment.agent_version_id)
         policy = (version.policy_snapshot or {}) if version is not None else {}
         requires_approval_envs = set(policy.get("requires_approval_environments", []))
-        return (deployment.environment in requires_approval_envs
-               or (agent.criticality == "MISSION_CRITICAL" and deployment.environment == "PRODUCTION"))
+        if (deployment.environment in requires_approval_envs
+               or (agent.criticality == "MISSION_CRITICAL" and deployment.environment == "PRODUCTION")):
+            return True
+        # Phase 3.2 (ACT-SRS-M3 §3.2 FR-011) -- a governed ``Environment``
+        # entity may itself demand approval (production-class, or its own
+        # policy's ``requires_approval`` flag), independent of the two
+        # legacy checks above. Read through the exact same single
+        # approval-reroute funnel this method already feeds -- never a
+        # second, parallel approval path.
+        if deployment.environment_id is not None:
+            environment = self.db.get(Environment, deployment.environment_id)
+            if environment is not None and environment_policy.requires_approval(environment):
+                return True
+        return False
 
     def _approved_deployment_approval(self, deployment: AgentDeployment) -> RuntimeApproval | None:
         return self.db.execute(select(RuntimeApproval).where(
@@ -173,6 +186,19 @@ class DeploymentLifecycleService:
             deployment = DeploymentService(self.db).create(actor, agent, version, payload)
             # ``lifecycle_state`` already defaults to "DRAFT" at INSERT (the
             # column default) -- nothing to assign here, only to record.
+            if deployment.environment_id is None:
+                # Phase 3.2 (ACT-SRS-M3 §3.2 FR-002) -- best-effort,
+                # opportunistic string->row resolution for the legacy,
+                # string-only create path (``PromotionService.promote``
+                # already sets ``environment_id`` directly via ``payload``
+                # and never reaches here). A local import -- ``app.runtime.
+                # environment.service`` imports this module's own
+                # ``DeploymentLifecycleService``, so a module-level import
+                # here would be circular.
+                from app.runtime.environment.service import EnvironmentService
+                environment = EnvironmentService(self.db).get_by_name(actor.organization_id, deployment.environment)
+                if environment is not None:
+                    deployment.environment_id = environment.id
             self.db.add(DeploymentEvent(
                 deployment_id=deployment.id, organization_id=deployment.organization_id,
                 from_state=None, to_state="DRAFT",
@@ -204,6 +230,23 @@ class DeploymentLifecycleService:
         ``runtime_approvals`` row) instead of proceeding -- never an error,
         exactly like the precedent it mirrors."""
         agent = self.db.get(Agent, deployment.agent_id)
+        # Phase 3.2 (ACT-SRS-M3 §3.2 FR-011) -- the single deploy/promote-time
+        # environment-policy choke point. Covers both a plain deploy *and* a
+        # promotion (``PromotionService.promote`` creates its new deployment
+        # and calls this same method) -- never duplicated at a second call
+        # site. A deployment with no governed ``environment_id`` yet (still
+        # possible for the legacy string-only create path when the target
+        # organization has no environment row matching that string) skips
+        # this check entirely rather than failing closed on metadata that
+        # doesn't exist -- see docs/deployment/environments.md.
+        if deployment.environment_id is not None:
+            environment = self.db.get(Environment, deployment.environment_id)
+            if environment is not None:
+                version_for_policy = self.db.get(AgentVersion, deployment.agent_version_id)
+                violation = environment_policy.evaluate(
+                    self.db, environment, version_for_policy, agent.id, exclude_deployment_id=deployment.id)
+                if violation is not None:
+                    raise IdentityError(violation.code, violation.message)
         if deployment.lifecycle_state == "READY" and self._requires_deployment_approval(agent, deployment):
             if self._approved_deployment_approval(deployment) is None:
                 self.db.add(RuntimeApproval(
