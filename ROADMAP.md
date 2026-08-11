@@ -1659,11 +1659,58 @@ modifying.
 
 **Milestone 3 now has 2 of 10 sub-phases done.**
 
-Next: 3.3 (preflight/release gates).
+### Part 3.3 — Deployment Preflight & Release Gate Engine ✅
+
+**The third sub-phase.** Builds the single authoritative
+deployment-readiness evaluation — `ReleaseGateService.evaluate()` —
+aggregating checks already built across Milestones 0/1/2 and Phases
+3.1/3.2 into one verdict: **PASS / WARNING / BLOCK**. No new signature
+verifier, compatibility analyzer, health-check mechanism, or approval
+engine — every check calls an existing capability. A BLOCK prevents a
+deployment from reaching `DEPLOYING`/`ACTIVE`.
+
+- **One verdict, structured findings**: BLOCK dominates WARNING
+  dominates PASS. Each finding carries a stable code, severity,
+  source, explanation, and remediation. Fail-closed by construction —
+  an unevaluable check becomes a finding, never a silently skipped
+  one.
+- **Thirteen checks, each mapped to an existing capability** — agent
+  active/kill switch (Ruling #6, **absolute BLOCK**), version
+  published, snapshot checksum, signature/provenance, compatibility
+  (**WARNING only**, preserving the pre-existing advisory-only
+  boundary), owners, machine identity, provider availability/
+  credentials, tools, environment policy (Phase 3.2, reused verbatim),
+  approvals (Phase 3.1, reused verbatim, **WARNING** — a pending
+  approval is the designed reroute, not a failure).
+- **The freshness rule — the one genuinely new requirement**: a health
+  signal older than a configured bound is unproven, never a silent
+  pass. Applied to the deployment's own heartbeat history, not the
+  build prompt's own suggested connector-health signal — two
+  independent, structural reasons found and documented (the
+  runtime-never-knows boundary, and no existing dependency link to
+  know which external system a deployment even depends on — the same
+  gap 3.2 already reported). Reported as a gap, not built around.
+  Bound configurable per environment.
+- **Every finding's severity is configurable per environment**, except
+  the kill switch — always absolute, never overridable.
+- **Wired into the deployment lifecycle** — a BLOCK prevents a
+  deployment from proceeding; the kill switch is always re-checked
+  live at the moment of transition, never trusted from a prior
+  evaluation. Promotion is gated for free, no extra wiring needed.
+- New `deployment_preflight_results` table (verdict + findings
+  snapshot per evaluation), purely additive.
+- 3 new routes; no new permissions. Route count 499 → 502.
+- 27 new backend tests. Backend **1,435** total green (1,408 + 27), 1
+  deselected; backend only. See
+  [docs/deployment/release-gates.md](docs/deployment/release-gates.md).
+
+**Milestone 3 now has 3 of 10 sub-phases done.**
+
+Next: 3.4 (traffic allocation + the version resolver/execution gate).
 
 ## Future (Phase 3+)
 
-**Milestone 3, remaining**: preflight/release gates (3.3), traffic
+**Milestone 3, remaining**: traffic
 allocation and the version-resolver/execution gate (3.4 — the one
 change to the Milestone 1 execution entry path this whole milestone
 builds toward), canary/progressive rollout (3.5), blue-green/recreate
