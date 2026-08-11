@@ -208,6 +208,13 @@ class ErrorCode:
     # unreachable; it exists so a future regression fails loudly instead of
     # silently shipping a re-pointed version into an environment.
     PROMOTION_IMMUTABILITY_VIOLATION = "PROMOTION_IMMUTABILITY_VIOLATION"
+    # Phase 3.3 (ACT-SRS-M3 §Phase-3.3) -- the release gate.
+    # DEPLOYMENT_NOT_FOUND (above) is reused for a deployment looked up ahead
+    # of a preflight evaluation; there is no separate "preflight not found"
+    # code -- a preflight result is not itself an independently-addressable
+    # resource, mirroring 3.2's own promotion precedent.
+    DEPLOYMENT_PREFLIGHT_BLOCKED = "DEPLOYMENT_PREFLIGHT_BLOCKED"
+    PREFLIGHT_CHECK_UNAVAILABLE = "PREFLIGHT_CHECK_UNAVAILABLE"
     EXECUTION_NOT_FOUND = "EXECUTION_NOT_FOUND"
     EXECUTION_ALREADY_COMPLETED = "EXECUTION_ALREADY_COMPLETED"
     EXECUTION_CANCELLED = "EXECUTION_CANCELLED"
@@ -572,6 +579,8 @@ _STATUS: dict[str, int] = {
     ErrorCode.PROMOTION_PATH_NOT_DEFINED: status.HTTP_409_CONFLICT,
     ErrorCode.PROMOTION_WINDOW_CLOSED: status.HTTP_409_CONFLICT,
     ErrorCode.PROMOTION_IMMUTABILITY_VIOLATION: status.HTTP_409_CONFLICT,
+    ErrorCode.DEPLOYMENT_PREFLIGHT_BLOCKED: status.HTTP_409_CONFLICT,
+    ErrorCode.PREFLIGHT_CHECK_UNAVAILABLE: status.HTTP_409_CONFLICT,
     ErrorCode.EXECUTION_NOT_FOUND: status.HTTP_404_NOT_FOUND,
     ErrorCode.EXECUTION_ALREADY_COMPLETED: status.HTTP_409_CONFLICT,
     ErrorCode.EXECUTION_CANCELLED: status.HTTP_409_CONFLICT,

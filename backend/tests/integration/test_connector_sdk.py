@@ -471,8 +471,8 @@ def test_ac21_no_migration_was_added():
     # Updated Phase 3.2: a genuinely new migration landed for environments &
     # promotion (0038) -- this assertion's own intent is preserved by
     # pointing at the new, correct head.
-    assert revisions[-1] == "0038_environments_promotion.py", (
-        f"expected migration head to be 0038_environments_promotion.py, found {revisions[-1]}"
+    assert revisions[-1] == "0039_deployment_preflight.py", (
+        f"expected migration head to be 0039_deployment_preflight.py, found {revisions[-1]}"
     )
 
 

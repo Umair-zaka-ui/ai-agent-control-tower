@@ -38,6 +38,7 @@ from app.models.user import User
 from app.runtime.deployment import lifecycle
 from app.runtime.deployment.idempotency import IdempotencyService
 from app.runtime.environment import policy as environment_policy
+from app.runtime.release_gate.service import ReleaseGateService
 from app.runtime.services import DeploymentService, _now, _record_event
 
 # One default audit event per lifecycle state, used whenever a caller (in
@@ -247,6 +248,30 @@ class DeploymentLifecycleService:
                     self.db, environment, version_for_policy, agent.id, exclude_deployment_id=deployment.id)
                 if violation is not None:
                     raise IdentityError(violation.code, violation.message)
+
+        # Phase 3.3 (ACT-SRS-M3 §Phase-3.3, M3-3.3-FR-005) -- the single
+        # authoritative release-gate evaluation. Runs *after* the narrow
+        # environment-policy check above (preserving that check's own 3.2
+        # error codes/tests exactly -- see its own comment) and *before* the
+        # approval-reroute below: every "approval required, not yet granted"
+        # case is a WARNING finding, not a BLOCK (see
+        # app.runtime.release_gate.checks's own severity table), so calling
+        # the gate here never disturbs a deployment's legitimate path into
+        # PENDING_APPROVAL. A BLOCK verdict fails closed, carrying the
+        # blocking finding codes; the full result (including any WARNINGs)
+        # is always persisted and retrievable via GET .../preflight
+        # regardless of verdict.
+        gate_result = ReleaseGateService(self.db).evaluate(actor, deployment)
+        if gate_result.verdict == "BLOCK":
+            blocking_codes = ", ".join(
+                finding["code"] for finding in gate_result.findings if finding.get("severity") == "BLOCK"
+            )
+            raise IdentityError(
+                ErrorCode.DEPLOYMENT_PREFLIGHT_BLOCKED,
+                f"The release gate blocked this deployment: {blocking_codes}. "
+                f"See GET .../deployments/{deployment.id}/preflight for the full findings.",
+            )
+
         if deployment.lifecycle_state == "READY" and self._requires_deployment_approval(agent, deployment):
             if self._approved_deployment_approval(deployment) is None:
                 self.db.add(RuntimeApproval(
