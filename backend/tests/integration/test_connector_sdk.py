@@ -468,11 +468,11 @@ def test_ac19_mock_connectors_unchanged(db_session: Session):
 def test_ac21_no_migration_was_added():
     versions_dir = Path(__file__).resolve().parents[2] / "migrations" / "versions"
     revisions = sorted(p.name for p in versions_dir.glob("00*.py"))
-    # Updated Phase 3.2: a genuinely new migration landed for environments &
-    # promotion (0038) -- this assertion's own intent is preserved by
+    # Updated Phase 3.4: a genuinely new migration landed for traffic
+    # allocation (0040) -- this assertion's own intent is preserved by
     # pointing at the new, correct head.
-    assert revisions[-1] == "0039_deployment_preflight.py", (
-        f"expected migration head to be 0039_deployment_preflight.py, found {revisions[-1]}"
+    assert revisions[-1] == "0040_traffic_allocation.py", (
+        f"expected migration head to be 0040_traffic_allocation.py, found {revisions[-1]}"
     )
 
 

@@ -23,6 +23,7 @@ from app.models.runtime import (
 )
 from app.models.user import User
 from app.runtime.deployment.service import DeploymentLifecycleService
+from app.runtime.deployment.traffic import TrafficAllocationService
 from app.runtime.environment.service import EnvironmentService, PromotionPathService, PromotionService
 from app.runtime.release_gate.service import ReleaseGateService
 from app.runtime.registry.duplicates import AgentDuplicateDetectionService
@@ -99,6 +100,8 @@ from app.runtime.schemas import (
     ToolCallRead,
     ToolCreate,
     ToolRead,
+    TrafficAllocationRead,
+    TrafficAllocationWrite,
 )
 from app.runtime.services import (
     AgentRegistryService,
@@ -1221,6 +1224,72 @@ def get_deployment_preflight_history(deployment_id: uuid.UUID, limit: int = Quer
                                      actor: User = Depends(require_permission(_DEPLOY_VIEW)),
                                      db: Session = Depends(get_db)):
     return ReleaseGateService(db).get_history(actor, deployment_id, limit=limit, offset=offset)
+
+
+# --------------------------------------------------------------------------- #
+# Phase 3.4 (ACT-SRS-M3 §Phase-3.4 §6) -- weighted traffic allocation.
+#
+# Mounted under ``/agents/{agent_id}/environments/{environment_id}/traffic``,
+# not under ``/deployments/{id}/traffic``: an allocation spans *several*
+# deployments of one agent in one environment, so hanging it off a single
+# deployment id would make one of those deployments arbitrarily own the
+# others' weights, and would leave the resolver's own lookup key (agent +
+# environment) unexpressible in the URL. The build prompt offers both shapes
+# and asks which was chosen and why -- this is the choice and the reason.
+#
+# Reuses "_DEPLOY_VIEW"/"_DEPLOY_ACTION" verbatim, as 3.2 and 3.3 already do:
+# changing what serves production traffic is a deployment operation, reading
+# it is a deployment read -- no fourth permission code.
+# --------------------------------------------------------------------------- #
+@router.get("/agents/{agent_id}/environments/{environment_id}/traffic",
+            response_model=TrafficAllocationRead | None)
+def get_traffic_allocation(agent_id: uuid.UUID, environment_id: uuid.UUID,
+                           actor: User = Depends(require_permission(_DEPLOY_VIEW)),
+                           db: Session = Depends(get_db)):
+    service = TrafficAllocationService(db)
+    agent, environment = service.resolve_scope(actor, agent_id, environment_id)
+    allocation = service.current(actor.organization_id, agent.id, environment.id)
+    if allocation is None:
+        return None
+    return service.read_model(allocation)
+
+
+@router.put("/agents/{agent_id}/environments/{environment_id}/traffic",
+            response_model=TrafficAllocationRead)
+def set_traffic_allocation(agent_id: uuid.UUID, environment_id: uuid.UUID,
+                           payload: TrafficAllocationWrite,
+                           idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+                           actor: User = Depends(require_permission(_DEPLOY_ACTION)),
+                           db: Session = Depends(get_db)):
+    service = TrafficAllocationService(db)
+    agent, environment = service.resolve_scope(actor, agent_id, environment_id)
+    if payload.expected_revision is not None:
+        current = service.current(actor.organization_id, agent.id, environment.id)
+        observed = current.revision if current is not None else 0
+        if observed != payload.expected_revision:
+            raise IdentityError(
+                ErrorCode.TRAFFIC_ALLOCATION_CONFLICT,
+                "This agent's traffic allocation was changed by another request; reload and retry.",
+            )
+    result, _replayed = service.set_weights(
+        actor, agent, environment,
+        [entry.model_dump() for entry in payload.weights],
+        reason=payload.reason, idempotency_key=idempotency_key,
+    )
+    return result
+
+
+@router.get("/agents/{agent_id}/environments/{environment_id}/traffic/history",
+            response_model=list[TrafficAllocationRead])
+def get_traffic_allocation_history(agent_id: uuid.UUID, environment_id: uuid.UUID,
+                                   limit: int = Query(default=50, ge=1, le=200),
+                                   offset: int = Query(default=0, ge=0),
+                                   actor: User = Depends(require_permission(_DEPLOY_VIEW)),
+                                   db: Session = Depends(get_db)):
+    service = TrafficAllocationService(db)
+    agent, environment = service.resolve_scope(actor, agent_id, environment_id)
+    return [service.read_model(allocation) for allocation in
+            service.history(actor, agent.id, environment.id, limit=limit, offset=offset)]
 
 
 @router.post("/deployments/{deployment_id}/heartbeat", response_model=DeploymentHealthRead)

@@ -399,11 +399,11 @@ def test_ac22_migration_head_unchanged_no_new_migration_needed():
     "no migration" finding and its own equivalent test."""
     migrations_dir = Path(__file__).resolve().parents[2] / "migrations" / "versions"
     versions = sorted(p.name for p in migrations_dir.glob("00*.py"))
-    # Updated Phase 3.2: a genuinely new migration landed for environments &
-    # promotion (0038) -- this assertion's own intent ("no migration crept
+    # Updated Phase 3.4: a genuinely new migration landed for traffic
+    # allocation (0040) -- this assertion's own intent ("no migration crept
     # in that this connector's own tests didn't account for") is preserved
     # by pointing at the new, correct head.
-    assert versions[-1] == "0039_deployment_preflight.py"
+    assert versions[-1] == "0040_traffic_allocation.py"
 
 
 def test_ac25_no_stub_markers_in_this_phases_new_files():
