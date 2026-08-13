@@ -284,6 +284,26 @@ def _set_execution_status(execution: AgentExecution, to_status: str) -> None:
     execution.status = to_status
 
 
+def _routing_key(payload: dict, principal: "User | Agent") -> str | None:
+    """Phase 3.4 (M3-3.4-FR-012) — the stable key the version resolver routes
+    on, or ``None`` for an ordinary weighted (random) draw.
+
+    Stickiness is **opt-in**, in this precedence: an explicit ``routing_key``,
+    else the request's ``correlation_id`` (a caller that already threads a
+    correlation id through a conversation gets consistent version selection
+    for free). Deliberately *not* defaulted to the principal's id: that would
+    silently make every request from one user sticky, which would quietly
+    defeat the point of a percentage rollout for a small user base — the
+    caller says when a session must not flip versions mid-flight."""
+    explicit = payload.get("routing_key")
+    if explicit:
+        return str(explicit)
+    correlation_id = payload.get("correlation_id")
+    if correlation_id:
+        return str(correlation_id)
+    return None
+
+
 # --------------------------------------------------------------------------- #
 # Agent registry & lifecycle (§16, §17, §7.1, §10)
 # --------------------------------------------------------------------------- #
@@ -2441,15 +2461,48 @@ class ExecutionRequestService:
         if agent.lifecycle_status not in ("ACTIVE",):
             raise IdentityError(ErrorCode.AGENT_NOT_ACTIVE, "Agent is not active.")
 
-        deployment_id = payload.get("deployment_id")
-        deployment = (self.db.get(AgentDeployment, deployment_id) if deployment_id
-                     else DeploymentService(self.db).active_for_agent(principal, agent.id))
-        if deployment is None or deployment.organization_id != agent.organization_id:
-            raise IdentityError(ErrorCode.DEPLOYMENT_NOT_FOUND, "No active deployment for this agent.")
-        if deployment.status != "ACTIVE":
-            raise IdentityError(ErrorCode.DEPLOYMENT_NOT_ACTIVE, "Deployment is not active.")
+        # Phase 3.4 (ACT-SRS-M3 §Phase-3.4) -- THE version resolver and
+        # ruling #4's execution gate: Milestone 3's single, deliberate change
+        # to this path. What was a direct 1:1 read of the active deployment's
+        # own ``agent_version_id`` now resolves (agent, environment) through
+        # the deployment's traffic allocation to one immutable version.
+        #
+        # The gate itself is not new here: this method has always required an
+        # active deployment (the two raises now living in
+        # ``VersionResolver.resolve``, with their original error codes and
+        # HTTP statuses preserved verbatim). What 3.4 adds is *weighted
+        # resolution* and the new fail-closed ``NO_ACTIVE_DEPLOYMENT`` mode
+        # for an allocation whose versions have all stopped serving.
+        #
+        # Everything below this block is untouched. In particular the
+        # ``authorize(deployment)`` call further down still runs, on the
+        # resolved deployment, exactly as before -- the resolver selects a
+        # version and returns; it never dispatches and never authorizes.
+        # See app.runtime.deployment.resolver's module docstring.
+        from app.runtime.deployment.resolver import VersionResolver
 
-        version = self.db.get(AgentVersion, deployment.agent_version_id)
+        try:
+            resolution = VersionResolver(self.db).resolve(
+                agent,
+                deployment_id=payload.get("deployment_id"),
+                environment=payload.get("environment"),
+                routing_key=_routing_key(payload, principal),
+            )
+        except IdentityError as exc:
+            # §8 -- the fail-closed rejection is observable. There is no
+            # execution row to hang this off (the gate runs before one is
+            # created, by design: a rejected request must not leave a
+            # phantom execution behind), so it is recorded against the agent.
+            _record_event(self.db, AuthorizationAuditEvent.RUNTIME_EXECUTION_NO_ACTIVE_DEPLOYMENT,
+                         principal, organization_id=agent.organization_id, agent_id=agent.id,
+                         severity="WARNING",
+                         meta={"code": str(exc.code),
+                              "environment": payload.get("environment"),
+                              "deployment_id": str(payload.get("deployment_id") or "") or None})
+            self.db.commit()
+            raise
+        deployment = resolution.deployment
+        version = resolution.version
         if version.status == "REVOKED":
             raise IdentityError(ErrorCode.AGENT_VERSION_REVOKED, "Agent version has been revoked.")
         if version.status not in ("PUBLISHED", "DEPRECATED"):

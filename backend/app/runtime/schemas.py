@@ -257,6 +257,49 @@ class DeploymentPreflightRead(BaseModel):
     evaluated_by: uuid.UUID | None
 
 
+# --------------------------------------------------------------------------- #
+# Phase 3.4 (ACT-SRS-M3 §Phase-3.4) -- weighted traffic allocation.
+# --------------------------------------------------------------------------- #
+class TrafficWeightWrite(BaseModel):
+    agent_version_id: uuid.UUID
+    weight: int = Field(ge=0, le=100)
+
+
+class TrafficAllocationWrite(BaseModel):
+    """The weight-setting request. The sum-to-100 rule is deliberately *not*
+    a pydantic validator: it is a domain invariant that must fail with this
+    milestone's own ``TRAFFIC_WEIGHTS_INVALID`` code (AC-01), not a generic
+    422 body, so ``TrafficAllocationService`` enforces it."""
+
+    weights: list[TrafficWeightWrite]
+    reason: str | None = Field(default=None, max_length=500)
+    expected_revision: int | None = None
+
+
+class TrafficWeightRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    agent_version_id: uuid.UUID
+    version: int | None
+    deployment_id: uuid.UUID
+    weight: int
+
+
+class TrafficAllocationRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    organization_id: uuid.UUID
+    agent_id: uuid.UUID
+    environment_id: uuid.UUID
+    revision: int
+    is_current: bool
+    reason: str | None
+    created_at: datetime
+    created_by: uuid.UUID | None
+    weights: list[TrafficWeightRead]
+
+
 class DeploymentHealthRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -284,6 +327,14 @@ class ExecutionCreate(BaseModel):
     idempotency_key: str | None = Field(default=None, max_length=150)
     correlation_id: str | None = Field(default=None, max_length=100)
     priority: str = _PRIORITY
+    # Phase 3.4 (ACT-SRS-M3 §Phase-3.4 M3-3.4-FR-012) -- opt-in sticky
+    # routing. When set, this agent's traffic allocation resolves
+    # deterministically for this key, so the same user/session/tenant always
+    # reaches the same version. ``environment`` narrows which environment's
+    # deployments are considered; omitted, the newest servable deployment's
+    # environment is used, exactly as before this phase.
+    routing_key: str | None = Field(default=None, max_length=200)
+    environment: str | None = Field(default=None, max_length=20)
 
 
 class AgentSelfExecutionCreate(BaseModel):
@@ -296,6 +347,8 @@ class AgentSelfExecutionCreate(BaseModel):
     idempotency_key: str | None = Field(default=None, max_length=150)
     correlation_id: str | None = Field(default=None, max_length=100)
     priority: str = _PRIORITY
+    routing_key: str | None = Field(default=None, max_length=200)
+    environment: str | None = Field(default=None, max_length=20)
 
 
 class ExecutionRead(BaseModel):

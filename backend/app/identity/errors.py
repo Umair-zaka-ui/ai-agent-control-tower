@@ -215,6 +215,20 @@ class ErrorCode:
     # resource, mirroring 3.2's own promotion precedent.
     DEPLOYMENT_PREFLIGHT_BLOCKED = "DEPLOYMENT_PREFLIGHT_BLOCKED"
     PREFLIGHT_CHECK_UNAVAILABLE = "PREFLIGHT_CHECK_UNAVAILABLE"
+    # Phase 3.4 (ACT-SRS-M3 §Phase-3.4) -- traffic allocation and the
+    # version resolver / execution gate.
+    TRAFFIC_WEIGHTS_INVALID = "TRAFFIC_WEIGHTS_INVALID"
+    VERSION_NOT_ELIGIBLE = "VERSION_NOT_ELIGIBLE"
+    TRAFFIC_ALLOCATION_CONFLICT = "TRAFFIC_ALLOCATION_CONFLICT"
+    # The *new* fail-closed mode this phase introduces: a servable deployment
+    # was found, but resolving it through its traffic allocation yielded no
+    # servable version (every weighted version revoked, or its serving
+    # deployment paused/superseded between the two reads). Deliberately NOT a
+    # replacement for the pre-existing DEPLOYMENT_NOT_FOUND /
+    # DEPLOYMENT_NOT_ACTIVE codes above -- those keep their exact Milestone 1
+    # meanings and status codes on the execution path (ruling #4 was already
+    # enforced there before this phase; see docs/deployment/traffic-and-resolution.md).
+    NO_ACTIVE_DEPLOYMENT = "NO_ACTIVE_DEPLOYMENT"
     EXECUTION_NOT_FOUND = "EXECUTION_NOT_FOUND"
     EXECUTION_ALREADY_COMPLETED = "EXECUTION_ALREADY_COMPLETED"
     EXECUTION_CANCELLED = "EXECUTION_CANCELLED"
@@ -581,6 +595,10 @@ _STATUS: dict[str, int] = {
     ErrorCode.PROMOTION_IMMUTABILITY_VIOLATION: status.HTTP_409_CONFLICT,
     ErrorCode.DEPLOYMENT_PREFLIGHT_BLOCKED: status.HTTP_409_CONFLICT,
     ErrorCode.PREFLIGHT_CHECK_UNAVAILABLE: status.HTTP_409_CONFLICT,
+    ErrorCode.TRAFFIC_WEIGHTS_INVALID: status.HTTP_422_UNPROCESSABLE_ENTITY,
+    ErrorCode.VERSION_NOT_ELIGIBLE: status.HTTP_422_UNPROCESSABLE_ENTITY,
+    ErrorCode.TRAFFIC_ALLOCATION_CONFLICT: status.HTTP_409_CONFLICT,
+    ErrorCode.NO_ACTIVE_DEPLOYMENT: status.HTTP_409_CONFLICT,
     ErrorCode.EXECUTION_NOT_FOUND: status.HTTP_404_NOT_FOUND,
     ErrorCode.EXECUTION_ALREADY_COMPLETED: status.HTTP_409_CONFLICT,
     ErrorCode.EXECUTION_CANCELLED: status.HTTP_409_CONFLICT,

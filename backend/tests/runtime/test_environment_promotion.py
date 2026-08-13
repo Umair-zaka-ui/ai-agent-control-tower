@@ -538,33 +538,50 @@ def test_ac15_execution_gate_does_not_reference_environment_entity():
     assert "Environment" not in source
 
 
-def test_ac15_promoting_to_lifecycle_active_has_no_effect_on_the_legacy_execution_gate(
+def test_ac15_promoting_to_lifecycle_active_now_serves_execution(
     client: TestClient, admin: dict, db_session: Session,
 ):
-    """The sharp edge of the scope boundary (build prompt §1/§15/Working
-    Constraints): a promoted deployment reaching the *new*
-    ``lifecycle_state=ACTIVE`` must have zero effect on the M1 execution
-    gate, which reads only the pre-existing, untouched ``status`` column
-    (``ExecutionRequestService._request_execution``, ``app.runtime.
-    services``) -- that column is never written by
-    ``DeploymentLifecycleService``/``PromotionService`` (both write only
-    ``lifecycle_state``). A request naming the promoted deployment
-    explicitly must still be rejected until Phase 3.4 deliberately wires
-    the two together."""
+    """MIGRATED IN PHASE 3.4 -- deliberately, and asserting *more* than before.
+
+    This test was written in Phase 3.2 as
+    ``test_ac15_promoting_to_lifecycle_active_has_no_effect_on_the_legacy_
+    execution_gate``, asserting that a promoted deployment reaching
+    ``lifecycle_state=ACTIVE`` still could **not** execute, because the M1
+    execution gate read only the untouched ``status`` column. Its own
+    docstring named the expiry condition: "until Phase 3.4 deliberately wires
+    the two together." Phase 3.4 is that wiring, so the expected outcome
+    inverts. This is the one deliberate behaviour change to the M1 execution
+    path in Milestone 3 (build prompt §12 AC-12); the test is migrated to
+    assert the new contract, not relaxed to tolerate either one.
+
+    The assertion is deliberately *stronger* than a bare "it executes": it
+    first pins ``status != 'ACTIVE'``, so the execution can only have been
+    admitted by the promoted deployment's ``lifecycle_state``. That is
+    precisely the union half of the resolver's union-with-veto predicate
+    (``app.runtime.deployment.traffic.servable_clause``) under test -- had
+    3.4 gated on ``status`` alone, this would still fail."""
     setup = _full_setup(client, admin)
     envs = setup["environments"]
     promoted, status_code = _promote(client, admin, setup["deployment"]["id"], envs["TEST"]["id"])
     assert status_code == 200, promoted
     assert promoted["lifecycle_state"] == "ACTIVE"
 
+    # The pre-3.4 fact this test has always pinned: promotion never writes
+    # the legacy ``status`` column. Still true -- 3.4 reconciled nothing; it
+    # taught the resolver to honour *either* machine.
     row = db_session.get(AgentDeployment, uuid.UUID(promoted["id"]))
     assert row.status != "ACTIVE"
 
     r = client.post(f"{RT}/executions", headers=admin["headers"], json={
         "agent_id": setup["agent"]["id"], "deployment_id": promoted["id"], "input_payload": {"message": "hi"},
     })
-    assert r.status_code == 409, r.text
-    assert r.json()["error"]["code"] == "DEPLOYMENT_NOT_ACTIVE"
+    assert r.status_code == 201, r.text
+    execution = r.json()
+    # It ran the promoted deployment's own immutable version -- promotion
+    # preserves the source version, so this is the version originally
+    # published, never a re-pointed one.
+    assert execution["deployment_id"] == promoted["id"]
+    assert execution["agent_version_id"] == promoted["agent_version_id"]
 
 
 # --------------------------------------------------------------------------- #

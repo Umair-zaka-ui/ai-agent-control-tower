@@ -19,6 +19,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
@@ -599,6 +600,95 @@ class DeploymentPreflightResult(Base, UUIDPrimaryKeyMixin):
         Index("ix_deployment_preflight_results_deployment_evaluated",
              "deployment_id", "evaluated_at"),
     )
+
+
+class DeploymentTrafficAllocation(Base, UUIDPrimaryKeyMixin):
+    """Phase 3.4 (ACT-SRS-M3 §Phase-3.4, M3-3.4-FR-001..005) -- one revision of
+    the weighted split of an agent's traffic across simultaneously-serving
+    versions, in one environment.
+
+    A *sanctioned new domain object* (ruling #2): traffic allocation is not a
+    property of any single deployment -- it spans several of them -- so it
+    cannot live as columns on ``agent_deployments`` without one deployment
+    row arbitrarily owning the others' weights. It hangs off
+    ``(organization, agent, environment)`` instead, exactly the tuple the
+    resolver looks up on every gated execution.
+
+    **Revisions, not mutations.** A weight change never updates an existing
+    row: it writes a new allocation (``revision = previous + 1``,
+    ``is_current = True``) and clears ``is_current`` on the previous one, both
+    inside one transaction. Prior revisions are retained forever as the
+    auditable "who changed weights to what, when" lineage (FR-004), and the
+    partial-unique index on ``is_current`` (see migration 0040) is what makes
+    two concurrent writers unable to both win -- the loser's INSERT violates
+    the index and is translated to ``TRAFFIC_ALLOCATION_CONFLICT``. That
+    index, not an advisory lock, is this domain's concurrency primitive --
+    the same "let Postgres be the arbiter" discipline
+    ``app.runtime.deployment.idempotency`` already established, and
+    deliberately lock-free so the resolver can never deadlock against the
+    execution path's own locks (§9, the Milestone 1 lesson).
+
+    The weights-sum-to-100 invariant (FR-001) is enforced at write time in
+    ``app.runtime.deployment.traffic``, inside the same transaction that
+    inserts the rows, so a partial or non-100 set is never committed and
+    therefore never observable (FR-003)."""
+
+    __tablename__ = "deployment_traffic_allocations"
+    __table_args__ = (
+        Index("ix_traffic_allocations_agent_environment_current",
+             "agent_id", "environment_id", "is_current"),
+    )
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    agent_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agents.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    environment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("environments.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    is_current: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+
+
+class DeploymentTrafficWeight(Base, UUIDPrimaryKeyMixin):
+    """Phase 3.4 -- one (version, deployment, weight) entry of one allocation
+    revision. ``deployment_id`` records which active deployment serves this
+    version: the resolver re-checks *that* deployment's servability at
+    resolution time, so a weight pointing at a deployment paused or
+    superseded after the weights were set simply stops being routed to,
+    without any allocation rewrite (M3-3.4-FR-022)."""
+
+    __tablename__ = "deployment_traffic_weights"
+    __table_args__ = (
+        UniqueConstraint("allocation_id", "agent_version_id",
+                        name="uq_traffic_weights_allocation_version"),
+        CheckConstraint("weight >= 0 AND weight <= 100", name="ck_traffic_weights_range"),
+        Index("ix_traffic_weights_allocation_id", "allocation_id"),
+    )
+
+    allocation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("deployment_traffic_allocations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    agent_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agent_versions.id", ondelete="RESTRICT"),
+        nullable=False, index=True,
+    )
+    deployment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agent_deployments.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    weight: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
 class AgentExecution(Base, UUIDPrimaryKeyMixin):

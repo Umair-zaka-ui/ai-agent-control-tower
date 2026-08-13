@@ -161,6 +161,14 @@ class AuthorizationAuditEvent(str, enum.Enum):
     DEPLOYMENT_VALIDATION_STARTED = "DEPLOYMENT_VALIDATION_STARTED"
     DEPLOYMENT_VALIDATION_FAILED = "DEPLOYMENT_VALIDATION_FAILED"
     DEPLOYMENT_VALIDATION_PASSED = "DEPLOYMENT_VALIDATION_PASSED"
+    # Phase 3.4 (ACT-SRS-M3 §Phase-3.4, §13) -- weighted traffic allocation.
+    # ``DEPLOYMENT_TRAFFIC_CHANGED`` is the SRS's own literal name, kept in
+    # the unprefixed family 3.2/3.3 already established above.
+    # ``RUNTIME_EXECUTION_NO_ACTIVE_DEPLOYMENT`` makes the fail-closed
+    # rejection observable (build prompt §8) and follows this file's
+    # ``RUNTIME_<domain>_<verb>`` convention for the execution family below.
+    DEPLOYMENT_TRAFFIC_CHANGED = "DEPLOYMENT_TRAFFIC_CHANGED"
+    RUNTIME_EXECUTION_NO_ACTIVE_DEPLOYMENT = "RUNTIME_EXECUTION_NO_ACTIVE_DEPLOYMENT"
     RUNTIME_EXECUTION_CREATED = "RUNTIME_EXECUTION_CREATED"
     RUNTIME_EXECUTION_DENIED = "RUNTIME_EXECUTION_DENIED"
     RUNTIME_EXECUTION_APPROVAL_REQUIRED = "RUNTIME_EXECUTION_APPROVAL_REQUIRED"
