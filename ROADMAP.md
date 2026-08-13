@@ -1706,14 +1706,78 @@ deployment from reaching `DEPLOYING`/`ACTIVE`.
 
 **Milestone 3 now has 3 of 10 sub-phases done.**
 
-Next: 3.4 (traffic allocation + the version resolver/execution gate).
+### Part 3.4 — Traffic Allocation, Version Resolver & Execution Gate ✅
+
+**The milestone's core sub-phase, and the one deliberate change to the
+Milestone 1 execution path.** An agent's traffic in an environment now
+splits by weight across several simultaneously-serving signed versions;
+a resolver picks one immutable version per request and hands it to the
+*unchanged* M1 authorization + execution path. Allocation, resolver and
+gate shipped together because they are one mechanism — the resolver
+*is* where the gate lives.
+
+- **The one M1 change, in one place**: `ExecutionRequestService.
+  _request_execution`'s direct 1:1 read of the deployment's own
+  `agent_version_id` became a single `VersionResolver.resolve(...)`
+  call. Everything after it — `authorize(deployment)`, runtime policy,
+  the approval reroute, the queue, the worker — is untouched.
+- **Ruling #4 was already half-enforced, and this was reported rather
+  than papered over**: this path has rejected deployment-less execution
+  since Milestone 1, so **there were no deployment-less-execution tests
+  to migrate**. 3.4 adds weighted resolution plus one new fail-closed
+  mode (`NO_ACTIVE_DEPLOYMENT`), leaving the two pre-existing error
+  codes' M1 meanings and statuses intact.
+- **The gate semantics — union with veto** (the central design decision,
+  confirmed before coding): the repo has two deployment state fields
+  written by disjoint code. Gating on `lifecycle_state` alone would have
+  **disarmed the kill switch** (it writes only `status`) and stranded
+  every legacy-deployed agent; gating on `status` alone would leave
+  3.1-paused deployments serving and 3.2-promoted ones permanently dead.
+  A deployment serves iff *either* machine says ACTIVE and *neither*
+  vetoes. **Neither machine was rewritten** — which is why this phase
+  touches one place rather than six.
+- **Two new tables**, revision-append-only so the allocation table *is*
+  its own audit lineage. Sum-to-100 is a transaction-level guarantee
+  (validated before any write, one commit) rather than a constraint that
+  cannot span sibling rows; concurrency is settled by a **partial unique
+  index**, not a lock — deliberately lock-free per §9's M1 deadlock
+  lesson.
+- **The §15 step-2 backfill** completes the mapping 3.1 began: every
+  servable deployment gets a 100% allocation to the version it was
+  already serving, so no agent's behaviour changes at upgrade. An
+  implicit-100% rule covers deployments created afterwards.
+- **Authorization non-bypass — the milestone's sharpest line — verified
+  three ways**: structurally against the resolver's parsed **AST** (no
+  authorization/policy import, no `authorize` identifier; AST rather than
+  text because the docstring discusses the gateway at length),
+  positionally (the resolver precedes the gateway call), and
+  behaviourally (a same-tenant VIEWER is rejected on an
+  allocation-routed agent).
+- **No cache, deliberately, and the absence is tested** — every
+  candidate cache key is mutated across three phases, so a cache would
+  need invalidation hooks in all of them to stay correct *under the kill
+  switch*. Measured instead: ≤3 queries and <25 ms per resolution
+  (observed ≈1–2 ms), with the query count asserted by statement
+  counting so an N+1 fails the test.
+- **One pre-existing test migrated deliberately and strengthened**:
+  3.2's `test_ac15_...has_no_effect_on_the_legacy_execution_gate` →
+  `..._now_serves_execution`. Its own docstring had named the expiry
+  condition — *"until Phase 3.4 deliberately wires the two together"*.
+- 2 new tables; 3 new routes; no new permissions. Route count 502 → 505;
+  schema 114 → 116 tables.
+- 43 new backend tests. Backend **1,478** total green (1,435 + 43), 1
+  deselected; backend only. See
+  [docs/deployment/traffic-and-resolution.md](docs/deployment/traffic-and-resolution.md).
+
+**Milestone 3 now has 4 of 10 sub-phases done.**
+
+Next: 3.5 (canary/progressive rollout, driving this phase's allocation).
 
 ## Future (Phase 3+)
 
-**Milestone 3, remaining**: traffic
-allocation and the version-resolver/execution gate (3.4 — the one
-change to the Milestone 1 execution entry path this whole milestone
-builds toward), canary/progressive rollout (3.5), blue-green/recreate
+**Milestone 3, remaining**: canary/progressive rollout (3.5 — drives
+3.4's allocation through stages against health, rather than an admin
+setting weights by hand), blue-green/recreate
 strategies (3.6), rollback (3.7), a real distributed job scheduler
 (3.8 — 2.1.3's own health-check scheduler is explicitly interim and
 built to be replaced, not extended, when this lands), distributed
