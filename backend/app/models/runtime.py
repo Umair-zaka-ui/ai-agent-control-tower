@@ -691,6 +691,169 @@ class DeploymentTrafficWeight(Base, UUIDPrimaryKeyMixin):
     weight: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
+class RolloutPlan(Base, UUIDPrimaryKeyMixin):
+    """Phase 3.5 (ACT-SRS-M3 §Phase-3.5, M3-3.5-FR-001..004, FR-010) -- one
+    governed canary promotion of a candidate version within an
+    (agent, environment).
+
+    The *driver* Phase 3.4's traffic allocation was built for: each stage
+    advance moves the candidate's weight through
+    ``TrafficAllocationService.set_weights`` -- 3.4's atomic, revisioned,
+    audited mechanism -- never by writing ``deployment_traffic_weights``
+    directly. This table therefore holds no weights of its own; it holds the
+    *plan* whose execution produces them, and the allocation's own revision
+    chain remains the single record of what traffic actually looked like when.
+
+    ``state`` is written in exactly one place,
+    ``app.runtime.deployment.canary.CanaryRolloutService``, through the pure
+    transition graph in ``app.runtime.deployment.rollout`` (mechanically
+    checked, mirroring Phase 3.1's own discipline for
+    ``AgentDeployment.lifecycle_state``).
+
+    ``stable_version_id`` is nullable in the schema but required in practice
+    for a staged canary: 3.4's weights must total exactly 100, so a candidate
+    at 5% is unrepresentable without a stable version to hold the other 95.
+    ``CanaryRolloutService.create`` rejects a staged rollout that has no
+    resolvable stable version rather than silently producing a 100% cutover --
+    see docs/deployment/canary.md."""
+
+    __tablename__ = "rollout_plans"
+    __table_args__ = (
+        Index("ix_rollout_plans_agent_environment", "agent_id", "environment_id"),
+        Index("ix_rollout_plans_state", "state"),
+    )
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    agent_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agents.id", ondelete="CASCADE"), nullable=False, index=True,
+    )
+    environment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("environments.id", ondelete="CASCADE"), nullable=False, index=True,
+    )
+    candidate_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agent_versions.id", ondelete="RESTRICT"), nullable=False,
+    )
+    stable_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agent_versions.id", ondelete="RESTRICT"), nullable=True,
+    )
+    # PENDING / IN_PROGRESS / PAUSED / SUCCEEDED / ABORTED / ROLLBACK_REQUESTED / FAILED
+    state: Mapped[str] = mapped_column(String(24), nullable=False, default="PENDING")
+    current_stage_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    state_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Optimistic-concurrency guard -- the same ``version_id_col`` mechanism
+    # ``AgentDeployment`` already uses, so two actors advancing one rollout
+    # cannot both win (AC-13). ``StaleDataError`` is translated to
+    # ``ROLLOUT_CONFLICT`` by the service.
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+
+    __mapper_args__ = {"version_id_col": revision}
+
+
+class RolloutStage(Base, UUIDPrimaryKeyMixin):
+    """Phase 3.5 (M3-3.5-FR-002) -- one stage of a rollout plan and its gates.
+
+    All three gates must be satisfied for an advance (M3-3.5-FR-012):
+    ``min_duration_seconds`` elapsed since ``entered_at``, at least
+    ``min_samples`` executions observed, and health at least
+    ``health_requirement``. ``entered_at`` is null until the stage becomes
+    current -- an unentered stage can never satisfy its duration gate, which
+    is what stops a freshly-created rollout from advancing instantly."""
+
+    __tablename__ = "rollout_stages"
+    __table_args__ = (
+        UniqueConstraint("rollout_plan_id", "stage_index", name="uq_rollout_stages_plan_index"),
+        CheckConstraint("target_weight >= 0 AND target_weight <= 100",
+                       name="ck_rollout_stages_target_weight_range"),
+        Index("ix_rollout_stages_plan_index", "rollout_plan_id", "stage_index"),
+    )
+
+    rollout_plan_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("rollout_plans.id", ondelete="CASCADE"), nullable=False,
+    )
+    stage_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    target_weight: Mapped[int] = mapped_column(Integer, nullable=False)
+    min_duration_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    min_samples: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # HEALTHY / DEGRADED / UNHEALTHY -- the minimum health the candidate must
+    # reach for this stage to clear. INSUFFICIENT_DATA and UNKNOWN never
+    # satisfy any requirement (see app.runtime.deployment.rollout).
+    health_requirement: Mapped[str] = mapped_column(String(16), nullable=False, default="HEALTHY")
+    # MANUAL / AUTO -- AUTO stages are advanced by the interim
+    # evaluate-and-advance operation (Phase 3.8 replaces its trigger with a
+    # real scheduler); MANUAL stages always require an explicit advance call.
+    advance_mode: Mapped[str] = mapped_column(String(8), nullable=False, default="MANUAL")
+    entered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class DeploymentHealthEvaluation(Base, UUIDPrimaryKeyMixin):
+    """Phase 3.5 (ruling #3, ACT-SRS-M3 §6, M3-3.5-FR-020..023) -- one
+    AI-aware release-health verdict computed from *real runtime data*.
+
+    Deliberately a **new table**, not a widening of the pre-existing
+    ``deployment_health`` (§49/§50), which is left entirely untouched
+    (ruling #3). The two answer different questions and must not be
+    conflated: ``deployment_health`` is a liveness heartbeat -- "did a worker
+    report in, is the process up" -- written by
+    ``HealthMonitoringService.heartbeat`` from an external signal. This table
+    is a *release* judgement -- "is this version behaving well enough to earn
+    more traffic" -- computed by aggregating ``agent_executions`` over a
+    window: success/failure/timeout rates, latency, policy denials, token and
+    cost. An HTTP 200 from a heartbeat says nothing about whether the model
+    started refusing every third request.
+
+    ``health_state`` includes **INSUFFICIENT_DATA** as a first-class value
+    (M3-3.5-FR-022), not a null or a special-cased HEALTHY: a 5% canary with
+    two successful calls has proven nothing, and the stage gate treats it as
+    such.
+
+    ``baseline_ref`` holds the stable version's metrics over the same window
+    when a baseline comparison was performed (§7), including the
+    ``likely_provider_wide`` finding -- see
+    ``app.runtime.deployment.health``."""
+
+    __tablename__ = "deployment_health_evaluations"
+    __table_args__ = (
+        Index("ix_health_evaluations_deployment_evaluated", "deployment_id", "evaluated_at"),
+        Index("ix_health_evaluations_plan_evaluated", "rollout_plan_id", "evaluated_at"),
+    )
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    deployment_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agent_deployments.id", ondelete="SET NULL"), nullable=True,
+    )
+    agent_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agent_versions.id", ondelete="RESTRICT"),
+        nullable=False, index=True,
+    )
+    rollout_plan_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("rollout_plans.id", ondelete="CASCADE"), nullable=True,
+    )
+    # HEALTHY / DEGRADED / UNHEALTHY / INSUFFICIENT_DATA / UNKNOWN
+    health_state: Mapped[str] = mapped_column(String(20), nullable=False)
+    sample_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    metrics: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    baseline_ref: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    window_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    evaluated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    evaluated_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+
+
 class AgentExecution(Base, UUIDPrimaryKeyMixin):
     """§7.5, §27 — one runtime invocation and its queue/state-machine record."""
 
