@@ -240,6 +240,15 @@ class ErrorCode:
     # frozen rather than that one call failed.
     ROLLOUT_HALTED_BY_KILL_SWITCH = "ROLLOUT_HALTED_BY_KILL_SWITCH"
     ROLLOUT_CONFLICT = "ROLLOUT_CONFLICT"
+    # Phase 3.6 (ACT-SRS-M3 §Phase-3.6) -- deployment strategy execution.
+    # ``STRATEGY_ROLLING_DEFERRED`` is a real, terminal error, not a stub: the
+    # ROLLING strategy has no instance substrate to roll over until Phase 3.9's
+    # worker fleet exists, and simulating it over the vestigial replica columns
+    # is what SRS §3.6 forbids.
+    STRATEGY_ROLLING_DEFERRED = "STRATEGY_ROLLING_DEFERRED"
+    STRATEGY_GATE_BLOCKED = "STRATEGY_GATE_BLOCKED"
+    BLUE_GREEN_NOT_PREPARED = "BLUE_GREEN_NOT_PREPARED"
+    STRATEGY_CONFLICT = "STRATEGY_CONFLICT"
     EXECUTION_NOT_FOUND = "EXECUTION_NOT_FOUND"
     EXECUTION_ALREADY_COMPLETED = "EXECUTION_ALREADY_COMPLETED"
     EXECUTION_CANCELLED = "EXECUTION_CANCELLED"
@@ -615,6 +624,13 @@ _STATUS: dict[str, int] = {
     ErrorCode.ROLLOUT_INVALID_TRANSITION: status.HTTP_409_CONFLICT,
     ErrorCode.ROLLOUT_HALTED_BY_KILL_SWITCH: status.HTTP_423_LOCKED,
     ErrorCode.ROLLOUT_CONFLICT: status.HTTP_409_CONFLICT,
+    # 501: the strategy is a recognized, declared value the platform genuinely
+    # does not implement yet -- not a client mistake (400/422) and not a
+    # conflict with current state (409).
+    ErrorCode.STRATEGY_ROLLING_DEFERRED: status.HTTP_501_NOT_IMPLEMENTED,
+    ErrorCode.STRATEGY_GATE_BLOCKED: status.HTTP_409_CONFLICT,
+    ErrorCode.BLUE_GREEN_NOT_PREPARED: status.HTTP_409_CONFLICT,
+    ErrorCode.STRATEGY_CONFLICT: status.HTTP_409_CONFLICT,
     ErrorCode.EXECUTION_NOT_FOUND: status.HTTP_404_NOT_FOUND,
     ErrorCode.EXECUTION_ALREADY_COMPLETED: status.HTTP_409_CONFLICT,
     ErrorCode.EXECUTION_CANCELLED: status.HTTP_409_CONFLICT,

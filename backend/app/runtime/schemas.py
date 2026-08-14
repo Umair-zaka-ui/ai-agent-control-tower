@@ -388,6 +388,25 @@ class RolloutHealthRead(BaseModel):
     history: list[HealthEvaluationRead]
 
 
+# --------------------------------------------------------------------------- #
+# Phase 3.6 (ACT-SRS-M3 §Phase-3.6) -- deployment strategy execution.
+# --------------------------------------------------------------------------- #
+class StrategyOutcomeRead(BaseModel):
+    """What a strategy operation did. Deliberately reports both weights and the
+    resulting allocation revision, so a caller can see that traffic moved
+    through Phase 3.4's revisioned mechanism rather than take it on trust."""
+
+    strategy: str
+    operation: str
+    deployment_id: uuid.UUID
+    candidate_version_id: uuid.UUID
+    previous_version_id: uuid.UUID | None
+    candidate_weight: int
+    previous_weight: int
+    allocation_revision: int
+    detail: str
+
+
 class DeploymentHealthRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

@@ -25,6 +25,7 @@ from app.models.user import User
 from app.runtime.deployment.canary import CanaryRolloutService
 from app.runtime.deployment.health import HealthEvaluationService
 from app.runtime.deployment.service import DeploymentLifecycleService
+from app.runtime.deployment.strategies import DeploymentStrategyService
 from app.runtime.deployment.traffic import TrafficAllocationService
 from app.runtime.environment.service import EnvironmentService, PromotionPathService, PromotionService
 from app.runtime.release_gate.service import ReleaseGateService
@@ -103,6 +104,7 @@ from app.runtime.schemas import (
     RolloutPlanRead,
     RuntimeDashboardRead,
     RuntimeEventRead,
+    StrategyOutcomeRead,
     ToolCallRead,
     ToolCreate,
     ToolRead,
@@ -1434,6 +1436,67 @@ def request_rollout_rollback(rollout_id: uuid.UUID, payload: RolloutActionReques
     plan = service.get_or_404(actor, rollout_id)
     return service.request_rollback(actor, plan, reason=payload.reason if payload else None,
                                     idempotency_key=idempotency_key)
+
+
+# --------------------------------------------------------------------------- #
+# Phase 3.6 (ACT-SRS-M3 §Phase-3.6 §6) -- deployment strategy execution.
+#
+# **A unified execute endpoint, dispatching on the column** -- the build prompt
+# offers either a per-strategy path or a unified one, and this is the choice
+# plus the reason: M3-3.6-FR-001 asks for one abstraction dispatched on
+# ``agent_deployments.deployment_strategy``, and a ``/strategy/recreate`` path
+# would let a caller run a recreate on a deployment declared BLUE_GREEN, making
+# the column decorative again. The declaration on the row is the input; to
+# deploy differently, change the declaration. The strategy is deliberately NOT
+# taken from the request body for the same reason.
+#
+# Blue-green's switch and rollback are separate endpoints because they are
+# separate operator decisions: warming a candidate is not agreeing to send it
+# production traffic, and rolling back is not the inverse of preparing.
+#
+# Reuses "_DEPLOY_ACTION"/"_DEPLOY_ROLLBACK" verbatim, as 3.2-3.5 do. No path
+# collision: 3.4's traffic routes live under /agents/..., 3.5's under
+# /rollouts/..., and the pre-existing /deployments/{id}/... paths are
+# deploy/suspend/resume/rollback/retire/promote/preflight/heartbeat/health --
+# none of which is /strategy/*.
+# --------------------------------------------------------------------------- #
+@router.post("/deployments/{deployment_id}/strategy/execute", response_model=StrategyOutcomeRead)
+def execute_deployment_strategy(deployment_id: uuid.UUID,
+                                idempotency_key: str | None = Header(default=None,
+                                                                     alias="Idempotency-Key"),
+                                actor: User = Depends(require_permission(_DEPLOY_ACTION)),
+                                db: Session = Depends(get_db)):
+    """Runs the strategy declared on the deployment: RECREATE cuts over,
+    BLUE_GREEN prepares (warms GREEN at 0%), ROLLING raises
+    ``STRATEGY_ROLLING_DEFERRED`` (Phase 3.9), CANARY points at the rollout
+    API."""
+    return DeploymentStrategyService(db).execute(actor, deployment_id,
+                                                 idempotency_key=idempotency_key)
+
+
+@router.post("/deployments/{deployment_id}/strategy/blue-green/switch",
+             response_model=StrategyOutcomeRead)
+def blue_green_switch(deployment_id: uuid.UUID,
+                      idempotency_key: str | None = Header(default=None,
+                                                           alias="Idempotency-Key"),
+                      actor: User = Depends(require_permission(_DEPLOY_ACTION)),
+                      db: Session = Depends(get_db)):
+    return DeploymentStrategyService(db).blue_green_switch(actor, deployment_id,
+                                                           idempotency_key=idempotency_key)
+
+
+@router.post("/deployments/{deployment_id}/strategy/blue-green/rollback",
+             response_model=StrategyOutcomeRead)
+def blue_green_rollback(deployment_id: uuid.UUID,
+                        idempotency_key: str | None = Header(default=None,
+                                                             alias="Idempotency-Key"),
+                        actor: User = Depends(require_permission(_DEPLOY_ROLLBACK)),
+                        db: Session = Depends(get_db)):
+    """Uses ``runtime.deployment.rollback`` rather than ``.deploy``, matching
+    3.5's own rollout rollback: an organization may well grant "can return to
+    the previous version" separately from "can push a new one forward"."""
+    return DeploymentStrategyService(db).blue_green_rollback(actor, deployment_id,
+                                                             idempotency_key=idempotency_key)
 
 
 @router.post("/deployments/{deployment_id}/heartbeat", response_model=DeploymentHealthRead)
