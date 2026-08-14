@@ -65,7 +65,12 @@ class PasswordResetService:
           the case where the account may be compromised, so leaving the attacker's
           session alive would defeat it (§16).
         """
-        temp = temporary_password or generate_temporary_password()
+        # ``user=`` matters: ``_apply_new_password`` below validates the result
+        # *with* this user's identity context, so generating without it could
+        # still produce a value that path rejects (a password happening to
+        # contain the user's name or email local-part). Passing the user makes
+        # the generator's check identical to the one that will judge it.
+        temp = temporary_password or generate_temporary_password(user=user)
         expires_at = _now() + timedelta(hours=settings.TEMP_PASSWORD_TTL_HOURS)
 
         # Reuse the shared write path so the old hash still enters history and the

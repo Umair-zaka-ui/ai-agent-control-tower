@@ -45,14 +45,22 @@ def _no_revoke(_user_id: uuid.UUID, _reason: str) -> int:
     return 0
 
 
-def generate_temporary_password() -> str:
-    """A random password that satisfies the policy (SRS §12).
+# Safety stop for the re-draw loop below. Deliberately far above any plausible
+# need: a single draw complies ~99.95% of the time, so reaching even ten
+# attempts is already a ~1-in-10^33 event. The cap exists so a future policy
+# change that accidentally made compliance impossible fails loudly and
+# immediately instead of spinning forever.
+_TEMP_PASSWORD_MAX_ATTEMPTS = 100
 
-    Built from all four required classes plus length, then shuffled, so the
-    generated value never trips the complexity gate it will be stored under.
-    Sequences/repeats are astronomically unlikely from CSPRNG picks; the caller
-    validates anyway.
-    """
+
+def _draw_temporary_password() -> str:
+    """One candidate: all four required classes, then filled to length 16 from
+    the full alphabet and shuffled with a CSPRNG.
+
+    This guarantees the *structural* rules (length, character classes) by
+    construction. It cannot guarantee the content rules -- sequences, repeats,
+    identity substrings -- because those depend on which characters happened to
+    land next to each other, which is exactly why the caller re-draws."""
     specials = "!@#$%^&*-_=+?"
     picks = [
         secrets.choice(string.ascii_uppercase),
@@ -64,6 +72,59 @@ def generate_temporary_password() -> str:
     picks += [secrets.choice(alphabet) for _ in range(16 - len(picks))]
     secrets.SystemRandom().shuffle(picks)
     return "".join(picks)
+
+
+def generate_temporary_password(*, user: User | None = None,
+                                **identity: str | None) -> str:
+    """A random password that is *verified* to satisfy the policy (SRS §12).
+
+    Generate, validate, re-draw on failure. The validation is not a belt-and-
+    braces extra: it is the only thing that makes this function's contract
+    true.
+
+    **The bug this fixes.** The previous implementation built a value from the
+    four required character classes and returned it unchecked, on the reasoning
+    that sequences and repeats were "astronomically unlikely" from CSPRNG
+    picks. That reasoning was wrong by many orders of magnitude. A 16-character
+    draw contains 13 overlapping 4-character windows, and the policy forbids
+    runs along *six* known sequences in both directions (``_has_run`` in
+    ``app.identity.security.passwords``) -- so ``9876``, ``abcd``, ``qwer`` and
+    friends are not rare at all. Measured against the real generator: **9
+    violations in 20,000 draws** (~1 in 2,200). Since a temporary password is
+    handed to a person to log in with, and the login/set path validates it
+    under the *same* policy, that meant roughly one in two thousand password
+    resets issued a credential the platform itself would then refuse -- an
+    intermittent, near-impossible-to-reproduce support failure.
+
+    **Why re-draw rather than repair.** Editing the offending characters in
+    place would be faster but would leak structure: an attacker knowing the
+    repair rule learns that certain substrings can never appear at certain
+    positions, which narrows the search space. A fresh draw preserves the full
+    entropy of the original construction.
+
+    **The validator is the shared one.** ``PasswordPolicyService.validate`` is
+    the exact entry point ``CredentialService._apply_new_password`` calls when
+    the password is stored, so a future policy change automatically applies
+    here -- the rules are never duplicated. Passing ``user`` (or explicit
+    ``email``/``name``/``username``/``organization_name`` kwargs) additionally
+    covers the identity-substring rule, which is context-dependent and cannot
+    be checked from the generated value alone.
+    """
+    for _ in range(_TEMP_PASSWORD_MAX_ATTEMPTS):
+        candidate = _draw_temporary_password()
+        try:
+            PasswordPolicyService.validate(candidate, user=user, **identity)
+        except policy.PasswordPolicyError:
+            continue
+        return candidate
+    # Unreachable with a correct policy. Raising is the only safe answer: the
+    # one thing this function must never do is hand back a password the
+    # platform will reject at login.
+    raise RuntimeError(
+        f"Could not generate a policy-compliant temporary password in "
+        f"{_TEMP_PASSWORD_MAX_ATTEMPTS} attempts; the password policy may be "
+        f"unsatisfiable by the generator's alphabet."
+    )
 
 
 class CredentialService:

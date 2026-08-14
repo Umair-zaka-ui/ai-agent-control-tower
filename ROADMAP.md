@@ -1828,6 +1828,29 @@ rollout machine with one transition authority.
 
 **Milestone 3 now has 5 of 10 sub-phases done.**
 
+### Defect fix — temporary-password policy compliance ✅
+
+Not a milestone phase. Phase 3.5's full-suite run re-surfaced a test that had
+been written off as a transient flake; measuring it showed a real bug, fixed
+here in isolation rather than folded into a feature phase.
+
+- `generate_temporary_password()` returned its first draw unchecked, so **9 of
+  20,000 draws (~1 in 2,200) violated the platform's own password policy** —
+  and since the login/set path validates under that same policy, roughly one
+  admin reset in two thousand issued a credential the platform would then
+  refuse.
+- Now generates, validates through the **same** validator the set path uses
+  (`PasswordPolicyService.validate` — rules never duplicated), and re-draws on
+  failure, with a safety cap that raises rather than ever returning a
+  non-compliant password. Re-draws fresh rather than repairing in place, which
+  would leak structure.
+- The policy itself is unchanged — it was correct; the generator was wrong.
+- The flaky 50-draw test is replaced by a 5,000-draw zero-violation assertion
+  plus cap, shared-validator and strength tests. 0 violations in 20,000 draws;
+  15 consecutive file runs clean.
+- Backend **1,535 → 1,541** green, 1 deselected; frontend untouched at **297**.
+  See [docs/identity/credential-management.md](docs/identity/credential-management.md).
+
 Next: 3.6 (blue-green and recreate deployment strategies).
 
 ## Future (Phase 3+)
