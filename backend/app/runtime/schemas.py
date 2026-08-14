@@ -300,6 +300,94 @@ class TrafficAllocationRead(BaseModel):
     weights: list[TrafficWeightRead]
 
 
+# --------------------------------------------------------------------------- #
+# Phase 3.5 (ACT-SRS-M3 §Phase-3.5) -- the canary rollout engine.
+# --------------------------------------------------------------------------- #
+class RolloutStageWrite(BaseModel):
+    target_weight: int = Field(ge=0, le=100)
+    min_duration_seconds: int = Field(default=0, ge=0)
+    min_samples: int = Field(default=0, ge=0)
+    health_requirement: str = Field(default="HEALTHY")
+    advance_mode: str = Field(default="MANUAL")
+
+
+class RolloutCreate(BaseModel):
+    """The non-decreasing-weights rule, the "a staged canary needs a stable
+    version" rule and the "INSUFFICIENT_DATA cannot be a health requirement"
+    rule are deliberately *not* pydantic validators: each must fail with this
+    milestone's own error code and an explanation an operator can act on, not
+    a generic 422 body. ``CanaryRolloutService._validate_stages`` enforces
+    them."""
+
+    candidate_version_id: uuid.UUID
+    stable_version_id: uuid.UUID | None = None
+    stages: list[RolloutStageWrite]
+    start: bool = True
+
+
+class RolloutActionRequest(BaseModel):
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class RolloutStageRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    stage_index: int
+    target_weight: int
+    min_duration_seconds: int
+    min_samples: int
+    health_requirement: str
+    advance_mode: str
+    entered_at: datetime | None
+
+
+class RolloutPlanRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    organization_id: uuid.UUID
+    agent_id: uuid.UUID
+    environment_id: uuid.UUID
+    candidate_version_id: uuid.UUID
+    stable_version_id: uuid.UUID | None
+    state: str
+    current_stage_index: int
+    state_reason: str | None
+    revision: int
+    created_at: datetime
+    updated_at: datetime
+    created_by: uuid.UUID | None
+    stages: list[RolloutStageRead]
+    # Present only on the evaluate-and-advance response: what the gate check
+    # concluded and, when it declined to advance, why.
+    gate_evaluation: dict | None = None
+
+
+class HealthEvaluationRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    deployment_id: uuid.UUID | None
+    agent_version_id: uuid.UUID
+    rollout_plan_id: uuid.UUID | None
+    health_state: str
+    sample_count: int
+    metrics: dict
+    baseline_ref: dict | None
+    window_start: datetime
+    window_end: datetime
+    evaluated_at: datetime
+
+
+class RolloutHealthRead(BaseModel):
+    """The live verdict plus the persisted history behind it."""
+
+    current: dict
+    gates: dict
+    history: list[HealthEvaluationRead]
+
+
 class DeploymentHealthRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

@@ -229,6 +229,17 @@ class ErrorCode:
     # meanings and status codes on the execution path (ruling #4 was already
     # enforced there before this phase; see docs/deployment/traffic-and-resolution.md).
     NO_ACTIVE_DEPLOYMENT = "NO_ACTIVE_DEPLOYMENT"
+    # Phase 3.5 (ACT-SRS-M3 §Phase-3.5) -- the canary rollout engine.
+    ROLLOUT_NOT_FOUND = "ROLLOUT_NOT_FOUND"
+    ROLLOUT_STAGE_GATE_NOT_MET = "ROLLOUT_STAGE_GATE_NOT_MET"
+    ROLLOUT_INVALID_TRANSITION = "ROLLOUT_INVALID_TRANSITION"
+    # §12 -- a rollout can never advance or promote a killed/suspended
+    # candidate. Deliberately distinct from KILL_SWITCH_ACTIVE (423), which
+    # describes an execution being refused; this one describes an *automation*
+    # being halted, and an operator seeing it needs to know their rollout is
+    # frozen rather than that one call failed.
+    ROLLOUT_HALTED_BY_KILL_SWITCH = "ROLLOUT_HALTED_BY_KILL_SWITCH"
+    ROLLOUT_CONFLICT = "ROLLOUT_CONFLICT"
     EXECUTION_NOT_FOUND = "EXECUTION_NOT_FOUND"
     EXECUTION_ALREADY_COMPLETED = "EXECUTION_ALREADY_COMPLETED"
     EXECUTION_CANCELLED = "EXECUTION_CANCELLED"
@@ -599,6 +610,11 @@ _STATUS: dict[str, int] = {
     ErrorCode.VERSION_NOT_ELIGIBLE: status.HTTP_422_UNPROCESSABLE_ENTITY,
     ErrorCode.TRAFFIC_ALLOCATION_CONFLICT: status.HTTP_409_CONFLICT,
     ErrorCode.NO_ACTIVE_DEPLOYMENT: status.HTTP_409_CONFLICT,
+    ErrorCode.ROLLOUT_NOT_FOUND: status.HTTP_404_NOT_FOUND,
+    ErrorCode.ROLLOUT_STAGE_GATE_NOT_MET: status.HTTP_409_CONFLICT,
+    ErrorCode.ROLLOUT_INVALID_TRANSITION: status.HTTP_409_CONFLICT,
+    ErrorCode.ROLLOUT_HALTED_BY_KILL_SWITCH: status.HTTP_423_LOCKED,
+    ErrorCode.ROLLOUT_CONFLICT: status.HTTP_409_CONFLICT,
     ErrorCode.EXECUTION_NOT_FOUND: status.HTTP_404_NOT_FOUND,
     ErrorCode.EXECUTION_ALREADY_COMPLETED: status.HTTP_409_CONFLICT,
     ErrorCode.EXECUTION_CANCELLED: status.HTTP_409_CONFLICT,

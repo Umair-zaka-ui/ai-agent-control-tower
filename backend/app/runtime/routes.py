@@ -22,6 +22,8 @@ from app.models.runtime import (
     ToolCall,
 )
 from app.models.user import User
+from app.runtime.deployment.canary import CanaryRolloutService
+from app.runtime.deployment.health import HealthEvaluationService
 from app.runtime.deployment.service import DeploymentLifecycleService
 from app.runtime.deployment.traffic import TrafficAllocationService
 from app.runtime.environment.service import EnvironmentService, PromotionPathService, PromotionService
@@ -95,6 +97,10 @@ from app.runtime.schemas import (
     ProviderCredentialUpsert,
     RuntimeApprovalDecision,
     RuntimeApprovalRead,
+    RolloutActionRequest,
+    RolloutCreate,
+    RolloutHealthRead,
+    RolloutPlanRead,
     RuntimeDashboardRead,
     RuntimeEventRead,
     ToolCallRead,
@@ -1290,6 +1296,144 @@ def get_traffic_allocation_history(agent_id: uuid.UUID, environment_id: uuid.UUI
     agent, environment = service.resolve_scope(actor, agent_id, environment_id)
     return [service.read_model(allocation) for allocation in
             service.history(actor, agent.id, environment.id, limit=limit, offset=offset)]
+
+
+# --------------------------------------------------------------------------- #
+# Phase 3.5 (ACT-SRS-M3 §Phase-3.5 §6) -- the canary rollout engine.
+#
+# Mounted under the same agent+environment prefix Phase 3.4's traffic routes
+# use, for the same reason: a rollout drives one (agent, environment)'s traffic
+# allocation, which is exactly that tuple. The build prompt writes the paths as
+# "/api/v1/agents/..."; they are mounted on this module's existing
+# "/api/v1/runtime" router instead, so every runtime surface stays under one
+# prefix -- the identical adjustment 3.4's traffic routes already made.
+#
+# Reuses "_DEPLOY_VIEW"/"_DEPLOY_ACTION" verbatim, as 3.2/3.3/3.4 do: driving a
+# rollout is a deployment operation, reading one is a deployment read. No
+# production-specific permission is introduced -- the pre-existing environment
+# policy (Phase 3.2's ``requires_approval``, evaluated at deploy time) is where
+# this codebase already expresses "production needs more authority", and adding
+# a second, parallel mechanism here would fragment it.
+# --------------------------------------------------------------------------- #
+@router.post("/agents/{agent_id}/environments/{environment_id}/rollouts",
+             response_model=RolloutPlanRead, status_code=status.HTTP_201_CREATED)
+def create_rollout(agent_id: uuid.UUID, environment_id: uuid.UUID, payload: RolloutCreate,
+                   idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+                   actor: User = Depends(require_permission(_DEPLOY_ACTION)),
+                   db: Session = Depends(get_db)):
+    result, _replayed = CanaryRolloutService(db).create(
+        actor, agent_id, environment_id,
+        payload.model_dump(mode="json"), idempotency_key=idempotency_key,
+    )
+    return result
+
+
+@router.get("/rollouts/{rollout_id}", response_model=RolloutPlanRead)
+def get_rollout(rollout_id: uuid.UUID, actor: User = Depends(require_permission(_DEPLOY_VIEW)),
+                db: Session = Depends(get_db)):
+    service = CanaryRolloutService(db)
+    return service.read_model(service.get_or_404(actor, rollout_id))
+
+
+@router.get("/rollouts/{rollout_id}/health", response_model=RolloutHealthRead)
+def get_rollout_health(rollout_id: uuid.UUID,
+                       actor: User = Depends(require_permission(_DEPLOY_VIEW)),
+                       db: Session = Depends(get_db)):
+    service = CanaryRolloutService(db)
+    plan = service.get_or_404(actor, rollout_id)
+    # A read must not write: this evaluation is not persisted, unlike the one
+    # an advance performs (which is retained as the evidence behind a gate
+    # decision). Looking at a canary's health should not create an audit
+    # record implying a gate was evaluated for a decision.
+    gates, health = service.evaluate_gates(plan, actor=actor, persist=False)
+    return {"current": health, "gates": gates.as_dict(),
+            "history": HealthEvaluationService(db).latest_for_plan(plan.id)}
+
+
+@router.post("/rollouts/{rollout_id}/advance", response_model=RolloutPlanRead)
+def advance_rollout(rollout_id: uuid.UUID, payload: RolloutActionRequest | None = None,
+                    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+                    actor: User = Depends(require_permission(_DEPLOY_ACTION)),
+                    db: Session = Depends(get_db)):
+    service = CanaryRolloutService(db)
+    plan = service.get_or_404(actor, rollout_id)
+    return service.advance(actor, plan, idempotency_key=idempotency_key)
+
+
+@router.post("/rollouts/{rollout_id}/evaluate", response_model=RolloutPlanRead)
+def evaluate_rollout(rollout_id: uuid.UUID,
+                     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+                     actor: User = Depends(require_permission(_DEPLOY_ACTION)),
+                     db: Session = Depends(get_db)):
+    """The interim auto-advance entry point (M3-3.5-FR-013): evaluate the
+    current stage once and advance by at most one stage if it is AUTO and every
+    gate is satisfied. Bounded and idempotent. **Interim until Phase 3.8**,
+    whose real distributed scheduler will call this on a timer -- the same
+    relationship ``app.integration.scheduler`` (Phase 2.1.3's interim
+    in-process loop) already documents."""
+    service = CanaryRolloutService(db)
+    plan = service.get_or_404(actor, rollout_id)
+    return service.evaluate_and_advance(actor, plan, idempotency_key=idempotency_key)
+
+
+@router.post("/rollouts/{rollout_id}/pause", response_model=RolloutPlanRead)
+def pause_rollout(rollout_id: uuid.UUID, payload: RolloutActionRequest | None = None,
+                  idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+                  actor: User = Depends(require_permission(_DEPLOY_ACTION)),
+                  db: Session = Depends(get_db)):
+    service = CanaryRolloutService(db)
+    plan = service.get_or_404(actor, rollout_id)
+    return service.pause(actor, plan, reason=payload.reason if payload else None,
+                        idempotency_key=idempotency_key)
+
+
+@router.post("/rollouts/{rollout_id}/resume", response_model=RolloutPlanRead)
+def resume_rollout(rollout_id: uuid.UUID, payload: RolloutActionRequest | None = None,
+                   idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+                   actor: User = Depends(require_permission(_DEPLOY_ACTION)),
+                   db: Session = Depends(get_db)):
+    service = CanaryRolloutService(db)
+    plan = service.get_or_404(actor, rollout_id)
+    return service.resume(actor, plan, reason=payload.reason if payload else None,
+                         idempotency_key=idempotency_key)
+
+
+@router.post("/rollouts/{rollout_id}/abort", response_model=RolloutPlanRead)
+def abort_rollout(rollout_id: uuid.UUID, payload: RolloutActionRequest | None = None,
+                  idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+                  actor: User = Depends(require_permission(_DEPLOY_ACTION)),
+                  db: Session = Depends(get_db)):
+    service = CanaryRolloutService(db)
+    plan = service.get_or_404(actor, rollout_id)
+    return service.abort(actor, plan, reason=payload.reason if payload else None,
+                        idempotency_key=idempotency_key)
+
+
+@router.post("/rollouts/{rollout_id}/promote", response_model=RolloutPlanRead)
+def promote_rollout(rollout_id: uuid.UUID, payload: RolloutActionRequest | None = None,
+                    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+                    actor: User = Depends(require_permission(_DEPLOY_ACTION)),
+                    db: Session = Depends(get_db)):
+    service = CanaryRolloutService(db)
+    plan = service.get_or_404(actor, rollout_id)
+    return service.promote(actor, plan, reason=payload.reason if payload else None,
+                          idempotency_key=idempotency_key)
+
+
+@router.post("/rollouts/{rollout_id}/request-rollback", response_model=RolloutPlanRead)
+def request_rollout_rollback(rollout_id: uuid.UUID, payload: RolloutActionRequest | None = None,
+                             idempotency_key: str | None = Header(default=None,
+                                                                  alias="Idempotency-Key"),
+                             actor: User = Depends(require_permission(_DEPLOY_ROLLBACK)),
+                             db: Session = Depends(get_db)):
+    """Uses ``runtime.deployment.rollback`` rather than ``.deploy``: this
+    permission already exists for exactly this act, and rolling back is the one
+    rollout operation an organization may well want to grant separately from
+    the ability to push a canary forward."""
+    service = CanaryRolloutService(db)
+    plan = service.get_or_404(actor, rollout_id)
+    return service.request_rollback(actor, plan, reason=payload.reason if payload else None,
+                                    idempotency_key=idempotency_key)
 
 
 @router.post("/deployments/{deployment_id}/heartbeat", response_model=DeploymentHealthRead)

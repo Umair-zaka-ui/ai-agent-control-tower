@@ -435,9 +435,9 @@ def test_ac26_migration_head_unchanged_no_new_migration_needed():
     """AC-26 — every table this connector touches already exists."""
     migrations_dir = Path(__file__).resolve().parents[2] / "migrations" / "versions"
     versions = sorted(p.name for p in migrations_dir.glob("00*.py"))
-    # Updated Phase 3.4: a genuinely new migration landed for traffic
-    # allocation (0040).
-    assert versions[-1] == "0040_traffic_allocation.py"
+    # Updated Phase 3.5: a genuinely new migration landed for the canary
+    # rollout engine (0041).
+    assert versions[-1] == "0041_canary_rollout.py"
 
 
 def test_ac29_no_stub_markers_in_this_phases_new_files():

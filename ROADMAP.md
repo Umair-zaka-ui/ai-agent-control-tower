@@ -1771,13 +1771,68 @@ gate shipped together because they are one mechanism — the resolver
 
 **Milestone 3 now has 4 of 10 sub-phases done.**
 
-Next: 3.5 (canary/progressive rollout, driving this phase's allocation).
+### Part 3.5 — Canary Deployment Engine ✅
+
+**The driver Phase 3.4 was built for.** A candidate version is promoted
+stage by stage (5% → 25% → 50% → 100%), and a stage clears only when
+**all three** of its gates are satisfied: minimum duration elapsed,
+minimum samples met, and an AI-aware health requirement satisfied.
+Introduces the release-health evaluation (ruling #3) and a seven-state
+rollout machine with one transition authority.
+
+- **Traffic only ever moves through 3.4**: every stage advance calls
+  `TrafficAllocationService.set_weights` — atomic, revisioned,
+  eligibility-checked, audited — never a direct weight write. Structural,
+  not aspirational: the engine contains no reference to the weight tables
+  at all, asserted against the parsed AST.
+- **INSUFFICIENT_DATA is first-class**, and is the phase's core safety
+  property. Below a stage's minimum sample count the verdict is
+  INSUFFICIENT_DATA however clean the few samples look, and it satisfies
+  no health requirement at any level. Two successful calls out of two is
+  not "healthy" — nothing bad *observed* is not nothing bad *happening*.
+- **Ruling #3 — a new health table, for a different question.**
+  `deployment_health` is a liveness heartbeat (a worker reported in);
+  `deployment_health_evaluations` is a release judgement computed from
+  real `agent_executions`. A model version can be perfectly alive while
+  refusing every third request. The old table is untouched, asserted.
+- **Baseline comparison (§7)**: a candidate that is measurably worse than
+  the version it would replace is caught even when absolutely within
+  thresholds; and when candidate *and* stable are elevated together the
+  degradation is marked likely-provider-wide. That finding **softens
+  blame but never restores HEALTHY** — a shared incident is exactly when
+  no version should earn more traffic.
+- **Kill-switch dominance (§12) via two independent mechanisms**: a veto
+  check before every operation that could increase the candidate's
+  traffic, reading the same fields 3.4's resolver reads; and a health
+  engine that returns UNKNOWN — never HEALTHY — for a vetoed candidate.
+  De-escalating operations (pause/abort/rollback) deliberately stay
+  available, because a kill switch must never trap a rollout in a state
+  an operator cannot back out of.
+- **Interim auto-advance**, bounded to at most one stage per call and
+  idempotent. Explicitly **not** a scheduler — 3.8 will call this exact
+  method on a timer, the same relationship 2.1.3's interim health-check
+  loop already documents.
+- **The 3.5/3.7 seam**: this phase refuses to advance on a failed health
+  gate and can *request* a rollback; 3.7 adds the configurable per-tenant
+  trigger policy deciding **when** to call it.
+- Two genuinely necessary indexes added to `agent_executions` —
+  `(agent_version_id, created_at)` and `(deployment_id, created_at)`, the
+  latter the **first index that column has ever had**. Without them every
+  stage-gate check would scan a growing share of the platform's whole
+  execution history.
+- 3 new tables; 10 new routes; no new permissions. Route count 505 → 515;
+  schema 116 → 119 tables.
+- 57 new backend tests. Backend **1,535** total green (1,478 + 57), 1
+  deselected; backend only. See
+  [docs/deployment/canary.md](docs/deployment/canary.md).
+
+**Milestone 3 now has 5 of 10 sub-phases done.**
+
+Next: 3.6 (blue-green and recreate deployment strategies).
 
 ## Future (Phase 3+)
 
-**Milestone 3, remaining**: canary/progressive rollout (3.5 — drives
-3.4's allocation through stages against health, rather than an admin
-setting weights by hand), blue-green/recreate
+**Milestone 3, remaining**: blue-green/recreate
 strategies (3.6), rollback (3.7), a real distributed job scheduler
 (3.8 — 2.1.3's own health-check scheduler is explicitly interim and
 built to be replaced, not extended, when this lands), distributed
