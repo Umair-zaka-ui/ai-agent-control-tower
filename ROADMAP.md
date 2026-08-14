@@ -1851,15 +1851,61 @@ here in isolation rather than folded into a feature phase.
 - Backend **1,535 → 1,541** green, 1 deselected; frontend untouched at **297**.
   See [docs/identity/credential-management.md](docs/identity/credential-management.md).
 
-Next: 3.6 (blue-green and recreate deployment strategies).
+### Part 3.6 — Blue-Green & Recreate Strategy Execution ✅
+
+**Makes `deployment_strategy` mean something.** Until now the column was pure
+data — set on create, copied on promotion, exposed in the API, and never
+dispatched on. This is its first consumer.
+
+- **Strategies are weight patterns, not separate machinery**: canary (3.5),
+  RECREATE and BLUE_GREEN are all transitions over 3.4's allocation. Two new
+  patterns; the mechanism reused wholesale. `strategies.py` holds no
+  reference to the weight tables at all, so bypassing 3.4 is structurally
+  impossible — asserted against the parsed AST.
+- **RECREATE**: one atomic cutover to 100%, previous superseded through 3.1's
+  lifecycle authority. The supersede happens *after* traffic moves — doing it
+  first would make the old deployment non-servable, and 3.4 rejects weight on
+  a version with no servable deployment.
+- **BLUE_GREEN**: GREEN warmed at 0% while BLUE serves (proven by driving real
+  executions), then a switch that moves both weights in a **single allocation
+  revision**, then rollback. The gate is re-evaluated **at the switch**, not
+  only at prepare — a deployment can pass validation and then be compromised
+  before anyone presses the button.
+- **Blue preservation needed no new table and no migration**: BLUE stays
+  lifecycle-ACTIVE at 0% (preserved is not split-serving) and is recorded as
+  GREEN's rollback target on the existing `rollback_target_id` — a field that
+  until now nothing read. "Prepared" is inferable from 3.4's existing rows.
+- **Rollback deliberately skips the veto and the gate** — a kill switch must
+  never trap an operator on the version they are trying to leave.
+- **ROLLING deferred to 3.9, honestly**: declared, dispatched, raising a real
+  501 error naming 3.9 — not a stub. Rolling needs an instance substrate this
+  platform does not have; the replica columns are vestigial and nothing reads
+  them. A handler moving those counters would look like a working feature
+  while nothing rolled. Enforced by a *pre-existing* 3.1 test that forbids
+  even naming those columns in the package.
+- 3 new routes, 4 error codes, no new tables. Route count 515 → 518; schema
+  unchanged at 119 tables; migration head unchanged at `0041`.
+- 34 new backend tests. Backend **1,575** total green (1,541 + 34), 1
+  deselected; backend only. See
+  [docs/deployment/strategies.md](docs/deployment/strategies.md).
+
+**Milestone 3 now has 6 of 10 sub-phases done.** **ROLLING remains pending in
+3.9**, where real worker cohorts give it a substrate.
+
+Next: 3.7 (automatic-rollback trigger policy, on top of the rollback operations
+3.5 and 3.6 already provide).
 
 ## Future (Phase 3+)
 
-**Milestone 3, remaining**: blue-green/recreate
-strategies (3.6), rollback (3.7), a real distributed job scheduler
-(3.8 — 2.1.3's own health-check scheduler is explicitly interim and
-built to be replaced, not extended, when this lands), distributed
-workers and the rolling strategy (3.9), an operator frontend (3.10).
+**Milestone 3, remaining**: the automatic-rollback trigger policy
+(3.7 — the rollback *operations* already exist in 3.5 and 3.6; 3.7
+adds the per-tenant rules deciding when to call them), a real
+distributed job scheduler (3.8 — 2.1.3's own health-check scheduler
+is explicitly interim and built to be replaced, not extended, when
+this lands, as is 3.5's own interim auto-advance), distributed
+workers **and the ROLLING strategy** (3.9 — deferred from 3.6
+because rolling needs an instance substrate that only the worker
+fleet creates), an operator frontend (3.10).
 **Milestone 2 is complete** (connector framework, all four generic
 connectors — REST, database, storage, queue — and external identity
 federation). SQL Server support for the database connector, Azure Blob
