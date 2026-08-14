@@ -61,6 +61,24 @@ forced through the change flow (`FIRST_LOGIN_PASSWORD_CHANGED`) before any featu
 enforced by [`PasswordChangeGuard`](../../frontend/src/components/layout/PasswordChangeGuard.tsx),
 which survives a page reload because the requirement is re-derived from the server.
 
+**"Policy-compliant" is verified, not assumed.** `generate_temporary_password()`
+builds a candidate from the four required character classes, then runs it
+through `PasswordPolicyService.validate` — the *same* entry point
+`CredentialService._apply_new_password` uses when the password is stored — and
+re-draws until it passes, up to a safety cap that raises rather than ever
+returning a non-compliant value. The user is passed in, so the identity-substring
+rule (§7) is checked against the person the password is for.
+
+This used to be an assumption rather than a check: the generator returned its
+first draw on the reasoning that sequences and repeats were "astronomically
+unlikely". They were not — a 16-character draw has 13 overlapping 4-character
+windows and the policy forbids runs along six sequences in both directions, so
+roughly 1 draw in 2,200 (measured: 9 in 20,000) contained something like `9876`
+and was rejected by the very login path it was issued for. Re-drawing a fresh
+candidate, rather than editing the offending characters, keeps the full entropy
+of the construction — an in-place repair would leak structure about which
+substrings can never appear.
+
 ## What an administrator can and cannot do (§16)
 
 Can: reset a password, issue a temporary one, force a first-login change, and see the
