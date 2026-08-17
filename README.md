@@ -6,7 +6,17 @@
 > **Phase 2** (production-oriented): agent API-key auth, a database-driven policy engine, advanced RBAC, email notifications, forensic audit, dashboard APIs, risk engine v2, and Docker. See the [Phase 2 guide](#phase-2--production-oriented-platform) below.
 > **Phase 3** (enterprise dashboard UI): a React 19 + TypeScript web console (`frontend/`) that consumes the Phase 1/2 APIs. Delivered: **Part 1** (scaffold + dark theme + app-shell), **Part 2** (JWT auth + sidebar/top-nav + route guards), **Part 3.1** (live operational dashboard — KPIs, charts, approval queue, recent actions/audit, system health, 60s auto-refresh), **Part 3.2a** (agent-management module — server-driven table, create wizard, details + stats, edit, lifecycle), **Part 3.3** (policy-management module), **Part 3.4** (approval queue & human review workbench — statistics cards, filterable queue, detail page, review workbench with approve/reject/escalate/assign, risk breakdown, audit timeline, history & escalations boards), **Part 3.5** (enterprise Audit & Compliance Center — audit dashboard with statistics + activity timeline + recent events, a filterable/searchable/paginated events explorer, forensic event detail with request/response viewers and a related-events flow, plus RBAC-gated security & compliance dashboards and a multi-format export center), **Part 3.6** (enterprise Analytics & AI Operations Center — executive KPI grid with live trends, AI fleet health, an activity overview chart, a risk analytics dashboard with heatmap, a performance dashboard with agent ranking, policy & human-review analytics, an estimated cost dashboard, a reports center with export, rule-based AI insights, and role-gated executive/operations dashboards with auto-refresh). See [`frontend/README.md`](frontend/README.md) and [`ROADMAP.md`](ROADMAP.md).
 >
-> **Phase 4** (enterprise identity): **Part 4.1** (Enterprise Identity Platform foundation — an isolated `app/identity` package giving every human, AI agent, service account, organization and external application a formal identity model with a consistent lifecycle. Adds the org → department → team hierarchy, sessions/refresh-tokens/device-sessions and security events, a repository + service architecture, a versioned `/api/v1/identity` API with a standard error envelope, and identity audit integration; see [`docs/phase-4-part-1.md`](docs/phase-4-part-1.md)), **Part 4.2.1** (authentication architecture & trust model — an `app/identity/auth` layer with the `IdentityContext`, seven core auth services (authentication/token/refresh-token/credential/session/security-event/resolver) with real login → rotation → reuse-detection → logout, an authentication middleware dependency, auth enums/error codes/security-event types, a threat model and a token-table migration plan; see [`docs/identity/`](docs/identity/)), and **Part 4.2.2.1** (enterprise human authentication — the `/api/v1/auth/*` endpoints (login/refresh/logout/me/sessions) on those services, **argon2id** password hashing with legacy-bcrypt auto-upgrade, a full password-complexity policy, **account lockout** (5 failures/15 min) backed by a new `login_history` table, and a frontend with silent token refresh + a 401→refresh→retry interceptor + session-expired modal; see [`docs/identity/human-authentication.md`](docs/identity/human-authentication.md)).
+> **Phase 4** (enterprise identity): **Part 4.1** (Enterprise Identity Platform foundation — an isolated `app/identity` package giving every human, AI agent, service account, organization and external application a formal identity model with a consistent lifecycle. Adds the org → department → team hierarchy, sessions/refresh-tokens/device-sessions and security events, a repository + service architecture, a versioned `/api/v1/identity` API with a standard error envelope, and identity audit integration; see [`docs/phase-4-part-1.md`](docs/phase-4-part-1.md)), **Part 4.2.1** (authentication architecture & trust model — an `app/identity/auth` layer with the `IdentityContext`, seven core auth services (authentication/token/refresh-token/credential/session/security-event/resolver) with real login → rotation → reuse-detection → logout, an authentication middleware dependency, auth enums/error codes/security-event types, a threat model and a token-table migration plan; see [`docs/identity/`](docs/identity/)), and **Part 4.2.2.1** (enterprise human authentication — the `/api/v1/auth/*` endpoints (login/refresh/logout/me/sessions) on those services, **argon2id** password hashing with legacy-bcrypt auto-upgrade, a full password-complexity policy, **account lockout** (5 failures/15 min) backed by a new `login_history` table, and a frontend with silent token refresh + a 401→refresh→retry interceptor + session-expired modal; see [`docs/identity/human-authentication.md`](docs/identity/human-authentication.md)). Later parts add the **permission engine**, **organization hierarchy**, **resource-based authorization**, **ABAC**, **authorization middleware**, the **admin portal**, and **identity governance** — see [`docs/authorization/`](docs/authorization/) and [`docs/governance/`](docs/governance/).
+>
+> **Phase 5** (agent runtime): agent lifecycle & execution, the enterprise agent **registry**, and immutable, checksummed, **cryptographically signed** versioning with in-toto/DSSE attestations. See [`docs/runtime/`](docs/runtime/).
+>
+> **Milestone 1** (real execution — **complete**): a model provider abstraction, a real OpenAI-compatible adapter, SSE streaming with real token/cost accounting, an eight-class error taxonomy with retry and circuit-breaking, per-organization encrypted provider credentials, HTTP tool execution behind a hardened SSRF egress guard, tool schema validation, and the model-driven tool invocation loop. An agent now genuinely executes end to end.
+>
+> **Milestone 2** (Enterprise Integration Framework — **complete, 9/9**): the connector abstraction & lifecycle, a pluggable authentication framework, registry & health, a connector SDK, four generic connectors (REST, database, storage, queue), and external identity federation (OIDC + SAML). See [`docs/integration/connectors.md`](docs/integration/connectors.md) and [`docs/identity/federation.md`](docs/identity/federation.md).
+>
+> **Milestone 3** (Deployment & Release — **in progress, 6/10**): the deployment lifecycle core, governed environments & promotion, the release gate, weighted traffic allocation with a version resolver and fail-closed execution gate, the canary rollout engine with AI-aware release health, and blue-green/recreate strategies. See [`docs/deployment/`](docs/deployment/).
+>
+> **Current state at a glance** — [Where the project is now](#where-the-project-is-now) below, or [`REPO_STATE.md`](REPO_STATE.md) for the verified, exhaustive version.
 
 As organizations hand more real-world tasks to autonomous AI agents (submitting claims, updating records, sending emails, moving money), they need a control plane that sits between the agent and the action. The **AI Agent Control Tower** is that control plane: every action an agent attempts is checked against permissions, scored for risk, and either **allowed**, **blocked**, or **routed to a human for approval** — and every decision is written to an immutable audit log.
 
@@ -14,6 +24,48 @@ This repository contains the FastAPI + PostgreSQL backend (`backend/`) and the R
 
 For machine-independent source and database backups, scheduled snapshots, and
 new-system restore steps, see [`RECOVERY.md`](RECOVERY.md).
+
+---
+
+## Where the project is now
+
+*Verified 2026-08-14 against `main` at `5b33f42`. The narrative sections further
+down this file are a phase-by-phase historical log kept in build order; this
+section is the current-state summary. For the exhaustive, mechanically-verified
+state of the repository — live schema, migration chain, route table, per-module
+inventory, known gaps — [`REPO_STATE.md`](REPO_STATE.md) is the authority, and it
+is the document to trust if it and this README ever disagree.*
+
+| | |
+|---|---|
+| Backend tests | **1,575 passed**, 0 failed, 1 deselected |
+| Frontend tests | **297 passed** |
+| Live schema | **119 tables**, migration head `0041_canary_rollout` |
+| HTTP routes | **518** |
+
+### Milestones
+
+| Milestone | Status | What it delivers |
+|---|---|---|
+| **Phases 1–4** | Complete | Governance pipeline, dashboard UI, enterprise identity, RBAC/ABAC authorization, identity governance |
+| **Phase 5.0–5.2** | Complete | Agent runtime & lifecycle, enterprise registry, immutable signed versioning |
+| **Milestone 1** — real execution | **Complete** | Model provider abstraction, a real OpenAI-compatible adapter, streaming & token/cost accounting, an error taxonomy with retry/circuit-breaking, per-organization encrypted credentials, HTTP tool execution behind an SSRF egress guard, tool schema validation, and the model-driven tool invocation loop |
+| **Milestone 2** — Enterprise Integration Framework | **Complete (9/9)** | Connector abstraction/lifecycle, a pluggable authentication framework, registry & health, a connector SDK, four generic connectors (REST, database, storage, queue), and external identity federation (OIDC + SAML) |
+| **Milestone 3** — Deployment & Release | **In progress (6/10)** | Deployment lifecycle core, environments & promotion, the release gate, weighted traffic allocation + version resolver, the canary engine, and blue-green/recreate strategies. Next: 3.7 automatic-rollback trigger policy; then 3.8 scheduler, 3.9 workers (+ rolling), 3.10 operator frontend |
+
+**What "complete" means for Milestone 1**: an agent that is registered,
+versioned, signed and deployed genuinely executes end to end — it calls a real
+model, the model requests a real tool, the tool runs behind an egress guard, the
+result feeds back into the conversation, the loop resolves to a final answer, and
+every token, call and decision is audited.
+
+Deliberately not built, with the owning phase named rather than left vague:
+rolling deployment (3.9 — there is no worker fleet to roll over yet, so the
+strategy raises a real "deferred" error instead of shuffling vestigial replica
+counters), the distributed scheduler (3.8), and vendor-specific connectors
+(SAP/Salesforce/ServiceNow — deliberately fast-follow work once a real deployment
+names a vendor). [`REPO_STATE.md`](REPO_STATE.md) §9 keeps the full, honest gap
+list, including things that are placeholders rather than features.
 
 ---
 
@@ -45,11 +97,22 @@ Every decision — and every approval/rejection — writes an `audit_logs` entry
 
 ## Tech stack
 
-- **Backend:** Python 3.11+ / FastAPI
-- **Database:** PostgreSQL (local)
+- **Backend:** Python 3.13 (3.11+ supported) / FastAPI
+- **Database:** PostgreSQL 17 (local) — the sole datastore, by
+  [ADR-0002](docs/architecture/adr/0002-postgresql-as-sole-datastore.md); no
+  Redis, no queue broker, no separate cache
 - **ORM:** SQLAlchemy 2.0
-- **Migrations:** Alembic
-- **Auth:** JWT (bearer tokens), bcrypt password hashing
+- **Migrations:** Alembic (42 revisions, head `0041_canary_rollout`)
+- **Auth:** JWT bearer tokens with rotating refresh tokens; **argon2id** password
+  hashing (legacy bcrypt auto-upgraded on login)
+- **Frontend:** React 19 + TypeScript + Vite, tested with Vitest
+- **Crypto:** Ed25519 version signing (in-toto / DSSE attestations), Fernet
+  encryption for stored secrets
+- **Federation:** OIDC via `python-jose`; SAML 2.0 via `python3-saml` + `xmlsec`
+  (XML signature verification is delegated to the audited `libxmlsec1` C library,
+  never hand-rolled)
+- **Connectors:** `httpx` (REST), SQLAlchemy Core + `PyMySQL` (database), `boto3`
+  (S3 storage / SQS), `pika` (AMQP)
 - **Docs:** Swagger / OpenAPI (built into FastAPI)
 
 ---
@@ -60,33 +123,61 @@ Every decision — and every approval/rejection — writes an `audit_logs` entry
 ai-agent-control-tower/
 ├── docker-compose.yml          # local PostgreSQL
 ├── README.md
+├── REPO_STATE.md               # verified state of the repository (the authority)
 ├── ROADMAP.md                  # phase-by-phase roadmap
-├── docs/                       # phase notes (e.g. phase-3-part-1.md)
-├── frontend/                   # Phase 3 — React 19 + TypeScript dashboard
+├── CHANGELOG.md
+├── RECOVERY.md                 # backup / restore / system migration
+├── docs/                       # architecture, ADRs, and per-domain guides
+│   ├── architecture/           # C4 views, ADRs, threat model, ERD
+│   ├── identity/               # auth, sessions, credentials, federation
+│   ├── authorization/          # RBAC, ABAC, resource authorization
+│   ├── governance/             # access certification, SoD, risk scoring
+│   ├── runtime/                # agents, versioning, providers, gateways
+│   ├── integration/            # connectors (Milestone 2)
+│   └── deployment/             # lifecycle, environments, gates, traffic,
+│                               #   canary, strategies (Milestone 3)
+├── scripts/backup/             # snapshot / verify / restore PowerShell scripts
+├── frontend/                   # React 19 + TypeScript dashboard
 └── backend/
     ├── alembic.ini
     ├── requirements.txt
     ├── .env.example
     ├── migrations/             # Alembic environment + versions
-    ├── tests/                  # unit tests for the engines
+    ├── tests/                  # backend suite, mirroring the app packages
     └── app/
         ├── main.py             # FastAPI app
         ├── seed.py             # demo data seeder
         ├── core/               # config, database, security, enums
-        ├── models/             # SQLAlchemy models (7 tables)
+        ├── models/             # SQLAlchemy models (119 tables)
         ├── schemas/            # Pydantic request/response models
-        ├── api/
-        │   ├── deps.py         # auth + DB dependencies
-        │   ├── router.py       # aggregates all routes
-        │   └── routes/         # one module per resource
-        └── services/           # business logic
-            ├── permission_engine.py
-            ├── risk_engine.py
-            ├── decision_engine.py
-            ├── approval_service.py
-            ├── audit_service.py
-            └── agent_action_service.py   # orchestration pipeline
+        ├── api/                # Phase 1/2 governance API
+        ├── services/           # Phase 1/2 engines (permission, risk, decision,
+        │                       #   approval, audit, orchestration)
+        ├── identity/           # enterprise identity: users, orgs, sessions,
+        │                       #   credentials, protection, federation
+        ├── authorization/      # RBAC + ABAC engine, gateway, governance
+        ├── runtime/            # the agent runtime
+        │   ├── registry/       # agent registry
+        │   ├── versioning/     # immutable versions, signing, attestation
+        │   ├── providers/      # model provider abstraction + adapters
+        │   ├── tools/          # egress guard, HTTP executor, concurrency
+        │   ├── environment/    # environments & promotion policy
+        │   ├── release_gate/   # preflight checks + PASS/WARNING/BLOCK verdict
+        │   └── deployment/     # lifecycle, traffic, resolver, canary,
+        │                       #   health, strategies
+        └── integration/        # Milestone 2 — deliberately a sibling of
+            ├── auth/           #   runtime, never imported by it
+            ├── connectors/     #   REST, database, storage, queue
+            └── sdk/            #   the connector-authoring surface
 ```
+
+Two placements above are load-bearing rather than stylistic. `app/integration/`
+sits beside `app/runtime/` rather than inside it because the runtime must never
+know a connector exists — a test greps every file under `app/runtime/` for the
+word "connector" and fails the build if it finds one. And
+`app/identity/federation/` lives under identity, not integration, because it
+authenticates a user *to* the platform rather than the platform *to* an external
+system — the inverse trust direction from every connector.
 
 ---
 
@@ -503,6 +594,110 @@ observable behavior — proof the interface doesn't distort what it
 expresses. No real provider yet; that's the next sub-phase. See
 [docs/runtime/providers.md](docs/runtime/providers.md).
 
+### Milestone 1 — real execution (complete)
+
+The mock every layer above had been tested against is gone. `OpenAICompatible`
+talks the OpenAI chat-completions wire protocol against any `base_url`
+(Ollama / vLLM / LM Studio / OpenAI) — named for the protocol, not a vendor.
+Real SSE **streaming** reassembles tool calls across fragmented chunks, and an
+interruption persists a partial rather than raising. **Token and cost accounting**
+is real: a provider that omits usage reports `{}` and is never zero-filled, and
+prices live in an effective-dated table, so a local unpriced model honestly costs
+zero rather than being estimated at something.
+
+An eight-class, provider-neutral **error taxonomy** decides what is retryable;
+classification lives in the adapter while retry, exponential backoff with jitter
+and a three-state circuit breaker live in the service layer, so a second adapter
+inherits all of it with no new retry code. **Per-organization credentials** are
+encrypted at rest, resolved at execution time, with the environment variable kept
+only as a fallback.
+
+On the tool side, an `HTTP` action executes behind an SSRF **egress guard** that
+validates addresses across decimal/octal/hex encodings, pins the connection to
+the address it validated (defeating DNS rebinding, verified empirically against
+the installed `httpx`/`httpcore`), and re-validates on redirect — reading its
+allowlist from the *frozen version snapshot*, never live mutable state. Tool
+arguments are validated against a declared JSON-Schema contract **before any side
+effect**, and the resilience machinery is reused from the model side rather than
+duplicated.
+
+Finally the **tool invocation loop** joins them: the model requests a tool, the
+tool runs through the unchanged gateway, the structured result feeds back, and
+the loop resolves — bounded by four independent termination caps (iterations,
+token budget, wall clock, repeated-identical-call). Tools the model requests
+together run in parallel only when every one is declared idempotent. See
+[docs/runtime/gateways.md](docs/runtime/gateways.md).
+
+### Milestone 2 — Enterprise Integration Framework (complete, 9/9)
+
+A `Connector` abstraction with a five-state tenant-instance lifecycle, six
+authentication schemes (API key, bearer, basic, two OAuth2 flows, mTLS) with
+encrypted credential storage and concurrency-safe token refresh, a registry that
+fails fast on a disabled or failed instance, health probes, and an **SDK** whose
+surface is the enforcement: an SDK-authored connector cannot make an undeclared
+outbound call, receive a decrypted credential, suppress audit, or reach another
+tenant's data — because no method exists to do any of those, not because an
+author is asked not to.
+
+Four generic connectors ship, each carrying one sharp containment rule:
+
+- **REST** — injection-safe path/query/header rendering; `123/../admin` renders as
+  a single escaped segment and never escapes to `/admin`
+- **Database** — **the model never writes SQL.** It supplies bound parameters to
+  pre-declared, reviewed queries; the executor has no parameter position a raw
+  SQL string could occupy anywhere in the codebase
+- **Storage** — **a model-supplied path can never escape its declared scope**,
+  canonicalized (percent-decoding, Unicode normalization, symlink resolution)
+  and *then* contains-checked, with no gap between validation and use
+- **Queue** — publish is scoped to a queue fixed by the tool contract (no
+  queue-name parameter exists to redirect through), and consume is always
+  bounded on both batch size and wall clock
+
+**External identity federation** (OIDC + SAML 2.0) completes the milestone, and
+inverts the trust direction: it holds no user secret and verifies an assertion
+inward. Accepted algorithms come from the organization's stored configuration and
+never from the token's own header; SAML signature verification follows the
+signature's own reference back to the exact ID-referenced element, tested against
+deliberately-constructed signature-wrapping attacks. A federated login terminates
+in the platform's *existing* session pipeline — never a parallel one.
+
+### Milestone 3 — Deployment & Release (in progress, 6/10)
+
+Deployments became a governed domain: a 15-state lifecycle with a single
+transition authority and optimistic concurrency, governed **environments** with
+policy plus an immutability-preserving **promotion** operation, and a **release
+gate** aggregating thirteen checks into one authoritative PASS / WARNING / BLOCK
+verdict that fails closed — an unexpected exception in any check becomes a
+blocking finding, never a silently skipped one.
+
+On top of that sits **weighted traffic allocation**: a version resolver on the
+execution hot path (≤3 indexed queries, no cache — deliberately, because every
+candidate cache key is mutated by code across three phases and a stale cache
+would be a fail-closed hazard *under the kill switch*), with concurrency settled
+by a partial unique index rather than a lock, so nothing here can deadlock
+against the execution path's own locks.
+
+Three rollout patterns now drive that one allocation mechanism:
+
+| Strategy | Pattern | The old version |
+|---|---|---|
+| **Canary** | 5 → 25 → 50 → 100, gated per stage | superseded at the end |
+| **Recreate** | 0 → 100 in one cutover | superseded immediately |
+| **Blue-green** | 0 (warm) → 100 in one atomic switch | **preserved at 0%** for instant rollback |
+
+A canary stage clears only when its minimum duration, minimum sample count **and**
+health requirement are all satisfied, judged by an **AI-aware health engine** that
+aggregates real executions over a window rather than reading a liveness heartbeat
+— a model version can be perfectly alive while refusing every third request.
+`INSUFFICIENT_DATA` is first-class and satisfies no requirement at any level:
+two successes out of two is not "healthy", because nothing bad *observed* is not
+nothing bad *happening*.
+
+**Rolling deployment is deferred to Phase 3.9 and says so** — it raises a real
+501 naming that phase, because there is no worker fleet to roll over yet and a
+handler that incremented the vestigial replica counters would report progress
+while nothing rolled. See [docs/deployment/](docs/deployment/).
+
 **Users** (password `DemoPass!2026`):
 
 | Email                  | Role       |
@@ -625,11 +820,25 @@ curl http://localhost:8000/audit-logs/entity/agent_action/<AGENT_ACTION_ID> \
 
 ## Running tests
 
-The engine logic is unit-tested and requires no database:
+The Phase 1 engine logic is pure and needs no database, but **the suite as a
+whole does** — most of it runs against a real local PostgreSQL, deliberately, so
+that concurrency races, index behaviour and migration reversibility are tested
+against the real thing rather than a mock.
 
 ```bash
 cd backend
-pytest
+pytest -q
+# 1,575 passed, 1 deselected
+```
+
+The one deselected test is marked `live_provider` — a genuinely live Ollama
+check, excluded by default via `backend/pytest.ini`. It is a deselection, not a
+failure or a skip; the suite contains no `skip` or `xfail` markers.
+
+```bash
+cd frontend
+npm test
+# 297 passed
 ```
 
 ---
@@ -998,18 +1207,37 @@ Unit tests cover the risk, decision and policy engines; integration tests
 
 ---
 
-## Future roadmap (Phase 3+)
+## What's next
 
-Delivered in Phase 2: agent API-key auth, DB-driven policy engine, advanced RBAC,
-notifications, forensic audit, dashboard APIs, risk engine v2, Docker.
+*This section previously listed the Phase 3+ wish-list. Most of it has since
+shipped — real action execution, the dashboard frontend, policy simulation, key
+lifecycle — so it is replaced here with the actual current queue rather than left
+to read as pending. [`ROADMAP.md`](ROADMAP.md) is the maintained plan and
+[`REPO_STATE.md`](REPO_STATE.md) §9 the honest gap list.*
 
-Next:
+**Immediately next — finishing Milestone 3:**
 
-- **Real action execution & callbacks** — execute approved actions and capture `output_payload`.
-- **Dashboard frontend** — React/Next.js console for the approval queue, agents, policies and audit timeline (the APIs are already designed for it).
-- **Richer notifications** — Slack/webhooks in addition to email; SLA-breach alerts.
-- **Policy authoring UX** — versioning, dry-run/simulation, and a visual rule builder.
-- **Key lifecycle** — automatic rotation, scoped keys, and per-key rate limits.
-- **Observability** — Prometheus metrics, OpenTelemetry tracing (trace ids already captured).
-- **Anomaly detection** — flag unusual agent behaviour from the audit stream.
-- **Multi-tenant isolation tests** and load testing for pilot customers.
+- **3.7 Automatic-rollback trigger policy** — per-tenant rules deciding *when* to
+  invoke the rollback operations 3.5 and 3.6 already provide. The operations
+  exist; the policy that fires them does not.
+- **3.8 Distributed scheduler** — replaces today's interim in-process loops; the
+  canary engine's `evaluate` endpoint is already the exact method it will call on
+  a timer, with no change needed there.
+- **3.9 Distributed workers + rolling deployment** — the worker fleet that
+  finally gives rolling a real substrate to roll over.
+- **3.10 Operator frontend** — deployment, rollout and traffic UI.
+
+**Known gaps, stated plainly** (the full list is [`REPO_STATE.md`](REPO_STATE.md)
+§9): CAPTCHA verification is a placeholder; the Phase 3 analytics cost figures are
+deterministic estimates unrelated to the real per-execution cost accounting added
+in Milestone 1; signing keys and the credential-encryption key live on local disk
+rather than in a vault (deferred, documented, and closing at Milestone 13); the
+frontend production bundle is a single ~1.65 MB chunk with no route-level code
+splitting; and vendor-specific connectors (SAP/Salesforce/ServiceNow) are
+deliberately fast-follow work rather than speculative build-ahead.
+
+**Deliberately out of scope entirely**: a visual workflow builder, hyperscale
+event streaming, automated model optimization, reinforcement learning, autonomous
+agent creation, a marketplace, multi-cloud federation, a Kubernetes operator, and
+GPU scheduling — see "What's deliberately not here" in
+[docs/runtime/overview.md](docs/runtime/overview.md).
