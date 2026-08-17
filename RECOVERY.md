@@ -1,12 +1,16 @@
 # Backup and system-migration guide
 
-**Last verified 2026-08-14** against `main` at `5b33f42` (Phase 3.6). Facts that
-matter for a restore, all re-checked live rather than carried forward: migration
-head `0041_canary_rollout`, **119 tables**, PostgreSQL **17.10** locally,
-`backend/.venv` on Python **3.13.14**, Node **v24.18.0**. Sections below that
-name a version were corrected in this pass — the previous text said Python 3.12
-and Node 22 LTS, and its `py -3.12 -m venv` command would now fail outright on
-this machine.
+**Last verified 2026-08-17** after Phase 3.7. Facts that matter for a restore,
+all re-checked live rather than carried forward: migration head
+`0042_automated_rollback`, **121 tables**, PostgreSQL **17.10** locally,
+`backend/.venv` on Python **3.13.14**, Node **v24.18.0**. Sections naming a
+version were corrected in the 2026-08-14 pass — the previous text said Python
+3.12 and Node 22 LTS, and its `py -3.12 -m venv` command would now fail outright
+on this machine.
+
+Phase 3.7 introduced the first automation that moves production traffic without
+a human, so this guide now also covers **in-flight rollback state** — see that
+section below before restoring into anything that will serve traffic.
 
 > **Read "Encryption keys" below before trusting any snapshot.** A verified
 > database dump plus a Git bundle is *not* sufficient to recover this platform's
@@ -272,8 +276,8 @@ npm.cmd run dev
 For a restored snapshot, `alembic current` must match the revision in
 `manifest.json`. **Do not run `app.seed` against restored data.**
 
-As of 2026-08-14 a healthy restore reports head `0041_canary_rollout` and
-**119 tables**; the backend suite is `1,575 passed, 0 failed, 1 deselected` and
+As of 2026-08-17 a healthy restore reports head `0042_automated_rollback` and
+**121 tables**; the backend suite is `1,633 passed, 0 failed, 1 deselected` and
 the frontend `297 passed`. The one deselected test is the `live_provider`-marked
 Ollama check, excluded by default via `backend/pytest.ini` — a deselection, not a
 failure, and it should stay deselected on a restored machine too.
@@ -286,6 +290,63 @@ base Compose file still declares PostgreSQL 16 and a different database name
 container and do not point the restore script at that PostgreSQL 16 service.
 Use a fresh PostgreSQL 17 target or create and review a dedicated Compose override
 with seeding disabled before container-based recovery.
+
+## In-flight automated rollback (Phase 3.7)
+
+Phase 3.7 added the platform's first piece of **automation that moves production
+traffic on its own**, so it is also the first thing whose interrupted state
+matters to a restore. It is designed around the same durable/ephemeral split
+this guide already uses.
+
+**Durable — restored with the database, and resumed automatically.**
+A `rollback_events` row is written and committed with `status = 'IN_PROGRESS'`
+*before* any traffic moves, and set to `COMPLETED` only after the traffic
+allocation commits. A process that dies between those two points therefore
+leaves a readable record of an intent that was formed but not finished, and it
+survives a dump/restore like any other row.
+
+Nothing needs to be done by hand. `RollbackService.resume_incomplete` runs at
+the start of every trigger evaluation, finds such a row and completes it.
+Re-applying is safe because Phase 3.4's traffic allocation declares a desired
+end state rather than a delta — setting the same weights twice leaves the same
+allocation — so **there is no half-applied traffic state a restore or a resume
+could compound.**
+
+**Ephemeral — recomputed, never restored.**
+Health verdicts, threshold arithmetic, cooldown windows and the
+"is this version on trial" check are all derived from the database on demand and
+stored nowhere. They rebuild themselves on the first evaluation after a restart.
+
+**What to check after restoring a snapshot**, before letting automation run:
+
+```sql
+SELECT id, deployment_id, trigger, status, created_at
+FROM rollback_events
+WHERE status = 'IN_PROGRESS'
+ORDER BY created_at;
+```
+
+Rows here are rollbacks that were interrupted. They are resumed on the next
+evaluation of their deployment, but on a *restored* system it is worth looking
+first: a rollback interrupted by the same incident that caused the restore is
+a strong signal about what was wrong.
+
+**One deliberate restore-time caution.** Trigger policies
+(`rollback_trigger_policies`) are restored along with everything else and are
+active immediately. On a recovery system that is intentionally running with
+stale or partial execution history, the health engine will read that history and
+may reach conclusions that made no sense at the moment of restore. If you are
+restoring into anything other than a faithful continuation of production,
+disable automation first and re-enable it once real traffic is flowing:
+
+```sql
+UPDATE rollback_trigger_policies SET enabled = false;
+```
+
+Automation is opt-in by design — absent an enabled policy nothing fires — so a
+freshly-seeded system has none of this to worry about. Note that the migration
+deliberately creates no policies for existing tenants, precisely so that a
+restore never silently arms automation nobody asked for.
 
 ## What is intentionally rebuilt
 

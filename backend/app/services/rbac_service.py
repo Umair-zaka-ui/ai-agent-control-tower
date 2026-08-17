@@ -137,6 +137,15 @@ PERMISSION_CATALOG: dict[str, str] = {
     "runtime.deployment.create": "Create deployments",
     "runtime.deployment.deploy": "Deploy, suspend, resume and retire deployments",
     "runtime.deployment.rollback": "Roll back a deployment to a previous version",
+    # Automated Rollback & Release Safety (Phase 3.7, ACT-SRS-M3 §11). The
+    # elevated authority a *forced* rollback requires -- one that may name its
+    # own target and bypass the designated-target requirement an ordinary
+    # rollback fails closed on. Separated from "runtime.deployment.rollback"
+    # because an override whose authority every release engineer already holds
+    # would not be an override at all. It does not, and cannot, bypass the
+    # kill switch.
+    "runtime.deployment.force_rollback":
+        "Force a rollback past normal preconditions (dangerous; requires justification)",
     # Environment & Promotion Model (Phase 3.2, ACT-SRS-M3 §3.2). Promoting a
     # deployment reuses "runtime.deployment.deploy" (below/above) rather than
     # a third code, since a promotion *is* a deployment operation; these two

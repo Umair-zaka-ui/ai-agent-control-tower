@@ -407,6 +407,86 @@ class StrategyOutcomeRead(BaseModel):
     detail: str
 
 
+# --------------------------------------------------------------------------- #
+# Phase 3.7 (ACT-SRS-M3 §Phase-3.7) -- automated rollback & release safety.
+# --------------------------------------------------------------------------- #
+class RollbackEventRead(BaseModel):
+    """One rollback that actually happened.
+
+    ``evidence_ref`` is returned in full rather than summarized: it is the
+    candidate's health at the moment it was rolled back, and it exists
+    precisely so an engineer arriving afterwards can see what automation saw
+    (M3-3.7-FR-012)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    deployment_id: uuid.UUID
+    agent_id: uuid.UUID
+    environment_id: uuid.UUID | None
+    rollout_plan_id: uuid.UUID | None
+    from_version_id: uuid.UUID
+    to_version_id: uuid.UUID
+    trigger: str
+    status: str
+    reason: str | None
+    justification: str | None
+    evidence_ref: dict
+    policy_id: uuid.UUID | None
+    initiated_by: uuid.UUID | None
+    created_at: datetime
+    completed_at: datetime | None
+
+
+class RollbackTriggerPolicyRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    organization_id: uuid.UUID
+    environment_id: uuid.UUID | None
+    agent_id: uuid.UUID | None
+    thresholds: dict
+    mode: str
+    min_samples: int
+    cooldown_seconds: int
+    enabled: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class RollbackTriggerPolicyWrite(BaseModel):
+    environment_id: uuid.UUID | None = None
+    agent_id: uuid.UUID | None = None
+    thresholds: dict = Field(default_factory=dict)
+    # AUTO_EXECUTE is the default deliberately (M3-3.7-FR-024): a policy an
+    # operator bothered to configure is one they want acted on, and the safer
+    # failure mode for a *configured* policy is acting on a real regression
+    # rather than watching one. Automation as a whole stays opt-in, because
+    # no policy exists until someone creates it.
+    mode: str = "AUTO_EXECUTE"
+    min_samples: int = 20
+    cooldown_seconds: int = 900
+    enabled: bool = True
+
+
+class RollbackRequest(BaseModel):
+    reason: str | None = None
+
+
+class ForcedRollbackRequest(BaseModel):
+    """§11 -- justification is required by the schema, not merely by the
+    service, so the API contract itself says this is a dangerous operation."""
+
+    justification: str = Field(min_length=1)
+    target_version_id: uuid.UUID | None = None
+
+
+class RollbackEvaluationRead(BaseModel):
+    action: str
+    rollback: RollbackEventRead | None
+    decision: dict
+
+
 class DeploymentHealthRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

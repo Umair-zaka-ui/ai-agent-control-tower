@@ -189,6 +189,23 @@ class AuthorizationAuditEvent(str, enum.Enum):
     # third and fourth name for the same two moments.
     DEPLOYMENT_STARTED = "DEPLOYMENT_STARTED"
     DEPLOYMENT_SUCCEEDED = "DEPLOYMENT_SUCCEEDED"
+    # Phase 3.7 (ACT-SRS-M3 §Phase-3.7, §11, §13) -- automated rollback.
+    # ``DEPLOYMENT_ROLLBACK_STARTED`` (3.5) and ``RUNTIME_ROLLBACK_COMPLETED``
+    # (Phase 5.0) are reused for the two moments every rollback shares, so a
+    # reader can find *all* rollbacks under one pair of names regardless of
+    # what triggered them. The three below record only what is genuinely new:
+    # that a policy fired one, that a human forced one past a normal
+    # precondition, and that a policy configuration changed.
+    #
+    # ``ROLLBACK_TRIGGER_FIRED`` carries the policy id and the crossed
+    # threshold in ``meta`` -- an automatic rollback nobody can explain
+    # afterwards is worse than no automation, because the next engineer cannot
+    # tell a correct action from a bug.
+    ROLLBACK_TRIGGER_FIRED = "ROLLBACK_TRIGGER_FIRED"
+    # §11 -- a dangerous operation, always tagged CRITICAL in ``meta``, always
+    # carrying the operator's justification.
+    ROLLBACK_FORCED = "ROLLBACK_FORCED"
+    ROLLBACK_POLICY_UPDATED = "ROLLBACK_POLICY_UPDATED"
     RUNTIME_EXECUTION_CREATED = "RUNTIME_EXECUTION_CREATED"
     RUNTIME_EXECUTION_DENIED = "RUNTIME_EXECUTION_DENIED"
     RUNTIME_EXECUTION_APPROVAL_REQUIRED = "RUNTIME_EXECUTION_APPROVAL_REQUIRED"
