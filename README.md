@@ -14,7 +14,7 @@
 >
 > **Milestone 2** (Enterprise Integration Framework — **complete, 9/9**): the connector abstraction & lifecycle, a pluggable authentication framework, registry & health, a connector SDK, four generic connectors (REST, database, storage, queue), and external identity federation (OIDC + SAML). See [`docs/integration/connectors.md`](docs/integration/connectors.md) and [`docs/identity/federation.md`](docs/identity/federation.md).
 >
-> **Milestone 3** (Deployment & Release — **in progress, 6/10**): the deployment lifecycle core, governed environments & promotion, the release gate, weighted traffic allocation with a version resolver and fail-closed execution gate, the canary rollout engine with AI-aware release health, and blue-green/recreate strategies. See [`docs/deployment/`](docs/deployment/).
+> **Milestone 3** (Deployment & Release — **in progress, 7/10**): the deployment lifecycle core, governed environments & promotion, the release gate, weighted traffic allocation with a version resolver and fail-closed execution gate, the canary rollout engine with AI-aware release health, blue-green/recreate strategies, and **automated rollback** — per-tenant trigger policies that roll a failing candidate back on their own, strictly subordinate to the kill switch. See [`docs/deployment/`](docs/deployment/).
 >
 > **Current state at a glance** — [Where the project is now](#where-the-project-is-now) below, or [`REPO_STATE.md`](REPO_STATE.md) for the verified, exhaustive version.
 
@@ -38,10 +38,10 @@ is the document to trust if it and this README ever disagree.*
 
 | | |
 |---|---|
-| Backend tests | **1,575 passed**, 0 failed, 1 deselected |
+| Backend tests | **1,633 passed**, 0 failed, 1 deselected |
 | Frontend tests | **297 passed** |
-| Live schema | **119 tables**, migration head `0041_canary_rollout` |
-| HTTP routes | **518** |
+| Live schema | **121 tables**, migration head `0042_automated_rollback` |
+| HTTP routes | **524** |
 
 ### Milestones
 
@@ -51,7 +51,7 @@ is the document to trust if it and this README ever disagree.*
 | **Phase 5.0–5.2** | Complete | Agent runtime & lifecycle, enterprise registry, immutable signed versioning |
 | **Milestone 1** — real execution | **Complete** | Model provider abstraction, a real OpenAI-compatible adapter, streaming & token/cost accounting, an error taxonomy with retry/circuit-breaking, per-organization encrypted credentials, HTTP tool execution behind an SSRF egress guard, tool schema validation, and the model-driven tool invocation loop |
 | **Milestone 2** — Enterprise Integration Framework | **Complete (9/9)** | Connector abstraction/lifecycle, a pluggable authentication framework, registry & health, a connector SDK, four generic connectors (REST, database, storage, queue), and external identity federation (OIDC + SAML) |
-| **Milestone 3** — Deployment & Release | **In progress (6/10)** | Deployment lifecycle core, environments & promotion, the release gate, weighted traffic allocation + version resolver, the canary engine, and blue-green/recreate strategies. Next: 3.7 automatic-rollback trigger policy; then 3.8 scheduler, 3.9 workers (+ rolling), 3.10 operator frontend |
+| **Milestone 3** — Deployment & Release | **In progress (7/10)** | Deployment lifecycle core, environments & promotion, the release gate, weighted traffic allocation + version resolver, the canary engine, blue-green/recreate strategies, and automated rollback with per-tenant trigger policies. Next: 3.8 scheduler; then 3.9 workers (+ rolling), 3.10 operator frontend |
 
 **What "complete" means for Milestone 1**: an agent that is registered,
 versioned, signed and deployed genuinely executes end to end — it calls a real
@@ -696,7 +696,31 @@ nothing bad *happening*.
 **Rolling deployment is deferred to Phase 3.9 and says so** — it raises a real
 501 naming that phase, because there is no worker fleet to roll over yet and a
 handler that incremented the vestigial replica counters would report progress
-while nothing rolled. See [docs/deployment/](docs/deployment/).
+while nothing rolled.
+
+**Automated rollback (3.7)** turns rollback from an operation into a safety
+system. Per-tenant, per-environment trigger policies watch the same health
+verdicts the canary engine uses and roll a failing candidate back **on their
+own** — the milestone's headline proof, made automatic. `rollback_target_id` is
+now authoritative: a rollback returns to the *designated* last-known-good, and
+fails closed rather than guessing when none is designated, because a wrong
+rollback looks like a successful one.
+
+Three properties are worth stating because they are what make unattended
+automation defensible:
+
+- **Automation is subordinate to the kill switch; humans are not.** An automatic
+  rollback on a killed agent does not run — automation must never quietly undo a
+  human's kill. A *manual* rollback still runs, because a kill switch must never
+  trap an operator on the version they are trying to leave.
+- **Thin data never triggers.** Three failures out of three is a 100% error rate
+  and still not evidence. `INSUFFICIENT_DATA` and `UNKNOWN` satisfy nothing.
+- **Evidence survives the rollback.** The candidate's metrics at the moment it
+  was rolled back are preserved — the rollback must not be the act that destroys
+  the reason for it.
+
+See [docs/deployment/](docs/deployment/), and
+[docs/deployment/rollback.md](docs/deployment/rollback.md) in particular.
 
 **Users** (password `DemoPass!2026`):
 
@@ -1217,12 +1241,10 @@ to read as pending. [`ROADMAP.md`](ROADMAP.md) is the maintained plan and
 
 **Immediately next — finishing Milestone 3:**
 
-- **3.7 Automatic-rollback trigger policy** — per-tenant rules deciding *when* to
-  invoke the rollback operations 3.5 and 3.6 already provide. The operations
-  exist; the policy that fires them does not.
-- **3.8 Distributed scheduler** — replaces today's interim in-process loops; the
-  canary engine's `evaluate` endpoint is already the exact method it will call on
-  a timer, with no change needed there.
+- **3.8 Distributed scheduler** — replaces today's interim in-process loops. The
+  canary engine's `evaluate` and the rollback engine's `rollback/evaluate` are
+  already the exact methods it will call on a timer, with no change needed in
+  either.
 - **3.9 Distributed workers + rolling deployment** — the worker fleet that
   finally gives rolling a real substrate to roll over.
 - **3.10 Operator frontend** — deployment, rollout and traffic UI.

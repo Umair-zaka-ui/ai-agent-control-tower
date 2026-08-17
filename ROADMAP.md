@@ -1889,20 +1889,70 @@ dispatched on. This is its first consumer.
   deselected; backend only. See
   [docs/deployment/strategies.md](docs/deployment/strategies.md).
 
-**Milestone 3 now has 6 of 10 sub-phases done.** **ROLLING remains pending in
-3.9**, where real worker cohorts give it a substrate.
+**ROLLING remains pending in 3.9**, where real worker cohorts give it a
+substrate.
 
-Next: 3.7 (automatic-rollback trigger policy, on top of the rollback operations
-3.5 and 3.6 already provide).
+### Part 3.7 — Automated Rollback & Release Safety ✅
+
+Milestone 3's seventh sub-phase, and the safety capstone of the deployment
+engines. 3.5 and 3.6 gave the platform rollback *operations*; 3.7 gives it a
+**policy** — the governed, per-tenant rules that decide when a rollback happens
+with no human watching.
+
+- **A premise correction, reported not papered over.** The build prompt
+  described `rollback_target_id` as "a pointer nothing reads", quoting
+  REPO_STATE. Phase 3.6 had already made it a reader. What was genuinely
+  outstanding was *designating* it during a rollout and honouring it from paths
+  other than blue-green.
+- **`rollback_target_id` is now authoritative and fails closed.** No
+  designation, a target on another agent, a non-published target, or a target
+  equal to the deployed version all raise `ROLLBACK_TARGET_UNAVAILABLE` and move
+  nothing. When a rollout is in scope its `stable_version_id` must *agree*;
+  disagreement fails closed rather than picking a winner, because a wrong
+  rollback looks like a successful one.
+- **One operation, four triggers** (MANUAL/REQUESTED/AUTOMATIC/FORCED). With a
+  rollout in scope the traffic move is **delegated to 3.5's own
+  `request_rollback`** rather than reimplemented; otherwise it goes through
+  3.4's `set_weights`. The module holds no reference to the weight tables at all
+  (AST-asserted).
+- **Kill-switch dominance means *automation* is subordinate, not rollback.** An
+  automatic rollback on a killed agent does not run — automation must never undo
+  a human's kill. A manual one still does, matching 3.6's reasoning that a kill
+  must never trap an operator on the version they are leaving. The §12 check runs
+  *before* health, corrected during the build after a failing test showed a kill
+  switch being reported as "health verdict UNKNOWN".
+- **INSUFFICIENT_DATA never triggers** (3.5's discipline); thresholds are
+  deliberately wider than 3.5's stage gates, because declining to promote is
+  cheap and moving production traffic unattended is not.
+- **Automation is opt-in** — absent an enabled policy nothing fires;
+  `NOTIFY_ONLY` detects without acting.
+- **Anti-flap**: a cooldown, plus the rule that only a version *on trial* is a
+  candidate; deduplication is decided by a partial unique index, not by timing.
+- **Evidence preserved** at the moment of rollback — the rollback must not
+  destroy the reason for it. **Recovery**: durable `IN_PROGRESS` intent committed
+  before traffic moves, resumed automatically; no half-applied allocation is
+  possible.
+- **§11 override**: new elevated `runtime.deployment.force_rollback`,
+  schema-enforced justification, `CRITICAL` audit; it may name a target, and it
+  cannot override the kill switch.
+- Migration `0042_automated_rollback` (2 tables, reversible); routes 518 → 524;
+  schema 119 → 121 tables.
+- 58 new backend tests including **the §19 proof made automatic**. Backend
+  **1,633** total green, 1 deselected; backend only. See
+  [docs/deployment/rollback.md](docs/deployment/rollback.md).
+
+**Milestone 3 now has 7 of 10 sub-phases done.**
+
+Next: 3.8 (the distributed scheduler, which drives 3.5's and 3.7's bounded
+evaluation methods on a real timer).
 
 ## Future (Phase 3+)
 
-**Milestone 3, remaining**: the automatic-rollback trigger policy
-(3.7 — the rollback *operations* already exist in 3.5 and 3.6; 3.7
-adds the per-tenant rules deciding when to call them), a real
-distributed job scheduler (3.8 — 2.1.3's own health-check scheduler
-is explicitly interim and built to be replaced, not extended, when
-this lands, as is 3.5's own interim auto-advance), distributed
+**Milestone 3, remaining**: a real distributed job scheduler
+(3.8 — 2.1.3's own health-check scheduler is explicitly interim and
+built to be replaced, not extended, when this lands, as are 3.5's
+auto-advance and 3.7's rollback evaluation, both of which already
+expose the exact bounded method a scheduler will call), distributed
 workers **and the ROLLING strategy** (3.9 — deferred from 3.6
 because rolling needs an instance substrate that only the worker
 fleet creates), an operator frontend (3.10).
