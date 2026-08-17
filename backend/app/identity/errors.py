@@ -249,6 +249,22 @@ class ErrorCode:
     STRATEGY_GATE_BLOCKED = "STRATEGY_GATE_BLOCKED"
     BLUE_GREEN_NOT_PREPARED = "BLUE_GREEN_NOT_PREPARED"
     STRATEGY_CONFLICT = "STRATEGY_CONFLICT"
+    # Phase 3.7 (ACT-SRS-M3 §Phase-3.7) -- automated rollback & release safety.
+    # ``ROLLBACK_TARGET_UNAVAILABLE`` is the fail-closed case and the most
+    # important of the four: there is no designated last-known-good to return
+    # to, so the platform refuses rather than rolling back to nothing, to an
+    # unpublished version, or to a guess. Rolling back to the wrong thing is
+    # worse than not rolling back, because it looks like it worked.
+    ROLLBACK_TARGET_UNAVAILABLE = "ROLLBACK_TARGET_UNAVAILABLE"
+    # §12 -- automation is strictly subordinate to a kill switch. Distinct from
+    # ROLLOUT_HALTED_BY_KILL_SWITCH (a rollout is frozen) and from
+    # KILL_SWITCH_ACTIVE (one execution refused): this one says the *automatic
+    # rollback system* declined to act on a killed agent. An operator seeing it
+    # needs to know automation stood down and did not quietly reactivate
+    # anything on their behalf.
+    ROLLBACK_BLOCKED_BY_KILL_SWITCH = "ROLLBACK_BLOCKED_BY_KILL_SWITCH"
+    ROLLBACK_FORCE_UNAUTHORIZED = "ROLLBACK_FORCE_UNAUTHORIZED"
+    ROLLBACK_CONFLICT = "ROLLBACK_CONFLICT"
     EXECUTION_NOT_FOUND = "EXECUTION_NOT_FOUND"
     EXECUTION_ALREADY_COMPLETED = "EXECUTION_ALREADY_COMPLETED"
     EXECUTION_CANCELLED = "EXECUTION_CANCELLED"
@@ -631,6 +647,14 @@ _STATUS: dict[str, int] = {
     ErrorCode.STRATEGY_GATE_BLOCKED: status.HTTP_409_CONFLICT,
     ErrorCode.BLUE_GREEN_NOT_PREPARED: status.HTTP_409_CONFLICT,
     ErrorCode.STRATEGY_CONFLICT: status.HTTP_409_CONFLICT,
+    # Phase 3.7. 409 rather than 404 for an unavailable target: the deployment
+    # exists and the caller asked a reasonable question -- the platform is
+    # refusing because of *current state*, which is exactly what 409 means.
+    ErrorCode.ROLLBACK_TARGET_UNAVAILABLE: status.HTTP_409_CONFLICT,
+    # 423, matching every other kill-switch refusal in this codebase.
+    ErrorCode.ROLLBACK_BLOCKED_BY_KILL_SWITCH: status.HTTP_423_LOCKED,
+    ErrorCode.ROLLBACK_FORCE_UNAUTHORIZED: status.HTTP_403_FORBIDDEN,
+    ErrorCode.ROLLBACK_CONFLICT: status.HTTP_409_CONFLICT,
     ErrorCode.EXECUTION_NOT_FOUND: status.HTTP_404_NOT_FOUND,
     ErrorCode.EXECUTION_ALREADY_COMPLETED: status.HTTP_409_CONFLICT,
     ErrorCode.EXECUTION_CANCELLED: status.HTTP_409_CONFLICT,

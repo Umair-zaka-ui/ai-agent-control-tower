@@ -1515,3 +1515,147 @@ class IdempotencyKey(Base, UUIDPrimaryKeyMixin):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class RollbackTriggerPolicy(Base, UUIDPrimaryKeyMixin):
+    """Phase 3.7 (ACT-SRS-M3 §Phase-3.7, M3-3.7-FR-020..024) -- the governed,
+    per-tenant rules deciding *when* an automatic rollback fires.
+
+    Scope resolution is most-specific-wins: a row naming both an environment
+    and an agent beats one naming only an environment, which beats the
+    organization default (``environment_id`` and ``agent_id`` both null).
+    Absent any enabled policy, **nothing fires** -- automation is opt-in, and
+    a tenant that never configures a policy keeps exactly the manual behaviour
+    Phases 3.5 and 3.6 gave them.
+
+    ``thresholds`` is JSONB rather than a column per signal, matching how
+    ``environments.policy`` already carries this platform's other governed
+    threshold sets: a new health signal should not require a migration.
+
+    ``mode`` separates *detecting* a regression from *acting* on one.
+    ``NOTIFY_ONLY`` evaluates and records exactly as ``AUTO_EXECUTE`` does but
+    stops short of moving traffic -- an organization may reasonably want to
+    watch the automation agree with its engineers for a month before letting
+    it act, and that is their call to make rather than ours.
+
+    ``min_samples`` is the INSUFFICIENT_DATA floor (M3-3.7-FR-023). Below it
+    no trigger may fire, mirroring Phase 3.5's own discipline: a thin sample
+    is not evidence of failure any more than it is evidence of health, and an
+    automatic rollback fired on four requests would be indistinguishable from
+    noise.
+
+    ``cooldown_seconds`` is the anti-flap guard (AC-12) -- see
+    ``app.runtime.deployment.rollback``."""
+
+    __tablename__ = "rollback_trigger_policies"
+    __table_args__ = (
+        CheckConstraint("mode IN ('AUTO_EXECUTE', 'NOTIFY_ONLY')",
+                        name="ck_rollback_trigger_policies_mode"),
+        CheckConstraint("min_samples >= 1", name="ck_rollback_trigger_policies_min_samples"),
+        CheckConstraint("cooldown_seconds >= 0", name="ck_rollback_trigger_policies_cooldown"),
+        Index("ix_rollback_trigger_policies_scope",
+              "organization_id", "environment_id", "agent_id"),
+    )
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    environment_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("environments.id", ondelete="CASCADE"), nullable=True,
+    )
+    agent_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agents.id", ondelete="CASCADE"), nullable=True,
+    )
+    thresholds: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    mode: Mapped[str] = mapped_column(String(16), nullable=False, default="AUTO_EXECUTE")
+    min_samples: Mapped[int] = mapped_column(Integer, nullable=False, default=20)
+    cooldown_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=900)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+
+
+class RollbackEvent(Base, UUIDPrimaryKeyMixin):
+    """Phase 3.7 (M3-3.7-FR-011, FR-012) -- append-only, one row per rollback
+    that actually happened, whatever fired it.
+
+    ``from_version_id``/``to_version_id`` are recorded rather than derived so
+    the record survives any later change to version lineage: what a rollback
+    *did* is a historical fact, and reading it back through a mutable pointer
+    would let the past change.
+
+    ``evidence_ref`` holds the candidate's health metrics at the moment of
+    rollback (M3-3.7-FR-012). This is the point of the table as much as the
+    audit is: a rolled-back candidate is precisely the thing an engineer needs
+    to diagnose, and the rollback must not be the act that destroys the reason
+    for it.
+
+    ``dedup_key`` backs the partial unique index that makes one threshold
+    crossing produce exactly one automatic rollback (AC-07) -- the database
+    decides the race, not application timing, the same primitive Phase 3.4
+    used for ``uq_traffic_allocations_current``. It is null for manual and
+    forced rollbacks, which are deliberately outside the constraint: a human
+    may roll the same deployment back twice, and being refused by a uniqueness
+    index would be absurd. Automation is not owed that latitude.
+
+    ``status`` is ``IN_PROGRESS`` only between the intent being recorded and
+    the traffic move committing. It is the durable half of the recovery model
+    (M3-3.7-FR-050): a crash mid-rollback leaves a readable ``IN_PROGRESS``
+    row, and re-evaluation resumes or completes it rather than leaving a
+    half-applied allocation. ``initiated_by`` is null for an automatic
+    rollback -- writing a system user id there would make the audit trail
+    claim a person acted."""
+
+    __tablename__ = "rollback_events"
+    __table_args__ = (
+        CheckConstraint("trigger IN ('MANUAL', 'REQUESTED', 'AUTOMATIC', 'FORCED')",
+                        name="ck_rollback_events_trigger"),
+        CheckConstraint("status IN ('IN_PROGRESS', 'COMPLETED', 'FAILED')",
+                        name="ck_rollback_events_status"),
+        Index("ix_rollback_events_deployment_created", "deployment_id", "created_at"),
+        Index("ix_rollback_events_agent_env_created", "agent_id", "environment_id", "created_at"),
+    )
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    deployment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agent_deployments.id", ondelete="CASCADE"), nullable=False,
+    )
+    agent_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agents.id", ondelete="CASCADE"), nullable=False,
+    )
+    environment_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("environments.id", ondelete="SET NULL"), nullable=True,
+    )
+    rollout_plan_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("rollout_plans.id", ondelete="SET NULL"), nullable=True,
+    )
+    from_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agent_versions.id", ondelete="RESTRICT"), nullable=False,
+    )
+    to_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agent_versions.id", ondelete="RESTRICT"), nullable=False,
+    )
+    trigger: Mapped[str] = mapped_column(String(24), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="COMPLETED")
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    justification: Mapped[str | None] = mapped_column(Text, nullable=True)
+    evidence_ref: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    policy_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("rollback_trigger_policies.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    initiated_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    dedup_key: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

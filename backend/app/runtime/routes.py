@@ -25,6 +25,7 @@ from app.models.user import User
 from app.runtime.deployment.canary import CanaryRolloutService
 from app.runtime.deployment.health import HealthEvaluationService
 from app.runtime.deployment.service import DeploymentLifecycleService
+from app.runtime.deployment.rollback import RollbackPolicyService, RollbackService
 from app.runtime.deployment.strategies import DeploymentStrategyService
 from app.runtime.deployment.traffic import TrafficAllocationService
 from app.runtime.environment.service import EnvironmentService, PromotionPathService, PromotionService
@@ -96,6 +97,11 @@ from app.runtime.schemas import (
     ProviderCredentialRead,
     ProviderCredentialTestResult,
     ProviderCredentialUpsert,
+    RollbackEvaluationRead,
+    RollbackEventRead,
+    RollbackRequest,
+    RollbackTriggerPolicyRead,
+    RollbackTriggerPolicyWrite,
     RuntimeApprovalDecision,
     RuntimeApprovalRead,
     RolloutActionRequest,
@@ -104,6 +110,7 @@ from app.runtime.schemas import (
     RolloutPlanRead,
     RuntimeDashboardRead,
     RuntimeEventRead,
+    ForcedRollbackRequest,
     StrategyOutcomeRead,
     ToolCallRead,
     ToolCreate,
@@ -184,6 +191,11 @@ _DEPLOY_VIEW = "runtime.deployment.view"
 _DEPLOY_CREATE = "runtime.deployment.create"
 _DEPLOY_ACTION = "runtime.deployment.deploy"
 _DEPLOY_ROLLBACK = "runtime.deployment.rollback"
+# Phase 3.7 §11 -- the elevated authority a forced/override rollback requires.
+# Deliberately a new permission rather than a reuse: every other deployment
+# permission is one an ordinary release engineer holds, and an override whose
+# authority everyone already has is not an override.
+_DEPLOY_FORCE_ROLLBACK = "runtime.deployment.force_rollback"
 _ENV_VIEW = "runtime.environment.view"
 _ENV_MANAGE = "runtime.environment.manage"
 _EXEC_VIEW = "runtime.execution.view"
@@ -1497,6 +1509,104 @@ def blue_green_rollback(deployment_id: uuid.UUID,
     the previous version" separately from "can push a new one forward"."""
     return DeploymentStrategyService(db).blue_green_rollback(actor, deployment_id,
                                                              idempotency_key=idempotency_key)
+
+
+# --------------------------------------------------------------------------- #
+# Phase 3.7 (ACT-SRS-M3 §Phase-3.7 §6) -- automated rollback & release safety.
+#
+# Nested under ``/deployments/{id}/rollback/...`` rather than claiming
+# ``POST /deployments/{id}/rollback`` itself, which has existed since Phase 5.0
+# and performs a *redeploy* (it reassigns ``agent_version_id`` and flips
+# ``status``) rather than a traffic shift. Taking that path over would have
+# silently changed a Milestone 1 API contract and required rewriting passing
+# tests; nesting is the identical resolution Phase 3.1 used when its own
+# ``/pause``/``/resume``/``/retire`` collided with Phase 5.0's, and it leaves
+# every pre-existing endpoint untouched.
+#
+# ``/execute`` uses ``runtime.deployment.rollback`` -- the same permission the
+# 3.5 and 3.6 rollback operations already use, so an organization's existing
+# "may return to the previous version" grant covers this too without any
+# re-granting. ``/evaluate`` uses ``.deploy``: deciding whether automation
+# should act is a release-management act, and an operator trusted only to roll
+# back is not thereby trusted to arm or run the policy engine.
+# --------------------------------------------------------------------------- #
+@router.post("/deployments/{deployment_id}/rollback/execute", response_model=RollbackEventRead)
+def execute_rollback(deployment_id: uuid.UUID, payload: RollbackRequest | None = None,
+                     idempotency_key: str | None = Header(default=None,
+                                                          alias="Idempotency-Key"),
+                     actor: User = Depends(require_permission(_DEPLOY_ROLLBACK)),
+                     db: Session = Depends(get_db)):
+    """The unified rollback (M3-3.7-FR-010). Returns traffic to the version
+    designated by ``rollback_target_id``, failing closed if none is."""
+    service = RollbackService(db)
+    deployment = service.get_or_404(actor, deployment_id)
+    return service.execute(actor, deployment, trigger="MANUAL",
+                           reason=(payload.reason if payload else None),
+                           idempotency_key=idempotency_key)
+
+
+@router.post("/deployments/{deployment_id}/rollback/force", response_model=RollbackEventRead)
+def force_rollback(deployment_id: uuid.UUID, payload: ForcedRollbackRequest,
+                   idempotency_key: str | None = Header(default=None,
+                                                        alias="Idempotency-Key"),
+                   actor: User = Depends(require_permission(_DEPLOY_FORCE_ROLLBACK)),
+                   db: Session = Depends(get_db)):
+    """§11 -- a dangerous operation. Requires the elevated
+    ``runtime.deployment.force_rollback`` permission *and* a written
+    justification, and is audited at CRITICAL severity.
+
+    The elevated permission is a genuinely new one rather than a reuse: every
+    existing deployment permission is held by ordinary release engineers, and
+    the whole point of an override is that not everyone who may roll back
+    normally may bypass the checks that make a rollback safe."""
+    service = RollbackService(db)
+    deployment = service.get_or_404(actor, deployment_id)
+    return service.force(actor, deployment, justification=payload.justification,
+                         target_version_id=payload.target_version_id,
+                         idempotency_key=idempotency_key)
+
+
+@router.post("/deployments/{deployment_id}/rollback/evaluate",
+             response_model=RollbackEvaluationRead)
+def evaluate_rollback_triggers(deployment_id: uuid.UUID,
+                               idempotency_key: str | None = Header(default=None,
+                                                                    alias="Idempotency-Key"),
+                               actor: User = Depends(require_permission(_DEPLOY_ACTION)),
+                               db: Session = Depends(get_db)):
+    """Bounded, idempotent trigger evaluation (M3-3.7-FR-022). Interim until
+    Phase 3.8's scheduler calls this exact method on a timer."""
+    service = RollbackService(db)
+    deployment = service.get_or_404(actor, deployment_id)
+    return service.evaluate(actor, deployment, idempotency_key=idempotency_key)
+
+
+@router.get("/deployments/{deployment_id}/rollback/history",
+            response_model=list[RollbackEventRead])
+def rollback_history(deployment_id: uuid.UUID, limit: int = 50, offset: int = 0,
+                     actor: User = Depends(require_permission(_DEPLOY_VIEW)),
+                     db: Session = Depends(get_db)):
+    service = RollbackService(db)
+    service.get_or_404(actor, deployment_id)
+    return service.history(actor, deployment_id, limit=limit, offset=offset)
+
+
+@router.get("/rollback-policies", response_model=list[RollbackTriggerPolicyRead])
+def list_rollback_policies(actor: User = Depends(require_permission(_DEPLOY_VIEW)),
+                           db: Session = Depends(get_db)):
+    return RollbackPolicyService(db).list_for_org(actor)
+
+
+@router.put("/rollback-policies", response_model=RollbackTriggerPolicyRead)
+def upsert_rollback_policy(payload: RollbackTriggerPolicyWrite,
+                           actor: User = Depends(require_permission(_DEPLOY_ACTION)),
+                           db: Session = Depends(get_db)):
+    """Upsert by scope rather than by id: a tenant configures "the policy for
+    this environment", and making the caller first discover whether one exists
+    would be a race they cannot win."""
+    return RollbackPolicyService(db).upsert(
+        actor, environment_id=payload.environment_id, agent_id=payload.agent_id,
+        thresholds=payload.thresholds, mode=payload.mode, min_samples=payload.min_samples,
+        cooldown_seconds=payload.cooldown_seconds, enabled=payload.enabled)
 
 
 @router.post("/deployments/{deployment_id}/heartbeat", response_model=DeploymentHealthRead)
