@@ -14,7 +14,7 @@
 >
 > **Milestone 2** (Enterprise Integration Framework — **complete, 9/9**): the connector abstraction & lifecycle, a pluggable authentication framework, registry & health, a connector SDK, four generic connectors (REST, database, storage, queue), and external identity federation (OIDC + SAML). See [`docs/integration/connectors.md`](docs/integration/connectors.md) and [`docs/identity/federation.md`](docs/identity/federation.md).
 >
-> **Milestone 3** (Deployment & Release — **in progress, 7/10**): the deployment lifecycle core, governed environments & promotion, the release gate, weighted traffic allocation with a version resolver and fail-closed execution gate, the canary rollout engine with AI-aware release health, blue-green/recreate strategies, and **automated rollback** — per-tenant trigger policies that roll a failing candidate back on their own, strictly subordinate to the kill switch. See [`docs/deployment/`](docs/deployment/).
+> **Milestone 3** (Deployment & Release — **in progress, 8/10**): the deployment lifecycle core, governed environments & promotion, the release gate, weighted traffic allocation with a version resolver and fail-closed execution gate, the canary rollout engine with AI-aware release health, blue-green/recreate strategies, **automated rollback** — per-tenant trigger policies that roll a failing candidate back on their own, strictly subordinate to the kill switch — and a **distributed scheduler** whose instances coordinate through Postgres leases so every due job runs exactly once. See [`docs/deployment/`](docs/deployment/).
 >
 > **Current state at a glance** — [Where the project is now](#where-the-project-is-now) below, or [`REPO_STATE.md`](REPO_STATE.md) for the verified, exhaustive version.
 
@@ -38,10 +38,10 @@ is the document to trust if it and this README ever disagree.*
 
 | | |
 |---|---|
-| Backend tests | **1,633 passed**, 0 failed, 1 deselected |
+| Backend tests | **1,684 passed**, 0 failed, 1 deselected |
 | Frontend tests | **297 passed** |
-| Live schema | **121 tables**, migration head `0042_automated_rollback` |
-| HTTP routes | **524** |
+| Live schema | **123 tables**, migration head `0043_distributed_scheduler` |
+| HTTP routes | **530** |
 
 ### Milestones
 
@@ -51,7 +51,7 @@ is the document to trust if it and this README ever disagree.*
 | **Phase 5.0–5.2** | Complete | Agent runtime & lifecycle, enterprise registry, immutable signed versioning |
 | **Milestone 1** — real execution | **Complete** | Model provider abstraction, a real OpenAI-compatible adapter, streaming & token/cost accounting, an error taxonomy with retry/circuit-breaking, per-organization encrypted credentials, HTTP tool execution behind an SSRF egress guard, tool schema validation, and the model-driven tool invocation loop |
 | **Milestone 2** — Enterprise Integration Framework | **Complete (9/9)** | Connector abstraction/lifecycle, a pluggable authentication framework, registry & health, a connector SDK, four generic connectors (REST, database, storage, queue), and external identity federation (OIDC + SAML) |
-| **Milestone 3** — Deployment & Release | **In progress (7/10)** | Deployment lifecycle core, environments & promotion, the release gate, weighted traffic allocation + version resolver, the canary engine, blue-green/recreate strategies, and automated rollback with per-tenant trigger policies. Next: 3.8 scheduler; then 3.9 workers (+ rolling), 3.10 operator frontend |
+| **Milestone 3** — Deployment & Release | **In progress (8/10)** | Deployment lifecycle core, environments & promotion, the release gate, weighted traffic allocation + version resolver, the canary engine, blue-green/recreate strategies, automated rollback with per-tenant trigger policies, and a distributed scheduler that drives them. Next: 3.9 workers (+ rolling), then 3.10 operator frontend |
 
 **What "complete" means for Milestone 1**: an agent that is registered,
 versioned, signed and deployed genuinely executes end to end — it calls a real
@@ -1241,12 +1241,10 @@ to read as pending. [`ROADMAP.md`](ROADMAP.md) is the maintained plan and
 
 **Immediately next — finishing Milestone 3:**
 
-- **3.8 Distributed scheduler** — replaces today's interim in-process loops. The
-  canary engine's `evaluate` and the rollback engine's `rollback/evaluate` are
-  already the exact methods it will call on a timer, with no change needed in
-  either.
 - **3.9 Distributed workers + rolling deployment** — the worker fleet that
-  finally gives rolling a real substrate to roll over.
+  finally gives rolling a real substrate to roll over. The milestone's riskiest
+  phase; it reuses 3.8's lease discipline and the same commit-before-dispatch
+  lesson to run agent executions at scale.
 - **3.10 Operator frontend** — deployment, rollout and traffic UI.
 
 **Known gaps, stated plainly** (the full list is [`REPO_STATE.md`](REPO_STATE.md)
