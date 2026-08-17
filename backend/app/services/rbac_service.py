@@ -146,6 +146,13 @@ PERMISSION_CATALOG: dict[str, str] = {
     # kill switch.
     "runtime.deployment.force_rollback":
         "Force a rollback past normal preconditions (dangerous; requires justification)",
+    # Distributed Scheduler (Phase 3.8, ACT-SRS-M3 §Phase-3.8). Job management
+    # is separated from job *viewing* because a scheduled job is a standing
+    # instruction to act on production without a human present -- being allowed
+    # to read the run history is a much smaller grant than being allowed to arm
+    # a new one.
+    "runtime.scheduler.view": "View scheduled job definitions and run history",
+    "runtime.scheduler.manage": "Create, edit, enable and disable scheduled jobs",
     # Environment & Promotion Model (Phase 3.2, ACT-SRS-M3 §3.2). Promoting a
     # deployment reuses "runtime.deployment.deploy" (below/above) rather than
     # a third code, since a promotion *is* a deployment operation; these two

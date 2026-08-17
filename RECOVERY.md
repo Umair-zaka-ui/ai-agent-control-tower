@@ -1,16 +1,18 @@
 # Backup and system-migration guide
 
-**Last verified 2026-08-17** after Phase 3.7. Facts that matter for a restore,
+**Last verified 2026-08-17** after Phase 3.8. Facts that matter for a restore,
 all re-checked live rather than carried forward: migration head
-`0042_automated_rollback`, **121 tables**, PostgreSQL **17.10** locally,
+`0043_distributed_scheduler`, **123 tables**, PostgreSQL **17.10** locally,
 `backend/.venv` on Python **3.13.14**, Node **v24.18.0**. Sections naming a
 version were corrected in the 2026-08-14 pass — the previous text said Python
 3.12 and Node 22 LTS, and its `py -3.12 -m venv` command would now fail outright
 on this machine.
 
 Phase 3.7 introduced the first automation that moves production traffic without
-a human, so this guide now also covers **in-flight rollback state** — see that
-section below before restoring into anything that will serve traffic.
+a human, so this guide covers **in-flight rollback state**; Phase 3.8 added the
+distributed scheduler that drives it, so it now also covers **scheduler state
+and lease recovery**. Read both before restoring into anything that will serve
+traffic.
 
 > **Read "Encryption keys" below before trusting any snapshot.** A verified
 > database dump plus a Git bundle is *not* sufficient to recover this platform's
@@ -276,8 +278,8 @@ npm.cmd run dev
 For a restored snapshot, `alembic current` must match the revision in
 `manifest.json`. **Do not run `app.seed` against restored data.**
 
-As of 2026-08-17 a healthy restore reports head `0042_automated_rollback` and
-**121 tables**; the backend suite is `1,633 passed, 0 failed, 1 deselected` and
+As of 2026-08-17 a healthy restore reports head `0043_distributed_scheduler` and
+**123 tables**; the backend suite is `1,684 passed, 0 failed, 1 deselected` and
 the frontend `297 passed`. The one deselected test is the `live_provider`-marked
 Ollama check, excluded by default via `backend/pytest.ini` — a deselection, not a
 failure, and it should stay deselected on a restored machine too.
@@ -347,6 +349,61 @@ Automation is opt-in by design — absent an enabled policy nothing fires — so
 freshly-seeded system has none of this to worry about. Note that the migration
 deliberately creates no policies for existing tenants, precisely so that a
 restore never silently arms automation nobody asked for.
+
+## Scheduler state (Phase 3.8)
+
+The distributed scheduler splits cleanly along the same durable/ephemeral line
+as everything else here, and the split is the whole reason a crashed instance
+is not a problem.
+
+| State | Kind | On restore |
+|---|---|---|
+| `job_definitions` | **durable** | restored with the database; jobs resume being claimed |
+| `job_runs` history | **durable** | restored; past outcomes are preserved |
+| leases (`lease_owner`, `lease_expires_at`, `heartbeat_at`) | **ephemeral** | never honoured — a stale lease is *recovered*, not respected |
+
+**A restored lease is never treated as a live owner.** After a restore, every
+`lease_owner` in the database names a process that no longer exists. The
+scheduler's recovery scan reclaims any non-terminal run whose lease has lapsed,
+records where it came from in `recovered_from`, and re-runs it. Nothing needs to
+be cleared by hand.
+
+Re-running is safe because every registered handler is an idempotent
+reconciliation — sweep current state, evaluate current gates — never an event
+emitter. That is a deliberate design constraint, not a happy accident: a
+database lease can guarantee exactly-once *dispatch*, but not exactly-once side
+effects, so the handlers are written so a second run is harmless.
+
+**Nothing starts a scheduler automatically.** Scheduler instances are separate
+processes (`python -m app.scheduler.runner`); the API process deliberately does
+not run one. A restored system therefore does no scheduled work at all until
+you start an instance — which is usually what you want while verifying a
+restore.
+
+**What to check after restoring**, before starting any scheduler instance:
+
+```sql
+-- Jobs that were mid-flight when the snapshot was taken.
+SELECT id, job_definition_id, status, attempt, lease_owner, lease_expires_at
+FROM job_runs WHERE status IN ('CLAIMED', 'RUNNING') ORDER BY created_at;
+
+-- What will start running the moment an instance is launched.
+SELECT name, handler_key, enabled, next_run_at FROM job_definitions
+WHERE enabled ORDER BY next_run_at;
+```
+
+The first query is informational — those rows recover themselves. The second is
+the one to act on: if you are restoring into anything other than a faithful
+continuation of production, disable the jobs before starting an instance, for
+the same reason the rollback trigger policies should be disabled (§ above):
+
+```sql
+UPDATE job_definitions SET enabled = false;
+```
+
+Platform-level jobs (`organization_id IS NULL`) are seeded **disabled** and
+`CONNECTOR_HEALTH_SCHEDULER_ENABLED` still defaults to false, so a
+freshly-restored system has nothing armed unless someone armed it deliberately.
 
 ## What is intentionally rebuilt
 

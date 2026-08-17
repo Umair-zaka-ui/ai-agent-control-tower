@@ -1941,21 +1941,59 @@ with no human watching.
   **1,633** total green, 1 deselected; backend only. See
   [docs/deployment/rollback.md](docs/deployment/rollback.md).
 
-**Milestone 3 now has 7 of 10 sub-phases done.**
+### Part 3.8 — Distributed Scheduler ✅
 
-Next: 3.8 (the distributed scheduler, which drives 3.5's and 3.7's bounded
-evaluation methods on a real timer).
+Milestone 3's eighth sub-phase, and the first half of its distributed-systems
+core. Multiple scheduler instances coordinate through PostgreSQL so a due job
+runs exactly once, a crashed instance's work is recovered, and business logic
+stays in handlers.
+
+- **`FOR UPDATE SKIP LOCKED` leasing, no broker** — the same mechanism the
+  execution queue already uses, and the same single-datastore commitment as
+  ADR-0002.
+- **The claim commits before the handler dispatches** — this phase's absolute
+  rule, and one this codebase already paid to learn. The original M1 deadlock
+  (documented in `ToolLoopOrchestrator._execute_parallel`) was invisible to
+  Postgres's own deadlock detector because the blocked connection looked idle.
+  The scheduler has the identical shape, so the claim's lock is released first.
+  Proven three ways: from inside a handler, behaviourally, and structurally.
+- **Exactly-once per occurrence** via a unique index on
+  `(job_definition_id, occurrence_key)`, the key derived from when a job was
+  *due* rather than when it was claimed. Retry and stale-lease recovery reuse
+  the same run row. **The honest limit is stated**: exactly-once *dispatch*,
+  not side effects — so every handler is an idempotent reconciliation.
+- **The §20 proof, both parts, on real separate connections** — two instances
+  contend and exactly one runs; a crashed owner's lease is reclaimed and
+  completed with no duplicate.
+- **The scheduler dispatches; it does not decide.** Four handlers, each a thin
+  adapter over the domain that owned the logic. 3.5's `evaluate_and_advance`
+  and 3.7's `RollbackService.evaluate` were written for exactly this and needed
+  **no change**.
+- **Dispatch is a fixed registry, not dynamic import** — a database row can
+  never cause arbitrary code to execute (AST-asserted).
+- **The interim in-process scheduler is retired**, exactly as its own docstring
+  specified. Sweep logic rehoused unchanged; no parallel path; the API process
+  deliberately starts no scheduler.
+- **CRON deliberately unimplemented** rather than declared-and-broken — the
+  same honesty 3.6 applied to ROLLING.
+- Migration `0043_distributed_scheduler` (2 tables, reversible); routes
+  524 → 530; schema 121 → 123 tables.
+- 51 new backend tests. Backend **1,684** total green, 1 deselected; backend
+  only. See [docs/deployment/scheduler.md](docs/deployment/scheduler.md).
+
+**Milestone 3 now has 8 of 10 sub-phases done.**
+
+Next: 3.9 (the distributed worker fleet **and the ROLLING strategy** — the
+milestone's riskiest phase, reusing 3.8's lease discipline).
 
 ## Future (Phase 3+)
 
-**Milestone 3, remaining**: a real distributed job scheduler
-(3.8 — 2.1.3's own health-check scheduler is explicitly interim and
-built to be replaced, not extended, when this lands, as are 3.5's
-auto-advance and 3.7's rollback evaluation, both of which already
-expose the exact bounded method a scheduler will call), distributed
-workers **and the ROLLING strategy** (3.9 — deferred from 3.6
-because rolling needs an instance substrate that only the worker
-fleet creates), an operator frontend (3.10).
+**Milestone 3, remaining**: distributed workers **and the ROLLING
+strategy** (3.9 — deferred from 3.6 because rolling needs an
+instance substrate that only the worker fleet creates; it reuses
+3.8's lease discipline and the same commit-before-dispatch lesson,
+and is where the PG16/17 Compose mismatch becomes materially
+testable), an operator frontend (3.10).
 **Milestone 2 is complete** (connector framework, all four generic
 connectors — REST, database, storage, queue — and external identity
 federation). SQL Server support for the database connector, Azure Blob

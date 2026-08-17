@@ -265,6 +265,13 @@ class ErrorCode:
     ROLLBACK_BLOCKED_BY_KILL_SWITCH = "ROLLBACK_BLOCKED_BY_KILL_SWITCH"
     ROLLBACK_FORCE_UNAUTHORIZED = "ROLLBACK_FORCE_UNAUTHORIZED"
     ROLLBACK_CONFLICT = "ROLLBACK_CONFLICT"
+    # Phase 3.8 (ACT-SRS-M3 §Phase-3.8) -- the distributed scheduler.
+    # ``JOB_HANDLER_UNKNOWN`` is the security-relevant one: handlers are a
+    # fixed code-side registry, so a job definition naming anything else is
+    # refused rather than resolved. A row in the database can never cause
+    # arbitrary code to be imported or executed.
+    JOB_DEFINITION_NOT_FOUND = "JOB_DEFINITION_NOT_FOUND"
+    JOB_HANDLER_UNKNOWN = "JOB_HANDLER_UNKNOWN"
     EXECUTION_NOT_FOUND = "EXECUTION_NOT_FOUND"
     EXECUTION_ALREADY_COMPLETED = "EXECUTION_ALREADY_COMPLETED"
     EXECUTION_CANCELLED = "EXECUTION_CANCELLED"
@@ -655,6 +662,11 @@ _STATUS: dict[str, int] = {
     ErrorCode.ROLLBACK_BLOCKED_BY_KILL_SWITCH: status.HTTP_423_LOCKED,
     ErrorCode.ROLLBACK_FORCE_UNAUTHORIZED: status.HTTP_403_FORBIDDEN,
     ErrorCode.ROLLBACK_CONFLICT: status.HTTP_409_CONFLICT,
+    # Phase 3.8. 422 for an unknown handler: the request is well-formed but
+    # names something the platform does not implement, which is a content
+    # problem rather than a missing resource (404) or a state conflict (409).
+    ErrorCode.JOB_DEFINITION_NOT_FOUND: status.HTTP_404_NOT_FOUND,
+    ErrorCode.JOB_HANDLER_UNKNOWN: status.HTTP_422_UNPROCESSABLE_ENTITY,
     ErrorCode.EXECUTION_NOT_FOUND: status.HTTP_404_NOT_FOUND,
     ErrorCode.EXECUTION_ALREADY_COMPLETED: status.HTTP_409_CONFLICT,
     ErrorCode.EXECUTION_CANCELLED: status.HTTP_409_CONFLICT,
