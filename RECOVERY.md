@@ -1,5 +1,17 @@
 # Backup and system-migration guide
 
+**Last verified 2026-08-14** against `main` at `5b33f42` (Phase 3.6). Facts that
+matter for a restore, all re-checked live rather than carried forward: migration
+head `0041_canary_rollout`, **119 tables**, PostgreSQL **17.10** locally,
+`backend/.venv` on Python **3.13.14**, Node **v24.18.0**. Sections below that
+name a version were corrected in this pass — the previous text said Python 3.12
+and Node 22 LTS, and its `py -3.12 -m venv` command would now fail outright on
+this machine.
+
+> **Read "Encryption keys" below before trusting any snapshot.** A verified
+> database dump plus a Git bundle is *not* sufficient to recover this platform's
+> encrypted secrets, and the automated scripts do not cover the key material.
+
 This project uses two independent recovery channels:
 
 1. **Personal GitHub repository** for committed source history (keep it private):
@@ -32,6 +44,46 @@ The scripts under `scripts/backup/` are intentionally conservative:
   `node_modules`, and browser tokens are excluded from ordinary snapshots.
 
 No backup or restore script stops Docker containers or PostgreSQL services.
+
+## Encryption keys — the one gap the scripts do not close
+
+**`backend/.keys/` is not backed up by anything, and without it a restored
+database's encrypted columns are permanently unreadable.** This was verified in
+the 2026-08-14 pass, not assumed: `.keys/` and `backend/.keys/` are both listed
+in `.gitignore`, so the Git bundle excludes them and `Backup-ControlTower.ps1`'s
+"nonignored untracked files" copy skips them by definition; and
+`Export-ControlTowerSecrets.ps1` archives a fixed list of three paths
+(`backend/.env`, `frontend/.env`, `backups/seed-credentials.txt`) that does not
+include them either. The directory currently holds 13,727 files on this machine.
+
+Two distinct kinds of key material live there, both introduced after this guide
+was first written:
+
+| Path | Introduced | What is lost without it |
+|---|---|---|
+| `backend/.keys/model_credentials.key` (`MODEL_CREDENTIAL_ENCRYPTION_KEY_PATH`) | Phase 5.7a.5 | The Fernet key for **every encrypted secret in the database** — per-organization model-provider credentials, connector credentials, connector OAuth access/refresh tokens, tool credentials, and identity-federation client secrets. The ciphertext restores fine and decrypts to nothing. |
+| `backend/.keys/*.pem` (`SIGNING_KEY_PATH`) | Phase 5.2.4 | The Ed25519 **private** signing keys behind every version attestation. Public keys live in the database, so past signatures still verify; but the key cannot sign again, so rotation history and continuity of the signing identity are gone. |
+
+If the key is absent at startup the platform generates and persists a **new**
+one. Nothing fails loudly — new secrets encrypt and decrypt normally while every
+pre-existing ciphertext silently becomes undecryptable. That is why this is
+called out here rather than left to be discovered during an actual recovery.
+
+Until the export script is extended to cover it, archive the directory manually
+alongside a snapshot, to the same marked target, with the same AES-256 treatment
+and a passphrase stored in a password manager:
+
+```powershell
+$sevenZip = 'C:\Program Files\7-Zip\7z.exe'
+$stamp = [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ')
+& $sevenZip a -t7z -mx=9 -mhe=on -p `
+  (Join-Path $target "control-tower-keys-$stamp.7z") `
+  (Join-Path $repoRoot 'backend\.keys')
+```
+
+Preferred recovery behavior remains reissuing credentials rather than preserving
+them (see below) — but that is a decision to make deliberately, not one to have
+made for you by a backup that quietly omitted the keys.
 
 On Windows systems that block unsigned local PowerShell scripts, enable them only
 for the current terminal before running the commands below:
@@ -111,6 +163,11 @@ archive. The encrypted export may contain:
 - `frontend/.env`
 - `backups/seed-credentials.txt`
 
+It does **not** contain `backend/.keys/` — see "Encryption keys" above, and
+archive that directory separately if exact credential continuity is the goal.
+Reissuing is the safer default precisely because it does not depend on that key
+surviving.
+
 The development outbox is excluded by default because it contains plaintext
 verification/reset links. Include it only when truly needed:
 
@@ -149,17 +206,27 @@ on another device or in its web interface.
 Install:
 
 - Git
-- PostgreSQL 17 (server and command-line tools)
-- Python 3.12
-- Node.js 22 LTS
-- 7-Zip (only when decrypting a secret archive)
+- PostgreSQL 17 (server and command-line tools) — 17.10 locally
+- Python 3.13 — `backend/.venv` is on 3.13.14; the guide previously said 3.12,
+  which is no longer installed on this machine
+- Node.js 24 — v24.18.0 locally; the guide previously said 22 LTS
+- 7-Zip (only when decrypting a secret archive, or the key archive above)
 - Docker Desktop only if container deployment is required
+
+`pip install -r requirements.txt` now pulls several dependencies added after this
+guide was written — `boto3`, `pika`, `PyMySQL` (all pure-Python or wheel-only)
+and, for SAML federation, `python3-saml` + `xmlsec` + `lxml`. The last three are
+the only ones with a native component: `xmlsec` binds the `libxmlsec1` C library
+and its wheel is tightly version-paired with `lxml`, so install from the pinned
+`requirements.txt` rather than resolving those three loosely. If that pairing
+fails on a new machine, it fails at install time and is obvious — no silent
+degradation.
 
 The snapshot carries its own verified scripts under `tools`, so recovery does not
 depend on cloning GitHub first. Set the real snapshot path, then verify it:
 
 ```powershell
-$snapshot = 'E:\AI-Agent-Control-Tower-Recovery\20260717T114925Z'
+$snapshot = 'E:\AI-Agent-Control-Tower-Recovery\20260814T114925Z'
 & (Join-Path $snapshot 'tools\Verify-ControlTowerBackup.ps1') `
   -SnapshotPath $snapshot
 ```
@@ -190,7 +257,7 @@ archive. From the restored repository:
 
 ```powershell
 cd backend
-py -3.12 -m venv .venv
+py -3.13 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 .\.venv\Scripts\alembic.exe current
 .\.venv\Scripts\uvicorn.exe app.main:app --port 8002
@@ -204,6 +271,12 @@ npm.cmd run dev
 
 For a restored snapshot, `alembic current` must match the revision in
 `manifest.json`. **Do not run `app.seed` against restored data.**
+
+As of 2026-08-14 a healthy restore reports head `0041_canary_rollout` and
+**119 tables**; the backend suite is `1,575 passed, 0 failed, 1 deselected` and
+the frontend `297 passed`. The one deselected test is the `live_provider`-marked
+Ollama check, excluded by default via `backend/pytest.ini` — a deselection, not a
+failure, and it should stay deselected on a restored machine too.
 
 ## Docker warning
 
@@ -226,3 +299,9 @@ These are not portable and should not be backed up:
 
 Package locks, migrations, Dockerfiles, application code, and documentation are
 already preserved by Git/GitHub and the verified Git bundle.
+
+**`backend/.keys/` is not on this list.** It is gitignored, so it looks like the
+same category of throwaway local state, and it is not — the platform will happily
+regenerate a key and leave every existing ciphertext unreadable. Treat it as
+secret material to be deliberately archived or deliberately abandoned, never as
+something that rebuilds itself.
