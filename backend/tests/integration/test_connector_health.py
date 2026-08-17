@@ -20,7 +20,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.integration import scheduler
+from app.integration import sweep
 from app.integration.base import Connector
 from app.integration.errors import ConnectorNotFoundError, ConnectorUnavailableError
 from app.integration.registry import ConnectorRegistry
@@ -357,18 +357,46 @@ def test_ac19_scheduler_disabled_by_default_and_ondemand_is_deterministic(client
     assert r1["result"] == r2["result"] == "HEALTHY"
 
 
-def test_ac20_scheduler_is_interim_in_process_and_functionally_correct(
+def test_ac20_sweep_is_functionally_correct_on_the_real_scheduler(
     client: TestClient, admin: dict, db_session: Session,
 ):
-    source = Path(scheduler.__file__).read_text(encoding="utf-8")
-    assert "INTERIM" in source and "REPLACEABLE" in source
+    """Updated in Phase 3.8, when this test's original subject was retired.
+
+    It previously asserted that ``app/integration/scheduler.py`` was an INTERIM,
+    REPLACEABLE, ``asyncio``-based in-process loop. Phase 3.8 replaced that loop
+    with the real distributed scheduler, exactly as the interim module's own
+    docstring specified it should be, so those source assertions now describe a
+    file that deliberately no longer exists.
+
+    What this test was actually protecting -- that a scheduled sweep really
+    visits active instances and records a ``SCHEDULED`` health check -- is
+    preserved verbatim below, against the same ``run_sweep_once`` function
+    (rehoused to ``app/integration/sweep.py`` unchanged). The no-Celery
+    assertion is kept because it still holds and still matters: the platform's
+    scheduling mechanism is Postgres, not a broker.
+
+    The retirement itself is now *asserted* rather than merely allowed, which
+    makes this test stricter than it was: the interim module must be gone, and
+    the sweep must be reachable as a registered scheduler handler."""
+    source = Path(sweep.__file__).read_text(encoding="utf-8")
     assert "celery" not in source.lower() and "kombu" not in source.lower()
-    assert "asyncio" in source
+
+    # The interim in-process scheduler is retired -- no parallel path remains.
+    assert not (Path(sweep.__file__).parent / "scheduler.py").exists()
+    # Assert the *machinery* is gone, not the word: this module's docstring
+    # legitimately names asyncio while explaining what did not survive the
+    # move, and a bare substring check would match that explanation.
+    assert "create_task" not in source and "async def" not in source, \
+        "the in-process background task is gone"
+
+    # ...and the sweep is now a registered handler on the real scheduler.
+    from app.scheduler.handlers import registered_keys
+    assert "integration.connector_health_sweep" in registered_keys()
 
     instance = _create_mock_instance(client, admin)
     client.post(f"{RT}/connectors/{instance['id']}/activate", headers=admin["headers"])
 
-    checked = scheduler.run_sweep_once()
+    checked = sweep.run_sweep_once()
     assert checked >= 1
 
     row = db_session.execute(

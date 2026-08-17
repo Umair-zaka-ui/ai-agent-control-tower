@@ -201,6 +201,14 @@ class AuthorizationAuditEvent(str, enum.Enum):
     # threshold in ``meta`` -- an automatic rollback nobody can explain
     # afterwards is worse than no automation, because the next engineer cannot
     # tell a correct action from a bug.
+    # Phase 3.8 (ACT-SRS-M3 §Phase-3.8, §13) -- the distributed scheduler.
+    # SRS's own literal names, in the unprefixed family 3.2-3.7 established.
+    # Only tenant-scoped jobs are audited: a platform-level job has no
+    # organization to attribute to, and this codebase's audit service requires
+    # one -- putting platform work in an arbitrary tenant's trail would be
+    # worse than logging it.
+    SCHEDULED_JOB_STARTED = "SCHEDULED_JOB_STARTED"
+    SCHEDULED_JOB_FAILED = "SCHEDULED_JOB_FAILED"
     ROLLBACK_TRIGGER_FIRED = "ROLLBACK_TRIGGER_FIRED"
     # §11 -- a dangerous operation, always tagged CRITICAL in ``meta``, always
     # carrying the operator's justification.

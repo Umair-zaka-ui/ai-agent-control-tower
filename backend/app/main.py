@@ -16,7 +16,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.router import api_router
 from app.core.config import settings
 from app.core.middleware import install_http_middleware
-from app.integration import scheduler as connector_health_scheduler
 from app.identity.api import identity_router
 from app.identity.api.routes.registration import router as registration_router
 from app.identity.auth.routes import router as auth_v1_router
@@ -34,18 +33,24 @@ from app.authorization.admin.routes import router as admin_router
 from app.governance.routes import router as governance_router
 from app.runtime.routes import router as runtime_router
 from app.integration.routes import router as integration_router
+from app.scheduler.routes import router as scheduler_router
 from app.identity.errors import register_identity_exception_handlers
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    # Phase 2.1.3: starts the interim in-process connector health
-    # scheduler -- a no-op unless CONNECTOR_HEALTH_SCHEDULER_ENABLED is
-    # set (default false, including every test run). See
-    # app/integration/scheduler.py's module docstring for why this exists
-    # and how it's meant to be replaced, not extended, by Milestone 3.
-    connector_health_scheduler.start()
+    # Phase 3.8 retired the interim in-process connector-health scheduler that
+    # used to start here. Its own module docstring specified this retirement in
+    # advance -- "delete this module, delete its one call site in app/main.py's
+    # lifespan, register the same iteration as a real job" -- and that is what
+    # happened: the sweep now lives in app/integration/sweep.py and runs as the
+    # `integration.connector_health_sweep` handler on the real distributed
+    # scheduler (`python -m app.scheduler.runner`).
+    #
+    # The API process deliberately does *not* start a scheduler. A scheduler
+    # that ran inside the web process would scale with HTTP traffic rather than
+    # with scheduling need, and every API replica would become a competing
+    # instance whether the operator wanted a fleet or not.
     yield
-    connector_health_scheduler.stop()
 
 
 app = FastAPI(
@@ -148,3 +153,10 @@ app.include_router(runtime_router)
 # (2.1.3: /auth-schemes, /credentials, /health*) all share this one router.
 # No SDK or real connector yet (2.1.4/2.2.x).
 app.include_router(integration_router)
+
+# Phase 3.8: the distributed scheduler's management surface under
+# /api/v1/runtime/scheduler -- job definitions and run history only. The
+# claim/dispatch loop is a separate process (python -m app.scheduler.runner);
+# no HTTP route can dispatch a job, which is what keeps the lease the single
+# path to execution.
+app.include_router(scheduler_router)
