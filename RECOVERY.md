@@ -284,14 +284,44 @@ the frontend `297 passed`. The one deselected test is the `live_provider`-marked
 Ollama check, excluded by default via `backend/pytest.ini` — a deselection, not a
 failure, and it should stay deselected on a restored machine too.
 
-## Docker warning
+## Docker: the PostgreSQL version mismatch is CLOSED (Phase 3.9)
 
-The current logical backup is produced by PostgreSQL 17, while the repository's
-base Compose file still declares PostgreSQL 16 and a different database name
-(`agent_control_tower`). Do not copy Windows PostgreSQL data directories into a
-container and do not point the restore script at that PostgreSQL 16 service.
-Use a fresh PostgreSQL 17 target or create and review a dedicated Compose override
-with seeding disabled before container-based recovery.
+**This was a real recovery gap and it is now fixed.** Until Phase 3.9 the base
+Compose file declared PostgreSQL **16** and the database name
+`agent_control_tower`, while every backup this project produces comes from
+PostgreSQL **17** and the database `ai_agent_control_tower`. That is not
+cosmetic: a logical dump from 17 will not restore into 16, and a 16 data
+directory cannot be read by 17 — so the documented restore drill had no correct
+container target to run against, and anyone who tried would have discovered it
+during an incident.
+
+`docker-compose.yml` now declares `postgres:17-alpine` and
+`POSTGRES_DB: ai_agent_control_tower`, matching the live environment and the
+backups. Asserted by a test (`test_ac12_compose_declares_the_postgres_version_
+the_project_runs`) rather than left to drift again, alongside a second test that
+checks the *running server* really is 17.
+
+### ⚠️ Upgrading an existing checkout
+
+`act_pgdata` is a PostgreSQL **major-version-specific** data directory. If you
+ever started this stack on 16, PostgreSQL 17 will refuse to start against that
+volume and the container will crash-loop on boot.
+
+```bash
+# Dump anything you still need FIRST -- this destroys the volume's contents.
+docker compose down
+docker volume rm <project>_act_pgdata     # e.g. ai-agent-control-tower_act_pgdata
+docker compose up -d db
+```
+
+Deliberately **not** automated anywhere in this repository: it destroys data,
+and a script that silently dropped a database volume on first run would be a
+worse failure than the mismatch it fixed.
+
+Still true, and still worth stating: do not copy Windows PostgreSQL data
+directories into a container. Use `pg_dump`/`pg_restore` logical backups (what
+`scripts/Restore-ControlTower.ps1` does), never a filesystem copy across
+platforms.
 
 ## In-flight automated rollback (Phase 3.7)
 
@@ -393,6 +423,82 @@ WHERE enabled ORDER BY next_run_at;
 ```
 
 The first query is informational — those rows recover themselves. The second is
+
+
+## The execution worker fleet (Phase 3.9)
+
+Phase 3.9 moved agent execution onto independently-operable worker processes.
+That changes what a restore has to reason about, and the split is the same one
+everything else here follows.
+
+| State | Kind | On restore |
+|---|---|---|
+| `agent_executions` | **durable** | the work itself; restored and re-claimable |
+| `execution_attempts` | **durable** | attempt history preserved |
+| `execution_locks` (`worker_id`, `expires_at`, `heartbeat_at`) | **ephemeral** | a lease; never honoured, always *recovered* |
+| `worker_registrations` | **ephemeral** | describes a live OS process that no longer exists |
+
+**A restored worker registration is never treated as live.** Every row in
+`worker_registrations` after a restore names a process that is gone. Staleness
+is a property of the data — `heartbeat_at` older than
+`WORKER_STALE_AFTER_SECONDS` — so those rows stop counting toward fleet
+capacity immediately, before any sweep runs. Nothing needs clearing by hand;
+the workers rebuild the table by re-registering within one poll interval.
+
+**A restored execution lease is never treated as a live owner.** Any execution
+left `RUNNING` is recovered by `ExecutionWorkerService.reap_expired_locks`,
+which applies the real retry policy — requeue if attempts remain, else
+`DEAD_LETTERED` — and emits the terminal audit. Two clocks drive this
+independently (worker staleness and lock expiry); whichever fires first, no
+execution is left owned by a process that does not exist.
+
+**Nothing starts a worker automatically.** Workers are separate processes
+(`python -m app.workers.runner`); the API process deliberately runs none,
+because an execution worker calls model providers and spends real money. A
+restored system therefore executes no queued work at all until you start one —
+which is usually what you want while verifying a restore.
+
+**The honest limit on exactly-once.** A database lease guarantees exactly-once
+*dispatch*, not exactly-once side effects. An execution interrupted after a
+tool call committed but before its own result did will be retried, and that
+tool will have been called twice. `ToolGatewayService` knows which tools are
+idempotent and the retry policy never retries a policy denial — but if you are
+restoring after a hard crash, expect at-least-once for non-idempotent tools and
+check accordingly.
+
+**What to check after restoring**, before starting any worker:
+
+```sql
+-- Executions that were mid-flight when the snapshot was taken.
+SELECT e.id, e.status, e.attempt_count, l.worker_id, l.expires_at
+FROM agent_executions e LEFT JOIN execution_locks l ON l.execution_id = e.id
+WHERE e.status = 'RUNNING' ORDER BY e.started_at;
+
+-- Work that will start the moment a worker is launched.
+SELECT count(*) FROM agent_executions WHERE status = 'QUEUED';
+
+-- Phantom fleet: rows describing processes that no longer exist.
+SELECT worker_id, cohort, status, concurrency, heartbeat_at
+FROM worker_registrations WHERE status <> 'STOPPED' ORDER BY heartbeat_at;
+```
+
+The first and third are informational — both recover themselves. The second
+tells you how much work is about to begin.
+
+**In-flight rolling deployments.** A `rollout_plans` row with `kind='ROLLING'`
+is durable and resumes exactly where it stopped, but its `cohort_plan` records
+the fleet *as it was when the rollout started*. After a restore that fleet does
+not exist yet. The next advance will fail closed with `ROLLING_COHORT_INVALID`
+until the named cohort has live workers again — which is the correct behaviour
+(it refuses to move production traffic onto capacity that is not there), but it
+means **start your workers before resuming a rolling deployment**, and start
+them in the cohorts the plan names:
+
+```sql
+SELECT id, state, current_stage_index, cohort_plan -> 'steps'
+FROM rollout_plans WHERE kind = 'ROLLING'
+  AND state IN ('IN_PROGRESS', 'PAUSED');
+```
 the one to act on: if you are restoring into anything other than a faithful
 continuation of production, disable the jobs before starting an instance, for
 the same reason the rollback trigger policies should be disabled (§ above):
