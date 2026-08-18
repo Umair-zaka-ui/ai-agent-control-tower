@@ -1044,17 +1044,35 @@ def test_ac15_evaluate_honours_an_idempotency_key(
 # --------------------------------------------------------------------------- #
 def test_ac16_earlier_phase_mechanics_are_unmodified() -> None:
     """This phase drives 3.4, 3.5 and 3.6; it does not modify them. Asserted
-    against ``main`` rather than trusted, the same proof 3.6 used."""
+    against ``main`` rather than trusted, the same proof 3.6 used.
+
+    **Phase 3.9 narrowed this list, and the reason is worth recording rather
+    than hiding in a diff.** As written, this test compared six files against
+    a *moving* ``main``, so it asserted not only "3.7 did not touch these" but
+    "no future phase ever will". Two of the six had a future phase with an
+    explicit mandate: 3.6's own ``RollingStrategy`` docstring designated
+    itself "the seam Phase 3.9 fills", and 3.9's build prompt requires that
+    seam replaced (AC-11) and requires the rolling cohort gate to sit in
+    ``canary.py``'s single advance choke point -- anywhere else and the
+    generic ``/rollouts/{id}/advance`` route bypasses it.
+
+    So ``canary.py`` and ``strategies.py`` moved out of the byte-equality
+    list, and the constraint on them did not disappear -- it got sharper.
+    ``tests/runtime/test_worker_fleet_rolling.py::test_ac09_phase_39_changed
+    _only_the_rolling_seam`` asserts that 3.9's edits to those two files are
+    confined to rolling: the canary state machine, its gates, its weight
+    arithmetic and the other three strategy handlers are all still identical
+    to ``main``. Four files byte-locked plus two structurally locked is a
+    stronger total guarantee than six files locked against a baseline that
+    was going to have to be broken."""
     import subprocess
 
     repo = Path(__file__).resolve().parents[3]
     protected = [
         "backend/app/runtime/deployment/resolver.py",
         "backend/app/runtime/deployment/traffic.py",
-        "backend/app/runtime/deployment/canary.py",
         "backend/app/runtime/deployment/rollout.py",
         "backend/app/runtime/deployment/health.py",
-        "backend/app/runtime/deployment/strategies.py",
     ]
     result = subprocess.run(
         ["git", "diff", "--name-only", "main", "--", *protected],

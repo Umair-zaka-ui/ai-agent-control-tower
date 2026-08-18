@@ -739,9 +739,24 @@ class RolloutPlan(Base, UUIDPrimaryKeyMixin):
     stable_version_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("agent_versions.id", ondelete="RESTRICT"), nullable=True,
     )
+    # CANARY / ROLLING (Phase 3.9). The two share this entire engine -- seven
+    # states, per-stage health gates, optimistic concurrency, idempotency --
+    # and differ in exactly one place: where the stage weights come from. A
+    # canary's stages are declared by the operator; a rolling deployment's are
+    # *derived from the real registered worker fleet*, which is the substrate
+    # Phase 3.6 correctly refused to pretend it had. Defaulted to CANARY so
+    # every pre-3.9 row and every 3.5 code path keeps its exact meaning.
+    kind: Mapped[str] = mapped_column(String(16), nullable=False, default="CANARY")
     # PENDING / IN_PROGRESS / PAUSED / SUCCEEDED / ABORTED / ROLLBACK_REQUESTED / FAILED
     state: Mapped[str] = mapped_column(String(24), nullable=False, default="PENDING")
     current_stage_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Evidence, not state (Phase 3.9): the fleet snapshot the stage weights
+    # were computed from. A rolling deployment's steps are real capacity
+    # fractions -- a fleet holding 8 and 2 slots produces 80% and 100%, not an
+    # invented 25/50/75/100 -- and the fleet changes constantly. Without this,
+    # "why 80?" would have no answer anywhere in the system minutes later.
+    # Null for a canary, which has no cohort derivation and must not imply one.
+    cohort_plan: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     state_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Optimistic-concurrency guard -- the same ``version_id_col`` mechanism
     # ``AgentDeployment`` already uses, so two actors advancing one rollout

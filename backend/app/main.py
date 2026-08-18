@@ -34,6 +34,7 @@ from app.governance.routes import router as governance_router
 from app.runtime.routes import router as runtime_router
 from app.integration.routes import router as integration_router
 from app.scheduler.routes import router as scheduler_router
+from app.workers.routes import router as workers_router
 from app.identity.errors import register_identity_exception_handlers
 
 @asynccontextmanager
@@ -160,3 +161,4 @@ app.include_router(integration_router)
 # no HTTP route can dispatch a job, which is what keeps the lease the single
 # path to execution.
 app.include_router(scheduler_router)
+app.include_router(workers_router)

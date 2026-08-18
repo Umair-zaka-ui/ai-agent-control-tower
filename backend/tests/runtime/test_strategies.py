@@ -17,6 +17,7 @@ exercised elsewhere -- see ``test_traffic_resolver_gate.py``'s own note."""
 
 from __future__ import annotations
 
+import inspect
 import threading
 import uuid
 from pathlib import Path
@@ -24,6 +25,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
+from sqlalchemy import update as sa_update
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
@@ -498,18 +500,40 @@ def test_ac13_phase_3_4_and_3_5_mechanics_are_unmodified() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# AC-09 -- ROLLING is deferred, honestly
+# AC-09 -- ROLLING: deferred in 3.6, implemented in 3.9, honest in both
 # --------------------------------------------------------------------------- #
-def test_ac09_rolling_raises_a_specific_deferred_error(
+def test_ac09_rolling_without_a_fleet_still_does_nothing_at_all(
     client: TestClient, admin: dict, db_session: Session,
 ) -> None:
+    """Phase 3.9 replaced the deferral with a real handler, so this test's
+    subject changed -- but the property it was really guarding did not, and
+    it is asserted here more strongly than before.
+
+    3.6's version proved ROLLING never half-executes over a substrate it does
+    not have. 3.9 gave it a substrate, and the same rule now applies to the
+    substrate being *absent or empty*: with no live workers, rolling fails
+    closed and moves no traffic. The error is specific
+    (``ROLLING_COHORT_INVALID``) rather than the old ``STRATEGY_ROLLING_
+    DEFERRED``, and the outcome is identical -- nothing happened.
+
+    The fleet is explicitly emptied first. ``capacity_by_cohort`` counts any
+    worker that heartbeated recently, and this suite shares a database with
+    Phase 3.9's, which registers real ones; without this the test would pass
+    or fail depending on which file ran first."""
+    from app.models.worker import WorkerRegistration
+    from app.runtime.services import _now
+
+    db_session.execute(sa_update(WorkerRegistration)
+                       .where(WorkerRegistration.status != "STOPPED")
+                       .values(status="STOPPED", active_count=0, stopped_at=_now()))
+    db_session.commit()
+
     setup = _setup(client, admin, candidate_strategy="ROLLING")
     before = _weights(db_session, setup, admin)
 
     r = _execute(client, admin, setup["green_deployment"]["id"])
-    assert r.status_code == 501, r.text
-    assert r.json()["error"]["code"] == "STRATEGY_ROLLING_DEFERRED"
-    assert "Phase 3.9" in r.json()["error"]["message"]
+    assert r.status_code == 422, r.text
+    assert r.json()["error"]["code"] == "ROLLING_COHORT_INVALID"
     # It did nothing at all -- not a partial execution.
     assert _weights(db_session, setup, admin) == before
 
@@ -530,20 +554,23 @@ def test_ac09_no_replica_columns_anywhere_in_the_deployment_package() -> None:
         assert column not in strategies_source, f"strategies.py names {column}"
 
 
-def test_ac09_the_rolling_handler_is_a_real_error_not_a_stub() -> None:
-    """AC-16's sharper half: the deferral must be a raised, typed error, never
-    a ``NotImplementedError`` placeholder or a silent pass."""
+def test_ac09_the_rolling_handler_is_real_not_a_stub() -> None:
+    """AC-16's sharper half, updated by Phase 3.9 to the stricter claim.
+
+    3.6 asserted the deferral was a raised, typed error rather than a
+    ``NotImplementedError`` placeholder. 3.9 asserts something harder to
+    satisfy: the handler is now a real dispatch into a real service, it is
+    registered under its own name, and the placeholder never appeared."""
     source = (Path(__file__).resolve().parents[2] / "app" / "runtime" / "deployment"
               / "strategies.py").read_text(encoding="utf-8")
     assert "NotImplementedError" not in source
-    assert "STRATEGY_ROLLING_DEFERRED" in source
 
-    class _Stub:
-        deployment_strategy = "ROLLING"
-
-    with pytest.raises(IdentityError) as exc:
-        strategies.RollingStrategy().execute(None, None, _Stub())
-    assert exc.value.code == ErrorCode.STRATEGY_ROLLING_DEFERRED
+    handler = strategies.RollingStrategy()
+    assert handler.name == "ROLLING"
+    assert strategies.handler_for("ROLLING") is not None
+    body = inspect.getsource(handler.execute)
+    assert "RollingDeploymentService" in body
+    assert "STRATEGY_ROLLING_DEFERRED" not in body
 
 
 def test_canary_dispatch_points_at_the_rollout_engine(

@@ -245,7 +245,27 @@ class ErrorCode:
     # ROLLING strategy has no instance substrate to roll over until Phase 3.9's
     # worker fleet exists, and simulating it over the vestigial replica columns
     # is what SRS §3.6 forbids.
+    # Phase 3.9 REPLACED this. ROLLING is implemented, over the real worker
+    # fleet (``app.runtime.deployment.rolling``), so nothing raises this any
+    # more. The member is deliberately *kept* rather than deleted: it was
+    # returned to real callers with a documented 501 meaning "this arrives in
+    # 3.9", and an API consumer holding that string in a retry table should
+    # find it still explicable rather than vanished. It is unreachable, which
+    # ``tests/runtime/test_strategies.py`` asserts mechanically.
     STRATEGY_ROLLING_DEFERRED = "STRATEGY_ROLLING_DEFERRED"
+    # Phase 3.9 (ACT-SRS-M3 §Phase-3.9) -- worker fleet & rolling deployment.
+    WORKER_NOT_FOUND = "WORKER_NOT_FOUND"
+    # Draining a stopped worker, or heartbeating one back from STOPPED. Both
+    # are attempts to move a worker through a transition that would make the
+    # fleet view disagree with reality.
+    WORKER_INVALID_STATE = "WORKER_INVALID_STATE"
+    # The fail-closed heart of rolling: a step whose cohort holds no live
+    # capacity would move production traffic onto a fleet that is not there.
+    # Raised when no workers are registered at all, and again before any step
+    # whose cohort has since died. Never downgraded to a warning -- a rolling
+    # deployment that "succeeds" onto absent capacity is exactly the pretence
+    # ruling #1 refused to ship in 3.6.
+    ROLLING_COHORT_INVALID = "ROLLING_COHORT_INVALID"
     STRATEGY_GATE_BLOCKED = "STRATEGY_GATE_BLOCKED"
     BLUE_GREEN_NOT_PREPARED = "BLUE_GREEN_NOT_PREPARED"
     STRATEGY_CONFLICT = "STRATEGY_CONFLICT"
@@ -651,6 +671,9 @@ _STATUS: dict[str, int] = {
     # does not implement yet -- not a client mistake (400/422) and not a
     # conflict with current state (409).
     ErrorCode.STRATEGY_ROLLING_DEFERRED: status.HTTP_501_NOT_IMPLEMENTED,
+    ErrorCode.WORKER_NOT_FOUND: status.HTTP_404_NOT_FOUND,
+    ErrorCode.WORKER_INVALID_STATE: status.HTTP_409_CONFLICT,
+    ErrorCode.ROLLING_COHORT_INVALID: status.HTTP_422_UNPROCESSABLE_ENTITY,
     ErrorCode.STRATEGY_GATE_BLOCKED: status.HTTP_409_CONFLICT,
     ErrorCode.BLUE_GREEN_NOT_PREPARED: status.HTTP_409_CONFLICT,
     ErrorCode.STRATEGY_CONFLICT: status.HTTP_409_CONFLICT,

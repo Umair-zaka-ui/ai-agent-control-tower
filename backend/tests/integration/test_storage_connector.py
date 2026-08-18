@@ -352,7 +352,7 @@ def test_ac27_migration_head_unchanged_no_new_migration_needed():
     versions = sorted(p.name for p in migrations_dir.glob("00*.py"))
     # Updated Phase 3.5: a genuinely new migration landed for the canary
     # rollout engine (0041).
-    assert versions[-1] == "0043_distributed_scheduler.py"
+    assert versions[-1] == "0044_worker_fleet_rolling.py"
 
 
 def test_ac30_no_stub_markers_in_this_phases_new_files():
