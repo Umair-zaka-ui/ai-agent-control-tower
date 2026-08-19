@@ -214,6 +214,17 @@ class AuthorizationAuditEvent(str, enum.Enum):
     # carrying the operator's justification.
     ROLLBACK_FORCED = "ROLLBACK_FORCED"
     ROLLBACK_POLICY_UPDATED = "ROLLBACK_POLICY_UPDATED"
+    # Phase 3.9 (ACT-SRS-M3 §Phase-3.9, §13) -- the execution worker fleet.
+    # Same attribution rule Phase 3.8 established for platform-level jobs: a
+    # worker process belongs to no organization, and this codebase's audit
+    # service requires one, so these are recorded when there is a tenant to
+    # attribute them to -- an operator's drain (their organization) and a
+    # stale-worker recovery (the affected execution's organization). A worker
+    # registering itself is observable through the fleet API instead of being
+    # filed under a tenant that had nothing to do with it.
+    WORKER_REGISTERED = "WORKER_REGISTERED"
+    WORKER_DRAINING = "WORKER_DRAINING"
+    WORKER_STALE_RECOVERED = "WORKER_STALE_RECOVERED"
     RUNTIME_EXECUTION_CREATED = "RUNTIME_EXECUTION_CREATED"
     RUNTIME_EXECUTION_DENIED = "RUNTIME_EXECUTION_DENIED"
     RUNTIME_EXECUTION_APPROVAL_REQUIRED = "RUNTIME_EXECUTION_APPROVAL_REQUIRED"

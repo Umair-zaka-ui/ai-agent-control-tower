@@ -12,19 +12,33 @@
 # ---------------------------------------------------------------------------
 services:
   db:
-    image: postgres:16-alpine
+    # PostgreSQL 17, matching the version this project is actually developed,
+    # backed up and restored against (RECOVERY.md). Phase 3.9 aligned this:
+    # it previously declared 16 with a different database name, which made
+    # this service unusable as a restore target for any real backup and made
+    # the recovery drill unverifiable. A logical dump from 17 cannot be
+    # restored into 16, and a 16 data directory cannot be read by 17 -- so
+    # the mismatch was not cosmetic.
+    #
+    # UPGRADING AN EXISTING CHECKOUT: the act_pgdata volume is a PostgreSQL
+    # major-version-specific data directory. If you ever started this stack
+    # on 16, PostgreSQL 17 will refuse to start against that volume. Dump
+    # anything you need first, then remove the volume
+    # (docker compose down && docker volume rm <project>_act_pgdata).
+    # Deliberately not automated -- it destroys data.
+    image: postgres:17-alpine
     container_name: act_postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: agent_control_tower
+      POSTGRES_DB: ai_agent_control_tower
     ports:
       - "5432:5432"
     volumes:
       - act_pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d agent_control_tower"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ai_agent_control_tower"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -38,7 +52,7 @@ services:
         condition: service_healthy
     environment:
       # Inside the compose network the DB host is the service name "db".
-      DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/agent_control_tower
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/ai_agent_control_tower
       JWT_SECRET_KEY: change-me-in-docker-compose
       ACCESS_TOKEN_EXPIRE_MINUTES: "1440"
       SEED_ON_START: "true"

@@ -8,14 +8,26 @@ its own docstring already names "agent runtime" as a caller.
 
 The execution queue is the ``agent_executions`` table itself (§30: "Postgres
 backed queue for development"): a worker claims work with
-``SELECT ... FOR UPDATE SKIP LOCKED`` on ``status = 'QUEUED'``. There is no
-standalone worker process in this environment — ``ExecutionRequestService``
-runs the worker inline, synchronously, right after enqueueing (an "eager
-queue", the same trick ``CELERY_TASK_ALWAYS_EAGER`` plays for local dev) so
-the feature is fully exercised end-to-end without standing up Celery/Redis.
-``ExecutionWorkerService`` itself has no knowledge of that and is equally
-correct if pointed at by a real out-of-process polling loop later (see
-docs/runtime/workers.md).
+``SELECT ... FOR UPDATE SKIP LOCKED`` on ``status = 'QUEUED'``.
+
+**Phase 3.9 made the standalone worker process real** (``app/workers/``,
+``python -m app.workers.runner``). ``ExecutionWorkerService`` is unchanged in
+what it *does* -- the model→tool→model loop, governance, retry policy, cost
+and audit are all exactly as M1 built them -- and changed in exactly one
+place: ``claim_next`` now **commits** the claim instead of flushing it, so no
+database lock is held across model or tool network I/O. Read that method's
+docstring before touching anything in this area; it is the transaction
+boundary the whole fleet depends on.
+
+``ExecutionRequestService`` still runs a worker inline, synchronously, right
+after enqueueing (an "eager queue", the same trick
+``CELERY_TASK_ALWAYS_EAGER`` plays for local dev). That path is retained
+rather than retired: it is what makes an execution's result available in the
+API response, and every M1/M2 test drives it. The two are the same engine
+reached two ways -- inline for request-scoped execution, out-of-process for
+fleet execution -- which is why distributing execution required no change to
+execution itself. See docs/deployment/workers.md and
+docs/runtime/workers-and-queue.md.
 """
 
 from __future__ import annotations
@@ -2976,13 +2988,14 @@ class ToolLoopOrchestrator:
         (``ACT-TLX-FR-044``) regardless of which call actually finishes
         first.
 
-        **Why ``self.db`` is committed before spawning any thread.**
-        ``ExecutionWorkerService.claim_next`` claims this execution's row
-        with ``SELECT ... FOR UPDATE SKIP LOCKED`` and never releases that
-        lock until the whole attempt's single, long-lived transaction
-        finally commits (``run_once``'s own ``finally`` block) -- correct
-        and untouched (the queue/worker model is not this phase's to
-        change). But once a fresh per-thread ``Session`` tries to
+        **Why ``self.db`` is committed before spawning any thread.** This
+        commit was, until Phase 3.9, the fix for a specific deadlock, and
+        the reasoning is preserved here because it is the reasoning that
+        eventually reshaped the whole execution path.
+
+        ``claim_next`` used to claim this execution's row with
+        ``SELECT ... FOR UPDATE SKIP LOCKED`` and hold that lock for the
+        entire attempt. But once a fresh per-thread ``Session`` tries to
         ``INSERT INTO tool_calls`` (which references this same, still
         locked ``agent_executions`` row via a foreign key), Postgres's FK
         check needs a ``FOR KEY SHARE`` lock on that row -- which
@@ -2992,13 +3005,21 @@ class ToolLoopOrchestrator:
         application-level thread-join and a database-level lock wait that
         Postgres's own deadlock detector cannot see (from its side, the
         main connection looks merely idle, not waiting on anything).
-        Committing here is safe: `claim_next` already transitioned this
-        row out of ``QUEUED`` before this method could ever run, so the
-        lock has already done its one job (preventing a second worker from
-        claiming the same row) by this point; releasing it early costs
-        nothing. ``SessionLocal`` is configured ``expire_on_commit=False``
-        (``app/core/database.py``), so ``execution``/``agent`` stay fully
-        usable on the main thread afterward with no re-fetch needed."""
+
+        Phase 3.9 moved that commit up to the claim itself
+        (M3-3.9-FR-011), because a worker fleet reproduces this exact
+        shape at scale and a per-call workaround does not survive it. So
+        by the time this method runs there is no claim lock left to
+        release, and this commit is now a flush boundary rather than a
+        deadlock fix -- kept because the per-thread sessions must still see
+        this execution's committed state, and removing it would make that
+        depend on whatever the caller happened to have committed. The
+        safety argument is unchanged either way: ``claim_next`` already
+        transitioned this row out of ``QUEUED``, so nothing is protected by
+        holding anything here. ``SessionLocal`` is configured
+        ``expire_on_commit=False`` (``app/core/database.py``), so
+        ``execution``/``agent`` stay fully usable on the main thread
+        afterward with no re-fetch needed."""
         from app.core.database import SessionLocal
 
         self.db.commit()
@@ -3108,6 +3129,52 @@ class ExecutionWorkerService:
         return reaped
 
     def claim_next(self, worker_id: str) -> AgentExecution | None:
+        """§31/§32 -- take ownership of exactly one queued execution.
+
+        **The claim commits before this returns** (Phase 3.9,
+        M3-3.9-FR-011). That single line is the most consequential thing in
+        this phase, so it is worth stating why it is not merely a tidy-up.
+
+        Until Phase 3.9 this method ``flush``\\ ed. The ``FOR UPDATE`` lock
+        taken by the query above was therefore held for the entire attempt --
+        every model call, every tool call, every byte of network I/O -- and
+        released only when ``run_once``'s ``finally`` finally committed. That
+        was survivable while a single inline caller drove the worker. It is
+        not survivable with a fleet, and the failure it produces is one this
+        codebase has already been bitten by once:
+        ``ToolLoopOrchestrator._execute_parallel`` had to commit ``self.db``
+        by hand before spawning tool threads, because a fresh session
+        inserting a ``tool_calls`` row needs ``FOR KEY SHARE`` on this very
+        ``agent_executions`` row, which the still-held ``FOR UPDATE``
+        blocks -- while the main thread sits in ``future.result()`` waiting
+        for that same worker. A thread-join waiting on a database lock wait is
+        a genuine deadlock that Postgres's detector cannot see, because from
+        its side the main connection looks idle rather than blocked.
+
+        Committing here dissolves that whole class of bug at the source
+        instead of working around it one call site at a time: after this
+        returns, the worker holds **no** database lock, and the long,
+        network-bound part of the attempt runs against an unlocked row.
+
+        Committing is safe precisely because the lock has already done its one
+        job by this point. It existed to stop a second worker claiming the
+        same row, and the row is no longer ``QUEUED`` -- the committed status
+        change is what excludes it now, permanently rather than for the
+        duration of a transaction. The ``execution_locks`` row (``execution_id``
+        UNIQUE) is the durable owner record that replaces the transient lock,
+        and ``SessionLocal`` is configured ``expire_on_commit=False``
+        (``app/core/database.py``), so ``execution`` stays usable afterwards
+        with no re-fetch.
+
+        The one real behavioural difference, stated plainly: a worker that
+        dies mid-attempt used to have its claim rolled back by the database,
+        putting the execution straight back to ``QUEUED``. Now the claim is
+        committed, so the execution stays ``RUNNING`` until its lease expires
+        and ``reap_expired_locks`` applies the retry policy. Recovery is
+        therefore slower by at most one lease, and in exchange it is
+        *observable* -- there is a durable record of who held what and for how
+        long, which is the difference between a fleet you can operate and one
+        you can only guess about."""
         self.reap_expired_locks()
         stmt = (
             select(AgentExecution)
@@ -3129,7 +3196,12 @@ class ExecutionWorkerService:
             execution_id=execution.id, attempt_number=execution.attempt_count,
             worker_id=worker_id, status="RUNNING", started_at=_now(),
         ))
-        self.db.flush()
+        # ------------------------------------------------------------------ #
+        # Phase 3.9 -- THE commit-before-dispatch boundary on the execution
+        # path. Nothing below this line in an attempt holds a database lock
+        # taken above it. See this method's docstring.
+        # ------------------------------------------------------------------ #
+        self.db.commit()
         return execution
 
     def run_once(self, worker_id: str = "inline-worker") -> AgentExecution | None:

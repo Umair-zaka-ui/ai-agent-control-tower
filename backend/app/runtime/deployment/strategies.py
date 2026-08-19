@@ -231,31 +231,45 @@ class BlueGreenStrategy(DeploymentStrategyHandler):
 
 
 class RollingStrategy(DeploymentStrategyHandler):
-    """M3-3.6-FR-030/031 -- declared, deliberately unimplemented, deferred to
-    Phase 3.9.
+    """M3-3.6-FR-030/031, implemented in Phase 3.9 over the real worker fleet.
 
-    This raises a specific, actionable error rather than doing anything. It is
-    **not** a stub: there is no partial implementation to finish and no bare
-    ``NotImplemented`` placeholder here. Rolling requires replacing running
-    instances a few at a time, and this platform has no instance substrate to do
-    that over -- the replica-count columns on ``agent_deployments`` are vestigial
-    and nothing reads them for any decision. A handler that decremented and
-    incremented them would report progress while nothing rolled, which is
-    exactly the pretence SRS §3.6 forbids. Phase 3.9's distributed worker fleet
-    creates real cohorts; this class is the seam it fills, and filling it
-    requires no change anywhere else in this module."""
+    Phase 3.6 left this class raising ``STRATEGY_ROLLING_DEFERRED`` and said
+    filling the seam "requires no change anywhere else in this module". That
+    turned out to be true: this is the only edit 3.9 made here.
+
+    Rolling's *primary* operation is beginning the conversion -- deriving the
+    fleet's cohorts, creating the plan, and taking the first step. The
+    remaining steps are separate decisions and therefore separate calls, the
+    same way BLUE_GREEN's switch is not folded into its prepare. The work
+    itself lives in ``app.runtime.deployment.rolling``; this handler is the
+    dispatch point, and the import is deferred to call time because that
+    module imports this one (it reuses ``DeploymentStrategyService``'s veto
+    and gate checks rather than restating them)."""
 
     name = "ROLLING"
 
     def execute(self, service: "DeploymentStrategyService", actor: User,
                deployment: AgentDeployment) -> StrategyOutcome:
-        raise IdentityError(
-            ErrorCode.STRATEGY_ROLLING_DEFERRED,
-            "The ROLLING strategy is deferred to Phase 3.9, where the distributed worker "
-            "fleet provides the instance cohorts a rolling update needs. It is deliberately "
-            "not simulated over the vestigial replica columns. Use RECREATE for a clean "
-            "cutover, BLUE_GREEN for a warm-and-switch, or a canary rollout for a "
-            "progressive rollout.",
+        from app.runtime.deployment.rolling import RollingDeploymentService
+
+        rolling = RollingDeploymentService(service.db)
+        result, _replayed = rolling.start(actor, deployment)
+        steps = ((result.get("cohort_plan") or {}).get("steps") or [])
+        first = steps[0] if steps else {}
+        return StrategyOutcome(
+            strategy="ROLLING", operation="start", deployment_id=str(deployment.id),
+            candidate_version_id=str(deployment.agent_version_id),
+            previous_version_id=(str(result["stable_version_id"])
+                                 if result.get("stable_version_id") else None),
+            candidate_weight=int(first.get("target_weight", 0)),
+            previous_weight=100 - int(first.get("target_weight", 0)),
+            allocation_revision=int(result.get("allocation_revision") or 0),
+            detail=(
+                f"Rolling conversion started over {len(steps)} real worker cohort(s) "
+                f"({first.get('total_capacity', 0)} slots of live fleet capacity). "
+                f"Cohort {first.get('cohort')!r} converted; candidate at "
+                f"{first.get('target_weight', 0)}%. Advance the rollout to convert the rest."
+            ),
         )
 
 

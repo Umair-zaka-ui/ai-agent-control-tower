@@ -296,6 +296,29 @@ class Settings(BaseSettings):
     CONNECTOR_HEALTH_SCHEDULER_ENABLED: bool = False
     CONNECTOR_HEALTH_CHECK_INTERVAL_SECONDS: float = 300.0
 
+    # --- Phase 3.9: distributed execution worker fleet (ACT-SRS-M3 §Phase-3.9)
+    # How many executions one worker process runs at once (M3-3.9-FR-003).
+    # Defaults to 1 rather than to a core count: an execution here is bounded
+    # by model and tool network latency, not by CPU, so the right number
+    # depends on provider rate limits and is an operational decision. A
+    # default that guessed high would silently multiply a tenant's concurrent
+    # provider calls the first time anyone started a worker.
+    WORKER_CONCURRENCY: int = 1
+    # The rolling unit a worker declares itself part of. One cohort by
+    # default, which makes an unconfigured fleet roll in a single step -- the
+    # honest description of converting an undivided fleet, rather than a
+    # pretend multi-step rollout over cohorts that do not exist.
+    WORKER_COHORT: str = "default"
+    WORKER_POLL_INTERVAL_SECONDS: float = 2.0
+    # Silence longer than this means the process is gone (M3-3.9-FR-004).
+    # Comfortably more than several poll intervals: a worker busy running a
+    # slow execution still heartbeats from its loop, but a briefly overloaded
+    # machine should not have its whole fleet declared dead. Independent of
+    # execution lease expiry, which recovers the *work* -- see
+    # WorkerFleetService.reap_stale_workers for why those two clocks are
+    # deliberately separate.
+    WORKER_STALE_AFTER_SECONDS: float = 90.0
+
     # --- Phase 2: email notifications (SMTP / Mailtrap for development) ---
     NOTIFICATIONS_ENABLED: bool = False
     SMTP_HOST: str = "sandbox.smtp.mailtrap.io"

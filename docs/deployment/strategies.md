@@ -1,4 +1,10 @@
-# Deployment strategies: RECREATE, BLUE_GREEN, and why ROLLING isn't here
+# Deployment strategies: RECREATE, BLUE_GREEN, ROLLING
+
+> **Updated for Phase 3.9.** This document was written in 3.6, when ROLLING
+> was deliberately deferred for want of an instance substrate. Phase 3.9
+> built the worker fleet, so ROLLING is now implemented over real cohorts.
+> The 3.6 reasoning is preserved below rather than deleted — it is why the
+> implementation looks the way it does.
 
 Phase 3.6 (ACT-SRS-M3 §Phase-3.6, §3.6, §12). This phase makes
 `agent_deployments.deployment_strategy` mean something. Until now it was pure
@@ -18,7 +24,7 @@ not in the mechanism.
 | **CANARY** (3.5) | 5 → 25 → 50 → 100, gated per stage | superseded at the end |
 | **RECREATE** | 0 → 100 in one cutover | superseded immediately |
 | **BLUE_GREEN** | 0 (warm) → 100 in one atomic switch | **preserved at 0%** as a rollback target |
-| **ROLLING** | — | deferred to 3.9 |
+| **ROLLING** | fleet-derived steps, cohort by cohort | superseded at the end |
 
 So this phase builds two new *patterns* and reuses the *mechanism* wholesale.
 Every traffic change goes through `TrafficAllocationService.set_weights`
@@ -52,7 +58,7 @@ What `execute` does per strategy:
 |---|---|
 | `RECREATE` | the cutover |
 | `BLUE_GREEN` | the **prepare** (warm GREEN at 0%) |
-| `ROLLING` | raises `STRATEGY_ROLLING_DEFERRED` (501) |
+| `ROLLING` | starts a rolling conversion of the worker fleet (Phase 3.9) |
 | `CANARY` | points at 3.5's rollout API |
 
 Blue-green's switch and rollback are separate endpoints because they are
@@ -147,31 +153,122 @@ things are worst**:
 
 ---
 
-## ROLLING is deferred to Phase 3.9 — honestly
+## ROLLING — over the real worker fleet
 
-`ROLLING` is declared, dispatched, and raises `STRATEGY_ROLLING_DEFERRED` (501)
-naming Phase 3.9. It is **not a stub**: there is no partial implementation and no
-`NotImplemented` placeholder.
+### Why 3.6 refused, and why the refusal was right
 
-The reason is worth stating plainly. Rolling means "replace running instances a
-few at a time", and **this platform has no instance substrate to roll over**. The
-two replica-count columns on `agent_deployments` are vestigial: the legacy
-`DeploymentService.deploy`/`retire` set them to constants, and nothing reads them
-to make any decision — verified by inspection this phase and reported in §13.5.
+Rolling means "replace running instances a few at a time", and in Phase 3.6
+**this platform had no instance substrate to roll over**. The two replica-count
+columns on `agent_deployments` are vestigial: the legacy
+`DeploymentService.deploy`/`retire` set them to constants, and nothing reads
+them to make any decision.
 
-A handler that decremented and incremented them would report progress while
-nothing rolled. That is the precise pretence SRS §3.6 forbids, and it would be
-worse than the honest error, because it would look like a working feature.
+A handler that decremented and incremented them would have reported progress
+while nothing rolled — the precise pretence SRS §3.6 forbids, and worse than
+an honest error because it would look like a working feature. So 3.6 declared
+ROLLING, dispatched it, and raised `STRATEGY_ROLLING_DEFERRED` (501) naming
+Phase 3.9.
 
-Phase 3.9's distributed worker fleet creates real cohorts. `RollingStrategy` is
-the seam it fills, and filling it requires no change anywhere else in the module.
+**Those columns are still untouched.** Phase 3.1's AC-14 test asserts their
+names appear *nowhere* in `app/runtime/deployment/` — prose included — and
+Phase 3.9 kept that guard rather than relaxing it. The rolling implementation
+refers to them only indirectly, for the same reason: a module that cannot even
+name them cannot quietly grow a fake rolling handler around them.
 
-**The constraint is mechanically enforced.** Phase 3.1's own AC-14 test asserts
-those column names appear *nowhere* in `app/runtime/deployment/` — prose
-included. `strategies.py` therefore refers to them only indirectly. That is a
-stricter guard than "don't assign to them", and this phase keeps it rather than
-relaxing it: a module that cannot even name those columns cannot quietly grow a
-fake rolling handler around them.
+### What a cohort actually is
+
+A **cohort** is a declared, labelled partition of the registered worker fleet
+(`worker_registrations.cohort`). Its **capacity** is the summed declared
+concurrency of its live, currently-heartbeating workers — how many executions
+those processes can actually run at once, reported by the processes
+themselves. See [workers.md](workers.md).
+
+### What rolls, precisely
+
+A rolling deployment converts the fleet cohort by cohort, and each step moves
+the candidate's traffic share to the fraction of total fleet capacity
+converted so far.
+
+| Fleet | Steps |
+|---|---|
+| two cohorts holding 8 and 2 slots | **80% → 100%** |
+| four equal cohorts | 25 → 50 → 75 → 100 |
+| one undivided cohort | 100 (one step) |
+
+**The shape of the rollout is dictated by the shape of the fleet.** That is
+the entire difference between rolling and a canary — a canary's ladder is
+declared by the operator, a rolling deployment's is derived — and the entire
+reason it could not be written before the fleet existed.
+
+The derivation is recorded on the plan as `cohort_plan`, because a rollout
+whose step sizes become unexplainable minutes later is not much better than an
+invented one. The final step is pinned to exactly 100 rather than left to
+rounding: without the pin a rollout could finish at 99% and leave the old
+version quietly serving one request in a hundred forever.
+
+### The honest limit
+
+**Workers are not version-pinned.** An execution's version is chosen at
+*enqueue* time by Phase 3.4's resolver and written onto the execution row; any
+worker may run any execution it claims. So what a rolling step shifts is the
+*share of new work routed to the candidate*, in units of real fleet capacity —
+it does not make cohort A's processes exclusively serve the new version.
+
+That limit is deliberate. Pinning workers to versions would put version
+filtering in the hot claim path, make the worker second-guess 3.4's routing
+decision (3.4 is the sole allocator), and starve any execution whose version
+had no converted worker yet. The design keeps one allocator and makes the
+fleet the thing that **sizes** and **gates** the rollout:
+
+- **Sizing** — step weights are computed from live capacity, so a step can
+  never describe capacity that does not exist.
+- **Gating** — before each step, the cohort it names must still be present and
+  heartbeating. A rolling deployment cannot advance over a cohort that died
+  mid-rollout; it fails closed with `ROLLING_COHORT_INVALID`.
+
+Neither is expressible without a real fleet, and a counter on a deployment row
+could never have done either.
+
+### There is no rolling state machine
+
+Phase 3.5 already built one — seven states, pause, resume, abort,
+rollback-request, per-stage health gates, optimistic concurrency, idempotency,
+audit. Rolling needs exactly that machine and differs only in where the stage
+weights come from.
+
+So **a rolling deployment *is* a `RolloutPlan`**, with `kind='ROLLING'`. Every
+operation after the start is Phase 3.5's, unmodified:
+
+```
+POST /api/v1/runtime/deployments/{id}/strategy/rolling   # start (3.9)
+POST /api/v1/runtime/rollouts/{id}/advance               # convert next cohort
+POST /api/v1/runtime/rollouts/{id}/pause | /resume | /abort
+POST /api/v1/runtime/rollouts/{id}/request-rollback
+```
+
+There is deliberately no `/strategy/rolling/advance`. One set of controls for
+both plan kinds means no second half-copy to drift — and the cohort-liveness
+gate lives *inside* the advance (`CanaryRolloutService._assert_kind_preconditions`),
+so choosing the generic route cannot bypass it.
+
+Rollback integration (M3-3.9-FR-033) is inherited the same way: a rolling
+plan's `ROLLBACK_REQUESTED` is the same state Phase 3.7 already understands.
+
+### Starting one
+
+```http
+POST /api/v1/runtime/deployments/{deployment_id}/strategy/rolling
+Idempotency-Key: <optional>
+
+{ "health_requirement": "HEALTHY", "min_samples": 50, "advance_mode": "MANUAL" }
+```
+
+Notably absent from the request: **the stages**. A caller may set how each
+derived step is *gated* — a governance decision — but not the weights, which
+are a claim about capacity that only the fleet can make.
+
+With no live workers the call fails closed with `ROLLING_COHORT_INVALID` (422).
+A rolling deployment over an empty fleet would be a progress bar over nothing.
 
 ---
 
@@ -220,14 +317,21 @@ the fingerprint carrying the caller's intent (the deployment id) only.
 
 | Code | HTTP | Meaning |
 |---|---|---|
-| `STRATEGY_ROLLING_DEFERRED` | **501** | ROLLING invoked — deferred to 3.9 |
+| `ROLLING_COHORT_INVALID` | 422 | No live fleet, or a step's cohort has died (Phase 3.9) |
 | `STRATEGY_GATE_BLOCKED` | 409 | The release gate blocked a cutover or switch |
 | `BLUE_GREEN_NOT_PREPARED` | 409 | Switch before prepare, or rollback with no preserved BLUE |
 | `STRATEGY_CONFLICT` | 409 | Lost an optimistic-concurrency race |
 
-`STRATEGY_ROLLING_DEFERRED` is **501, not 4xx**: the strategy is a recognized,
-declared value the platform genuinely does not implement yet — not a client
-mistake and not a conflict with current state.
+`STRATEGY_ROLLING_DEFERRED` (501) was 3.6's answer to an invoked ROLLING.
+Phase 3.9 implemented the strategy, so nothing raises it any more — asserted
+mechanically in `test_ac11_nothing_raises_the_deferred_error_any_more`. The
+`ErrorCode` member is deliberately *kept* rather than deleted: it was returned
+to real API consumers with a documented meaning, and a consumer holding that
+string in a retry table should find it still explicable rather than vanished.
+
+`ROLLING_COHORT_INVALID` is **422, not 409**: the fleet the request implies
+does not exist, which is a problem with what was asked for rather than a
+conflict with current state.
 
 `STRATEGY_GATE_BLOCKED` is distinct from 3.1's `DEPLOYMENT_PREFLIGHT_BLOCKED`:
 that one stops a deployment *reaching* ACTIVE, this one stops an already-active
@@ -269,9 +373,9 @@ call these. It does not reimplement what they do.
 
 | Excluded | Owning phase |
 |---|---|
-| ROLLING implementation | 3.9 — over real worker cohorts |
+| Version-pinned worker cohorts | not built — see "The honest limit" above |
 | Any use of the vestigial replica columns | never — they have no substrate |
 | Automatic-rollback trigger policy | 3.7 |
 | Canary / progressive rollout | 3.5 (already built) |
-| Scheduler / workers / frontend | 3.8 / 3.9 / 3.10 |
+| Release Operations Center | 3.10 |
 | Changes to the resolver, gate, or allocation mechanics | 3.4 owns them; this phase drives them |

@@ -151,6 +151,13 @@ PERMISSION_CATALOG: dict[str, str] = {
     # instruction to act on production without a human present -- being allowed
     # to read the run history is a much smaller grant than being allowed to arm
     # a new one.
+    # Execution Worker Fleet (Phase 3.9, ACT-SRS-M3 §Phase-3.9). Split for the
+    # same reason the scheduler's pair is split: reading the fleet is
+    # observability, while draining a worker removes execution capacity from
+    # production. "runtime.health.view" still covers the health/heartbeat read
+    # model it always did; these govern the fleet itself.
+    "runtime.worker.view": "View the execution worker fleet, its capacity and queue depth",
+    "runtime.worker.manage": "Drain and stop execution workers",
     "runtime.scheduler.view": "View scheduled job definitions and run history",
     "runtime.scheduler.manage": "Create, edit, enable and disable scheduled jobs",
     # Environment & Promotion Model (Phase 3.2, ACT-SRS-M3 §3.2). Promoting a

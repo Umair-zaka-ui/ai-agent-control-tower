@@ -351,6 +351,10 @@ class RolloutPlanRead(BaseModel):
     environment_id: uuid.UUID
     candidate_version_id: uuid.UUID
     stable_version_id: uuid.UUID | None
+    # Phase 3.9 -- CANARY or ROLLING. The two share this whole engine and
+    # differ in where their stage weights come from, so a reader who is not
+    # told which one they are looking at cannot interpret the stages.
+    kind: str = "CANARY"
     state: str
     current_stage_index: int
     state_reason: str | None
@@ -359,9 +363,32 @@ class RolloutPlanRead(BaseModel):
     updated_at: datetime
     created_by: uuid.UUID | None
     stages: list[RolloutStageRead]
+    # Phase 3.9 -- for a ROLLING plan, the fleet snapshot its step weights
+    # were derived from. Null for a canary, which derives nothing.
+    cohort_plan: dict | None = None
     # Present only on the evaluate-and-advance response: what the gate check
     # concluded and, when it declined to advance, why.
     gate_evaluation: dict | None = None
+
+
+class RollingStartRequest(BaseModel):
+    """Phase 3.9 -- options for starting a rolling deployment.
+
+    Notably absent: the stages. A canary's caller declares its ladder; a
+    rolling deployment's is *derived from the real worker fleet*, and letting
+    a caller supply it would reintroduce exactly the invented-progress problem
+    ruling #1 refused. What a caller may set is how each derived step is
+    gated, which is a governance decision rather than a claim about capacity."""
+
+    stable_version_id: uuid.UUID | None = None
+    min_duration_seconds: int | None = Field(default=None, ge=0)
+    min_samples: int | None = Field(default=None, ge=0)
+    health_requirement: str | None = Field(
+        default=None, pattern="^(HEALTHY|DEGRADED|UNHEALTHY|NONE)$")
+    advance_mode: str | None = Field(default=None, pattern="^(MANUAL|AUTO)$")
+    # Create the plan without taking the first step, for an operator who wants
+    # to see the derived cohorts before any traffic moves.
+    start: bool = True
 
 
 class HealthEvaluationRead(BaseModel):

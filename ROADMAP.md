@@ -1889,7 +1889,7 @@ dispatched on. This is its first consumer.
   deselected; backend only. See
   [docs/deployment/strategies.md](docs/deployment/strategies.md).
 
-**ROLLING remains pending in 3.9**, where real worker cohorts give it a
+**ROLLING was implemented in 3.9**, where real worker cohorts gave it a
 substrate.
 
 ### Part 3.7 — Automated Rollback & Release Safety ✅
@@ -1983,17 +1983,74 @@ stays in handlers.
 
 **Milestone 3 now has 8 of 10 sub-phases done.**
 
-Next: 3.9 (the distributed worker fleet **and the ROLLING strategy** — the
-milestone's riskiest phase, reusing 3.8's lease discipline).
+### Phase 3.9 — Distributed Execution Worker Fleet & Rolling Deployment (2026-08-18)
+
+The milestone's riskiest phase, and the one that **resolves ruling #1**.
+
+- **The claim commits before the execution runs.** `ExecutionWorkerService
+  .claim_next` now commits instead of flushing. Until now the claim's
+  `FOR UPDATE` was held for the *entire* attempt — every model and tool call
+  included — which is the exact shape of the M1 deadlock at fleet scale.
+  A worker now holds **no** database lock across model or tool network I/O.
+  Safe because the lock had already done its one job: the row is no longer
+  `QUEUED`, and the committed status change is what excludes peers now.
+- **Proven three ways**, and the lock mode was corrected by a failing test:
+  the in-flight probe must ask for `FOR KEY SHARE NOWAIT` (the lock a tool
+  thread actually needs) rather than `FOR UPDATE NOWAIT`, which conflicts
+  with the benign shared lock a worker legitimately holds on its own row.
+  **All five gate tests were verified to fail with the boundary reverted.**
+- **No second lease table.** `execution_locks.execution_id` has been UNIQUE
+  since migration 0023 and *is* the no-duplicate-execution guarantee. The
+  M1 claim was extended rather than paralleled.
+- **M1 execution semantics preserved exactly** — the non-negotiable gate.
+  `app/workers/worker.py` holds no provider call, tool loop, retry policy,
+  cost arithmetic or authorization (asserted over the AST's names-in-use,
+  not source text). The entire M1 execution suite passes unchanged.
+- **The honest limit**: exactly-once *dispatch*, not exactly-once side
+  effects — the same limit 3.8 stated, for the same reason.
+- **Ruling #1 (ROLLING) is RESOLVED**, over real worker cohorts. A cohort is
+  a declared partition of the registered fleet; each step moves traffic to
+  the fraction of **real** capacity converted, so a fleet of 8 and 2 slots
+  steps **80 → 100** rather than an invented ladder. The shape of the
+  rollout is dictated by the shape of the fleet.
+- **The honest limit on rolling, stated up front**: workers are **not**
+  version-pinned. 3.4 binds the version at enqueue and stays the sole
+  allocator; the fleet **sizes** and **gates** the rollout instead. The
+  vestigial replica columns remain untouched and unnamed.
+- **No rolling state machine, no rolling table** — a rolling deployment *is*
+  a `RolloutPlan` with `kind='ROLLING'`, reusing 3.5's engine wholesale.
+- **The PG16/17 mismatch is CLOSED** — Compose aligned to `postgres:17-alpine`
+  + `ai_agent_control_tower`, asserted against both the file and the running
+  server. The `act_pgdata` major-version hazard is documented in
+  `RECOVERY.md` and deliberately not automated.
+- **A route collision was reported, not silently redesigned around**: M1 owns
+  `/runtime/workers`, so the fleet API mounts at `/runtime/fleet`.
+- Migration `0044_worker_fleet_rolling` (1 table + 2 columns, reversible);
+  routes 530 → 536; schema 123 → 124 tables.
+- 60 new backend tests. Backend **1,744** total green, 1 deselected; backend
+  only. See [docs/deployment/workers.md](docs/deployment/workers.md).
+
+**Milestone 3 now has 9 of 10 sub-phases done.**
+
+Next: 3.10 — the Release Operations Center, the operator-facing assembly of
+everything this milestone built, and the last sub-phase.
+
+### The six rulings, and where they landed
+
+| # | Ruling | Status |
+|---|---|---|
+| 1 | ROLLING must be real or absent, never simulated over vestigial counters | **RESOLVED in 3.9** — implemented over real worker cohorts; 3.6 declared it and refused to fake it |
+| 2 | Deployment lifecycle has one transition authority | Enforced from 3.1, mechanically checked since |
+| 3 | Release health is a separate question from instance health | Resolved in 3.5 — a new table, deliberately |
+| 4 | Promotion must preserve version immutability | Resolved in 3.2; found already half-enforced and reported |
+| 5 | Traffic allocation is the one mechanism every strategy drives | Established in 3.4; 3.5/3.6/3.7/3.9 all drive it, none bypass it |
+| 6 | Suspension/kill switch is read, never written, by automation | Enforced from 3.1; 3.7 made automation strictly subordinate; 3.9 inherits it |
 
 ## Future (Phase 3+)
 
-**Milestone 3, remaining**: distributed workers **and the ROLLING
-strategy** (3.9 — deferred from 3.6 because rolling needs an
-instance substrate that only the worker fleet creates; it reuses
-3.8's lease discipline and the same commit-before-dispatch lesson,
-and is where the PG16/17 Compose mismatch becomes materially
-testable), an operator frontend (3.10).
+**Milestone 3, remaining**: the operator frontend / Release Operations
+Center (3.10) — the last sub-phase, assembling everything 3.1–3.9
+built into one operator-facing surface.
 **Milestone 2 is complete** (connector framework, all four generic
 connectors — REST, database, storage, queue — and external identity
 federation). SQL Server support for the database connector, Azure Blob

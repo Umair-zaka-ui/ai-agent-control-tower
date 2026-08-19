@@ -107,6 +107,7 @@ from app.runtime.schemas import (
     RolloutActionRequest,
     RolloutCreate,
     RolloutHealthRead,
+    RollingStartRequest,
     RolloutPlanRead,
     RuntimeDashboardRead,
     RuntimeEventRead,
@@ -1479,9 +1480,9 @@ def execute_deployment_strategy(deployment_id: uuid.UUID,
                                 actor: User = Depends(require_permission(_DEPLOY_ACTION)),
                                 db: Session = Depends(get_db)):
     """Runs the strategy declared on the deployment: RECREATE cuts over,
-    BLUE_GREEN prepares (warms GREEN at 0%), ROLLING raises
-    ``STRATEGY_ROLLING_DEFERRED`` (Phase 3.9), CANARY points at the rollout
-    API."""
+    BLUE_GREEN prepares (warms GREEN at 0%), ROLLING begins a fleet-wide
+    rolling conversion (Phase 3.9 -- it no longer defers), CANARY points at
+    the rollout API."""
     return DeploymentStrategyService(db).execute(actor, deployment_id,
                                                  idempotency_key=idempotency_key)
 
@@ -1509,6 +1510,47 @@ def blue_green_rollback(deployment_id: uuid.UUID,
     the previous version" separately from "can push a new one forward"."""
     return DeploymentStrategyService(db).blue_green_rollback(actor, deployment_id,
                                                              idempotency_key=idempotency_key)
+
+
+# --------------------------------------------------------------------------- #
+# Phase 3.9 (ACT-SRS-M3 §Phase-3.9 §6) -- rolling deployment over the fleet.
+#
+# A sibling of the blue-green endpoints above, under the same
+# /deployments/{id}/strategy/... namespace, so all four strategies are reached
+# the same way. No collision: /strategy/* held execute and blue-green/{switch,
+# rollback} before this, and "rolling" is none of them.
+#
+# There is deliberately no /strategy/rolling/advance here. A rolling plan *is*
+# a RolloutPlan, so it advances, pauses, resumes, aborts and requests rollback
+# through Phase 3.5's existing /rollouts/{id}/... endpoints -- one set of
+# controls for both plan kinds, and no second half-copy of them to drift. The
+# cohort-liveness gate is enforced inside the advance itself
+# (CanaryRolloutService._assert_kind_preconditions), so it cannot be bypassed
+# by choosing the generic route.
+# --------------------------------------------------------------------------- #
+@router.post("/deployments/{deployment_id}/strategy/rolling", response_model=RolloutPlanRead)
+def start_rolling_deployment(deployment_id: uuid.UUID,
+                             payload: RollingStartRequest | None = None,
+                             idempotency_key: str | None = Header(default=None,
+                                                                  alias="Idempotency-Key"),
+                             actor: User = Depends(require_permission(_DEPLOY_ACTION)),
+                             db: Session = Depends(get_db)):
+    """M3-3.9-FR-030 -- derive the fleet's cohorts and convert the first one.
+
+    Returns a rollout plan whose stage weights are real fleet capacity
+    fractions. Fails closed with ``ROLLING_COHORT_INVALID`` when no live
+    workers are registered: a rolling deployment over an empty fleet would be
+    a progress bar over nothing, which is precisely what Phase 3.6 refused to
+    ship."""
+    from app.runtime.deployment.rolling import RollingDeploymentService
+
+    service = RollingDeploymentService(db)
+    deployment = DeploymentStrategyService(db).get_or_404(actor, deployment_id)
+    result, _replayed = service.start(
+        actor, deployment,
+        payload=payload.model_dump(exclude_none=True) if payload is not None else None,
+        idempotency_key=idempotency_key)
+    return result
 
 
 # --------------------------------------------------------------------------- #

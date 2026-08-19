@@ -471,8 +471,8 @@ def test_ac21_no_migration_was_added():
     # Updated Phase 3.5: a genuinely new migration landed for the canary
     # rollout engine (0041) -- this assertion's own intent is preserved by
     # pointing at the new, correct head.
-    assert revisions[-1] == "0043_distributed_scheduler.py", (
-        f"expected migration head to be 0043_distributed_scheduler.py, found {revisions[-1]}"
+    assert revisions[-1] == "0044_worker_fleet_rolling.py", (
+        f"expected migration head to be 0044_worker_fleet_rolling.py, found {revisions[-1]}"
     )
 
 

@@ -175,6 +175,16 @@ class CanaryRolloutService:
     # ------------------------------------------------------------------ #
     # Driving Phase 3.4's allocation (AC-02) -- the only way traffic moves
     # ------------------------------------------------------------------ #
+    @staticmethod
+    def _label(plan: RolloutPlan) -> str:
+        """How this plan describes itself in an allocation reason.
+
+        Phase 3.9 made this engine serve two operations, and an allocation
+        history that called every weight change a "canary rollout" would
+        misattribute half of them. CANARY keeps its exact pre-3.9 wording so
+        existing audit trails stay greppable."""
+        return "Rolling deployment" if plan.kind == "ROLLING" else "Canary rollout"
+
     def _apply_candidate_weight(self, actor: User, plan: RolloutPlan, candidate_weight: int, *,
                                reason: str) -> None:
         """Set the candidate to ``candidate_weight`` and the stable version to
@@ -338,7 +348,7 @@ class CanaryRolloutService:
                                meta={"stage_index": plan.current_stage_index})
         self._apply_candidate_weight(
             actor, plan, stage.target_weight,
-            reason=f"Canary rollout {plan.id} stage {stage.stage_index} "
+            reason=f"{self._label(plan)} {plan.id} stage {stage.stage_index} "
                   f"({stage.target_weight}% candidate).")
         stage.entered_at = _now()
         try:
@@ -434,6 +444,26 @@ class CanaryRolloutService:
         )
         return result
 
+    def _assert_kind_preconditions(self, plan: RolloutPlan, next_index: int) -> None:
+        """Phase 3.9 -- a ROLLING plan's next step must still describe real
+        fleet capacity (M3-3.9-FR-032).
+
+        This lives here, in the one place a stage is actually entered, rather
+        than in ``RollingDeploymentService`` where it was first written. The
+        reason is bypass: a rolling plan *is* a ``RolloutPlan``, so
+        ``POST /rollouts/{id}/advance`` and the evaluate-and-advance path both
+        reach it, and a check sitting on a rolling-specific wrapper would
+        simply not run when an operator used the generic route. One choke
+        point, matching how ``_transition`` owns state and 3.4 owns weights.
+
+        A canary is unaffected -- it derives nothing from the fleet and has no
+        cohort to validate."""
+        if plan.kind != "ROLLING":
+            return
+        from app.runtime.deployment.rolling import RollingDeploymentService
+
+        RollingDeploymentService(self.db).assert_cohort_still_live(plan, next_index)
+
     def _advance_one_stage(self, actor: User, plan: RolloutPlan, *, health: dict,
                           gates: rollout_machine.StageGateResult) -> dict:
         stages = self.stages(plan)
@@ -441,9 +471,12 @@ class CanaryRolloutService:
 
         if next_index >= len(stages):
             # The last stage cleared -- the candidate takes all traffic and
-            # the rollout succeeds.
+            # the rollout succeeds. No cohort check: there is no further
+            # cohort to convert, and a cohort that died behind us must not
+            # block finishing a rollout that has already taken its traffic.
             return self._complete(actor, plan, health=health)
 
+        self._assert_kind_preconditions(plan, next_index)
         next_stage = stages[next_index]
         try:
             # The whole mutation sequence is inside the guard, not just the
@@ -474,7 +507,7 @@ class CanaryRolloutService:
 
         self._apply_candidate_weight(
             actor, plan, next_stage.target_weight,
-            reason=f"Canary rollout {plan.id} stage {next_index} "
+            reason=f"{self._label(plan)} {plan.id} stage {next_index} "
                   f"({next_stage.target_weight}% candidate).")
         next_stage.entered_at = _now()
         try:
@@ -492,7 +525,7 @@ class CanaryRolloutService:
         """Final stage cleared: candidate to 100%, stable superseded (AC-11)."""
         self._apply_candidate_weight(
             actor, plan, 100,
-            reason=f"Canary rollout {plan.id} promoted the candidate to 100%.")
+            reason=f"{self._label(plan)} {plan.id} promoted the candidate to 100%.")
         self._supersede_stable_deployment(actor, plan)
         plan = self._transition(actor, plan, "SUCCEEDED",
                                reason="All stages cleared; candidate promoted to 100%.",
@@ -682,6 +715,8 @@ class CanaryRolloutService:
             "environment_id": plan.environment_id,
             "candidate_version_id": plan.candidate_version_id,
             "stable_version_id": plan.stable_version_id,
+            "kind": plan.kind,
+            "cohort_plan": plan.cohort_plan,
             "state": plan.state,
             "current_stage_index": plan.current_stage_index,
             "state_reason": plan.state_reason,
