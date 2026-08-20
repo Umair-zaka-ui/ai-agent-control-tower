@@ -9,6 +9,7 @@ import {
   Users,
   Settings,
   ShieldAlert,
+  Rocket,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -44,6 +45,27 @@ export const PRIMARY_NAV: NavItem[] = [
     children: [
       { label: 'All Agents', path: ROUTES.AGENTS },
       { label: 'Create Agent', path: `${ROUTES.AGENTS}/new` },
+    ],
+  },
+  {
+    // Phase 3.10 — the Release Operations Center. Sits directly under Agents
+    // because it is where an operator goes to ship one, and above Policies
+    // because during an incident it is the page they need first.
+    label: 'Releases',
+    path: ROUTES.OPS_OVERVIEW,
+    icon: Rocket,
+    roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.REVIEWER],
+    children: [
+      { label: 'Overview', path: ROUTES.OPS_OVERVIEW },
+      { label: 'Environments', path: ROUTES.OPS_ENVIRONMENTS },
+      { label: 'Rollouts', path: ROUTES.OPS_ROLLOUTS },
+      { label: 'Traffic', path: ROUTES.OPS_TRAFFIC },
+      { label: 'Health gates', path: ROUTES.OPS_GATES },
+      { label: 'Promote', path: ROUTES.OPS_PROMOTE },
+      { label: 'Roll back', path: ROUTES.OPS_ROLLBACK },
+      { label: 'Release history', path: ROUTES.OPS_HISTORY },
+      { label: 'Worker fleet', path: ROUTES.OPS_FLEET },
+      { label: 'Scheduler', path: ROUTES.OPS_SCHEDULER },
     ],
   },
   {
