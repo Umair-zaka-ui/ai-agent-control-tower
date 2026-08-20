@@ -1,6 +1,6 @@
 # Backup and system-migration guide
 
-**Last verified 2026-08-17** after Phase 3.8. Facts that matter for a restore,
+**Last verified 2026-08-21** after Phase 3.10 (Milestone 3 complete). Facts that matter for a restore,
 all re-checked live rather than carried forward: migration head
 `0043_distributed_scheduler`, **123 tables**, PostgreSQL **17.10** locally,
 `backend/.venv` on Python **3.13.14**, Node **v24.18.0**. Sections naming a
@@ -424,6 +424,22 @@ WHERE enabled ORDER BY next_run_at;
 
 The first query is informational — those rows recover themselves. The second is
 
+
+## The Release Operations Center (Phase 3.10) — no recovery impact
+
+Recorded explicitly rather than left unmentioned, because "the tracking files
+were updated" should mean someone actually checked.
+
+**Phase 3.10 changes nothing about recovery.** It added no table, no migration
+and no state of its own: the Operations Center is twelve read-only views plus
+four read-only endpoints over data the Phase 3.1–3.9 engines already own. After
+a restore it shows whatever those engines contain — there is no cache to warm,
+no projection to rebuild and nothing to reconcile.
+
+The one operational note worth carrying over is not new either, and lives with
+the fleet below: an in-flight rolling deployment will refuse to advance until
+its cohorts have live workers again, so **start your workers before resuming
+one**.
 
 ## The execution worker fleet (Phase 3.9)
 

@@ -2032,8 +2032,51 @@ The milestone's riskiest phase, and the one that **resolves ruling #1**.
 
 **Milestone 3 now has 9 of 10 sub-phases done.**
 
-Next: 3.10 — the Release Operations Center, the operator-facing assembly of
-everything this milestone built, and the last sub-phase.
+### Phase 3.10 — AI Release Operations Center (2026-08-21)
+
+The milestone's last sub-phase: the operator-facing surface over everything
+3.1–3.9 built.
+
+- **Twelve operational views** at `/operations` — deployment overview,
+  environment matrix, release history, deployment detail, rollout timeline,
+  canary dashboard, traffic allocation, health gates, promotion wizard,
+  rollback wizard, worker fleet, scheduler jobs.
+- **Read + trigger only, enforced structurally.** The read-model module makes
+  no `add`/`commit`/`delete`/`flush` call and imports no mutating service (both
+  AST-asserted); all four new routes are GET; **no migration**; and a git-diff
+  test pins twelve engine modules byte-identical to `main`.
+- **Eight of twelve views needed no new endpoint.** The four gaps were reported
+  before coding — chiefly the **rollout list**, which Phase 3.5 never had: a
+  canary could be advancing through production traffic with no way to find it
+  in the API.
+- **Truthful state is the deliverable.** `kill_switch_active`, `gate_verdict`,
+  `release_health.is_proving` and `servable` are first-class fields, because a
+  read model that omitted them would *make* the UI present a killed release as
+  deployable. INSUFFICIENT_DATA renders as a warning, never neutral.
+- **Two confirmation tiers**, deliberately unequal — uniform friction is
+  friction people learn to click through. The dialog guards against the
+  accidental, not the unauthorized; the server remains the authority.
+- **Conflicts are never auto-retried**; safety refusals pass through verbatim.
+- Routes 536 → 540; schema unchanged at 124 tables; head unchanged at `0044`.
+- 26 new backend tests, 30 new frontend tests. Backend **1,770** green,
+  frontend **327** green. See
+  [docs/deployment/operations-center.md](docs/deployment/operations-center.md).
+
+## MILESTONE 3 IS COMPLETE — 10 of 10
+
+Deployment, Release & Operations is done: the lifecycle state machine and its
+single transition authority, governed environments and immutability-preserving
+promotion, the release gate, weighted traffic allocation with a fail-closed
+execution gate, the canary engine with AI-aware release health, blue-green and
+recreate, automated rollback subordinate to the kill switch, a distributed
+scheduler, a distributed execution worker fleet with rolling deployment over
+real cohorts, and the operations center over all of it.
+
+**The platform now runs, connects, and ships AI agents the way an enterprise
+requires** — real governed execution (M1), enterprise integration in both
+directions (M2), and safe production release operations (M3).
+
+Next: the roadmap's following milestone — Runtime Governance & Observability.
 
 ### The six rulings, and where they landed
 
@@ -2043,14 +2086,13 @@ everything this milestone built, and the last sub-phase.
 | 2 | Deployment lifecycle has one transition authority | Enforced from 3.1, mechanically checked since |
 | 3 | Release health is a separate question from instance health | Resolved in 3.5 — a new table, deliberately |
 | 4 | Promotion must preserve version immutability | Resolved in 3.2; found already half-enforced and reported |
-| 5 | Traffic allocation is the one mechanism every strategy drives | Established in 3.4; 3.5/3.6/3.7/3.9 all drive it, none bypass it |
-| 6 | Suspension/kill switch is read, never written, by automation | Enforced from 3.1; 3.7 made automation strictly subordinate; 3.9 inherits it |
+| 5 | Traffic allocation is the one mechanism every strategy drives | Established in 3.4; 3.5/3.6/3.7/3.9 all drive it, none bypass it; 3.10's UI dispatches to it and never writes weights itself |
+| 6 | Suspension/kill switch is read, never written, by automation | Enforced from 3.1; 3.7 made automation strictly subordinate; 3.9 inherits it; 3.10 surfaces it as a first-class field so the UI cannot hide it |
 
 ## Future (Phase 3+)
 
-**Milestone 3, remaining**: the operator frontend / Release Operations
-Center (3.10) — the last sub-phase, assembling everything 3.1–3.9
-built into one operator-facing surface.
+**Milestone 3 is complete (10/10).** The next milestone on the
+roadmap is Runtime Governance & Observability.
 **Milestone 2 is complete** (connector framework, all four generic
 connectors — REST, database, storage, queue — and external identity
 federation). SQL Server support for the database connector, Azure Blob

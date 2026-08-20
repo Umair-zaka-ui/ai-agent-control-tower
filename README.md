@@ -14,7 +14,7 @@
 >
 > **Milestone 2** (Enterprise Integration Framework — **complete, 9/9**): the connector abstraction & lifecycle, a pluggable authentication framework, registry & health, a connector SDK, four generic connectors (REST, database, storage, queue), and external identity federation (OIDC + SAML). See [`docs/integration/connectors.md`](docs/integration/connectors.md) and [`docs/identity/federation.md`](docs/identity/federation.md).
 >
-> **Milestone 3** (Deployment & Release — **in progress, 9/10**): the deployment lifecycle core, governed environments & promotion, the release gate, weighted traffic allocation with a version resolver and fail-closed execution gate, the canary rollout engine with AI-aware release health, blue-green/recreate strategies, **automated rollback** — per-tenant trigger policies that roll a failing candidate back on their own, strictly subordinate to the kill switch — a **distributed scheduler** whose instances coordinate through Postgres leases so every due job runs exactly once, and a **distributed execution worker fleet** — agent executions now run on independently-operable worker processes that hold no database lock across model or tool network I/O, with **rolling deployment** defined over real worker cohorts rather than simulated counters. See [`docs/deployment/`](docs/deployment/).
+> **Milestone 3** (Deployment, Release & Operations — **COMPLETE, 10/10**): the deployment lifecycle core, governed environments & promotion, the release gate, weighted traffic allocation with a version resolver and fail-closed execution gate, the canary rollout engine with AI-aware release health, blue-green/recreate strategies, **automated rollback** — per-tenant trigger policies that roll a failing candidate back on their own, strictly subordinate to the kill switch — a **distributed scheduler** whose instances coordinate through Postgres leases so every due job runs exactly once, and a **distributed execution worker fleet** — agent executions now run on independently-operable worker processes that hold no database lock across model or tool network I/O, with **rolling deployment** defined over real worker cohorts rather than simulated counters, and the **Release Operations Center** — twelve operational views through which an operator sees and drives all of it, with dangerous actions confirmation-gated and unsafe state shown rather than smoothed over. See [`docs/deployment/`](docs/deployment/).
 >
 > **Current state at a glance** — [Where the project is now](#where-the-project-is-now) below, or [`REPO_STATE.md`](REPO_STATE.md) for the verified, exhaustive version.
 
@@ -38,10 +38,10 @@ is the document to trust if it and this README ever disagree.*
 
 | | |
 |---|---|
-| Backend tests | **1,744 passed**, 0 failed, 1 deselected |
-| Frontend tests | **297 passed** |
+| Backend tests | **1,770 passed**, 0 failed, 1 deselected |
+| Frontend tests | **327 passed** |
 | Live schema | **124 tables**, migration head `0044_worker_fleet_rolling` |
-| HTTP routes | **536** |
+| HTTP routes | **540** |
 
 ### Milestones
 
@@ -51,7 +51,7 @@ is the document to trust if it and this README ever disagree.*
 | **Phase 5.0–5.2** | Complete | Agent runtime & lifecycle, enterprise registry, immutable signed versioning |
 | **Milestone 1** — real execution | **Complete** | Model provider abstraction, a real OpenAI-compatible adapter, streaming & token/cost accounting, an error taxonomy with retry/circuit-breaking, per-organization encrypted credentials, HTTP tool execution behind an SSRF egress guard, tool schema validation, and the model-driven tool invocation loop |
 | **Milestone 2** — Enterprise Integration Framework | **Complete (9/9)** | Connector abstraction/lifecycle, a pluggable authentication framework, registry & health, a connector SDK, four generic connectors (REST, database, storage, queue), and external identity federation (OIDC + SAML) |
-| **Milestone 3** — Deployment & Release | **In progress (9/10)** | Deployment lifecycle core, environments & promotion, the release gate, weighted traffic allocation + version resolver, the canary engine, blue-green/recreate strategies, automated rollback with per-tenant trigger policies, a distributed scheduler that drives them, and a distributed execution worker fleet with rolling deployment over real cohorts. Next: 3.10 operator frontend — the last sub-phase |
+| **Milestone 3** — Deployment, Release & Operations | **Complete (10/10)** | Deployment lifecycle core, environments & promotion, the release gate, weighted traffic allocation + version resolver, the canary engine, blue-green/recreate/rolling strategies, automated rollback with per-tenant trigger policies, a distributed scheduler, a distributed execution worker fleet, and the Release Operations Center over all of it |
 
 **What "complete" means for Milestone 1**: an agent that is registered,
 versioned, signed and deployed genuinely executes end to end — it calls a real
@@ -60,11 +60,11 @@ result feeds back into the conversation, the loop resolves to a final answer, an
 every token, call and decision is audited.
 
 Deliberately not built, with the owning phase named rather than left vague:
-the operator-facing Release Operations Center (3.10 — the last sub-phase), and
-vendor-specific connectors (SAP/Salesforce/ServiceNow — deliberately fast-follow
-work once a real deployment names a vendor). Rolling deployment *was* on this
-list for three phases, refusing to simulate itself over vestigial replica
-counters; Phase 3.9 built the worker fleet and implemented it for real. [`REPO_STATE.md`](REPO_STATE.md) §9 keeps the full, honest gap
+vendor-specific connectors (SAP/Salesforce/ServiceNow — fast-follow work once a
+real deployment names a vendor). Rolling deployment *was* on this list for three
+phases, refusing to simulate itself over vestigial replica counters; Phase 3.9
+built the worker fleet and implemented it for real, and Phase 3.10 put an
+operator in front of the whole thing. [`REPO_STATE.md`](REPO_STATE.md) §9 keeps the full, honest gap
 list, including things that are placeholders rather than features.
 
 ---
@@ -661,7 +661,7 @@ signature's own reference back to the exact ID-referenced element, tested agains
 deliberately-constructed signature-wrapping attacks. A federated login terminates
 in the platform's *existing* session pipeline — never a parallel one.
 
-### Milestone 3 — Deployment & Release (in progress, 9/10)
+### Milestone 3 — Deployment, Release & Operations (complete, 10/10)
 
 Deployments became a governed domain: a 15-state lifecycle with a single
 transition authority and optimistic concurrency, governed **environments** with
@@ -772,6 +772,35 @@ rolls is the share of new work routed to the candidate, in units of real
 capacity, with the fleet sizing and gating the rollout. A rolling deployment
 that cannot see its next cohort refuses to advance rather than promoting
 traffic onto machines that are not there.
+
+
+**Phase 3.10 built the Release Operations Center** — twelve views at
+`/operations` through which an operator can see every deployment across every
+environment, watch a canary advance stage by stage with live health, read a
+release gate's findings, promote through environments, roll back with one
+guarded click, watch the worker fleet and scheduler, and reconstruct any
+release from its timeline.
+
+It adds **no deployment logic**. Every action dispatches to an endpoint Phases
+3.1–3.9 already built and already authorize — a "roll back" button *calls* the
+rollback engine, it does not perform one. That is enforced rather than
+promised: the read-model module makes no write call and imports no mutating
+service, both checked against the parsed source, and a test pins twelve engine
+modules byte-identical to the previous release.
+
+The property that makes it trustworthy is honesty about unsafe state. An
+active kill switch, a BLOCK verdict, INSUFFICIENT_DATA health and a paused or
+rolling-back deployment are all surfaced as first-class facts rather than
+inferred from strings — because the UI can only show what the server tells it,
+and a read model that omitted them would *make* the interface present a killed
+release as deployable. Dangerous actions are confirmation-gated in two tiers,
+with the heavier friction reserved for the genuinely irreversible: uniform
+friction is friction people learn to click through.
+
+**With 3.10 merged, Milestone 3 is complete.** The platform executes real
+governed AI, integrates with the enterprise in both directions, and deploys,
+releases, monitors, routes, rolls back and operates agent versions safely at
+production scale.
 
 ---
 
@@ -1266,11 +1295,8 @@ lifecycle — so it is replaced here with the actual current queue rather than l
 to read as pending. [`ROADMAP.md`](ROADMAP.md) is the maintained plan and
 [`REPO_STATE.md`](REPO_STATE.md) §9 the honest gap list.*
 
-**Immediately next — finishing Milestone 3:**
-
-- **3.10 Release Operations Center** — deployment, rollout, traffic, fleet and
-  rollback UI: the operator-facing assembly of everything 3.1–3.9 built. The
-  last sub-phase of the milestone.
+**Milestone 3 is complete.** Next on the roadmap: Runtime Governance &
+Observability.
 
 **Known gaps, stated plainly** (the full list is [`REPO_STATE.md`](REPO_STATE.md)
 §9): CAPTCHA verification is a placeholder; the Phase 3 analytics cost figures are
