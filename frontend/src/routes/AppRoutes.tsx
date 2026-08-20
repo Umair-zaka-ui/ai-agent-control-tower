@@ -15,6 +15,20 @@ import {
   UsersPage,
 } from '@/pages'
 import {
+  CanaryDashboardPage,
+  EnvironmentMatrixPage,
+  HealthGatesPage,
+  OperationsDeploymentDetailPage,
+  PromotionWizardPage,
+  ReleaseHistoryPage,
+  ReleaseOverviewPage,
+  RollbackWizardPage,
+  RolloutsPage,
+  SchedulerJobsPage,
+  TrafficAllocationPage,
+  WorkerFleetPage,
+} from '@/modules/operations'
+import {
   AgentDetailsPage,
   AgentEditPage,
   AgentsListPage,
@@ -301,6 +315,21 @@ export function AppRoutes() {
           <Route path={ROUTES.RUNTIME_TOOLS} element={<RuntimeToolsPage />} />
           <Route path={ROUTES.RUNTIME_APPROVALS} element={<RuntimeApprovalsPage />} />
           <Route path={ROUTES.RUNTIME_OPERATIONS} element={<RuntimeOperationsPage />} />
+          {/* Phase 3.10 — the Release Operations Center. Twelve operational
+              views over the Milestone 3 engines; every action dispatches to a
+              3.1–3.9 endpoint that re-authorizes it server-side. */}
+          <Route path={ROUTES.OPS_OVERVIEW} element={<ReleaseOverviewPage />} />
+          <Route path={ROUTES.OPS_ENVIRONMENTS} element={<EnvironmentMatrixPage />} />
+          <Route path={ROUTES.OPS_HISTORY} element={<ReleaseHistoryPage />} />
+          <Route path={ROUTES.OPS_DEPLOYMENT_DETAIL} element={<OperationsDeploymentDetailPage />} />
+          <Route path={ROUTES.OPS_ROLLOUTS} element={<RolloutsPage />} />
+          <Route path={ROUTES.OPS_ROLLOUT_DETAIL} element={<CanaryDashboardPage />} />
+          <Route path={ROUTES.OPS_TRAFFIC} element={<TrafficAllocationPage />} />
+          <Route path={ROUTES.OPS_GATES} element={<HealthGatesPage />} />
+          <Route path={ROUTES.OPS_PROMOTE} element={<PromotionWizardPage />} />
+          <Route path={ROUTES.OPS_ROLLBACK} element={<RollbackWizardPage />} />
+          <Route path={ROUTES.OPS_FLEET} element={<WorkerFleetPage />} />
+          <Route path={ROUTES.OPS_SCHEDULER} element={<SchedulerJobsPage />} />
           {/* ABAC administration (Phase 4.3.5 §33) */}
           <Route path={ROUTES.ABAC_POLICIES} element={<ABACPoliciesPage />} />
           <Route path={`${ROUTES.ABAC_POLICIES}/new`} element={<CreateABACPolicyPage />} />

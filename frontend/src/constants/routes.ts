@@ -106,6 +106,23 @@ export const ROUTES = {
   RUNTIME_TOOLS: '/runtime/tools',
   RUNTIME_APPROVALS: '/runtime/approvals',
   RUNTIME_OPERATIONS: '/runtime/operations',
+
+  // Phase 3.10 — the Release Operations Center. A top-level surface rather
+  // than a page under /runtime: it spans deployments, rollouts, traffic,
+  // gates, the worker fleet and the scheduler, none of which belong to any
+  // one runtime page.
+  OPS_OVERVIEW: '/operations',
+  OPS_ENVIRONMENTS: '/operations/environments',
+  OPS_HISTORY: '/operations/history',
+  OPS_DEPLOYMENT_DETAIL: '/operations/deployments/:id',
+  OPS_ROLLOUTS: '/operations/rollouts',
+  OPS_ROLLOUT_DETAIL: '/operations/rollouts/:id',
+  OPS_TRAFFIC: '/operations/traffic',
+  OPS_GATES: '/operations/gates',
+  OPS_PROMOTE: '/operations/promote',
+  OPS_ROLLBACK: '/operations/rollback',
+  OPS_FLEET: '/operations/fleet',
+  OPS_SCHEDULER: '/operations/scheduler',
   /** ABAC administration (Phase 4.3.5 §33). */
   ABAC_POLICIES: '/authorization/abac',
   ABAC_SIMULATOR: '/authorization/abac/simulator',

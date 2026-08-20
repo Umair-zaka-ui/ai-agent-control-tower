@@ -1970,3 +1970,90 @@ def kill_platform(payload: KillSwitchRequest,
     per-organization ``runtime.kill_switch.execute`` grant must never be
     sufficient on its own to halt every organization's executions."""
     return KillSwitchService(db).activate(actor, "PLATFORM", None, payload.reason)
+
+
+# --------------------------------------------------------------------------- #
+# Phase 3.10 (ACT-SRS-M3 §Phase-3.10 §6) -- Release Operations Center read
+# models.
+#
+# **Every route below is read-only.** The Operations Center triggers change
+# through the Phase 3.1-3.9 endpoints that already exist above; these four
+# exist only because four of its twelve views needed data no endpoint shaped:
+# an overview that would otherwise cost five extra requests per row, a
+# release timeline that was only ever exposed per-deployment, a detail
+# composite spread across eight endpoints, and a rollout *list* -- Phase 3.5
+# exposed GET /rollouts/{id} and no way to discover a rollout at all.
+#
+# Nested under /operations/ rather than at /api/v1/deployments/overview as the
+# build prompt's §6 sketched: this repository's runtime API is uniformly
+# /api/v1/runtime/..., and /deployments/{deployment_id} would have swallowed
+# "overview" as an id. Reported rather than silently redesigned -- the same
+# call Phase 3.9 made for the fleet API.
+#
+# The rollout list is the one exception to the /operations/ prefix: it is not
+# an aggregation for a screen, it is the list endpoint 3.5's own resource was
+# missing, so it belongs beside GET /rollouts/{id}.
+# --------------------------------------------------------------------------- #
+@router.get("/operations/overview", response_model=dict)
+def operations_overview(environment_id: uuid.UUID | None = None,
+                        actor: User = Depends(require_permission(_DEPLOY_VIEW)),
+                        db: Session = Depends(get_db)):
+    """M3-3.10-FR-001/002 -- every deployment in this organization, enriched
+    with the agent, version identity, environment, current traffic weight,
+    live rollout, release health and latest gate verdict.
+
+    Feeds both the Deployment Overview and the Environment Matrix; the matrix
+    is these rows pivoted, and computing it separately would be a second thing
+    to keep in agreement with this one."""
+    from app.runtime.operations import OperationsReadModel
+
+    return OperationsReadModel(db).overview(actor, environment_id=environment_id)
+
+
+@router.get("/operations/release-history", response_model=list[dict])
+def operations_release_history(limit: int = 100, offset: int = 0,
+                               agent_id: uuid.UUID | None = None,
+                               environment_id: uuid.UUID | None = None,
+                               actor: User = Depends(require_permission(_DEPLOY_VIEW)),
+                               db: Session = Depends(get_db)):
+    """M3-3.10-FR-003 -- the audited release timeline, newest first.
+
+    Merged from Phase 3.1's append-only ``deployment_events`` (which carries
+    deployments and promotions) and Phase 3.7's ``rollback_events``. §13
+    requires a release be reconstructable; until this endpoint, doing so meant
+    knowing every deployment id in advance."""
+    from app.runtime.operations import OperationsReadModel
+
+    return OperationsReadModel(db).release_history(
+        actor, limit=min(max(limit, 1), 500), offset=max(offset, 0),
+        agent_id=agent_id, environment_id=environment_id)
+
+
+@router.get("/operations/deployments/{deployment_id}", response_model=dict)
+def operations_deployment_detail(deployment_id: uuid.UUID,
+                                 actor: User = Depends(require_permission(_DEPLOY_VIEW)),
+                                 db: Session = Depends(get_db)):
+    """M3-3.10-FR-004 -- §22's full detail field set in one response,
+    including the immutable version's checksum and signature state
+    (M3-3.10-FR-024), the current rollout stage, the traffic allocation,
+    release health, approvals and the full event timeline."""
+    from app.runtime.operations import OperationsReadModel
+
+    return OperationsReadModel(db).deployment_detail(actor, deployment_id)
+
+
+@router.get("/rollouts", response_model=list[dict])
+def list_rollouts(agent_id: uuid.UUID | None = None,
+                  environment_id: uuid.UUID | None = None,
+                  active_only: bool = False, limit: int = 100,
+                  actor: User = Depends(require_permission(_DEPLOY_VIEW)),
+                  db: Session = Depends(get_db)):
+    """The list endpoint Phase 3.5's rollout resource never had.
+
+    Declared after ``/rollouts/{rollout_id}`` in this module but on a distinct
+    literal path, so there is no ambiguity between them."""
+    from app.runtime.operations import OperationsReadModel
+
+    return OperationsReadModel(db).rollouts(
+        actor, agent_id=agent_id, environment_id=environment_id,
+        active_only=active_only, limit=min(max(limit, 1), 500))
