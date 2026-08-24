@@ -760,6 +760,6 @@ decision along the way is audited — see
 before this is a product someone would actually run in front of real
 traffic is everything Milestones 2+ and the platform's own roadmap
 already name — governance policy evaluation mid-loop (5.8), multi-agent
-delegation (Milestone 10, and explicitly not this), distributed workers
-(Milestone 3). What this milestone was for — proving the platform
-*works* — is done.
+delegation (Milestone 10, and explicitly not this), and distributed workers
+— **which Milestone 3 has since delivered** (Phase 3.9). What this milestone
+was for — proving the platform *works* — is done.

@@ -474,7 +474,13 @@ that, at the moment of the response itself. This wasn't fixed here: the
 tool invocation loop that would actually need it is Phase 5.6a.3's job,
 explicitly out of scope for this sub-phase, and guessing at the right
 shape without that consumer in hand risked distorting `types.py` for a use
-case not yet built. Flagged here for whoever builds 5.6a.3.
+case not yet built.
+
+**Update (5.6a.3 shipped).** `ToolLoopOrchestrator` built the loop and did
+*not* need this: it threads tool results back as `role="tool"` messages
+carrying the structured result, rather than replaying a prior assistant
+tool invocation. So the gap named above is still open and still unfixed —
+but it is now known not to block the consumer it was being held open for.
 
 ## Streaming (`stream()`, Phase 5.7a.3)
 
@@ -819,12 +825,23 @@ failure via `_circuit_record_failure` re-opens it and restarts the
 cooldown). Opens after `MODEL_PROVIDER_CIRCUIT_FAILURE_THRESHOLD`
 consecutive failures (default 5).
 
-**Known limitation, deliberately not solved here**: this state is
+**Known limitation, and it became a live one in Phase 3.9**: this state is
 per-process and not persisted anywhere. A fresh process starts every
-provider closed. Milestone 3's distributed worker model (multiple worker
-processes/machines) would need a shared store for this to mean anything
-across the whole fleet — out of scope for this sub-phase, which owns one
-in-process worker.
+provider closed.
+
+When this was written the platform ran one in-process worker, so per-process
+state and fleet-wide state were the same thing. **They are not any more.**
+Phase 3.9 shipped a distributed execution worker fleet
+([../deployment/workers.md](../deployment/workers.md)), so each worker process
+now keeps its *own* circuit state: a provider that has tripped on one worker is
+still closed on every other, and N workers can each independently spend their
+failure budget against a provider that is already down.
+
+That is a real operational caveat rather than a theoretical one, and it is
+deliberately still unsolved — a shared circuit store is a distributed-state
+problem of its own, and the per-provider retry classification (5.7a.4) plus the
+execution-level retry policy already bound the blast radius. Worth knowing
+before scaling the fleet wide against a flaky provider.
 
 ### Timeouts (`ACT-MDL-FR-068`)
 

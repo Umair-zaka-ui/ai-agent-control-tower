@@ -300,13 +300,18 @@ down rather than quietly reactivating something.
 
 ---
 
-## Interim, and what 3.8 replaces
+## Interim, and what 3.8 replaced
 
 `POST .../rollback/evaluate` is a **bounded** operation: one call evaluates one
 deployment and performs at most one rollback. It is not a scheduler and does not
-loop. Phase 3.8 will call this exact method on a timer with no change required
-here — the same relationship `app/integration/scheduler.py` already documents
-for its own eventual replacement.
+loop.
+
+> **Since shipped.** Phase 3.8 calls this exact method on a timer — registered
+> as the `deployment.rollback_trigger_evaluation` job — and **required no change
+> here**, which is what bounding it this way was for. Phase 2.1.3's interim
+> in-process loop (`app/integration/scheduler.py`), cited here as the same
+> relationship, was retired in that phase along the replacement path it had
+> specified for itself. See [scheduler.md](scheduler.md).
 
 ---
 

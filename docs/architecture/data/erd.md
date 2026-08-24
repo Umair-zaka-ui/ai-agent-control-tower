@@ -1,14 +1,28 @@
 # Entity Relationship Diagrams
 
-> **24 tables**, generated from `Base.metadata` and verified against
-> `backend/migrations/versions/0001…0009`. Split by bounded context because a
-> single 24-table diagram is a poster, not a document.
+> **123 tables** in `Base.metadata` (124 in a live database — Alembic manages
+> `alembic_version` itself, and it is not a model). Generated from
+> `Base.metadata` and verified against the live schema at migration head
+> `0044_worker_fleet_rolling`. Split by bounded context because a single
+> 123-table diagram is a poster, not a document.
+>
+> **Last regenerated 2026-08-24.** This document declared *24 tables* for a long
+> while, covering only the Phase 4 identity and authorization contexts — it had
+> drifted since roughly Phase 3.4 and was recorded as a known gap in
+> `REPO_STATE.md` §9 before being closed here. If the count below stops
+> matching the command, assume the diagrams have drifted too.
 
 Verify the table count still matches:
 
 ```bash
 cd backend && python -c "import app.main; from app.core.database import Base; print(len(Base.metadata.tables))"
 ```
+
+**Column lists are truncated** where a table is wide — a `_N_more_columns` row
+says how many were elided. Primary and foreign keys are always shown, because
+those are what the diagram is *for*; `created_at`/`updated_at` are omitted
+throughout (see the timestamps invariant below). The authority for any column
+is the model, never this file.
 
 ## Global invariants
 
@@ -801,3 +815,827 @@ trade-off for audit tables and is why cascading deletes cannot erase history.
 
 `request_id` and `trace_id` come from request headers. They are correlation aids,
 **not** evidence of identity.
+
+
+---
+
+## 4. Identity lifecycle (Phases 4.2.2.3.1–4.2.2.3.4)
+
+Registration, verification and the invitation flow. `rate_limit_hits` is the
+only table here that is deliberately *not* tenant-scoped: it counts attempts
+against an endpoint and an identifier before anyone is authenticated, so there
+is no organization to scope it to yet.
+
+```mermaid
+erDiagram
+    invitations {
+        uuid id PK
+        uuid organization_id FK
+        uuid role_id FK
+        uuid department_id FK
+        uuid team_id FK
+        uuid invited_by FK
+        string email
+        string token_hash UK
+        string status
+        datetime expires_at
+        string _5_more_columns
+    }
+    email_verifications {
+        uuid id PK
+        uuid user_id FK
+        string verification_token_hash UK
+        datetime expires_at
+        datetime verified_at
+        datetime superseded_at
+        string purpose
+        string new_email
+    }
+    user_profiles {
+        uuid id PK
+        uuid user_id FK
+        string first_name
+        string last_name
+        string job_title
+        string department
+        string phone
+        string timezone
+        string language
+        string avatar_url
+    }
+    rate_limit_hits {
+        uuid id PK
+        string bucket
+    }
+```
+
+Recovery and account protection. `password_history` exists so a reset cannot
+reuse a recent password; `account_locks` and `blocked_ips` are the two
+enforcement surfaces, and `identity_risk_events` is the evidence behind them.
+
+```mermaid
+erDiagram
+    password_reset_requests {
+        uuid id PK
+        uuid user_id FK
+        uuid organization_id FK
+        string token_hash UK
+        string status
+        datetime expires_at
+        datetime used_at
+        string created_ip
+        string created_user_agent
+    }
+    password_history {
+        uuid id PK
+        uuid user_id FK
+        string password_hash
+    }
+    account_locks {
+        uuid id PK
+        uuid user_id FK
+        uuid organization_id FK
+        uuid unlocked_by FK
+        string reason
+        string status
+        datetime locked_at
+        datetime expires_at
+        datetime unlocked_at
+        jsonb meta
+    }
+    blocked_ips {
+        uuid id PK
+        uuid organization_id FK
+        uuid created_by FK
+        string ip_address
+        string reason
+        datetime expires_at
+    }
+    identity_protection_rules {
+        uuid id PK
+        uuid organization_id FK
+        string name
+        string description
+        jsonb conditions
+        string decision
+        bool enabled
+        int priority
+    }
+    identity_risk_events {
+        uuid id PK
+        uuid organization_id FK
+        uuid user_id FK
+        string event_type
+        int risk_score
+        string risk_level
+        jsonb signals
+        string decision
+        string ip_address
+        string user_agent
+    }
+```
+
+## 5. External identity federation (Phase 2.3.1)
+
+The inversion that makes federation different from every connector: the
+platform holds **no** user secret here. It verifies an assertion arriving
+inward, rather than presenting a credential outward.
+
+```mermaid
+erDiagram
+    identity_federation_configs {
+        uuid id PK
+        uuid organization_id FK
+        uuid default_role_id FK
+        uuid created_by FK
+        string protocol
+        string provider_type
+        string display_name
+        jsonb configuration
+        string encrypted_client_secret
+        bool jit_provisioning_enabled
+        string _4_more_columns
+    }
+    federated_identities {
+        uuid id PK
+        uuid user_id FK
+        uuid organization_id FK
+        uuid federation_config_id FK
+        string external_subject_id
+        datetime last_federated_login_at
+    }
+    identity_federation_configs ||--o{ federated_identities : "federation_config_id"
+```
+
+## 6. Authorization engine internals (Phases 4.3.1–4.3.6)
+
+The tables behind permission resolution rather than its inputs.
+`permission_cache` is derived state and safe to truncate; `permission_versions`
+is what invalidates it. `authorization_decisions` and `authorization_audit` are
+append-only records of what the gateway decided and why.
+
+```mermaid
+erDiagram
+    permission_groups {
+        uuid id PK
+        string name UK
+        string display_name
+        string description
+        int sort_order
+    }
+    permission_versions {
+        uuid id PK
+        uuid organization_id
+        int version
+    }
+    permission_cache {
+        uuid id PK
+        uuid identity_id
+        uuid organization_id
+        jsonb grants_json
+        int version
+        datetime expires_at
+    }
+    role_hierarchy {
+        uuid id PK
+        uuid parent_role_id FK
+        uuid child_role_id FK
+    }
+    authorization_decisions {
+        uuid id PK
+        uuid identity_id
+        uuid organization_id
+        string permission
+        string resource_type
+        uuid resource_id
+        bool allowed
+        string reason
+        string scope
+        string source_role
+        string _3_more_columns
+    }
+    authorization_audit {
+        uuid id PK
+        uuid organization_id FK
+        uuid actor_id
+        uuid identity_id
+        string event_type
+        string permission
+        string resource_type
+        uuid resource_id
+        string decision
+        string reason
+        string _2_more_columns
+    }
+```
+
+## 7. Organization hierarchy (Phase 4.3.3)
+
+`business_units` and `projects` form the scope tree that
+`resource_ownership` (section 1) resolves paths against; `delegations` grants
+authority down it for a bounded period.
+
+```mermaid
+erDiagram
+    business_units {
+        uuid id PK
+        uuid organization_id FK
+        uuid manager_id FK
+        string name
+        string status
+    }
+    projects {
+        uuid id PK
+        uuid team_id FK
+        uuid owner_id FK
+        string name
+        string status
+    }
+    delegations {
+        uuid id PK
+        uuid organization_id FK
+        uuid delegatee_id FK
+        uuid delegator_id
+        string scope_type
+        uuid scope_id
+        string permission
+        datetime revoked_at
+    }
+```
+
+## 8. Enterprise agent registry (Phase 5.1)
+
+Accountable ownership and a 13-state lifecycle, plus the import/export and
+duplicate-detection machinery. `agent_lifecycle_events` is append-only.
+
+```mermaid
+erDiagram
+    agent_lifecycle_events {
+        uuid id PK
+        uuid agent_id FK
+        uuid organization_id FK
+        string previous_status
+        string new_status
+        string reason
+        uuid requested_by
+        uuid approved_by
+        uuid authorization_decision_id
+        string request_id
+        string _3_more_columns
+    }
+    agent_validation_runs {
+        uuid id PK
+        uuid agent_id FK
+        string status
+        string validator_version
+        jsonb summary
+        jsonb errors
+        jsonb warnings
+        jsonb checks
+        datetime started_at
+        datetime completed_at
+        string _2_more_columns
+    }
+    agent_duplicate_matches {
+        uuid id PK
+        uuid source_agent_id FK
+        uuid candidate_agent_id FK
+        string match_type
+        decimal confidence_score
+        jsonb matching_fields
+        string status
+        uuid reviewed_by
+        string review_decision
+        string review_reason
+        string _2_more_columns
+    }
+    agent_ownership_history {
+        uuid id PK
+        uuid agent_id FK
+        string owner_role
+        string previous_owner_type
+        uuid previous_owner_id
+        string new_owner_type
+        uuid new_owner_id
+        string reason
+        uuid changed_by
+        uuid approved_by
+        string _1_more_columns
+    }
+    agent_import_jobs {
+        uuid id PK
+        uuid organization_id FK
+        string file_name
+        string format
+        string mode
+        string status
+        int total_records
+        int successful_records
+        int failed_records
+        int warning_records
+        string _4_more_columns
+    }
+    agent_import_items {
+        uuid id PK
+        uuid import_job_id FK
+        uuid agent_id FK
+        string record_identifier
+        string status
+        jsonb errors
+        jsonb warnings
+    }
+    agent_export_jobs {
+        uuid id PK
+        uuid organization_id FK
+        string export_type
+        string format
+        jsonb filters
+        string status
+        int record_count
+        string storage_reference
+        string payload
+        datetime expires_at
+        string _3_more_columns
+    }
+    agent_migration_records {
+        uuid id PK
+        uuid agent_id FK
+        string migration_batch_id
+        string legacy_source
+        string legacy_id
+        string migration_status
+        jsonb mapping_warnings
+        uuid migrated_by
+        datetime migrated_at
+    }
+    agent_import_jobs ||--o{ agent_import_items : "import_job_id"
+```
+
+## 9. Versioning, signing & release (Phases 5.2.x)
+
+An `agent_versions` row is immutable once published, which is why so much here
+is a satellite table rather than a column: a snapshot, a signature, a
+provenance record and a compatibility finding all describe a version without
+being able to alter it.
+
+`signing_keys`/`signing_key_versions` hold **public** key material and
+metadata only — the private key lives in `backend/.keys/` or a vault, never in
+the database. See `RECOVERY.md` on why that directory is the one thing no
+backup script captures by default.
+
+```mermaid
+erDiagram
+    agent_version_snapshots {
+        uuid id PK
+        uuid agent_version_id FK
+        jsonb snapshot
+        string checksum
+        string checksum_algorithm
+    }
+    agent_version_status_history {
+        uuid id PK
+        uuid agent_version_id FK
+        string previous_status
+        string new_status
+        string reason
+        uuid changed_by
+    }
+    agent_version_signatures {
+        uuid id PK
+        uuid agent_version_id FK
+        uuid signing_key_id FK
+        uuid signed_by FK
+        string manifest_digest
+        string signature
+        string algorithm
+        int signing_key_version
+        string signature_type
+        jsonb dsse_envelope
+        string _2_more_columns
+    }
+    agent_version_provenance {
+        uuid id PK
+        uuid agent_version_id FK
+        uuid actor_id
+        string actor_type
+        string source_repository
+        string source_commit
+        string source_ref
+        string build_environment
+        string builder_identity
+        string source_ip
+        string _3_more_columns
+    }
+    agent_version_compatibility_findings {
+        uuid id PK
+        uuid agent_version_id FK
+        uuid baseline_version_id FK
+        string category
+        string path
+        string change_type
+        string materiality
+        string baseline_value
+        string candidate_value
+        string description
+    }
+    signing_keys {
+        uuid id PK
+        string key_id UK
+        string provider
+        string algorithm
+        int current_version
+        string status
+        string public_key_pem
+        datetime revoked_at
+        string revocation_reason
+    }
+    signing_key_versions {
+        uuid id PK
+        uuid signing_key_id FK
+        int version
+        string public_key_pem
+        datetime retired_at
+    }
+    agent_release_channels {
+        uuid id PK
+        string name UK
+        string description
+        bool is_default
+    }
+    agent_release_metadata {
+        uuid id PK
+        uuid agent_version_id FK
+        string release_name
+        string release_description
+        string business_justification
+        string change_category
+        datetime release_window_start
+        datetime release_window_end
+        datetime support_end_date
+        string approval_ticket
+        string _7_more_columns
+    }
+    agent_release_notes {
+        uuid id PK
+        uuid agent_version_id FK
+        string category
+        string note
+        uuid created_by
+    }
+    agent_release_artifacts {
+        uuid id PK
+        uuid agent_version_id FK
+        string artifact_type
+        string reference
+        uuid created_by
+    }
+    signing_keys ||--o{ agent_version_signatures : "signing_key_id"
+    signing_keys ||--o{ signing_key_versions : "signing_key_id"
+```
+
+## 10. Deployment, release & operations (Milestone 3)
+
+The milestone's whole data model. Three things are worth reading off the
+diagram rather than the prose:
+
+- **`deployment_traffic_allocations` is revisioned, not mutated.** Each change
+  writes a new row and retires the previous one, so the allocation history *is*
+  the record of what traffic looked like when. `deployment_traffic_weights`
+  hangs off it.
+- **`rollout_plans` serves two operations.** `kind` is `CANARY` or `ROLLING`;
+  they share the seven-state machine, the per-stage gates and the optimistic
+  `revision`, and differ only in where the stage weights come from —
+  operator-declared for a canary, derived from real fleet capacity for a
+  rolling deployment (recorded in `cohort_plan`).
+- **`deployment_events` is append-only at the database level**, not merely by
+  convention: migration `0031` revokes UPDATE and DELETE on it.
+
+```mermaid
+erDiagram
+    environments {
+        uuid id PK
+        uuid organization_id FK
+        string name
+        string display_name
+        bool is_production
+        jsonb policy
+    }
+    promotion_paths {
+        uuid id PK
+        uuid organization_id FK
+        uuid from_environment_id FK
+        uuid to_environment_id FK
+        bool requires_approval
+    }
+    deployment_events {
+        uuid id PK
+        uuid deployment_id FK
+        uuid organization_id FK
+        string from_state
+        string to_state
+        string event_type
+        string reason
+        uuid actor_id
+        string idempotency_key
+    }
+    deployment_preflight_results {
+        uuid id PK
+        uuid deployment_id FK
+        uuid organization_id FK
+        string verdict
+        jsonb findings
+        datetime evaluated_at
+        uuid evaluated_by
+    }
+    deployment_traffic_allocations {
+        uuid id PK
+        uuid organization_id FK
+        uuid agent_id FK
+        uuid environment_id FK
+        int revision
+        bool is_current
+        string reason
+        uuid created_by
+    }
+    deployment_traffic_weights {
+        uuid id PK
+        uuid allocation_id FK
+        uuid agent_version_id FK
+        uuid deployment_id FK
+        int weight
+    }
+    rollout_plans {
+        uuid id PK
+        uuid organization_id FK
+        uuid agent_id FK
+        uuid environment_id FK
+        uuid candidate_version_id FK
+        uuid stable_version_id FK
+        string kind
+        string state
+        int current_stage_index
+        jsonb cohort_plan
+        string _5_more_columns
+    }
+    rollout_stages {
+        uuid id PK
+        uuid rollout_plan_id FK
+        int stage_index
+        int target_weight
+        int min_duration_seconds
+        int min_samples
+        string health_requirement
+        string advance_mode
+        datetime entered_at
+    }
+    deployment_health_evaluations {
+        uuid id PK
+        uuid organization_id FK
+        uuid deployment_id FK
+        uuid agent_version_id FK
+        uuid rollout_plan_id FK
+        string health_state
+        int sample_count
+        jsonb metrics
+        jsonb baseline_ref
+        datetime window_start
+        string _3_more_columns
+    }
+    rollback_trigger_policies {
+        uuid id PK
+        uuid organization_id FK
+        uuid environment_id FK
+        uuid agent_id FK
+        jsonb thresholds
+        string mode
+        int min_samples
+        int cooldown_seconds
+        bool enabled
+        uuid created_by
+    }
+    rollback_events {
+        uuid id PK
+        uuid organization_id FK
+        uuid deployment_id FK
+        uuid agent_id FK
+        uuid environment_id FK
+        uuid rollout_plan_id FK
+        uuid from_version_id FK
+        uuid to_version_id FK
+        uuid policy_id FK
+        string trigger
+        string _8_more_columns
+    }
+    environments ||--o{ promotion_paths : "from_environment_id"
+    environments ||--o{ deployment_traffic_allocations : "environment_id"
+    deployment_traffic_allocations ||--o{ deployment_traffic_weights : "allocation_id"
+    environments ||--o{ rollout_plans : "environment_id"
+    rollout_plans ||--o{ rollout_stages : "rollout_plan_id"
+    rollout_plans ||--o{ deployment_health_evaluations : "rollout_plan_id"
+    environments ||--o{ rollback_trigger_policies : "environment_id"
+    environments ||--o{ rollback_events : "environment_id"
+    rollout_plans ||--o{ rollback_events : "rollout_plan_id"
+    rollback_trigger_policies ||--o{ rollback_events : "policy_id"
+```
+
+## 11. Scheduler & execution worker fleet (Phases 3.8–3.9)
+
+Both coordinate through PostgreSQL alone — `FOR UPDATE SKIP LOCKED` leases, no
+broker (ADR-0002).
+
+`uq_job_runs_occurrence` on `(job_definition_id, occurrence_key)` is the
+exactly-once guard, and the key derives from the instant a job was *due* rather
+than when it was claimed — a claim-time key would differ per instance and
+defeat the constraint entirely.
+
+`worker_registrations` is **ephemeral**: it describes running operating-system
+processes, so after a restore every row names a process that no longer exists.
+Nothing needs clearing by hand. The execution *lease* is not here — it is
+`execution_locks` (section 3), whose `execution_id` UNIQUE constraint is the
+structural guarantee that no two workers run one claimed execution, and which
+is why Phase 3.9 added no second lease table.
+
+```mermaid
+erDiagram
+    job_definitions {
+        uuid id PK
+        uuid organization_id FK
+        string name
+        string handler_key
+        string schedule_kind
+        jsonb schedule_spec
+        jsonb params
+        bool enabled
+        int timeout_seconds
+        jsonb retry_policy
+        string _6_more_columns
+    }
+    job_runs {
+        uuid id PK
+        uuid job_definition_id FK
+        uuid organization_id FK
+        string occurrence_key
+        string status
+        int attempt
+        string lease_owner
+        datetime lease_expires_at
+        datetime heartbeat_at
+        datetime started_at
+        string _5_more_columns
+    }
+    worker_registrations {
+        uuid id PK
+        string worker_id
+        string cohort
+        string status
+        int concurrency
+        int active_count
+        string hostname
+        datetime heartbeat_at
+        datetime registered_at
+        datetime stopped_at
+    }
+    job_definitions ||--o{ job_runs : "job_definition_id"
+```
+
+## 12. Runtime supporting tables
+
+`provider_credentials` and `tool_credentials` store **encrypted** values with a
+plaintext hint only; the Fernet key lives in `backend/.keys/`.
+`idempotency_keys` is Phase 3.1's replay guard for deployment operations —
+distinct from M1's older `idempotency_records` (section 3), which the two
+phases deliberately did not merge.
+
+```mermaid
+erDiagram
+    execution_messages {
+        uuid id PK
+        uuid execution_id FK
+        int sequence
+        string role
+        string content
+        string tool_call_id
+        string tool_name
+        jsonb tool_calls_requested
+        int loop_iteration
+        int prompt_tokens
+        string _5_more_columns
+    }
+    model_pricing {
+        uuid id PK
+        string provider
+        string model_name
+        decimal prompt_cost_per_1k
+        decimal completion_cost_per_1k
+        string currency
+        string pricing_version
+        datetime effective_from
+        datetime effective_to
+    }
+    provider_credentials {
+        uuid id PK
+        uuid organization_id FK
+        uuid created_by FK
+        string provider
+        string encrypted_secret
+        string secret_hint
+        string base_url
+        string status
+        datetime last_used_at
+    }
+    tool_credentials {
+        uuid id PK
+        uuid organization_id FK
+        uuid tool_id FK
+        uuid created_by FK
+        string encrypted_secret
+        string secret_hint
+        string status
+    }
+    idempotency_keys {
+        uuid id PK
+        uuid organization_id FK
+        string operation
+        string idempotency_key
+        string request_fingerprint
+        jsonb result_ref
+        datetime expires_at
+    }
+```
+
+## 13. Enterprise integration / connectors (Milestone 2)
+
+`connectors` is a **platform-wide catalog** — the one table here without an
+`organization_id`. Everything a tenant configures hangs off
+`connector_instances`, which is tenant-scoped and is what actually holds
+credentials.
+
+```mermaid
+erDiagram
+    connectors {
+        uuid id PK
+        string connector_type
+        string version
+        jsonb capabilities
+        jsonb config_schema
+        jsonb auth_requirements
+        jsonb tool_contracts
+    }
+    connector_instances {
+        uuid id PK
+        uuid organization_id FK
+        uuid connector_id FK
+        string name
+        jsonb configuration
+        string lifecycle_state
+        string state_reason
+        uuid created_by
+        datetime last_health_check_at
+        string current_health
+    }
+    connector_credentials {
+        uuid id PK
+        uuid connector_instance_id FK
+        uuid organization_id FK
+        uuid created_by FK
+        string auth_scheme
+        string encrypted_secret
+        string secret_hint
+        string status
+        datetime last_validated_at
+        string validation_status
+    }
+    connector_oauth_tokens {
+        uuid id PK
+        uuid connector_instance_id FK
+        uuid organization_id FK
+        string encrypted_access_token
+        string encrypted_refresh_token
+        datetime expires_at
+    }
+    connector_health_checks {
+        uuid id PK
+        uuid connector_instance_id FK
+        uuid organization_id FK
+        string check_type
+        bool reachable
+        bool auth_valid
+        string result
+        string reason
+        int latency_ms
+        datetime checked_at
+    }
+    connector_lifecycle_events {
+        uuid id PK
+        uuid connector_instance_id FK
+        string from_state
+        string to_state
+        string reason
+        uuid actor_id
+    }
+    connectors ||--o{ connector_instances : "connector_id"
+    connector_instances ||--o{ connector_credentials : "connector_instance_id"
+    connector_instances ||--o{ connector_oauth_tokens : "connector_instance_id"
+    connector_instances ||--o{ connector_health_checks : "connector_instance_id"
+    connector_instances ||--o{ connector_lifecycle_events : "connector_instance_id"
+```

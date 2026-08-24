@@ -157,7 +157,7 @@ express.
 | Azure Service Bus support for the queue connector (`azure-servicebus` — backend-pending, abstraction ready) | not yet scheduled |
 | Natural-language-to-SQL of any kind | **permanently out of scope — the database connector's entire reason to exist is preventing exactly this** |
 | Content parsing/extraction (PDF text, image analysis, chunking) through the storage connector — it moves bytes; the Knowledge Engine (Milestone 7) parses | Milestone 7 |
-| Long-lived consumers, consumer groups, offset management, subscriptions, or stream processing through the queue connector — a tool call is one bounded, discrete publish or consume, never a reactive process | Milestone 3 (the worker/scheduler system this would actually belong to) |
+| Long-lived consumers, consumer groups, offset management, subscriptions, or stream processing through the queue connector — a tool call is one bounded, discrete publish or consume, never a reactive process | Milestone 3 built the worker/scheduler substrate this would belong to; **wiring a reactive consumer onto it is still not scheduled** |
 | Queue administration (create/delete queues) through the queue connector — it publishes/consumes declared queues, it does not manage the broker | not this connector |
 | GraphQL, and any vendor-specific connector (SAP/Salesforce/ServiceNow/etc.) | fast-follow, same REST/database/storage/queue framework, triggered by named demand |
 | Identity federation (platform *user* login via an enterprise IdP — the opposite direction from connector auth, see below) | 2.3.1 |
@@ -165,7 +165,7 @@ express.
 | Wiring a connector-derived tool into `tools_snapshot`/`AgentTool`/the model-driven tool loop — 2.2.1/2.2.2/2.2.3/2.2.4 each built a real, direct invocation bridge but none touches `ToolGatewayService` or execution | not yet scheduled |
 | Any change to model or tool execution — Milestone 1 is untouched | done |
 | Deployment strategies | Milestone 3 |
-| A distributed job scheduler | Milestone 3 — 2.1.3's own health-check scheduler is explicitly interim, see below |
+| A distributed job scheduler | Milestone 3 — **shipped in Phase 3.8**; 2.1.3's interim in-process scheduler was retired then, see below |
 
 Two things worth calling out explicitly since they are easy to mistake
 for scope creep: `_CONNECTOR_TYPES` in `app/integration/service.py` is a
@@ -533,27 +533,45 @@ that distinction to matter; at the interim scheduler's own default
 5-minute interval, 200 rows is the better part of a day's history,
 comfortably more when checks are mostly on-demand.
 
-### The interim scheduler — in-process, off by default, explicitly replaceable
+### The interim scheduler — RETIRED in Phase 3.8, exactly as planned
 
-REPO_STATE §10.2 is explicit: this codebase has no distributed job
-scheduler, deliberately — Milestone 3 owns building one.
-`app/integration/scheduler.py` is the simplest mechanism consistent with
-that: one `asyncio` background task (started from `app/main.py`'s
-`lifespan`), gated entirely by `settings.
-CONNECTOR_HEALTH_SCHEDULER_ENABLED` (**default `false`, including every
-test run** — AC-19's determinism requirement is satisfied structurally,
-not by a test-only override). When enabled, it wakes on a plain interval
-(`CONNECTOR_HEALTH_CHECK_INTERVAL_SECONDS`, default 300s) and calls
-`run_sweep_once()` — a synchronous function that iterates every
-currently-`active` instance across every organization and runs an
-on-demand-equivalent check against each. No persistence of "which check
-is due," no distributed lock, no retry queue. **Intended replacement
-path**: delete this module and its one call site in `main.py`'s
-lifespan; register the same iteration as a real Milestone-3 job. Nothing
-here is designed to be extended in place into that system — tests call
-`run_sweep_once()` directly rather than waiting on the loop's sleep, the
-same "on-demand is the deterministic path" discipline the rest of this
-sub-phase already follows.
+> **This section described `app/integration/scheduler.py`, which no longer
+> exists.** Phase 3.8 built the real distributed scheduler and retired the
+> interim one along the replacement path this document had specified. Kept
+> rather than deleted, because a plan that was actually followed is worth
+> being able to read afterwards.
+
+What 2.1.3 built was one `asyncio` background task started from `app/main.py`'s
+`lifespan`, gated entirely by `settings.CONNECTOR_HEALTH_SCHEDULER_ENABLED`
+(**default `false`, including every test run** — AC-19's determinism
+requirement satisfied structurally, not by a test-only override). When enabled
+it woke on a plain interval and called `run_sweep_once()`. No persistence of
+"which check is due," no distributed lock, no retry queue.
+
+It stated its own **intended replacement path**: *delete this module and its one
+call site in `main.py`'s lifespan; register the same iteration as a real
+Milestone-3 job.* That is precisely what happened:
+
+- `app/integration/scheduler.py` is **deleted**. The `asyncio` task, the
+  `start`/`stop` pair and the lifespan hook are gone.
+- `run_sweep_once()` moved **unchanged** to `app/integration/sweep.py` — the
+  sweep logic was never the interim part.
+- It is now registered as a real scheduled job (`integration.connector_health_sweep`)
+  claimed by a scheduler instance under a `FOR UPDATE SKIP LOCKED` lease. See
+  [../deployment/scheduler.md](../deployment/scheduler.md).
+- `CONNECTOR_HEALTH_SCHEDULER_ENABLED` **survives with real continuing
+  meaning**: it now decides whether the seeded job definition is created
+  *enabled*, still defaulting to false — retiring an opt-in mechanism must not
+  quietly turn it on.
+- Phase 2.1.3's own `test_ac20` was **updated rather than deleted**. Its source
+  assertions described a file that deliberately no longer exists; the behaviour
+  it protected (a sweep visits active instances and records a `SCHEDULED` check)
+  is asserted verbatim against the rehoused function, and the test is now
+  *stricter* — it additionally asserts the retirement happened.
+
+The one thing that did **not** survive is the assumption underneath it: this
+codebase no longer has "no distributed job scheduler." It has one, and a
+distributed execution worker fleet besides.
 
 ### API (2.1.3)
 

@@ -66,9 +66,11 @@ these being added later.
   [gateways.md](gateways.md)'s "Egress control" section for the full
   defense (address validation, DNS-rebinding pinning, redirect
   re-validation, the local-dev HTTPS exception). The model-driven loop
-  that lets an agent actually *call* a tool mid-execution is Phase
-  5.6a.3, not yet built — this sub-phase built the execution primitive,
-  not the orchestration around it.
+  that lets an agent actually *call* a tool mid-execution was Phase
+  5.6a.3, **since built** — `ToolLoopOrchestrator` runs the real
+  model→tool→model cycle with iteration, token, wall-clock and
+  repeated-call caps. This sub-phase built the execution primitive; the
+  orchestration around it arrived in 5.6a.3.
 - Agents can also trigger their own next run via `POST
   /runtime/executions/self`, authenticated by API key rather than a human
   session and authorized through ABAC alone (self-only, no agent-to-agent

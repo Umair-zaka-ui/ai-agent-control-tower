@@ -260,10 +260,14 @@ call that walked 5% → 100% because everything happened to be green would defea
 the entire purpose of staging.
 
 **This is not a scheduler, and this phase does not build one.** Phase 3.8 owns
-the real distributed scheduler and will call this exact method on a timer with
-no change required here — the same relationship `app/integration/scheduler.py`
-(Phase 2.1.3's interim in-process health-check loop) already documents for its
-own replacement.
+the real distributed scheduler.
+
+> **Since shipped.** Phase 3.8 calls this exact method on a timer — registered
+> as the `deployment.canary_auto_advance` job — and **required no change
+> here**, which was the point of bounding it this way. Phase 2.1.3's interim
+> in-process loop (`app/integration/scheduler.py`), cited here as the same
+> relationship, was retired in the same phase along the replacement path it had
+> specified for itself. See [scheduler.md](scheduler.md).
 
 Manual advance is always available regardless of `advance_mode`. A stage marked
 `MANUAL` is never advanced by the automated path; the response says so.
