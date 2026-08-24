@@ -377,6 +377,12 @@ minutes ago must not be rescued by the morning's good numbers.
 
 ## Deliberately not here
 
+> **Milestone 3 is now complete (10/10).** Every phase named as an owner in
+> this table has since shipped — the scope statement below is what *this*
+> document's phase deliberately left alone, not a list of missing features.
+> See [operations-center.md](operations-center.md) for the operator surface
+> over all of it, and [workers.md](workers.md) for the execution fleet.
+
 | Excluded | Owning phase |
 |---|---|
 | Automatic-rollback **trigger policy** (error-spike/cost/latency rules) | 3.7 — this phase requests rollback and reacts to a failed gate |

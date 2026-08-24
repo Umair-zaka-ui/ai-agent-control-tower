@@ -14,7 +14,7 @@ flowchart TB
 
     subgraph host["Docker host — compose network"]
         api["<b>act_api</b><br/>python:3.12-slim<br/>uvicorn :8000<br/>restart: unless-stopped"]
-        db[("<b>act_postgres</b><br/>postgres:16-alpine<br/>:5432<br/>healthcheck: pg_isready")]
+        db[("<b>act_postgres</b><br/>postgres:17-alpine<br/>:5432<br/>healthcheck: pg_isready")]
         vol[("volume<br/>act_pgdata")]
     end
 
@@ -117,7 +117,7 @@ flowchart TB
     end
 
     subgraph data["Data tier — private subnet"]
-        pg[("Managed PostgreSQL 16<br/>TLS · PITR · encrypted at rest")]
+        pg[("Managed PostgreSQL 17<br/>TLS · PITR · encrypted at rest")]
         replica[("Read replica<br/>analytics / audit reads")]
     end
 

@@ -41,9 +41,14 @@ hand.
 
 Claiming a row also inserts an `execution_locks` row (`execution_id`
 unique, `worker_id`, `acquired_at`, `expires_at` 5 minutes out,
-`heartbeat_at`) and an `execution_attempts` row for this attempt. The lock
-is deleted in a `finally` block after the attempt completes — success or
-failure.
+`heartbeat_at`) and an `execution_attempts` row for this attempt — and then
+**commits** (see the boundary section below). The lock is deleted in a `finally`
+block after the attempt completes — success or failure.
+
+That `execution_id` UNIQUE constraint is doing more work than it looks like: it
+is the structural guarantee that no two workers successfully execute one claimed
+execution. Not a convention the workers politely observe — the database refuses.
+It is also why Phase 3.9 added no second lease table for the fleet.
 
 If a worker crashes mid-attempt (or is killed, or loses its network
 connection) without reaching that `finally`, the execution is stuck
@@ -82,21 +87,62 @@ real coverage: the only outbound-I/O boundary in this build is the model
 call (§43 — tool calls are in-process only, no outbound network/DB access
 is wired up), which is exactly the boundary that's timed.
 
-## How this environment actually runs the worker
+## How the worker actually runs
 
-There is no standalone worker process. `ExecutionRequestService` calls
-`ExecutionWorkerService(db).run_once()` **inline, synchronously, right
-after** enqueueing — the same trick `CELERY_TASK_ALWAYS_EAGER=True` plays
-for local Celery development. This is why an execution created through the
-UI shows `SUCCEEDED` (or `FAILED`) within the same request/response cycle
-rather than sitting `QUEUED` until a poller wakes up.
+> **Updated for Phase 3.9.** This section described an inline-only worker and
+> called an out-of-process poller "the natural next step for a production
+> deployment". That step has been taken — see
+> [../deployment/workers.md](../deployment/workers.md) for the fleet.
 
-`ExecutionWorkerService` itself has no idea it's being called this way —
-`run_once(worker_id)` claims exactly one row and processes it, full stop.
-Pointing a real out-of-process poller (a loop calling `run_once` on a
-timer, in a separate process or container) at the same database would work
-identically and is the natural next step for a production deployment; only
-`ExecutionRequestService`'s post-enqueue call would need to be removed.
+There are now **two ways into the same engine**, and only one of them is new:
+
+**Inline (unchanged).** `ExecutionRequestService` calls
+`ExecutionWorkerService(db).run_once()` synchronously, right after enqueueing —
+the trick `CELERY_TASK_ALWAYS_EAGER=True` plays for local Celery development.
+This is why an execution created through the UI shows `SUCCEEDED` (or `FAILED`)
+within the same request/response cycle rather than sitting `QUEUED`. It is
+retained rather than retired: it is what makes an execution's result available
+in the API response, and every M1/M2 test drives it.
+
+**Out-of-process (Phase 3.9).** `python -m app.workers.runner` starts a real
+worker process that claims from the same queue with the same query. Run as many
+as you like, on as many machines as you like; they coordinate through PostgreSQL
+and nothing else. The API process deliberately starts none — an execution worker
+spends real money on model calls, so it must be an explicit act of deployment.
+
+`ExecutionWorkerService` still has no idea which way it is being called.
+`run_once(worker_id)` claims exactly one row and processes it, full stop — which
+is precisely why distributing execution required no change to execution.
+
+## The commit-before-dispatch boundary (Phase 3.9)
+
+**`claim_next` commits before it returns.** Until Phase 3.9 it `flush`ed, so the
+`FOR UPDATE` lock taken by the claim query was held for the *entire* attempt —
+every model call, every tool call, every byte of network I/O — and released only
+when `run_once`'s `finally` committed.
+
+That was survivable with one inline caller and is not survivable with a fleet.
+It is the exact shape of the deadlock this codebase already paid to learn once:
+`ToolLoopOrchestrator._execute_parallel` had to commit `self.db` by hand before
+spawning tool threads, because a fresh session inserting a `tool_calls` row needs
+`FOR KEY SHARE` on the parent `agent_executions` row, which the still-held
+`FOR UPDATE` blocks — while the main thread waits in `future.result()` for that
+same tool thread. A thread-join waiting on a database lock wait is a real
+deadlock that Postgres's detector cannot see, because from its side the main
+connection looks idle.
+
+Committing at the claim dissolves that class of bug at the source. It is safe
+because the lock had already done its one job: the row is no longer `QUEUED`, and
+the *committed* status change is what excludes peers now — permanently, rather
+than for the duration of a transaction.
+
+**One behavioural consequence, worth knowing when debugging.** A worker that dies
+mid-attempt used to have its claim rolled back by the database, returning the
+execution to `QUEUED` instantly. Now the claim is committed, so the execution
+stays `RUNNING` until its lease expires and `reap_expired_locks` applies the
+retry policy. Recovery is slower by at most one lease — and in exchange it is
+*observable*, which is the difference between a fleet you can operate and one you
+can only guess about.
 
 ## Retry policy (§34) and dead-lettering (§35)
 

@@ -65,7 +65,7 @@ search cluster, or third-party identity provider in the current design.
 
 | Dependency | Status | Rationale |
 | ---------- | ------ | --------- |
-| PostgreSQL 16 | Required | Sole datastore — see [ADR-0002](../adr/0002-postgresql-as-sole-datastore.md) |
+| PostgreSQL 17 | Required | Sole datastore — see [ADR-0002](../adr/0002-postgresql-as-sole-datastore.md) |
 | SMTP | Optional, default off | `NOTIFICATIONS_ENABLED=false`; notifications are logged instead |
 | LLM provider | **None** | The governance decision path is deterministic — see [ADR-0006](../adr/0006-deterministic-governance-pipeline.md) |
 

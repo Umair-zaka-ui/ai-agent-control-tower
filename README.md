@@ -193,12 +193,19 @@ All commands below are run from the **`backend/`** directory unless noted.
 docker compose up -d
 ```
 
-This starts PostgreSQL 16 on `localhost:5432` with database `agent_control_tower` (user/password `postgres`/`postgres`).
+This starts PostgreSQL 17 on `localhost:5432` with database `ai_agent_control_tower` (user/password `postgres`/`postgres`).
+
+> **Upgrading a checkout you started before Phase 3.9:** `act_pgdata` is a PostgreSQL
+> major-version-specific data directory, so 17 will refuse to start against a volume
+> written by 16. Dump anything you need, then `docker compose down && docker volume rm
+> <project>_act_pgdata`. See [RECOVERY.md](RECOVERY.md) — deliberately not automated,
+> because a script that silently dropped a database volume would be worse than the
+> mismatch it fixed.
 
 **Option B — local PostgreSQL install:** create the database manually:
 
 ```sql
-CREATE DATABASE agent_control_tower;
+CREATE DATABASE ai_agent_control_tower;
 ```
 
 ### 2. Create a virtual environment & install dependencies
@@ -693,10 +700,12 @@ aggregates real executions over a window rather than reading a liveness heartbea
 two successes out of two is not "healthy", because nothing bad *observed* is not
 nothing bad *happening*.
 
-**Rolling deployment is deferred to Phase 3.9 and says so** — it raises a real
-501 naming that phase, because there is no worker fleet to roll over yet and a
-handler that incremented the vestigial replica counters would report progress
-while nothing rolled.
+**Rolling deployment was deferred until it could be real.** For three phases it
+raised a real 501 naming Phase 3.9, because there was no worker fleet to roll
+over and a handler that incremented the vestigial replica counters would have
+reported progress while nothing rolled. Phase 3.9 built the fleet and
+implemented it properly: steps are derived from *actual* registered capacity, so
+a fleet holding 8 and 2 slots rolls 80% → 100% rather than an invented ladder.
 
 **Automated rollback (3.7)** turns rollback from an operation into a safety
 system. Per-tenant, per-environment trigger policies watch the same health

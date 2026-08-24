@@ -11,7 +11,7 @@ Three containers, defined in [`docker-compose.yml`](../docker-compose.yml):
 
 | Service | Image | Role |
 |---------|-------|------|
-| `db` | `postgres:16-alpine` | The only datastore (ADR-0002). Named volume `act_pgdata`. |
+| `db` | `postgres:17-alpine` | The only datastore (ADR-0002). Named volume `act_pgdata`. Aligned to 17 in Phase 3.9 — a dump from 17 cannot restore into 16, so the previous declaration left the recovery drill with no correct target. |
 | `api` | `./backend` (`python:3.12-slim`) | FastAPI. Runs `alembic upgrade head` on start; optional demo seed. |
 | `web` | `./frontend` (build → `nginx:1.27-alpine`) | Serves the SPA and reverse-proxies `/api` to `api` (same origin — no CORS). |
 

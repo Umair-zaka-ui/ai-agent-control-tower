@@ -3,6 +3,14 @@
 - **Status:** Accepted *(retroactively recorded 2026-07-08; decision made in Phase 1)*
 - **Deciders:** Platform engineering
 - **Supersedes:** —
+- **Amended:** 2026-08-18 (Phase 3.9) — the minor version moved from 16 to 17.
+  Recorded as an amendment rather than an edit to the Decision below, because an
+  ADR is a record of what was decided and when; rewriting it would erase that
+  the platform ran on 16 for its first three milestones. **The decision itself is
+  unchanged** — PostgreSQL remains the sole datastore, and Phases 3.8 and 3.9
+  leaned on it harder rather than less, building a distributed scheduler and an
+  execution worker fleet on `FOR UPDATE SKIP LOCKED` instead of adding the broker
+  Option A would have introduced.
 
 ## Context
 

@@ -399,6 +399,12 @@ No secret appears in an allocation, a weight, or either event.
 
 ## Deliberately not here
 
+> **Milestone 3 is now complete (10/10).** Every phase named as an owner in
+> this table has since shipped — the scope statement below is what *this*
+> document's phase deliberately left alone, not a list of missing features.
+> See [operations-center.md](operations-center.md) for the operator surface
+> over all of it, and [workers.md](workers.md) for the execution fleet.
+
 | Excluded | Owning phase |
 |---|---|
 | Progressive/canary orchestration (auto-advancing weights) | 3.5 — 3.4 builds the allocation it drives |

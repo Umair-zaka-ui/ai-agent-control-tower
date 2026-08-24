@@ -21,7 +21,7 @@ flowchart TB
             entry["<b>Entrypoint</b><br/>alembic upgrade head<br/>+ optional seed"]
         end
 
-        db[("<b>PostgreSQL 16</b><br/>act_postgres, :5432<br/>volume act_pgdata<br/>24 tables")]
+        db[("<b>PostgreSQL 17</b><br/>act_postgres, :5432<br/>volume act_pgdata<br/>124 tables")]
     end
 
     smtp["SMTP<br/><i>(default off)</i>"]
@@ -47,7 +47,20 @@ flowchart TB
 | --------- | ---------- | ----------------- | -------------- |
 | Dashboard SPA | React 19, TS (strict), Vite | **No** — dev server only | Renders the control plane; holds tokens in `localStorage` |
 | Control Plane API | FastAPI, SQLAlchemy 2.0, uvicorn | Yes (`act_api`) | Authn/authz, governance pipeline, audit |
-| PostgreSQL | `postgres:16-alpine` | Yes (`act_postgres`) | Sole system of record |
+| PostgreSQL | `postgres:17-alpine` | Yes (`act_postgres`) | Sole system of record |
+| Execution worker | `python -m app.workers.runner` | **No** — run explicitly | Claims and runs agent executions (Phase 3.9) |
+| Scheduler instance | `python -m app.scheduler.runner` | **No** — run explicitly | Claims and dispatches due scheduled jobs (Phase 3.8) |
+
+**Neither the worker nor the scheduler is started by the API container, and
+neither ships in compose.** That is a deliberate safety decision, not an
+omission: an execution worker calls model providers and spends real money, and a
+scheduler is a standing instruction to act on production with no human present.
+Both must be an explicit act of deployment rather than a side effect of serving
+HTTP — and one inside the web process would scale with request traffic rather
+than with work, making every API replica a competing instance. They coordinate
+with the API through PostgreSQL alone (`FOR UPDATE SKIP LOCKED` leases); there is
+no broker. See [workers.md](../../deployment/workers.md) and
+[scheduler.md](../../deployment/scheduler.md).
 
 The SPA has **no Dockerfile**. It is a real gap for production, tracked in
 [deployment](../deployment/deployment.md#gaps-before-production), not an
