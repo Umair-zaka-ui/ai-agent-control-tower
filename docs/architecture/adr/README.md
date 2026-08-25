@@ -26,6 +26,7 @@ rejected*.
 | [0005](./0005-additive-identity-layer-alongside-legacy-auth.md) | Build the identity layer additively beside legacy auth | Accepted |
 | [0006](./0006-deterministic-governance-pipeline.md) | Keep the governance decision path deterministic (no LLM) | Accepted |
 | [0007](./0007-stateful-session-validation.md) | Validate the session on every authenticated request | Accepted |
+| [0008](./0008-telemetry-as-a-derived-plane.md) | Telemetry is a derived plane, never a source of truth | Accepted |
 
 ## Status values
 

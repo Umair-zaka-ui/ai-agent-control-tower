@@ -42,10 +42,27 @@ without a websocket.
 
 ## What's not implemented
 
-Structured tracing/spans (§54) and Prometheus-style metric names (§52) are
-not wired up — `runtime_events` (see [architecture.md](architecture.md))
-carries `correlation_id`/`request_id` on every row, which is enough to
-reconstruct a timeline per execution (shown on the Execution Detail page's
-event list) but is not exported to an external tracing backend. Alerting
-thresholds (§82) are not implemented; the dashboard is pull-based, not
-push-based.
+> **Updated for Phase 4.1 (Milestone 4).** Structured tracing now exists —
+> see [../observability/architecture.md](../observability/architecture.md).
+> The paragraph this replaced also contained a factual error worth recording
+> rather than quietly deleting: it said `runtime_events` "carries
+> `correlation_id`/`request_id` on every row". The **columns** existed; the
+> values did not. Phase 4.1 measured the live database and found
+> `correlation_id` null on essentially all ~297,000 rows, and on 74,395 of
+> 74,619 `agent_executions`. Nothing populated them — the execution service
+> read `correlation_id` only from the request body, and `POST /executions`
+> took no `Request` object at all, so no header could reach it. A schema
+> column is not a fact; this document had mistaken one for the other.
+
+**Now implemented (Phase 4.1)**: trace and span context across the whole
+execution path, stable semantic attributes with a bounded metric-label
+allowlist, a non-gating runtime-event contract, and the secret scrubber with
+a METADATA_ONLY capture baseline. Spans are **derived** from the domain rows
+rather than stored, so a timeline per execution is assembled by walking
+foreign keys — `GET /runtime/executions/{execution_id}/trace`.
+
+**Still not implemented**: the trace explorer UI (Phase 4.2), export to an
+external tracing backend such as OpenTelemetry (4.6), Prometheus-style metric
+names and a metrics backend (§52; 4.6/4.7 — the *cardinality rules* for them
+landed in 4.1, but nothing emits metrics yet), and alerting thresholds (§82;
+4.7). The dashboard remains pull-based, not push-based.

@@ -396,8 +396,17 @@ class SchedulerService:
             logger.info("%s: job=%s run=%s owner=%s", event.value, definition.name, run.id,
                         run.lease_owner)
             return
+        from app.observability.trace import TraceContext
         from app.runtime.services import _record_event
 
+        # Phase 4.1 (M4-4.1-FR-003) -- the scheduler leg. A job occurrence has
+        # no caller and therefore no inbound correlation header, so its trace
+        # identity is derived from its own `job_runs` row: every event of one
+        # occurrence (STARTED, then SUCCEEDED or FAILED, across retries and
+        # lease recoveries, which all reuse the row) shares one trace. Without
+        # this each event would get a fresh minted id and a job run would be
+        # unreconstructable -- the exact failure this phase exists to fix,
+        # arriving through a different door.
         _record_event(
             self.db, event, None, organization_id=definition.organization_id,
             severity=severity,
@@ -405,6 +414,7 @@ class SchedulerService:
                   "handler_key": definition.handler_key, "run_id": str(run.id),
                   "attempt": run.attempt, "lease_owner": run.lease_owner,
                   "recovered_from": run.recovered_from},
+            trace=TraceContext.for_job_run(run),
         )
         self.db.commit()
 

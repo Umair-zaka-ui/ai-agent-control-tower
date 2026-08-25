@@ -22,6 +22,8 @@ from app.models.runtime import (
     ToolCall,
 )
 from app.models.user import User
+from app.observability.assembly import TraceAssembler
+from app.observability.trace import TraceContext
 from app.runtime.deployment.canary import CanaryRolloutService
 from app.runtime.deployment.health import HealthEvaluationService
 from app.runtime.deployment.service import DeploymentLifecycleService
@@ -1727,20 +1729,29 @@ def delete_promotion_path(path_id: uuid.UUID, actor: User = Depends(require_perm
 # Executions (§24-§28, §66)
 # --------------------------------------------------------------------------- #
 @router.post("/executions", response_model=ExecutionRead, status_code=status.HTTP_201_CREATED)
-def request_execution(payload: ExecutionCreate, actor: User = Depends(require_permission(_EXEC_CREATE)),
+def request_execution(payload: ExecutionCreate, request: Request,
+                      actor: User = Depends(require_permission(_EXEC_CREATE)),
                       db: Session = Depends(get_db)):
-    return ExecutionRequestService(db).request_execution(actor, payload.model_dump())
+    """Phase 4.1 -- this is where a trace begins (M4-4.1-FR-002).
+
+    ``TraceContext.from_headers`` reads ``x-correlation-id``/``x-request-id``
+    and mints a trace id if neither is present, so no execution created through
+    this route can end up without a trace identity. Nothing about the request
+    body, the authorization path or the response contract changes."""
+    return ExecutionRequestService(db).request_execution(
+        actor, payload.model_dump(), trace=TraceContext.from_headers(request.headers))
 
 
 @router.post("/executions/self", response_model=ExecutionRead, status_code=status.HTTP_201_CREATED)
-def request_self_execution(payload: AgentSelfExecutionCreate,
+def request_self_execution(payload: AgentSelfExecutionCreate, request: Request,
                            agent: Agent = Depends(get_current_agent), db: Session = Depends(get_db)):
     """§29, §31 — an agent (authenticated by its own API key, not a human
     session) requesting an execution of itself. There is no ``agent_id`` in
     the request body to spoof: the target is always the authenticated
     agent. Authorized through ``AuthorizationGateway.authorize_agent``
     (ABAC), not RBAC — an agent holds no roles of its own."""
-    return ExecutionRequestService(db).request_execution_as_agent(agent, payload.model_dump())
+    return ExecutionRequestService(db).request_execution_as_agent(
+        agent, payload.model_dump(), trace=TraceContext.from_headers(request.headers))
 
 
 @router.get("/executions", response_model=list[ExecutionRead])
@@ -1772,6 +1783,33 @@ def retry_execution(execution_id: uuid.UUID, actor: User = Depends(require_permi
 def replay_execution(execution_id: uuid.UUID, actor: User = Depends(require_permission(_EXEC_RETRY)),
                      db: Session = Depends(get_db)):
     return ExecutionRequestService(db).replay(actor, execution_id)
+
+
+@router.get("/executions/{execution_id}/trace")
+def execution_trace(execution_id: uuid.UUID, actor: User = Depends(require_permission(_TELEMETRY)),
+                    db: Session = Depends(get_db)):
+    """Phase 4.1 (M4-4.1-FR-001, FR-004) -- the assembled trace for one
+    execution: its trace identity and the derived span tree.
+
+    **The only HTTP surface this phase adds.** 4.1 is instrumentation, not an
+    API; the trace explorer is 4.2. This exists because "traces assemble from
+    existing rows without a span table" is a claim that deserves to be
+    verifiable against a real execution rather than only in a unit test.
+
+    Reuses ``runtime.telemetry.view``, which already existed and already reads
+    "View runtime telemetry and execution traces" -- exactly this. The stronger
+    ``runtime.trace.content.view`` (SRS §16) is deliberately *not* registered
+    yet: under METADATA_ONLY there is no content for it to protect, and a
+    permission that guards nothing teaches operators it is safe to grant.
+
+    Metadata only. No prompt, no tool argument, no model output, no private
+    reasoning -- see ``app/observability/capture.py``. Tenant-scoped: the
+    assembler filters on the actor's organization, so another tenant's
+    execution is indistinguishable from one that does not exist."""
+    trace = TraceAssembler(db).for_execution(actor.organization_id, execution_id)
+    if trace is None:
+        raise IdentityError(ErrorCode.EXECUTION_NOT_FOUND, "Execution not found.")
+    return trace.as_dict()
 
 
 @router.get("/executions/{execution_id}/attempts", response_model=list[ExecutionAttemptRead])

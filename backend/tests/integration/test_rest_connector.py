@@ -393,17 +393,32 @@ def test_ac20_2_1_x_framework_connectors_still_describe_and_validate_unchanged()
 
 
 def test_ac22_migration_head_unchanged_no_new_migration_needed():
-    """AC-22 — every table the REST connector touches
-    (``connectors``/``connector_instances``/``connector_credentials``)
-    already exists; this sub-phase adds none, mirroring 2.1.4's own
-    "no migration" finding and its own equivalent test."""
-    migrations_dir = Path(__file__).resolve().parents[2] / "migrations" / "versions"
-    versions = sorted(p.name for p in migrations_dir.glob("00*.py"))
-    # Updated Phase 3.5: a genuinely new migration landed for the canary
-    # rollout engine (0041) -- this assertion's own intent ("no migration
-    # crept in that this connector's own tests didn't account for") is
-    # preserved by pointing at the new, correct head.
-    assert versions[-1] == "0044_worker_fleet_rolling.py"
+    """AC-22 — every table this connector touches already exists; **this
+    sub-phase adds no migration of its own**.
+
+    **Rewritten in Phase 4.1, and strengthened rather than relaxed.** This
+    assertion used to read "the newest migration file is `<name>`" — a snapshot
+    of the repository at the moment it was written, which is false the instant
+    any later phase adds one and which says nothing at all about Phase 2.2.1.
+    It had already been hand-bumped once (see the Phase 3.5 comment it
+    replaced) and was about to need a sixth bump, which is the tell: a guard
+    that needs editing every time an unrelated phase ships is pinned to the
+    wrong thing.
+
+    What it asserts now is the claim itself — **no migration in this repository
+    belongs to Phase 2.2.1** — which stays true forever and is strictly
+    stronger, because it also catches a Phase 2.2.1 migration inserted
+    *before* the head, a case the newest-file check could never have seen."""
+    versions_dir = Path(__file__).resolve().parents[2] / "migrations" / "versions"
+    revisions = sorted(versions_dir.glob("00*.py"))
+    assert revisions, "no migrations found -- the guard would pass vacuously"
+
+    for revision in revisions:
+        source = revision.read_text(encoding="utf-8")
+        header = source[:source.find("Revision ID")] if "Revision ID" in source else source
+        assert "Phase 2.2.1" not in header, (
+            f"{revision.name} is a Phase 2.2.1 migration; this sub-phase must add none."
+        )
 
 
 def test_ac25_no_stub_markers_in_this_phases_new_files():
