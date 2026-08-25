@@ -33,7 +33,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import select
@@ -43,10 +43,43 @@ from app.models.runtime import (
     AgentExecution,
     ExecutionAttempt,
     ExecutionMessage,
+    RuntimeApproval,
     ToolCall,
 )
 from app.observability.attributes import SemanticAttributes
 from app.observability.trace import SpanContext, SpanKind, TraceContext
+
+
+#: Sort floor for spans whose start is unknown. Never displayed -- only used so
+#: `sort` has a total order without `None` comparisons raising.
+_EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
+
+
+def _gap_ms(start: datetime | None, end: datetime | None) -> int | None:
+    """Milliseconds between two instants, or None if either is missing.
+
+    None rather than 0: an unknown duration and a zero duration are different
+    facts, and a trace that renders them identically would tell an operator a
+    phase was instantaneous when it is actually still open."""
+    if start is None or end is None:
+        return None
+    return max(0, int((end - start).total_seconds() * 1000))
+
+
+def _decision_attributes(execution: AgentExecution) -> dict[str, str]:
+    """The governing decision a gate node displays (M4-4.2-FR-003).
+
+    Read from what the domain already recorded. `error_message` is included
+    because it is the platform's own templated explanation of which rule fired
+    (e.g. a concurrency cap, a cost budget) -- authored by this codebase, never
+    by a model or an end user, so it is metadata rather than content. Phase 4.3
+    will author richer decisions; this surfaces what exists."""
+    return {k: v for k, v in {
+        "decision": execution.decision,
+        "error_code": execution.error_code,
+        "reason": execution.error_message,
+        "risk_score": str(execution.risk_score) if execution.risk_score is not None else None,
+    }.items() if v is not None}
 
 
 @dataclass
@@ -150,6 +183,22 @@ class TraceAssembler:
 
         spans: list[AssembledSpan] = [self._execution_span(execution, root)]
 
+        # Phase 4.2 -- the pre-queue phases (SRS 8-4.2). Neither has a table of
+        # its own; both are real, externally-meaningful intervals inferred from
+        # the execution's own timestamps and terminal codes. They are emitted
+        # only when the data actually supports them, so a trace never invents a
+        # phase that did not happen.
+        spans.extend(self._gate_spans(execution, root))
+
+        approvals = list(self.db.execute(
+            select(RuntimeApproval)
+            .where(RuntimeApproval.execution_id == execution.id)
+            .order_by(RuntimeApproval.created_at)
+        ).scalars())
+        for approval in approvals:
+            spans.append(self._approval_span(approval, root.child(
+                SpanKind.APPROVAL, approval.id)))
+
         attempts = list(self.db.execute(
             select(ExecutionAttempt)
             .where(ExecutionAttempt.execution_id == execution.id)
@@ -194,6 +243,26 @@ class TraceAssembler:
             if call.target_host:
                 spans.append(self._external_span(call, span))
 
+        queue_span = self._queue_span(execution, root)
+        if queue_span is not None:
+            spans.append(queue_span)
+
+        finalization = self._finalization_span(execution, root)
+        if finalization is not None:
+            spans.append(finalization)
+
+        # Root first, then chronological with unknown-start last. The root is
+        # pinned rather than left to sort because it shares its start instant
+        # with the authorization gate -- a tie an operator should never see
+        # resolved arbitrarily, since a tree's root leading is what makes the
+        # rest read as nested beneath it. Nulls last so a phase whose start is
+        # unknown (an execution that never left CREATED) does not sort to the
+        # front and imply it happened first.
+        root_id = root.span_id
+        spans.sort(key=lambda s: (s.span_id != root_id,
+                                  s.started_at is None,
+                                  s.started_at or _EPOCH))
+
         return AssembledTrace(
             trace_id=trace.trace_id,
             execution_id=str(execution.id),
@@ -202,6 +271,141 @@ class TraceAssembler:
             attributes=trace.attributes.as_dict(),
             spans=spans,
             notes=notes,
+        )
+
+    # ------------------------------------------------- Phase 4.2 node kinds
+    def _gate_spans(self, execution: AgentExecution,
+                    root: SpanContext) -> list[AssembledSpan]:
+        """The authorization and runtime-policy gates (SRS 8-4.2).
+
+        Both are **computed phases, not rows** -- see this module's docstring on
+        why that distinction is reported rather than hidden. What makes them
+        derivable at all is that each gate has a distinct terminal signature on
+        the execution itself: authorization denial sets `DENIED` with
+        `RUNTIME_POLICY_DENIED`, and the runtime policy sets `BLOCKED` with its
+        own code. An execution that passed both leaves no denial marker, which
+        is exactly how a passing gate is recognized.
+
+        The **governing decision** (M4-4.2-FR-003) is surfaced here where one
+        already exists -- `execution.decision` plus the error code that names
+        the rule that fired. Phase 4.3 will add richer decisions; this displays
+        what the domain already records and authors nothing."""
+        spans: list[AssembledSpan] = []
+        started = execution.created_at
+        ended = execution.queued_at or execution.completed_at
+
+        denied = execution.status == "DENIED"
+        blocked = execution.status == "BLOCKED"
+
+        spans.append(AssembledSpan(
+            span_id=root.child(SpanKind.AUTHORIZATION).span_id,
+            parent_span_id=root.span_id, kind=SpanKind.AUTHORIZATION,
+            name="authorization",
+            source_table=None, source_id=None,          # a phase, not a row
+            started_at=started, ended_at=ended,
+            duration_ms=_gap_ms(started, ended),
+            status="DENIED" if denied else "ALLOWED",
+            error_code=execution.error_code if denied else None,
+            attributes=_decision_attributes(execution) if denied else {},
+        ))
+
+        # The policy gate only ran if authorization allowed. Emitting it for a
+        # DENIED execution would show a phase that never executed.
+        if not denied:
+            spans.append(AssembledSpan(
+                span_id=root.child(SpanKind.RUNTIME_POLICY).span_id,
+                parent_span_id=root.span_id, kind=SpanKind.RUNTIME_POLICY,
+                name="runtime policy",
+                source_table=None, source_id=None,
+                started_at=started, ended_at=ended,
+                duration_ms=_gap_ms(started, ended),
+                status="BLOCKED" if blocked else "PASSED",
+                error_code=execution.error_code if blocked else None,
+                attributes=_decision_attributes(execution) if blocked else {},
+            ))
+        return spans
+
+    @staticmethod
+    def _queue_span(execution: AgentExecution,
+                    root: SpanContext) -> AssembledSpan | None:
+        """Time spent QUEUED before a worker claimed it -- a **computed gap**.
+
+        Nothing in this schema records "the queue" as an entity, and 4.1
+        deliberately added no table for one. But `queued_at` -> `started_at` is
+        a real interval, and in a slow trace it is frequently the largest one:
+        an operator asking "why did this take 40 seconds?" is usually looking
+        at queue wait, not model latency. Omitting it because no row exists
+        would hide the answer to the most common question the trace is opened
+        to answer.
+
+        Returns None when the execution never queued (denied at a gate) or has
+        not yet been claimed -- an open-ended wait is not a measured duration,
+        and reporting one would misrepresent an in-flight execution."""
+        if execution.queued_at is None or execution.started_at is None:
+            return None
+        return AssembledSpan(
+            span_id=root.child(SpanKind.QUEUE).span_id,
+            parent_span_id=root.span_id, kind=SpanKind.QUEUE,
+            name="queue wait",
+            source_table=None, source_id=None,
+            started_at=execution.queued_at, ended_at=execution.started_at,
+            duration_ms=_gap_ms(execution.queued_at, execution.started_at),
+            status="CLAIMED",
+            attributes={"priority": str(execution.priority)},
+        )
+
+    @staticmethod
+    def _approval_span(approval: RuntimeApproval, span: SpanContext) -> AssembledSpan:
+        """A human approval or challenge. Row-backed by `runtime_approvals`.
+
+        `reason` and `decision_comment` are deliberately not read: they are
+        operator-authored free text about the request, which is CONTENT under
+        4.1's classification. The trace shows that an approval happened, what
+        was asked, who decided and when -- never what anyone wrote."""
+        return AssembledSpan(
+            span_id=span.span_id, parent_span_id=span.parent_span_id,
+            kind=SpanKind.APPROVAL,
+            name=f"approval: {approval.requested_action}",
+            source_table="runtime_approvals", source_id=str(approval.id),
+            started_at=approval.created_at, ended_at=approval.reviewed_at,
+            duration_ms=_gap_ms(approval.created_at, approval.reviewed_at),
+            status=approval.status,
+            attributes={k: v for k, v in {
+                "requested_action": approval.requested_action,
+                "risk_score": str(approval.risk_score) if approval.risk_score is not None else None,
+                "reviewed_by": str(approval.reviewed_by) if approval.reviewed_by else None,
+            }.items() if v is not None},
+        )
+
+    @staticmethod
+    def _finalization_span(execution: AgentExecution,
+                           root: SpanContext) -> AssembledSpan | None:
+        """Terminal accounting: the outcome, cost and token totals.
+
+        A computed phase. Returns None while the execution is still running --
+        an in-flight trace must not show a finalization that has not happened
+        (AC-11), because a node claiming a terminal status is precisely the
+        torn read that would misrepresent live state."""
+        if execution.completed_at is None:
+            return None
+        return AssembledSpan(
+            span_id=root.child(SpanKind.FINALIZATION).span_id,
+            parent_span_id=root.span_id, kind=SpanKind.FINALIZATION,
+            name=f"finalization ({execution.status})",
+            source_table=None, source_id=None,
+            started_at=execution.completed_at, ended_at=execution.completed_at,
+            duration_ms=0,
+            status=execution.status,
+            error_code=execution.error_code,
+            attributes={k: v for k, v in {
+                "cost_amount": str(execution.cost_amount) if execution.cost_amount is not None else None,
+                "cost_currency": execution.cost_currency,
+                "total_tokens": str(execution.total_tokens) if execution.total_tokens is not None else None,
+                "prompt_tokens": str(execution.prompt_tokens) if execution.prompt_tokens is not None else None,
+                "completion_tokens": str(execution.completion_tokens) if execution.completion_tokens is not None else None,
+                "termination_reason": execution.termination_reason,
+                "loop_iterations": str(execution.loop_iterations),
+            }.items() if v is not None},
         )
 
     # ----------------------------------------------------------------- spans
@@ -224,7 +428,12 @@ class TraceAssembler:
             span_id=span.span_id, parent_span_id=None, kind=SpanKind.EXECUTION,
             name=f"execution {execution.status}",
             source_table="agent_executions", source_id=str(execution.id),
-            started_at=execution.started_at or execution.queued_at or execution.created_at,
+            # Phase 4.2: `created_at`, not `started_at`. The root of a trace has
+            # to be an envelope around every node beneath it, and 4.2 added
+            # gate/queue nodes that begin *before* a worker starts running the
+            # execution -- with the old start they rendered outside their own
+            # parent, which is incoherent on a timeline.
+            started_at=execution.created_at,
             ended_at=execution.completed_at,
             duration_ms=execution.duration_ms,
             status=execution.status,

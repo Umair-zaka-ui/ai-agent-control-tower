@@ -72,6 +72,18 @@ class SpanKind(str, Enum):
     #: backed rather than row-backed: it has no table of its own, but it has a
     #: definite start and end within the request.
     AUTHORIZATION = "authorization"
+    #: Phase 4.2 -- the runtime policy evaluation (§38, §46-§48) that can BLOCK
+    #: an execution after authorization allows it. Distinct from AUTHORIZATION
+    #: because they answer different questions and fail with different codes:
+    #: "may this principal?" versus "does this request violate a runtime rule?".
+    RUNTIME_POLICY = "runtime_policy"
+    #: Phase 4.2 -- time spent QUEUED before a worker claimed the execution.
+    #: A **computed gap**, not a row: nothing records "the queue" as an entity,
+    #: but `queued_at`->`started_at` is a real, externally-meaningful interval
+    #: and often the largest one in a slow trace.
+    QUEUE = "queue"
+    #: Phase 4.2 -- a human approval or challenge. Backed by `runtime_approvals`.
+    APPROVAL = "approval"
     #: One worker's attempt, from claim to terminal state. Backed by
     #: ``execution_attempts``.
     ATTEMPT = "attempt"

@@ -3,7 +3,8 @@
 > **123 tables** in `Base.metadata` (124 in a live database — Alembic manages
 > `alembic_version` itself, and it is not a model). Generated from
 > `Base.metadata` and verified against the live schema at migration head
-> `0045_runtime_telemetry_context` (Phase 4.1 added two nullable columns and no
+> `0046_trace_explorer_index` (Phase 4.2 added one index and no table at all;
+> Phase 4.1 before it added two nullable columns and no
 > table, so the diagrams below are unchanged in shape:
 > `agent_executions.request_id` and `runtime_events.span_id`). Split by bounded context because a single
 > 123-table diagram is a poster, not a document.

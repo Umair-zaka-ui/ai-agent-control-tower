@@ -35,6 +35,7 @@ from app.runtime.routes import router as runtime_router
 from app.integration.routes import router as integration_router
 from app.scheduler.routes import router as scheduler_router
 from app.workers.routes import router as workers_router
+from app.observability.routes import router as observability_router
 from app.identity.errors import register_identity_exception_handlers
 
 @asynccontextmanager
@@ -162,3 +163,8 @@ app.include_router(integration_router)
 # path to execution.
 app.include_router(scheduler_router)
 app.include_router(workers_router)
+# Phase 4.2 -- the governed-observability trace surface
+# (/api/v1/observability). Distinct from the legacy `analytics` dashboards,
+# which aggregate the Phase 3 agent_actions table and know nothing of
+# AgentExecution; no path collision between the two.
+app.include_router(observability_router)

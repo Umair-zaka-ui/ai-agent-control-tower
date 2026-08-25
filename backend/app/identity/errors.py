@@ -293,6 +293,10 @@ class ErrorCode:
     JOB_DEFINITION_NOT_FOUND = "JOB_DEFINITION_NOT_FOUND"
     JOB_HANDLER_UNKNOWN = "JOB_HANDLER_UNKNOWN"
     EXECUTION_NOT_FOUND = "EXECUTION_NOT_FOUND"
+    # Phase 4.2 -- a trace id that resolves to nothing *this tenant may see*.
+    # Deliberately not distinguished from "does not exist anywhere": telling
+    # the two apart would let one tenant confirm another's trace exists (§34).
+    TRACE_NOT_FOUND = "TRACE_NOT_FOUND"
     EXECUTION_ALREADY_COMPLETED = "EXECUTION_ALREADY_COMPLETED"
     EXECUTION_CANCELLED = "EXECUTION_CANCELLED"
     EXECUTION_TIMED_OUT = "EXECUTION_TIMED_OUT"
@@ -691,6 +695,7 @@ _STATUS: dict[str, int] = {
     ErrorCode.JOB_DEFINITION_NOT_FOUND: status.HTTP_404_NOT_FOUND,
     ErrorCode.JOB_HANDLER_UNKNOWN: status.HTTP_422_UNPROCESSABLE_ENTITY,
     ErrorCode.EXECUTION_NOT_FOUND: status.HTTP_404_NOT_FOUND,
+    ErrorCode.TRACE_NOT_FOUND: status.HTTP_404_NOT_FOUND,
     ErrorCode.EXECUTION_ALREADY_COMPLETED: status.HTTP_409_CONFLICT,
     ErrorCode.EXECUTION_CANCELLED: status.HTTP_409_CONFLICT,
     ErrorCode.EXECUTION_TIMED_OUT: status.HTTP_504_GATEWAY_TIMEOUT,

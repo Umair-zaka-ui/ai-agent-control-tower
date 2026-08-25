@@ -61,8 +61,14 @@ a METADATA_ONLY capture baseline. Spans are **derived** from the domain rows
 rather than stored, so a timeline per execution is assembled by walking
 foreign keys — `GET /runtime/executions/{execution_id}/trace`.
 
-**Still not implemented**: the trace explorer UI (Phase 4.2), export to an
-external tracing backend such as OpenTelemetry (4.6), Prometheus-style metric
-names and a metrics backend (§52; 4.6/4.7 — the *cardinality rules* for them
-landed in 4.1, but nothing emits metrics yet), and alerting thresholds (§82;
-4.7). The dashboard remains pull-based, not push-based.
+**Also implemented (Phase 4.2)**: the trace explorer and full trace assembly —
+search executions by trace, agent, version, environment, model, tool, status,
+error or time, and reconstruct any single execution's chronology from the
+existing rows. See [../observability/tracing.md](../observability/tracing.md).
+
+**Still not implemented**: the trace explorer *UI* (deferred to the observability
+center, 4.9), export to an external tracing backend such as OpenTelemetry (4.6),
+Prometheus-style metric names and a metrics backend (§52; 4.6/4.7 — the
+*cardinality rules* for them landed in 4.1, but nothing emits metrics yet), and
+alerting thresholds (§82; 4.7). The dashboard remains pull-based, not
+push-based.
