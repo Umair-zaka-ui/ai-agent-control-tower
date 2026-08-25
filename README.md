@@ -16,6 +16,8 @@
 >
 > **Milestone 3** (Deployment, Release & Operations — **COMPLETE, 10/10**): the deployment lifecycle core, governed environments & promotion, the release gate, weighted traffic allocation with a version resolver and fail-closed execution gate, the canary rollout engine with AI-aware release health, blue-green/recreate strategies, **automated rollback** — per-tenant trigger policies that roll a failing candidate back on their own, strictly subordinate to the kill switch — a **distributed scheduler** whose instances coordinate through Postgres leases so every due job runs exactly once, and a **distributed execution worker fleet** — agent executions now run on independently-operable worker processes that hold no database lock across model or tool network I/O, with **rolling deployment** defined over real worker cohorts rather than simulated counters, and the **Release Operations Center** — twelve operational views through which an operator sees and drives all of it, with dangerous actions confirmation-gated and unsafe state shown rather than smoothed over. See [`docs/deployment/`](docs/deployment/).
 >
+> **Milestone 4** (Runtime Governance & Observability — **in progress, 1/10**): Phase 4.1 laid the instrumentation contract. A trace follows an execution across every hop on the `correlation_id` rails that already existed but were almost never populated; spans are **derived from the domain rows rather than stored**, so the telemetry plane duplicates nothing and can never disagree with what actually happened; telemetry is **best-effort and non-gating** — the one subsystem here that deliberately fails open, because it is not the business transaction; and an isolated secret scrubber runs on the write path under a **METADATA_ONLY** baseline, so no prompt, tool payload, model output or private model reasoning is captured at all. See [`docs/observability/`](docs/observability/).
+>
 > **Current state at a glance** — [Where the project is now](#where-the-project-is-now) below, or [`REPO_STATE.md`](REPO_STATE.md) for the verified, exhaustive version.
 
 As organizations hand more real-world tasks to autonomous AI agents (submitting claims, updating records, sending emails, moving money), they need a control plane that sits between the agent and the action. The **AI Agent Control Tower** is that control plane: every action an agent attempts is checked against permissions, scored for risk, and either **allowed**, **blocked**, or **routed to a human for approval** — and every decision is written to an immutable audit log.
@@ -40,8 +42,8 @@ is the document to trust if it and this README ever disagree.*
 |---|---|
 | Backend tests | **1,770 passed**, 0 failed, 1 deselected |
 | Frontend tests | **327 passed** |
-| Live schema | **124 tables**, migration head `0044_worker_fleet_rolling` |
-| HTTP routes | **540** |
+| Live schema | **124 tables**, migration head `0045_runtime_telemetry_context` |
+| HTTP routes | **541** |
 
 ### Milestones
 
@@ -52,6 +54,7 @@ is the document to trust if it and this README ever disagree.*
 | **Milestone 1** — real execution | **Complete** | Model provider abstraction, a real OpenAI-compatible adapter, streaming & token/cost accounting, an error taxonomy with retry/circuit-breaking, per-organization encrypted credentials, HTTP tool execution behind an SSRF egress guard, tool schema validation, and the model-driven tool invocation loop |
 | **Milestone 2** — Enterprise Integration Framework | **Complete (9/9)** | Connector abstraction/lifecycle, a pluggable authentication framework, registry & health, a connector SDK, four generic connectors (REST, database, storage, queue), and external identity federation (OIDC + SAML) |
 | **Milestone 3** — Deployment, Release & Operations | **Complete (10/10)** | Deployment lifecycle core, environments & promotion, the release gate, weighted traffic allocation + version resolver, the canary engine, blue-green/recreate/rolling strategies, automated rollback with per-tenant trigger policies, a distributed scheduler, a distributed execution worker fleet, and the Release Operations Center over all of it |
+| **Milestone 4** — Runtime Governance & Observability | **In progress (1/10)** | Phase 4.1: trace/span context on the existing `correlation_id` rails, stable bounded semantic attributes, a non-gating runtime-event contract, an isolated secret scrubber and the METADATA_ONLY capture baseline. Spans are derived, not stored — two columns, no table. Next: 4.2 trace explorer |
 
 **What "complete" means for Milestone 1**: an agent that is registered,
 versioned, signed and deployed genuinely executes end to end — it calls a real
@@ -532,7 +535,9 @@ enforced, not just modeled. See [docs/runtime/](docs/runtime/)
 for the full set — architecture, agent-lifecycle, versioning, deployments,
 executions, workers-and-queue, capabilities-and-tools, gateways,
 runtime-policy-and-approvals, health-and-observability,
-operations-and-kill-switch and security.
+operations-and-kill-switch and security. The telemetry plane added by
+Milestone 4 lives beside it in [docs/observability/](docs/observability/) —
+architecture (the three-plane model), semantic-conventions and privacy.
 
 ### Enterprise Agent Registry (Phase 5.1)
 
@@ -810,6 +815,38 @@ friction is friction people learn to click through.
 governed AI, integrates with the enterprise in both directions, and deploys,
 releases, monitors, routes, rolls back and operates agent versions safely at
 production scale.
+
+### Milestone 4 — Runtime Governance & Observability (in progress, 1/10)
+
+**Phase 4.1 — Runtime Telemetry & Trace Context Foundation.** The
+instrumentation contract the remaining nine sub-phases build on. Deliberately
+thin: no trace UI, no governance engine, no cost governance, no exporter.
+
+The gap it closed was measured rather than assumed. `correlation_id` had existed
+on `agent_executions` since Milestone 1 and nothing populated it — it was null on
+**74,395 of 74,619** executions, because the service read it only from the
+request body and `POST /executions` took no `Request` object at all. The rails
+were there; nothing ran on them.
+
+Four properties define the result:
+
+- **Telemetry is a derived plane, never a source of truth.** When it and a
+  domain row disagree, the row is right. See
+  [ADR-0008](docs/architecture/adr/0008-telemetry-as-a-derived-plane.md).
+- **Spans are derived, not stored.** A span id is a deterministic function of
+  (trace, kind, row); a trace assembles by walking foreign keys that already
+  exist. The phase added **two nullable columns and no table** — a span table
+  would have been a lossy second copy of `execution_attempts`,
+  `execution_messages` and `tool_calls`.
+- **Telemetry is non-gating** — the one subsystem here that deliberately fails
+  *open*, because it is not the business transaction. Enforced by an exception
+  guard **and** a SAVEPOINT: without the savepoint a failed insert poisons the
+  caller's transaction, so the swallowed exception resurfaces as a corrupted
+  execution three frames up.
+- **Nothing sensitive is captured.** An isolated, dependency-free scrubber
+  removes nine classes of secret on the write path, content is off by default
+  (`METADATA_ONLY`), and private model reasoning is excluded from *every*
+  capture mode structurally rather than switched off in one.
 
 ---
 
@@ -1304,8 +1341,10 @@ lifecycle — so it is replaced here with the actual current queue rather than l
 to read as pending. [`ROADMAP.md`](ROADMAP.md) is the maintained plan and
 [`REPO_STATE.md`](REPO_STATE.md) §9 the honest gap list.*
 
-**Milestone 3 is complete.** Next on the roadmap: Runtime Governance &
-Observability.
+**Milestone 3 is complete, and Milestone 4 has opened.** Phase 4.1 (Runtime
+Telemetry & Trace Context Foundation) shipped the instrumentation contract the
+remaining nine sub-phases build on. Next: Phase 4.2, the trace explorer and
+execution timeline.
 
 **Known gaps, stated plainly** (the full list is [`REPO_STATE.md`](REPO_STATE.md)
 §9): CAPTCHA verification is a placeholder; the Phase 3 analytics cost figures are

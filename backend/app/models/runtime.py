@@ -895,6 +895,13 @@ class AgentExecution(Base, UUIDPrimaryKeyMixin):
         UUID(as_uuid=True), ForeignKey("agent_executions.id", ondelete="SET NULL"), nullable=True
     )
     correlation_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    # Phase 4.1 (M4-4.1-FR-002, migration 0045) -- the HTTP request that created
+    # this execution. Distinct from `correlation_id`: a correlation spans a whole
+    # caller-defined workflow and may produce many executions, while a request id
+    # names the single call that produced this one. Nullable, and never invented:
+    # a system-triggered execution has no HTTP request, and rows created before
+    # 4.1 have none to recover. See app/observability/trace.py.
+    request_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     idempotency_key: Mapped[str | None] = mapped_column(String(150), nullable=True, index=True)
     input_payload: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     output_payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
@@ -1371,7 +1378,15 @@ class RuntimeEvent(Base, UUIDPrimaryKeyMixin):
     severity: Mapped[str] = mapped_column(String(20), nullable=False, default="INFO")
     payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     request_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # The trace identity (Phase 4.1). This column predates 4.1 and was null on
+    # essentially every row; the telemetry emitter now always populates it with
+    # `trace_id_for(execution)`, so "show me everything in this trace" works.
     correlation_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # Phase 4.1 (M4-4.1-FR-020, migration 0045) -- which *derived* span this
+    # event occurred in. Spans are not stored (SRS §13); the id is a
+    # deterministic UUID5 recomputed by app/observability/trace.py, so this
+    # reference stays valid without a span table existing.
+    span_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

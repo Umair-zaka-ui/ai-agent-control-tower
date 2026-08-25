@@ -76,7 +76,6 @@ from app.models.runtime import (
     ModelPricing,
     ProviderCredential,
     RuntimeApproval,
-    RuntimeEvent,
     Tool,
     ToolCall,
     ToolCredential,
@@ -266,17 +265,78 @@ def _record_event(db: Session, event: AuthorizationAuditEvent, actor: "User | Ag
                   organization_id: uuid.UUID, agent_id: uuid.UUID | None = None,
                   deployment_id: uuid.UUID | None = None,
                   execution_id: uuid.UUID | None = None,
-                  severity: str = "INFO", meta: dict | None = None) -> None:
-    """Dual-writes the platform audit trail and the runtime event stream
-    (§51, §76) that feeds the Operations Center timeline."""
+                  severity: str = "INFO", meta: dict | None = None,
+                  trace: "TraceContext | None" = None) -> None:
+    """Writes the platform audit trail and the runtime telemetry stream
+    (§51, §76) that feeds the Operations Center timeline.
+
+    **These are two planes, not one write with two destinations** (ACT-SRS-M4
+    §5), and Phase 4.1 made the difference load-bearing rather than incidental:
+
+    - The **audit** write is the compliance record. It must not be lossy and it
+      must not be filtered, so it still raises on failure and still receives
+      ``meta`` exactly as the caller supplied it.
+    - The **telemetry** write is derived and best-effort. It goes through
+      ``app.observability.events.emit_event``, which scrubs the payload, drops
+      content and private reasoning under the METADATA_ONLY baseline, attaches
+      the trace identity, and **never raises** (§9). A telemetry failure
+      degrades observability; it does not fail the execution that caused it.
+
+    Before 4.1 the telemetry row was a raw ``db.add`` of the unfiltered
+    ``meta`` with ``correlation_id`` left null on every row. Both of those are
+    fixed here, at the one place every runtime event goes through."""
     AuthorizationAuditService(db).record_change(
         event, organization_id=organization_id, actor_id=actor.id if actor else None,
         meta=meta,
     )
-    db.add(RuntimeEvent(
-        organization_id=organization_id, agent_id=agent_id, deployment_id=deployment_id,
-        execution_id=execution_id, event_type=event.value, severity=severity, payload=meta,
-    ))
+    _emit_telemetry(db, event, organization_id=organization_id, agent_id=agent_id,
+                   deployment_id=deployment_id, execution_id=execution_id,
+                   severity=severity, meta=meta, trace=trace)
+
+
+def _emit_telemetry(db: Session, event: AuthorizationAuditEvent, *,
+                    organization_id: uuid.UUID, agent_id: uuid.UUID | None,
+                    deployment_id: uuid.UUID | None, execution_id: uuid.UUID | None,
+                    severity: str, meta: dict | None,
+                    trace: "TraceContext | None" = None) -> None:
+    """The telemetry half of :func:`_record_event`. Never raises.
+
+    The whole body is inside the guard, not just the write. Resolving the trace
+    identity requires reading the execution, and a lookup that fails must be as
+    harmless as an insert that fails -- otherwise the fail-open property would
+    hold for the easy case and not for the real one."""
+    try:
+        from app.observability.events import Outcome, emit_event
+        from app.observability.trace import SpanKind, TraceContext, new_trace_id
+
+        # A primary-key `get` on a row this transaction almost always already
+        # holds, so this is an identity-map hit rather than a query on the hot
+        # path (§25). The `or` chain never leaves a telemetry row without a
+        # trace: an event with no execution still belongs to *something*.
+        execution = db.get(AgentExecution, execution_id) if execution_id else None
+        if execution is not None:
+            trace = TraceContext.for_execution(execution)
+            span = trace.root_span(SpanKind.EXECUTION, execution.id)
+        else:
+            # No execution. Either the caller supplied a trace of its own (the
+            # scheduler does -- every event of one job occurrence must share
+            # one trace, not get a fresh random id each time), or this event
+            # genuinely stands alone and gets a trace of its own so it is at
+            # least findable.
+            trace = trace or TraceContext(trace_id=new_trace_id())
+            span = None
+            trace = trace.with_attributes(
+                organization_id=organization_id, agent_id=agent_id,
+                deployment_id=deployment_id,
+            )
+        emit_event(
+            db, event_type=event.value,
+            outcome=Outcome.FAILURE if severity in ("ERROR", "CRITICAL") else Outcome.INFO,
+            trace=trace, span=span, payload=meta, severity=severity,
+        )
+    except Exception:  # noqa: BLE001 -- §9: telemetry never gates execution
+        logger.warning("telemetry: could not record runtime event %r", event.value,
+                      exc_info=True)
 
 
 def _set_execution_status(execution: AgentExecution, to_status: str) -> None:
@@ -2421,7 +2481,8 @@ class ExecutionRequestService:
             stmt.order_by(AgentExecution.created_at.desc()).limit(limit)
         ).scalars())
 
-    def request_execution(self, actor: User, payload: dict) -> AgentExecution:
+    def request_execution(self, actor: User, payload: dict, *,
+                          trace: "TraceContext | None" = None) -> AgentExecution:
         agent = self.db.get(Agent, payload["agent_id"])
         if agent is None or agent.organization_id != actor.organization_id:
             raise IdentityError(ErrorCode.AGENT_NOT_FOUND, "Agent not found.")
@@ -2437,9 +2498,10 @@ class ExecutionRequestService:
 
         return self._request_execution(
             agent, payload, principal=actor, trigger_type="API",
-            authorize=authorize, worker_id=f"inline-{actor.id}")
+            authorize=authorize, worker_id=f"inline-{actor.id}", trace=trace)
 
-    def request_execution_as_agent(self, agent: Agent, payload: dict) -> AgentExecution:
+    def request_execution_as_agent(self, agent: Agent, payload: dict, *,
+                                   trace: "TraceContext | None" = None) -> AgentExecution:
         """§29, §31 — an agent triggering its own next run (e.g. a webhook or
         a tool re-invoking the same agent), authenticated by its own API key
         rather than a human session. Deliberately self-only: an agent may
@@ -2464,10 +2526,11 @@ class ExecutionRequestService:
 
         return self._request_execution(
             agent, payload, principal=agent, trigger_type="AGENT",
-            authorize=authorize, worker_id=f"inline-agent-{agent.id}")
+            authorize=authorize, worker_id=f"inline-agent-{agent.id}", trace=trace)
 
     def _request_execution(self, agent: Agent, payload: dict, *, principal: User | Agent,
-                           trigger_type: str, authorize, worker_id: str) -> AgentExecution:
+                           trigger_type: str, authorize, worker_id: str,
+                           trace: "TraceContext | None" = None) -> AgentExecution:
         if agent.lifecycle_status == "SUSPENDED":
             raise IdentityError(ErrorCode.AGENT_SUSPENDED, "Agent is suspended.")
         if agent.lifecycle_status not in ("ACTIVE",):
@@ -2535,10 +2598,30 @@ class ExecutionRequestService:
             if existing is not None:
                 return existing
 
+        # Phase 4.1 (M4-4.1-FR-002) -- the first leg of trace propagation, and
+        # the one that was broken. Until now `correlation_id` came *only* from
+        # the request body, so unless a caller explicitly put one there the
+        # column stayed null: 74,395 of 74,619 executions in the development
+        # database had no trace identity at all.
+        #
+        # Precedence is deliberate: an explicit body field still wins, because
+        # a caller that names its own correlation means it. Otherwise the
+        # `x-correlation-id` header joins this execution to the caller's
+        # existing trace, and failing both, a fresh id is minted so that every
+        # execution from here on is findable.
+        #
+        # Note what is *not* touched: `_routing_key` above already read
+        # `payload["correlation_id"]` for Phase 3.4 sticky version resolution,
+        # and it still reads exactly that. The header-derived and minted ids
+        # never enter `payload`, so version selection is bit-identical to
+        # before this phase -- an auto-minted correlation must not silently
+        # turn every request into a sticky one.
+        correlation_id = payload.get("correlation_id") or (trace.trace_id if trace else None)
         execution = AgentExecution(
             organization_id=agent.organization_id, agent_id=agent.id, agent_version_id=version.id,
             deployment_id=deployment.id, trigger_type=trigger_type, triggered_by_identity_id=principal.id,
-            correlation_id=payload.get("correlation_id"), idempotency_key=idempotency_key,
+            correlation_id=correlation_id, request_id=trace.request_id if trace else None,
+            idempotency_key=idempotency_key,
             input_payload=payload.get("input_payload", {}), priority=payload.get("priority", "NORMAL"),
             status="AUTHORIZING",
         )

@@ -3,7 +3,9 @@
 > **123 tables** in `Base.metadata` (124 in a live database — Alembic manages
 > `alembic_version` itself, and it is not a model). Generated from
 > `Base.metadata` and verified against the live schema at migration head
-> `0044_worker_fleet_rolling`. Split by bounded context because a single
+> `0045_runtime_telemetry_context` (Phase 4.1 added two nullable columns and no
+> table, so the diagrams below are unchanged in shape:
+> `agent_executions.request_id` and `runtime_events.span_id`). Split by bounded context because a single
 > 123-table diagram is a poster, not a document.
 >
 > **Last regenerated 2026-08-24.** This document declared *24 tables* for a long

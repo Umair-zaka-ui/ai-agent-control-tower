@@ -1,5 +1,26 @@
 # AI Agent Control Tower — Roadmap
 
+> ## A note on the two families of "4.x" — read this before searching for one
+>
+> This document contains **two unrelated numbering families that both use 4.x**,
+> because they come from different specification books written at different
+> times. They are never to be merged, cross-referenced as if continuous, or
+> treated as one sequence:
+>
+> | Family | Numbers | Book | Subject | Status |
+> |---|---|---|---|---|
+> | **Historical (Book-07)** | `Phase 4` / `Part 4.1`, `4.2.1`, `4.2.2.x`, `Phase 4.3` / `Part 4.3.1–4.3.8` | Enterprise Identity & Authorization | Identity foundation, authentication, RBAC/ABAC, IGA | Complete |
+> | **Milestone 4 (ACT-SRS-M4)** | `Phase 4.1 – 4.10`, requirement ids `M4-4.1-FR-xxx` | Runtime Governance & Observability | Telemetry, tracing, governance engine, cost, SLOs | In progress |
+>
+> **How to tell them apart at a glance.** The historical family always appears
+> under a `## Phase 4 —` or `## Phase 4.3 —` heading and is written as
+> "**Part** 4.x". Milestone 4 always appears under
+> `## Milestone 4 — Runtime Governance & Observability` and is written as
+> "**Phase** 4.x", and every one of its requirements is prefixed `M4-`.
+>
+> So "Part 4.1" is the Identity Foundation and "Phase 4.1 (M4)" is Runtime
+> Telemetry. They share a number and nothing else.
+
 ## Phase 1 — Backend MVP ✅
 
 FastAPI + PostgreSQL control plane: agents, permissions, deterministic risk
@@ -125,7 +146,7 @@ APIs. Dark, enterprise design language (Azure / Datadog / Stripe / Linear feel).
 - Per-agent policy scoping (agent↔policy assignment) and trigger history.
 - Users & RBAC management; role-based navigation gating; e2e tests.
 
-## Phase 4 — Enterprise Identity Platform
+## Phase 4 — Enterprise Identity Platform *(historical Book-07 family — not Milestone 4)*
 
 ### Part 4.1 — Identity Foundation ✅
 
@@ -345,7 +366,7 @@ HTTP-layer gaps, and record the release contract honestly.
 - Docs: [http-conventions](docs/api/http-conventions.md), [testing](docs/testing/strategy.md),
   [deployment](docs/deployment.md), `CHANGELOG.md`.
 
-## Phase 4.3 — Enterprise Authorization Platform 🚧
+## Phase 4.3 — Enterprise Authorization Platform *(historical Book-07 family — not Milestone 4)*
 
 RBAC + ABAC + policy engine: centralized, auditable authorization for every request.
 
@@ -2088,6 +2109,88 @@ Next: the roadmap's following milestone — Runtime Governance & Observability.
 | 4 | Promotion must preserve version immutability | Resolved in 3.2; found already half-enforced and reported |
 | 5 | Traffic allocation is the one mechanism every strategy drives | Established in 3.4; 3.5/3.6/3.7/3.9 all drive it, none bypass it; 3.10's UI dispatches to it and never writes weights itself |
 | 6 | Suspension/kill switch is read, never written, by automation | Enforced from 3.1; 3.7 made automation strictly subordinate; 3.9 inherits it; 3.10 surfaces it as a first-class field so the UI cannot hide it |
+
+## Milestone 4 — Runtime Governance & Observability (ACT-SRS-M4, Phases 4.1–4.10)
+
+> **Not the historical Phase 4 / Phase 4.3 above.** See the numbering note at
+> the top of this file. Requirements in this milestone are prefixed `M4-`, e.g.
+> `M4-4.1-FR-002`.
+
+Milestone 3 made the platform ship agents safely. Milestone 4 makes it possible
+to see what they then *do* — and to govern it. Ten sub-phases: the
+instrumentation contract (4.1), the trace explorer (4.2), the governance
+enforcement engine (4.3), cost governance (4.4), behavioral signals (4.5),
+OpenTelemetry export (4.6), SLOs and alerting (4.7), the telemetry
+privacy/retention/access system (4.8), the observability center (4.9), and
+hardening (4.10).
+
+**The four rulings this milestone is built on:**
+
+| # | Ruling | Where it stands |
+|---|---|---|
+| 1 | **Three planes stay separate** — the domain is authoritative, telemetry is derived and never a source of truth, governance is its own plane | Established in 4.1: `app/observability/` is a sibling of `app/runtime`, the dependency runs one way, and the audit/telemetry split inside `_record_event` is now explicit rather than incidental |
+| 2 | **Telemetry is non-gating** — a telemetry failure is never an execution failure, the deliberate inverse of every other subsystem | Enforced in 4.1 by `try/except` **and** a SAVEPOINT, because the exception guard alone leaves the caller's transaction poisoned |
+| 3 | **Assemble traces from existing rows; never duplicate the database** | Resolved in 4.1 — span ids are a pure function, spans are derived by walking foreign keys, and the phase added two columns and no table |
+| 4 | **METADATA_ONLY is the conservative baseline, and chain-of-thought is never captured** | Landed in 4.1 — content is off by default, and private reasoning is structurally excluded from every capture mode rather than switched off in one |
+
+### Phase 4.1 — Runtime Telemetry & Trace Context Foundation ✅ (2026-08-25)
+
+Milestone 4's first sub-phase: the instrumentation contract every later M4
+phase builds on. Deliberately thin — no trace UI, no governance engine, no cost
+governance, no exporter, no SLOs.
+
+- **Two mandatory pre-steps, run against the live repository first.** REPO_STATE
+  was regenerated at the true post-3.10 head (it had been claiming migration
+  head `0041_canary_rollout` while the live head was `0044_worker_fleet_rolling`),
+  and the 4.x numbering was disambiguated — this section, plus the note at the
+  top of this file and the labels on the two historical headings.
+- **The propagation gap was measured, not assumed.** `correlation_id` had
+  existed on `agent_executions` since Milestone 1 and was set *only* from the
+  request body, so it was null on **74,395 of 74,619** executions and on
+  essentially all **296,941** `runtime_events` rows. The substrate was there;
+  nothing populated it.
+- **New package `app/observability/`** — a sibling of `app/runtime` and
+  `app/integration`, so the derived-plane dependency direction is visible in the
+  import graph. Six modules: `scrubbing` (isolated), `attributes`, `capture`,
+  `trace`, `events`, `assembly`.
+- **The secret scrubber is isolated exactly as `scope.py` was** — standard
+  library only, zero platform imports, asserted over the AST. Every §14 secret
+  class is scrubbed by key *and* by value shape, before persistence.
+- **Spans are derived, not stored** (ruling 3). A span id is a deterministic
+  UUID5 over (trace, kind, row); traces assemble by walking the foreign keys
+  that already exist. Migration `0045_runtime_telemetry_context` adds
+  **two nullable columns and no table** — `agent_executions.request_id` and
+  `runtime_events.span_id`, the only two facts not derivable from existing data.
+  No backfill: `trace_id_for()` returns `correlation_id or str(id)`, so all
+  ~74,000 historical executions gained a stable trace identity with zero rows
+  written and nothing a downgrade could not reverse.
+- **Bounded metric cardinality is structural** — `metric_labels()` is the only
+  way to build a label dict and refuses every high-cardinality identity and
+  every sensitive name, parametrized over the declared sets so a name added
+  later cannot be left out of the guard.
+- **One route** (`GET /runtime/executions/{id}/trace`, 540 → 541), reusing the
+  `runtime.telemetry.view` permission that already existed and already read
+  "View runtime telemetry and execution traces".
+- **The scheduler leg is wired, not merely available.** `SchedulerService._audit`
+  already routed through `_record_event`, so each of a job occurrence's events was
+  getting a freshly minted trace id — one run's STARTED and SUCCEEDED events
+  belonged to different traces. It now passes `TraceContext.for_job_run(run)`, so
+  every event of an occurrence shares one trace, derived from the `job_runs` row
+  id with no schema change.
+- **Six tests pinned to a moving target were rewritten, none weakened.** A
+  defect family this codebase has now hit seven times: a guard asserting a claim
+  about its own phase, expressed as a snapshot of the world. Five Milestone 2
+  connector guards asserted "the newest migration is `0044`"; Phase 3.10's
+  byte-identity guard diffed against `main` and reported a *4.1* change as a 3.10
+  regression. Each now asserts the claim itself — *no migration belongs to Phase
+  X*, and 3.10's own commit range — which is strictly stronger and permanently
+  true. Verified still-biting with a planted fake migration.
+
+Backend **1,895 passed**, 0 failed, 1 deselected (1,770 baseline + 125 new); frontend **327 passed** across 49 files, unchanged — 4.1 is backend-only. Routes 540 -> 541; schema unchanged at 124 tables; migration head `0045_runtime_telemetry_context`, reversible.
+
+**Milestone 4 now has 1 of 10 sub-phases done.**
+
+**Next: Phase 4.2 — Trace Explorer & Execution Timeline.**
 
 ## Future (Phase 3+)
 

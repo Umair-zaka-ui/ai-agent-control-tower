@@ -497,15 +497,30 @@ def test_ac13_no_secret_material_in_any_operations_payload(
 # AC-15 -- nothing about the engines moved
 # --------------------------------------------------------------------------- #
 def test_ac15_phase_310_added_no_deployment_logic() -> None:
-    """The read-and-trigger principle, asserted against ``main``.
+    """The read-and-trigger principle: every deployment engine is byte-identical
+    across Phase 3.10, which visualizes and triggers but never reimplements.
 
-    Every deployment engine must be byte-identical: this phase visualizes and
-    triggers, it never reimplements. Unlike Phase 3.7's version of this guard,
-    the list is safe against a moving ``main`` -- 3.10 is the last sub-phase of
-    the milestone, and an empty diff stays empty after the merge."""
+    **Rewritten in Phase 4.1 — the third time this codebase has been caught by
+    the same trap, and the reason it keeps happening is worth stating.** The
+    original diffed the working tree against ``main`` and reasoned that this was
+    safe because "3.10 is the last sub-phase of the milestone, and an empty diff
+    stays empty after the merge". That held exactly until the *next* milestone
+    touched one of these files: Phase 4.1 added trace propagation to
+    ``scheduler/service.py``, and this guard failed — reporting a Phase 4.1
+    change as though 3.10 had reimplemented a deployment engine.
+
+    ``main`` is not a fixed point, and Phase 3.7's version of this guard learned
+    the same lesson (it was narrowed in 3.9). So this now diffs **Phase 3.10's
+    own commit range** — ``72d1d71^1..72d1d71``, the merge of "Phase 3.10: AI
+    Release Operations Center" — which is a fixed historical fact. It asserts
+    precisely what it always meant, it cannot be broken by any later phase, and
+    it loses no strength: if 3.10 had touched one of these files, the diff over
+    its own range would show it."""
     import subprocess
 
     repo = Path(__file__).resolve().parents[3]
+    # The Phase 3.10 merge commit. Fixed, because the claim is about history.
+    PHASE_310_MERGE = "72d1d71"
     protected = [
         "backend/app/runtime/deployment/resolver.py",
         "backend/app/runtime/deployment/traffic.py",
@@ -521,17 +536,46 @@ def test_ac15_phase_310_added_no_deployment_logic() -> None:
         "backend/app/scheduler/service.py",
     ]
     result = subprocess.run(
-        ["git", "diff", "--name-only", "main", "--", *protected],
+        ["git", "diff", "--name-only", f"{PHASE_310_MERGE}^1", PHASE_310_MERGE,
+         "--", *protected],
         cwd=repo, capture_output=True, text=True, check=False)
-    assert result.stdout.strip() == "", f"modified: {result.stdout}"
+    assert result.returncode == 0, (
+        f"git diff failed -- the pinned commit must remain reachable: {result.stderr}")
+    assert result.stdout.strip() == "", (
+        f"Phase 3.10 modified a deployment engine: {result.stdout}")
 
 
 def test_ac15_no_migration_was_added() -> None:
     """This phase reads existing data; a new table would mean it had invented
-    domain state."""
-    versions = sorted(p.name for p in
-                      (Path(__file__).resolve().parents[2] / "migrations" / "versions").glob("*.py"))
-    assert versions[-1] == "0044_worker_fleet_rolling.py", versions[-1]
+    domain state.
+
+    **Rewritten in Phase 4.1, and deliberately strengthened rather than
+    relaxed.** The original form asserted that the *last* migration in the
+    repository was ``0044_worker_fleet_rolling`` -- true when 3.10 shipped, and
+    false the moment any later phase adds one, which says nothing whatsoever
+    about whether 3.10 added a migration. It is the same trap Phase 3.7's
+    byte-identity guard fell into by pinning to a moving ``main``.
+
+    What it now asserts is the claim itself: **no migration in this repository
+    belongs to Phase 3.10.** That is a statement about 3.10 alone, it stays
+    true forever, and it would still catch the thing the original was written
+    to catch -- a 3.10 migration appearing -- including one inserted *before*
+    the head, which the original would have missed entirely."""
+    versions_dir = Path(__file__).resolve().parents[2] / "migrations" / "versions"
+    versions = sorted(versions_dir.glob("*.py"))
+    assert versions, "no migrations found -- the guard would pass vacuously"
+
+    # 3.9's migration must still be present: 3.10 must not have removed or
+    # renamed one either.
+    assert any(v.name == "0044_worker_fleet_rolling.py" for v in versions)
+
+    for version in versions:
+        source = version.read_text(encoding="utf-8")
+        header = source[:source.find("Revision ID")] if "Revision ID" in source else source
+        assert "Phase 3.10" not in header, (
+            f"{version.name} is a Phase 3.10 migration; 3.10 must add none "
+            f"(it reads existing data and invents no domain state)."
+        )
 
 
 def test_ac16_no_placeholder_markers_in_the_new_code() -> None:
