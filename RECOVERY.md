@@ -1,8 +1,8 @@
 # Backup and system-migration guide
 
-**Last verified 2026-08-25** after Phase 4.1 (Milestone 4 opens). Facts that matter for a restore,
+**Last verified 2026-08-26** after Phase 4.2 (trace explorer). Facts that matter for a restore,
 all re-checked live rather than carried forward: migration head
-**`0045_runtime_telemetry_context`**, **124 tables** (123 in `Base.metadata` — Alembic
+**`0046_trace_explorer_index`**, **124 tables** (123 in `Base.metadata` — Alembic
 owns `alembic_version` and it is not a model), PostgreSQL **17.10** locally,
 `backend/.venv` on Python **3.13.14**, Node **v24.18.0**. Sections naming a
 version were corrected in the 2026-08-14 pass — the previous text said Python
@@ -37,6 +37,17 @@ nothing in it is authoritative and nothing in it needs special handling:
   were never backfilled, so a restore to a pre-4.1 dump followed by
   `alembic upgrade head` produces a correct, fully-traceable database with those
   two columns simply empty for historical rows.
+
+**Phase 4.2 adds no durable state at all — deliberately.** It measured whether
+trace assembly needed a materialized read projection and concluded it does not
+(0.74ms p50 at 90,695 executions; see
+[ADR-0008](docs/architecture/adr/0008-telemetry-as-a-derived-plane.md)), so
+there is no derived store to rebuild, re-sync or reconcile after a restore. Its
+one migration adds an **index**, which Postgres rebuilds from the table itself:
+nothing to back up separately, nothing that can be stale, and a restore that
+replays migrations gets it automatically. The trace explorer is a pure read over
+`agent_executions` and its children, so it is correct the instant those tables
+are.
 
 > **Read "Encryption keys" below before trusting any snapshot.** A verified
 > database dump plus a Git bundle is *not* sufficient to recover this platform's
