@@ -1,8 +1,9 @@
 # Backup and system-migration guide
 
-**Last verified 2026-08-21** after Phase 3.10 (Milestone 3 complete). Facts that matter for a restore,
+**Last verified 2026-08-25** after Phase 4.1 (Milestone 4 opens). Facts that matter for a restore,
 all re-checked live rather than carried forward: migration head
-`0043_distributed_scheduler`, **123 tables**, PostgreSQL **17.10** locally,
+**`0045_runtime_telemetry_context`**, **124 tables** (123 in `Base.metadata` — Alembic
+owns `alembic_version` and it is not a model), PostgreSQL **17.10** locally,
 `backend/.venv` on Python **3.13.14**, Node **v24.18.0**. Sections naming a
 version were corrected in the 2026-08-14 pass — the previous text said Python
 3.12 and Node 22 LTS, and its `py -3.12 -m venv` command would now fail outright
@@ -13,6 +14,29 @@ a human, so this guide covers **in-flight rollback state**; Phase 3.8 added the
 distributed scheduler that drives it, so it now also covers **scheduler state
 and lease recovery**. Read both before restoring into anything that will serve
 traffic.
+
+**Phase 4.1 adds durable state, and it is deliberately trivial to recover.** The
+telemetry plane is *derived* (see
+[ADR-0008](docs/architecture/adr/0008-telemetry-as-a-derived-plane.md)), so
+nothing in it is authoritative and nothing in it needs special handling:
+
+- `runtime_events` rows are **best-effort observations**, not records of what
+  happened. Losing some in a restore loses observability of a window, never the
+  record of an execution — that lives in `agent_executions` and its children,
+  which are durable and unchanged by this phase.
+- **Traces need no recovery at all.** Spans are not stored; they are recomputed
+  by pure function from the domain rows. A restored database produces
+  byte-identical span ids for every execution it contains.
+- The **capture baseline is durable configuration, and it is a constant**:
+  `METADATA_ONLY`, defined in `app/observability/capture.py`, not in the
+  database and not in an environment variable. A restore cannot lose it, and a
+  misconfigured environment cannot silently widen it. Phase 4.8 moves this to
+  per-environment policy, at which point it becomes restorable state and this
+  section must be revisited.
+- `agent_executions.request_id` and `runtime_events.span_id` are nullable and
+  were never backfilled, so a restore to a pre-4.1 dump followed by
+  `alembic upgrade head` produces a correct, fully-traceable database with those
+  two columns simply empty for historical rows.
 
 > **Read "Encryption keys" below before trusting any snapshot.** A verified
 > database dump plus a Git bundle is *not* sufficient to recover this platform's
