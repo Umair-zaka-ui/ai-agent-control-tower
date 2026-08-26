@@ -1,8 +1,8 @@
 # Backup and system-migration guide
 
-**Last verified 2026-08-26** after Phase 4.2 (trace explorer). Facts that matter for a restore,
+**Last verified 2026-08-26** after Phase 4.3 (runtime governance engine). Facts that matter for a restore,
 all re-checked live rather than carried forward: migration head
-**`0046_trace_explorer_index`**, **124 tables** (123 in `Base.metadata` — Alembic
+**`0047_runtime_governance`**, **126 tables** (125 in `Base.metadata` — Alembic
 owns `alembic_version` and it is not a model), PostgreSQL **17.10** locally,
 `backend/.venv` on Python **3.13.14**, Node **v24.18.0**. Sections naming a
 version were corrected in the 2026-08-14 pass — the previous text said Python
@@ -48,6 +48,52 @@ nothing to back up separately, nothing that can be stale, and a restore that
 replays migrations gets it automatically. The trace explorer is a pure read over
 `agent_executions` and its children, so it is correct the instant those tables
 are.
+
+**Phase 4.3 adds durable state that is *governing*, and that changes the
+restore calculus.** The two previous Milestone 4 phases added observability,
+which can be lost without consequence. This one adds rules that stop
+executions, and the governance plane **fails closed** — so what happens after a
+restore depends on which half you get back.
+
+- **`runtime_governance_policies` is durable configuration and must be
+  restored.** Losing it does not corrupt anything, but it silently *removes
+  governance*: executions resume running under the built-in loop-safety caps
+  alone, with every cost ceiling, restricted-model rule and approval obligation
+  gone. Nothing errors, nothing looks wrong, and the platform is less governed
+  than the operator believes. Treat a restore that omits this table the same way
+  you would treat one that omitted RBAC grants.
+- **A partially restored policy set is worse than none**, and it is the one
+  shape to check for deliberately. If the `mandatory` policies came back and the
+  advisory ones did not, the platform is *stricter* than intended; if the
+  reverse, it is looser. After a restore, compare the policy count and the
+  `mandatory` flags against the dump manifest before serving traffic.
+- **`runtime_governance_decisions` is append-only evidence, not operating
+  state.** Nothing reads it to make a decision; it exists to answer *why did
+  this execution stop*. Losing rows loses history, never behaviour. The database
+  revokes `UPDATE`/`DELETE` from `PUBLIC`, so a restored dump preserves that
+  property only if it is replayed through `alembic upgrade head` rather than
+  loaded schema-and-all into a database whose grants were set up by hand.
+- **A mid-execution governance decision does not survive a restart, and does not
+  need to.** The engine holds no state between checkpoints beyond the policy
+  snapshot it resolved when the loop began — that snapshot is rebuilt from
+  `runtime_governance_policies` on the next attempt. An execution interrupted
+  mid-loop is recovered by the *existing* worker machinery (lease expiry →
+  `reap_expired_locks` → the retry policy, Phase 3.9), and the retried attempt
+  is governed from scratch by whatever policies are in force then. There is no
+  half-finished governance state to reconcile.
+- **A governance stop is not retried, and that is the intended behaviour after a
+  restore too.** `GOVERNANCE_EXECUTION_STOPPED` and `KILL_SWITCH_ACTIVE` are
+  non-retryable, so an execution stopped by governance before the snapshot stays
+  stopped afterwards. `GOVERNANCE_CHECKPOINT_UNEVALUABLE` *is* retryable — it
+  means the platform could not evaluate a mandatory rule, which is exactly the
+  condition a restore fixes.
+- **The failure mode to plan for: a restored database whose policy store is
+  unreachable.** Governance fails closed, so every execution governed by a
+  mandatory policy will STOP with `GOVERNANCE_CHECKPOINT_UNEVALUABLE` until it
+  is reachable again. That is correct and deliberate, and it is also a way for
+  one table to halt the platform. If you are restoring into something that must
+  serve traffic immediately, verify `runtime_governance_policies` is queryable
+  *before* starting the workers.
 
 > **Read "Encryption keys" below before trusting any snapshot.** A verified
 > database dump plus a Git bundle is *not* sufficient to recover this platform's
