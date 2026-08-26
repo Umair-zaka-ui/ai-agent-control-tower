@@ -262,6 +262,21 @@ class AuthorizationAuditEvent(str, enum.Enum):
     RUNTIME_LOOP_ITERATION = "RUNTIME_LOOP_ITERATION"
     RUNTIME_LOOP_TERMINATED = "RUNTIME_LOOP_TERMINATED"
     RUNTIME_LIMIT_EXCEEDED = "RUNTIME_LIMIT_EXCEEDED"
+    # Runtime Governance Enforcement Engine (Phase 4.3, ACT-SRS-M4 §8-4.3,
+    # §17). `_POLICY_EVALUATED` is written for every *material* governance
+    # evaluation -- every non-ALLOW plus the terminal ALLOW that records the
+    # execution was governed and permitted; `_EXECUTION_STOPPED` is written
+    # additionally when the decision was STOP or DENY, so an alert rule can
+    # subscribe to "governance halted something" without filtering the far
+    # larger evaluation stream. `meta` carries checkpoint/decision/reason_code/
+    # policy_id/iteration only -- never a payload, tool argument or model
+    # output, so no secret can reach the audit record through this path.
+    #
+    # A governance STOP that additionally triggers the kill switch is audited
+    # by RUNTIME_KILL_SWITCH_ACTIVATED as well, through KillSwitchService
+    # itself rather than by re-recording the fact here.
+    RUNTIME_POLICY_EVALUATED = "RUNTIME_POLICY_EVALUATED"
+    RUNTIME_EXECUTION_STOPPED = "RUNTIME_EXECUTION_STOPPED"
     RUNTIME_KILL_SWITCH_ACTIVATED = "RUNTIME_KILL_SWITCH_ACTIVATED"
     RUNTIME_ROLLBACK_COMPLETED = "RUNTIME_ROLLBACK_COMPLETED"
     # Enterprise Agent Registry (Phase 5.1 §67).

@@ -580,6 +580,24 @@ an `HTTP` one. The loop adds no translation layer of its own.
 
 ### Termination — four independent caps, any one ends the loop
 
+> **Superseded implementation (Phase 4.3).** The four caps below still produce
+> exactly these `termination_reason` values, these error codes and these
+> `loop_iterations` counts — nothing an existing reader observes has changed.
+> What changed is *where they live*: they are no longer `if` statements inside
+> `ToolLoopOrchestrator.run`. They are constraints inside
+> `RuntimeGovernanceEngine`, reached through the same checkpoint call as every
+> richer governance rule, so that exactly one place decides whether a loop may
+> continue. See
+> [runtime-governance.md](./runtime-governance.md) and
+> [runtime-policy-checkpoints.md](./runtime-policy-checkpoints.md); the
+> reasoning is [ADR-0009](../architecture/adr/0009-runtime-governance-as-a-fail-closed-plane.md).
+>
+> A loop can now also terminate for a *governance* reason — a cost ceiling, a
+> restricted model or tool, a data-sensitivity rule, an approval obligation, a
+> kill switch, or a mandatory checkpoint that could not be evaluated. Those
+> carry `GOVERNANCE_*` termination reasons and are documented with the
+> checkpoints rather than here.
+
 5.6a.2 made a `FAILED` tool result recoverable — which means a model that
 keeps retrying an always-failing tool can keep the loop running forever,
 burning real tokens and money. Four independent conditions guard against
