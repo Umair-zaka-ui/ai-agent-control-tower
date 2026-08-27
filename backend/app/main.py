@@ -31,6 +31,7 @@ from app.authorization.resources.routes import router as resources_router
 from app.authorization.abac.routes import router as abac_router
 from app.authorization.admin.routes import router as admin_router
 from app.governance.routes import router as governance_router
+from app.runtime.governance.routes import router as runtime_governance_router
 from app.runtime.routes import router as runtime_router
 from app.integration.routes import router as integration_router
 from app.scheduler.routes import router as scheduler_router
@@ -168,3 +169,9 @@ app.include_router(workers_router)
 # which aggregate the Phase 3 agent_actions table and know nothing of
 # AgentExecution; no path collision between the two.
 app.include_router(observability_router)
+# Phase 4.3 -- the runtime governance management and decision-lineage surface,
+# on the existing /api/v1/runtime prefix. Configuration and reads only: the
+# enforcement engine itself runs inside the tool loop, and no route can invoke
+# a checkpoint. That is what keeps "one enforcement path" true of the HTTP
+# surface as well as of the loop.
+app.include_router(runtime_governance_router)

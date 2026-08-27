@@ -2231,7 +2231,75 @@ unchanged.
 
 **Milestone 4 now has 2 of 10 sub-phases done.**
 
-**Next: Phase 4.3 — Runtime Governance Engine.**
+### Phase 4.3 — Runtime Governance Enforcement Engine ✅ (2026-08-26)
+
+**The first phase since 3.9 to modify the execution path itself.** Governance
+checkpoints now run *inside* the model→tool→model loop, and one engine decides
+ALLOW / DENY / CHALLENGE / STOP with an explicit reason and obligation.
+
+- **One enforcement path, by generalization rather than addition.** The four
+  termination caps Phase 5.6a.3 enforced with inline `if` statements
+  (iteration / wall-clock / token-budget / repeated-call) are now **constraints
+  inside the engine**, reached through the same `evaluate()` call as every
+  richer rule. Adding a second mechanism beside them was the cheap option and
+  was rejected: two enforcers can disagree about whether to stop an execution,
+  and the winner would be whichever `if` the loop reached first.
+- **Behaviour preservation was the deliverable.** Every cap still writes its
+  original `termination_reason`, raises `TOOL_LOOP_LIMIT_EXCEEDED` and records
+  the same `loop_iterations`; the full pre-existing tool-loop suite passes
+  unmodified. The evaluation order that decides which cap is reported when two
+  breach on the same turn was derived from the pre-4.3 statement order and is
+  asserted by a test rather than trusted.
+- **The one-path property is structural.** The orchestrator no longer names the
+  cap settings in any comparison and no longer raises the cap error code —
+  asserted over the AST, so "just one quick check" beside the engine fails CI.
+- **Governance fails CLOSED — the deliberate inverse of 4.1/4.2's telemetry
+  plane**, and the two now live inches apart in one loop. A *mandatory* policy
+  that cannot be evaluated STOPs; a non-mandatory one is logged and skipped.
+  Both plane directions are tested, including the dangerous one: a broken
+  telemetry plane cannot suppress a governance stop.
+- **No lock across model or tool I/O.** Every checkpoint is one non-locking
+  `SELECT` plus, for a material decision only, one `INSERT`. The M1 deadlock
+  shape is proven impossible structurally *and* against a second real
+  connection with `NOWAIT`.
+- **The kill switch is triggered, never paralleled** (§19). `activate_system`
+  reuses the existing cancellation, suspension and audit machinery, reaches
+  EXECUTION and AGENT scope only, and the engine never clears a kill.
+- **One capability gap stated rather than papered over**: a CHALLENGE raised
+  mid-loop cannot be resumed, so it raises its obligation and terminates in
+  `BLOCKED` instead of parking where nothing could move it out again.
+- **Measured overhead**: 0.42ms p50 / 0.68ms p95 per checkpoint, ~1.7ms per
+  loop iteration — recorded as an executable test.
+- **Two deviations reported**: the decision-read route is mounted on the
+  existing `/api/v1/runtime` prefix rather than a new prefix-less execution
+  namespace; and only one permission was added (`runtime.governance.manage`),
+  with decision reads reusing `runtime.execution.view`.
+
+Routes 544 → **549**; schema 124 → **126 tables** (two new, no new column on
+`agent_executions`); head `0047_runtime_governance`, reversible. Backend
+**2,024 passed**, 0 failed, 1 deselected (1,947 + 77); frontend **327** unchanged.
+
+See [docs/runtime/runtime-governance.md](docs/runtime/runtime-governance.md),
+[runtime-policy-checkpoints.md](docs/runtime/runtime-policy-checkpoints.md) and
+[ADR-0009](docs/architecture/adr/0009-runtime-governance-as-a-fail-closed-plane.md).
+
+**Milestone 4 now has 3 of 10 sub-phases done.**
+
+**Next: Phase 4.4 — Cost Governance & Budgets.** The cost checkpoint built here
+reads existing cost and reserves nothing; 4.4 adds the budgets and reservations
+it will consult, which also closes the concurrent-execution gap ADR-0009
+records as residual risk.
+
+#### Milestone 4 rulings recorded so far
+
+| # | Ruling | Phase | Where it lives |
+|---|---|---|---|
+| 1 | Telemetry is a **derived** plane — assemble from rows, never a span table | 4.1 | ADR-0008 |
+| 2 | Telemetry **fails open**; it never gates execution | 4.1 | ADR-0008, `app/observability/events.py` |
+| 3 | **One enforcement path** — generalize the existing caps, never parallel them | 4.3 | ADR-0009, `app/runtime/governance/` |
+| 4 | Governance **fails closed** on a mandatory unevaluable checkpoint | 4.3 | ADR-0009 |
+| 5 | Materialize only **with measured numbers** (4.2 measured and restrained) | 4.2 | ADR-0008 "Measurement outcome" |
+| 6 | Metadata only until 4.8 — content is a hard line, enforced upstream of routes | 4.2 | `docs/observability/tracing.md` |
 
 ## Future (Phase 3+)
 

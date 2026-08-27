@@ -30,7 +30,9 @@ same governance and security controls as everything else on the platform.
 | [capabilities-and-tools.md](capabilities-and-tools.md) | Capability/tool registries, assignment, authorization |
 | [gateways.md](gateways.md) | Model Gateway and Tool Gateway adapters |
 | [providers.md](providers.md) | Phase 5.7a.1 — the `ModelProvider` interface, registry, and provider-neutral internal representation |
-| [runtime-policy-and-approvals.md](runtime-policy-and-approvals.md) | Runtime limits, policy evaluation, human approval |
+| [runtime-policy-and-approvals.md](runtime-policy-and-approvals.md) | Runtime limits, **admission-time** policy evaluation, human approval |
+| [runtime-governance.md](runtime-governance.md) | Phase 4.3 — the **in-loop** governance engine, its decisions, and the fail-closed/fail-open plane split |
+| [runtime-policy-checkpoints.md](runtime-policy-checkpoints.md) | Phase 4.3 — the six checkpoints, every constraint, and the transaction boundary at each |
 | [health-and-observability.md](health-and-observability.md) | Heartbeats, health, telemetry, cost tracking, the dashboard |
 | [operations-and-kill-switch.md](operations-and-kill-switch.md) | Operations Center, suspension, the emergency kill switch |
 | [security.md](security.md) | Default deny, tenant isolation, checksum tampering, audit |

@@ -1689,3 +1689,120 @@ class RollbackEvent(Base, UUIDPrimaryKeyMixin):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class RuntimeGovernancePolicy(Base, UUIDPrimaryKeyMixin):
+    """Phase 4.3 (ACT-SRS-M4 §8-4.3, M4-4.3-FR-014) -- the configurable rules
+    the runtime governance engine evaluates at its six in-loop checkpoints.
+
+    Scope resolution is most-specific-wins, deliberately the same shape
+    ``RollbackTriggerPolicy`` already established: a row naming both an
+    environment and an agent beats one naming only an environment, which beats
+    the organization default (``environment_id`` and ``agent_id`` both null).
+    A ``organization_id`` of null is the *platform* default, which no tenant
+    API can write -- see ``GovernancePolicyService``.
+
+    **Absent any policy, this table changes nothing.** The four loop-safety
+    caps are built into the engine and always apply; everything here is
+    additional and opt-in. A tenant that configures nothing gets exactly the
+    execution behaviour Phase 5.6a.3 gave them, which is what makes shipping an
+    engine on the execution path survivable.
+
+    ``constraints`` is JSONB rather than a column per rule, matching how
+    ``environments.policy`` and ``rollback_trigger_policies.thresholds``
+    already carry this platform's other governed rule sets: a new constraint
+    should not require a migration. The keys are validated against
+    ``app.runtime.governance.constraints.KNOWN_CONSTRAINT_KEYS`` on write, so
+    a typo is rejected rather than stored as a rule that silently never fires.
+
+    ``mandatory`` is what drives fail-closed (M4-4.3-FR-020). A mandatory
+    policy that cannot be evaluated STOPs the execution; a non-mandatory one
+    that cannot be evaluated is recorded and skipped. That is the governance
+    plane's defining posture, and the exact inverse of the telemetry plane's
+    (``app.observability``, Phase 4.1) -- see docs/runtime/runtime-governance.md.
+    """
+
+    __tablename__ = "runtime_governance_policies"
+    __table_args__ = (
+        Index("ix_runtime_governance_policies_scope",
+              "organization_id", "environment_id", "agent_id"),
+    )
+
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=True, index=True,
+    )
+    environment_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("environments.id", ondelete="CASCADE"), nullable=True,
+    )
+    agent_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agents.id", ondelete="CASCADE"), nullable=True,
+    )
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    constraints: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    mandatory: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+
+
+class RuntimeGovernanceDecision(Base, UUIDPrimaryKeyMixin):
+    """Phase 4.3 (M4-4.3-FR-040..042) -- append-only lineage of every material
+    governance evaluation. **This table is the answer to "why did this
+    execution stop".**
+
+    Complementary to ``agent_executions.termination_reason``, not a
+    replacement for it, and the division is deliberate: the execution row
+    records *what terminal state the execution reached*, which is a property
+    of the execution and must stay on it for every existing reader; this table
+    records *which checkpoint decided, under which policy, with what
+    obligation* -- one row per material decision, of which a single execution
+    may produce several (a denied tool call followed by a stop, say). One row
+    could not carry that, and a column that sometimes means "the loop hit its
+    iteration cap" and sometimes "policy 7f3a denied gpt-4o at
+    AFTER_MODEL_RESPONSE" would serve neither.
+
+    Append-only by construction -- no service method here ever updates or
+    deletes a row -- and the migration additionally revokes UPDATE/DELETE at
+    the database level, matching ``deployment_events``' precedent.
+
+    ``trace_id`` is a plain string, not a foreign key, because a trace is not a
+    row: Phase 4.2 assembles traces from existing tables rather than storing
+    them. It is the same value ``app.observability.trace.trace_id_for``
+    derives, so a decision joins a trace timeline without either side owning
+    the other.
+    """
+
+    __tablename__ = "runtime_governance_decisions"
+    __table_args__ = (
+        Index("ix_runtime_governance_decisions_execution", "execution_id", "evaluated_at"),
+    )
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    execution_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agent_executions.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    trace_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    checkpoint: Mapped[str] = mapped_column(String(32), nullable=False)
+    decision: Mapped[str] = mapped_column(String(12), nullable=False)
+    reason_code: Mapped[str] = mapped_column(String(48), nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    obligation: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    policy_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("runtime_governance_policies.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    iteration: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    evaluated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )

@@ -81,6 +81,18 @@ from app.models.runtime import (
     ToolCredential,
 )
 from app.models.user import User
+# Phase 4.3 -- the runtime governance engine. Imported at module level, which
+# is safe in this direction only: nothing in `app.runtime.governance` imports
+# this module at import time. The two places the engine needs `_record_event`
+# and `KillSwitchService` from here use function-local imports precisely to
+# keep that one-way (see engine._audit / engine._trigger_kill_switch).
+from app.runtime.governance.contract import (
+    Checkpoint,
+    CheckpointContext,
+    GovernanceChallenged,
+    GovernanceStopped,
+)
+from app.runtime.governance.engine import RuntimeGovernanceEngine
 from app.runtime.providers.errors import ProviderRequestFailedError
 from app.runtime.providers.types import RETRYABLE_PROVIDER_ERROR_CLASSES, ProviderErrorClass
 
@@ -118,7 +130,16 @@ _EXECUTION_TRANSITIONS: dict[str, frozenset[str]] = {
     "PENDING_APPROVAL": frozenset({"QUEUED", "REJECTED", "CANCELLED"}),
     "QUEUED": frozenset({"RUNNING", "CANCELLED"}),
     "SCHEDULED": frozenset({"QUEUED", "RUNNING", "CANCELLED"}),
-    "RUNNING": frozenset({"SUCCEEDED", "FAILED", "QUEUED", "DEAD_LETTERED", "TIMED_OUT", "CANCELLED"}),
+    # Phase 4.3 added the last two edges. Before the runtime governance engine
+    # existed, nothing could intervene in an execution that was already
+    # RUNNING -- it ran to one of its own conclusions. A governance CHALLENGE
+    # raised at the very first checkpoint now parks it in PENDING_APPROVAL (the
+    # existing approval funnel resumes it from QUEUED, and nothing has been
+    # dispatched yet so resuming is honest); a challenge raised later, which
+    # this platform has no way to resume mid-loop, ends it in the same terminal
+    # BLOCKED state a policy refusal at admission already uses.
+    "RUNNING": frozenset({"SUCCEEDED", "FAILED", "QUEUED", "DEAD_LETTERED", "TIMED_OUT",
+                          "CANCELLED", "PENDING_APPROVAL", "BLOCKED"}),
     "FAILED": frozenset({"QUEUED"}),
     "TIMED_OUT": frozenset({"QUEUED"}),
     "DEAD_LETTERED": frozenset({"QUEUED"}),
@@ -2806,6 +2827,7 @@ class ToolLoopOrchestrator:
     def run(self, execution: AgentExecution, agent: Agent, version: AgentVersion,
            resolved_credential: ResolvedCredential | None, *, timeout_seconds: float,
            ) -> tuple[dict, dict, dict]:
+        from app.observability.trace import trace_id_for
         from app.runtime.providers.types import ModelMessage, ModelToolDefinition
 
         input_payload = execution.input_payload if isinstance(execution.input_payload, dict) else {}
@@ -2816,6 +2838,22 @@ class ToolLoopOrchestrator:
             for name, (_, entry) in tool_entries.items()
         )
 
+        # ---------------------------------------------------------------- #
+        # Phase 4.3 -- THE enforcement path. Bound once per attempt, so the
+        # policy set is snapshotted for the whole loop (see
+        # RuntimeGovernanceEngine's docstring on why an execution is governed
+        # by the policies in force when it began rather than re-resolved at
+        # every checkpoint).
+        # ---------------------------------------------------------------- #
+        deployment = self.db.get(AgentDeployment, execution.deployment_id) if execution.deployment_id else None
+        governance = RuntimeGovernanceEngine(self.db).bind(
+            execution,
+            environment_id=deployment.environment_id if deployment else None,
+            agent_id=execution.agent_id,
+        )
+        classifications = self._tool_classifications(tool_entries)
+        trace_id = trace_id_for(execution)
+
         conversation: list = [ModelMessage(role="user", content=json.dumps(input_payload, default=str))]
         self._append_message(execution, sequence=0, role="user",
                             content=json.dumps(input_payload, default=str), loop_iteration=0)
@@ -2824,23 +2862,69 @@ class ToolLoopOrchestrator:
         max_iterations = self._max_iterations(execution)
         loop_start = time.monotonic()
         prompt_sum = completion_sum = total_sum = 0
+        cost_sum = 0.0
+        model_call_count = 0
+        tool_call_count = 0
+        calls_per_tool: dict[str, int] = {}
         accounting_complete = True
         last_usage: dict | None = None
         sequence = 1
         iteration = 0
 
+        def check(checkpoint: Checkpoint, **overrides) -> None:
+            """The checkpoint insertion point -- one line at each of the six
+            sites, and the only thing any of them does.
+
+            Note what is *not* here: no comparison, no limit, no cap. Every one
+            of those now lives in the engine, which is what makes "one
+            enforcement path" a structural property of this file rather than a
+            claim about it (``test_ac02_*`` asserts it over the AST).
+
+            ``completed_iterations`` differs by checkpoint because it always
+            did: the top-of-loop caps reported the iteration that had *finished*
+            (``iteration - 1``), while the mid-loop tool checks reported the one
+            in progress. Preserving that distinction is what keeps
+            ``agent_executions.loop_iterations`` byte-identical to its pre-4.3
+            value for every one of the four caps."""
+            at_iteration_boundary = checkpoint in (
+                Checkpoint.BEFORE_FIRST_MODEL_CALL, Checkpoint.BEFORE_NEXT_ITERATION)
+            fields = dict(
+                execution_id=execution.id, organization_id=execution.organization_id,
+                agent_id=execution.agent_id, iteration=iteration,
+                completed_iterations=max(iteration - 1, 0) if at_iteration_boundary else iteration,
+                elapsed_seconds=time.monotonic() - loop_start,
+                total_tokens=total_sum, cost_amount=cost_sum,
+                model_calls=model_call_count, tool_calls=tool_call_count,
+                calls_per_tool=dict(calls_per_tool),
+                max_iterations=max_iterations,
+                max_wall_clock_seconds=settings.TOOL_LOOP_MAX_WALL_CLOCK_SECONDS,
+                max_total_tokens=settings.TOOL_LOOP_MAX_TOTAL_TOKENS,
+                configured_model=(version.model_configuration or {}).get("model"),
+                environment=deployment.environment if deployment else None,
+                environment_id=deployment.environment_id if deployment else None,
+                deployment_id=execution.deployment_id,
+                criticality=agent.criticality, risk_score=execution.risk_score,
+                trace_id=trace_id, seen_call_keys=frozenset(seen_calls),
+            )
+            fields.update(overrides)
+            governance.enforce(checkpoint, CheckpointContext(**fields))
+
         pool = ThreadPoolExecutor(max_workers=1)
         try:
             while True:
                 iteration += 1
-                if iteration > max_iterations:
-                    self._terminate(execution, "MAX_ITERATIONS", iteration - 1)
-                    raise IdentityError(ErrorCode.TOOL_LOOP_LIMIT_EXCEEDED,
-                                       f"Tool loop exceeded the maximum of {max_iterations} iterations.")
-                if (time.monotonic() - loop_start) > settings.TOOL_LOOP_MAX_WALL_CLOCK_SECONDS:
-                    self._terminate(execution, "WALL_CLOCK", iteration - 1)
-                    raise IdentityError(ErrorCode.TOOL_LOOP_LIMIT_EXCEEDED,
-                                       "Tool loop exceeded its wall-clock budget.")
+                # --- CHECKPOINT 1 / 5 -------------------------------------- #
+                # One site, two identities. At iteration 1 nothing has been
+                # dispatched; from iteration 2 on, this is the same boundary the
+                # end of the previous iteration reached, with no code in
+                # between -- so it is one checkpoint rather than two, and the
+                # wall-clock and token-budget checks that used to sit at the
+                # bottom of this body are evaluated here instead, in the order
+                # that reproduces exactly which cap the pre-4.3 loop reported
+                # when two breached on the same turn (see
+                # app.runtime.governance.constraints.BUILTIN_CAPS).
+                check(Checkpoint.BEFORE_FIRST_MODEL_CALL if iteration == 1
+                      else Checkpoint.BEFORE_NEXT_ITERATION)
 
                 turn_start = time.monotonic()
                 future = pool.submit(ModelGatewayService().invoke, version, input_payload,
@@ -2854,6 +2938,7 @@ class ToolLoopOrchestrator:
                     ) from None
                 turn_duration_ms = int((time.monotonic() - turn_start) * 1000)
                 last_usage = usage
+                model_call_count += 1
 
                 turn_complete = usage.get("token_accounting_complete", True)
                 accounting_complete = accounting_complete and turn_complete
@@ -2866,6 +2951,12 @@ class ToolLoopOrchestrator:
                         provider=usage["provider"], model=usage["model"],
                         prompt_tokens=usage["input_tokens"], completion_tokens=usage["output_tokens"], at=_now(),
                     ).amount
+                    # Phase 4.3 (M4-4.3-FR-011) -- the running total the cost
+                    # checkpoints read. Nothing new is computed for governance:
+                    # this is the same per-turn figure PricingService just
+                    # produced for the transcript row below, summed. Budgets
+                    # and reservations are Phase 4.4's.
+                    cost_sum += float(turn_cost or 0)
 
                 tool_calls_requested = usage.get("tool_calls") or []
                 self._append_message(
@@ -2880,7 +2971,20 @@ class ToolLoopOrchestrator:
                 sequence += 1
                 conversation.append(ModelMessage(role="assistant", content=output_payload.get("result", "")))
 
+                # --- CHECKPOINT 2 ------------------------------------------ #
+                # `responded_model` is whatever the gateway reports as the
+                # model that answered -- today the configured one, since
+                # ModelGatewayService echoes it back, but the after-position is
+                # the only place a provider-resolved model (an alias, a version
+                # pin, a fallback) could ever be observed. See
+                # _c_restricted_model on why the redundancy is deliberate.
+                check(Checkpoint.AFTER_MODEL_RESPONSE,
+                      responded_model=usage.get("model"), provider=usage.get("provider"))
+
                 if usage.get("finish_reason") != "TOOL_CALLS" or not tool_calls_requested:
+                    # --- CHECKPOINT 6 -------------------------------------- #
+                    check(Checkpoint.BEFORE_FINAL_OUTPUT,
+                          responded_model=usage.get("model"), provider=usage.get("provider"))
                     self._terminate(execution, "COMPLETED", iteration)
                     tool_usage = {"calls": self._loop_tool_call_count(execution)}
                     model_usage = self._aggregate_usage(last_usage, prompt_sum, completion_sum, total_sum,
@@ -2891,30 +2995,24 @@ class ToolLoopOrchestrator:
                 calls = [_LoopToolCall(id=c["id"], name=c["name"], arguments=c["arguments"])
                         for c in tool_calls_requested]
                 for call in calls:
-                    if call.name not in tool_entries:
-                        # ACT-TLX-FR-045 -- the model cannot invent tools, or
-                        # use one bound to the agent but not to *this*
-                        # published version's frozen tools_snapshot. Treated
-                        # as a scope violation (like TOOL_NOT_ASSIGNED),
-                        # never as a recoverable, retryable-by-the-model
-                        # mistake -- letting a model freely probe for
-                        # tool names that don't exist is exactly the kind
-                        # of boundary-testing 5.6a.1's SSRF-conscious
-                        # posture already treats as something to stop, not
-                        # something to let a model iterate its way past.
-                        self._terminate(execution, "TOOL_DENIED", iteration)
-                        raise IdentityError(ErrorCode.TOOL_NOT_BOUND_TO_VERSION,
-                                           f"Tool '{call.name}' is not bound to this version.")
+                    # --- CHECKPOINT 3 -------------------------------------- #
+                    # Per call, before dispatch -- the last point at which a
+                    # specific call can be refused without side effects.
+                    #
+                    # The frozen-snapshot scope check (ACT-TLX-FR-045: the
+                    # model cannot invent a tool, or reach one bound to the
+                    # agent but not to *this* published version) and the
+                    # repeated-identical-call cap (ACT-TLX-FR-048) are now
+                    # constraints inside the engine, evaluated in this same
+                    # order and producing the same TOOL_DENIED / REPEATED_CALL
+                    # terminations they always did.
+                    entry = tool_entries.get(call.name)
                     key = self._canonical_key(call.name, call.arguments)
-                    if key in seen_calls:
-                        # ACT-TLX-FR-048 -- terminate before even issuing
-                        # this call, not after the iteration cap. A repeat
-                        # is non-productive by definition: the same
-                        # (tool, canonicalized arguments) pair reaches the
-                        # same outcome every time.
-                        self._terminate(execution, "REPEATED_CALL", iteration)
-                        raise IdentityError(ErrorCode.TOOL_LOOP_LIMIT_EXCEEDED,
-                                           f"Tool '{call.name}' was called again with identical arguments.")
+                    check(Checkpoint.BEFORE_TOOL_EXECUTION,
+                          tool_name=call.name, tool_bound=entry is not None,
+                          tool_class=(entry[1].get("tool_type") if entry else None),
+                          tool_data_classification=(classifications.get(entry[0]) if entry else None),
+                          tool_call_key=key)
                     seen_calls.add(key)
 
                 snapshots = self._execute_calls(execution, agent, tool_entries, calls, iteration)
@@ -2925,14 +3023,22 @@ class ToolLoopOrchestrator:
                                         content=content, tool_call_id=call.id, tool_name=call.name)
                     sequence += 1
                     conversation.append(ModelMessage(role="tool", content=content, tool_call_id=call.id))
+                    tool_call_count += 1
+                    calls_per_tool[call.name] = calls_per_tool.get(call.name, 0) + 1
 
-                if (time.monotonic() - loop_start) > settings.TOOL_LOOP_MAX_WALL_CLOCK_SECONDS:
-                    self._terminate(execution, "WALL_CLOCK", iteration)
-                    raise IdentityError(ErrorCode.TOOL_LOOP_LIMIT_EXCEEDED,
-                                       "Tool loop exceeded its wall-clock budget.")
-                if total_sum > settings.TOOL_LOOP_MAX_TOTAL_TOKENS:
-                    self._terminate(execution, "TOKEN_BUDGET", iteration)
-                    raise IdentityError(ErrorCode.TOOL_LOOP_LIMIT_EXCEEDED, "Tool loop exceeded its token budget.")
+                # --- CHECKPOINT 4 ------------------------------------------ #
+                check(Checkpoint.AFTER_TOOL_EXECUTION)
+                # The wall-clock and token-budget checks that used to sit here
+                # are evaluated at the top of the next iteration instead --
+                # the adjacent half of the same boundary. See CHECKPOINT 1/5.
+        except (GovernanceStopped, GovernanceChallenged) as exc:
+            # The loop's terminal bookkeeping, unchanged: the same
+            # `loop_iterations` and `termination_reason` the inline caps wrote,
+            # now taken from the decision that produced them. Re-raised so the
+            # worker applies its existing retry / approval handling.
+            self._terminate(execution, exc.decision.termination_reason or "GOVERNANCE_STOP",
+                            exc.completed_iterations)
+            raise
         finally:
             pool.shutdown(wait=False)
 
@@ -2955,6 +3061,25 @@ class ToolLoopOrchestrator:
             return {}
         tool_configs = ((snapshot_row.snapshot or {}).get("runtime") or {}).get("tool_configs") or {}
         return {entry["name"]: (tool_id, entry) for tool_id, entry in tool_configs.items()}
+
+    def _tool_classifications(self, tool_entries: dict) -> dict[str, str]:
+        """Phase 4.3 (M4-4.3-FR-013) -- ``Tool.data_classification`` for every
+        tool this version froze, read **once per execution** rather than at
+        each checkpoint.
+
+        It is not in the frozen ``tools_snapshot`` (Phase 5.2.4 froze the
+        tool's callable shape, not its classification), so it has to come from
+        the live row -- the same column, and the same read,
+        ``app.runtime.environment.policy`` already performs at deploy time. One
+        query at loop start keeps a governance constraint off the per-call
+        query path (§25)."""
+        tool_ids = [tool_id for tool_id, _ in tool_entries.values()]
+        if not tool_ids:
+            return {}
+        rows = self.db.execute(
+            select(Tool.id, Tool.data_classification).where(Tool.id.in_(tool_ids))
+        ).all()
+        return {str(tool_id): classification for tool_id, classification in rows}
 
     def _max_iterations(self, execution: AgentExecution) -> int:
         deployment = self.db.get(AgentDeployment, execution.deployment_id) if execution.deployment_id else None
@@ -3423,6 +3548,13 @@ class ExecutionWorkerService:
             _record_event(self.db, AuthorizationAuditEvent.RUNTIME_EXECUTION_SUCCEEDED, None,
                          organization_id=execution.organization_id, agent_id=execution.agent_id,
                          execution_id=execution.id)
+        except GovernanceChallenged as exc:
+            # Phase 4.3 (M4-4.3-FR-030/032) -- listed *before* the IdentityError
+            # arm below (which it subclasses) because a challenge is not a
+            # failure and must not reach the retry policy: automatically
+            # retrying something the platform just said needs a human would be
+            # the platform overruling the obligation it had raised.
+            self._park_for_approval(execution, attempt, exc)
         except IdentityError as exc:
             # Phase 5.7a.4 (§5) — a classified provider failure
             # (``ProviderRequestFailedError.error_class``, e.g. "RATE_
@@ -3436,6 +3568,48 @@ class ExecutionWorkerService:
             self._fail_or_retry(execution, attempt, code, exc.message)
         except Exception as exc:  # noqa: BLE001 — a worker must never crash the poll loop
             self._fail_or_retry(execution, attempt, "INTERNAL_ERROR", str(exc))
+
+    def _park_for_approval(self, execution: AgentExecution, attempt: ExecutionAttempt,
+                           exc: GovernanceChallenged) -> None:
+        """Phase 4.3 -- what a governance ``CHALLENGE`` does to the execution
+        row. The approval obligation itself has already been raised by the
+        engine, through the existing ``RuntimeApproval`` funnel.
+
+        Two outcomes, and the difference is a capability statement rather than
+        a preference. A challenge raised at the *first* checkpoint parks the
+        execution in ``PENDING_APPROVAL``: nothing has been dispatched, so the
+        funnel's existing "approve -> QUEUED -> run" path resumes it honestly.
+        A challenge raised later cannot be resumed -- this platform has no way
+        to re-enter a partially-run loop, and re-queuing would re-execute tool
+        calls that already had their side effects -- so it terminates in
+        ``BLOCKED``, the same terminal state an admission-time policy refusal
+        uses, with the obligation still standing for a human to act on.
+
+        Parking an execution in a state nothing could move it out of would be
+        the worst of the three, which is why the non-resumable case ends
+        rather than waits."""
+        attempt.error_code = exc.code
+        attempt.error_message = exc.message
+        attempt.completed_at = _now()
+        attempt.duration_ms = int((attempt.completed_at - (attempt.started_at or attempt.completed_at))
+                                  .total_seconds() * 1000)
+        execution.error_code = exc.code
+        execution.error_message = exc.message
+        execution.decision = "REQUIRE_APPROVAL"
+        if exc.resumable:
+            attempt.status = "CANCELLED"
+            _set_execution_status(execution, "PENDING_APPROVAL")
+        else:
+            attempt.status = "FAILED"
+            _set_execution_status(execution, "BLOCKED")
+            execution.completed_at = _now()
+        _record_event(self.db, AuthorizationAuditEvent.RUNTIME_EXECUTION_APPROVAL_REQUIRED, None,
+                     organization_id=execution.organization_id, agent_id=execution.agent_id,
+                     execution_id=execution.id, severity="WARNING",
+                     meta={"checkpoint": exc.decision.checkpoint.value,
+                          "reason_code": exc.decision.reason_code.value,
+                          "approval_id": str(exc.approval_id) if exc.approval_id else None,
+                          "resumable": exc.resumable})
 
     def _fail_or_retry(self, execution: AgentExecution, attempt: ExecutionAttempt,
                        code: str, message: str) -> None:
@@ -3483,6 +3657,21 @@ class ExecutionWorkerService:
                          # cap breach (iteration/token/wall-clock/repeated-call) reaches
                          # the identical outcome on any retry.
                          ErrorCode.TOOL_NOT_BOUND_TO_VERSION, ErrorCode.TOOL_LOOP_LIMIT_EXCEEDED,
+                         # Phase 4.3 -- a governance STOP reaches the identical
+                         # decision on any retry (the ceiling is still the
+                         # ceiling, the model is still restricted), so retrying
+                         # would only burn attempts. KILL_SWITCH_ACTIVE is here
+                         # for a stronger reason: an automatic retry past a kill
+                         # would be automation overruling an operator, which
+                         # §19's kill-switch dominance forbids outright.
+                         #
+                         # GOVERNANCE_CHECKPOINT_UNEVALUABLE is deliberately
+                         # *not* in this set. Fail-closed says an unevaluable
+                         # mandatory checkpoint stops this attempt; it does not
+                         # say the condition is permanent, and a transient
+                         # dependency failure is exactly what the retry policy
+                         # exists for.
+                         ErrorCode.GOVERNANCE_EXECUTION_STOPPED, ErrorCode.KILL_SWITCH_ACTIVE,
                          ProviderErrorClass.CONTENT_FILTERED.value, ProviderErrorClass.CONTEXT_LENGTH_EXCEEDED.value,
                          ProviderErrorClass.AUTHENTICATION_FAILED.value, ProviderErrorClass.INVALID_REQUEST.value,
                          ProviderErrorClass.UNKNOWN.value}
@@ -3702,6 +3891,75 @@ class KillSwitchService:
                      meta={"scope": scope, "target_id": str(target_id) if target_id else "ALL", "reason": reason,
                           "executions_cancelled": cancelled})
         self.db.commit()
+        return {"scope": scope, "target_id": target_id, "executions_cancelled": cancelled}
+
+    def activate_system(self, *, organization_id: uuid.UUID, scope: str,
+                        target_id: uuid.UUID | None, reason: str,
+                        origin: str = "system") -> dict:
+        """Phase 4.3 (M4-4.3-FR-031) -- the kill switch triggered by the
+        platform itself rather than by a person, currently only by
+        ``RuntimeGovernanceEngine`` when a governance STOP warrants suspension.
+
+        **This is an entry point into the existing mechanism, not a second
+        one.** It calls the very same ``_cancel_executions`` and
+        ``_suspend_deployments`` ``activate`` calls, sets the same columns, and
+        writes the same ``RUNTIME_KILL_SWITCH_ACTIVATED`` audit event -- the
+        one thing it cannot reuse is ``activate`` itself, which requires a
+        ``User`` for the tenant scoping and the SUPER_ADMIN check on PLATFORM
+        scope. There is no operator here to check, so instead of inventing a
+        synthetic one this method restricts itself to the two scopes an
+        automated trigger may legitimately reach:
+
+        - ``EXECUTION`` -- cancel the one execution that breached.
+        - ``AGENT`` -- suspend the agent and cancel its active executions.
+
+        ``PROJECT``, ``ORGANIZATION`` and ``PLATFORM`` are deliberately
+        unreachable from automation. A rule misconfigured by one tenant must
+        not be able to halt a project, an organization, or the platform; those
+        scopes stay behind a human with the permission to use them.
+
+        The tenant boundary is enforced on the target rather than inherited
+        from an actor: an execution or agent in another organization is simply
+        not found, so a governance policy cannot reach outside its own tenant
+        even if it were handed a foreign id.
+
+        **Never clears a kill.** This method only ever moves state towards
+        stopped -- there is no branch here, or anywhere in
+        ``app.runtime.governance``, that sets ``lifecycle_status`` back to
+        ``ACTIVE`` or ``cancel_requested`` back to ``False`` (§19, 3.7:
+        kill-switch dominance)."""
+        if scope not in ("EXECUTION", "AGENT"):
+            raise IdentityError(
+                ErrorCode.VALIDATION_ERROR,
+                f"Scope '{scope}' cannot be activated by automation; it requires an operator.")
+        cancelled = 0
+        if scope == "EXECUTION":
+            execution = self.db.get(AgentExecution, target_id)
+            if execution is None or execution.organization_id != organization_id:
+                raise IdentityError(ErrorCode.EXECUTION_NOT_FOUND, "Execution not found.")
+            if execution.status not in TERMINAL_EXECUTION_STATUSES:
+                _set_execution_status(execution, "CANCELLED")
+                execution.cancel_requested = True
+                execution.completed_at = _now()
+                cancelled = 1
+        else:
+            agent = self.db.get(Agent, target_id)
+            if agent is None or agent.organization_id != organization_id:
+                raise IdentityError(ErrorCode.AGENT_NOT_FOUND, "Agent not found.")
+            agent.lifecycle_status = "SUSPENDED"
+            cancelled = self._cancel_executions(select(AgentExecution).where(
+                AgentExecution.agent_id == agent.id,
+                AgentExecution.status.in_(ACTIVE_EXECUTION_STATUSES),
+            ))
+
+        _record_event(self.db, AuthorizationAuditEvent.RUNTIME_KILL_SWITCH_ACTIVATED, None,
+                     organization_id=organization_id,
+                     agent_id=target_id if scope == "AGENT" else None,
+                     execution_id=target_id if scope == "EXECUTION" else None,
+                     severity="CRITICAL",
+                     meta={"scope": scope, "target_id": str(target_id) if target_id else "ALL",
+                          "reason": reason, "executions_cancelled": cancelled, "origin": origin})
+        self.db.flush()
         return {"scope": scope, "target_id": target_id, "executions_cancelled": cancelled}
 
 

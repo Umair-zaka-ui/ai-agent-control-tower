@@ -1,13 +1,16 @@
 # Entity Relationship Diagrams
 
-> **123 tables** in `Base.metadata` (124 in a live database — Alembic manages
+> **125 tables** in `Base.metadata` (126 in a live database — Alembic manages
 > `alembic_version` itself, and it is not a model). Generated from
 > `Base.metadata` and verified against the live schema at migration head
-> `0046_trace_explorer_index` (Phase 4.2 added one index and no table at all;
-> Phase 4.1 before it added two nullable columns and no
-> table, so the diagrams below are unchanged in shape:
-> `agent_executions.request_id` and `runtime_events.span_id`). Split by bounded context because a single
-> 123-table diagram is a poster, not a document.
+> `0047_runtime_governance` (Phase 4.3 added two tables —
+> `runtime_governance_policies` and the append-only
+> `runtime_governance_decisions` — and **no column on `agent_executions`**: the
+> engine reads the cost, token and timing columns that already existed. Phase
+> 4.2 before it added one index and no table at all; Phase 4.1 added two
+> nullable columns, `agent_executions.request_id` and
+> `runtime_events.span_id`). Split by bounded context because a single
+> 125-table diagram is a poster, not a document.
 >
 > **Last regenerated 2026-08-24.** This document declared *24 tables* for a long
 > while, covering only the Phase 4 identity and authorization contexts — it had

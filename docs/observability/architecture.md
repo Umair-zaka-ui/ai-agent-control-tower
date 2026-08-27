@@ -241,10 +241,20 @@ another tenant's execution is indistinguishable from one that does not exist.
 
 ## What Phase 4.1 deliberately did not build
 
-~~The trace explorer and timeline UI (4.2)~~ — **the trace explorer and
-assembly shipped in Phase 4.2**, see [tracing.md](./tracing.md); its *UI* is
-deferred to the observability center (4.9). Still out of scope: the governance
-enforcement engine (4.3), cost governance (4.4), behavioral signals (4.5),
+**Since shipped:**
+
+- ~~The trace explorer and timeline UI (4.2).~~ The explorer and full trace
+  assembly shipped in **Phase 4.2** — see [tracing.md](./tracing.md). Its *UI*
+  is still deferred, to the observability center (4.9).
+- ~~The governance enforcement engine (4.3).~~ Shipped in **Phase 4.3**, and it
+  is the deliberate **inverse of this plane**: governance fails *closed* where
+  telemetry fails *open*, and the two now live inches apart inside the same
+  loop. A telemetry failure never changes a governance decision, and the
+  governance engine never reads this plane. See
+  [../runtime/runtime-governance.md](../runtime/runtime-governance.md) and
+  [ADR-0009](../architecture/adr/0009-runtime-governance-as-a-fail-closed-plane.md).
+
+**Still out of scope:** cost governance (4.4), behavioral signals (4.5),
 OpenTelemetry export (4.6), SLOs and alerting (4.7), the full telemetry policy /
 retention / access system (4.8 — only the METADATA_ONLY baseline and the
 scrubber land here), the observability center (4.9), and hardening (4.10).

@@ -297,6 +297,19 @@ class ErrorCode:
     # Deliberately not distinguished from "does not exist anywhere": telling
     # the two apart would let one tenant confirm another's trace exists (§34).
     TRACE_NOT_FOUND = "TRACE_NOT_FOUND"
+    # Phase 4.3 -- runtime governance enforcement (ACT-SRS-M4 §8-4.3).
+    #
+    # `GOVERNANCE_CHECKPOINT_UNEVALUABLE` is the fail-closed signal itself, and
+    # it is a genuine error rather than a decision: it means the governance
+    # plane could not determine whether the execution was permitted to
+    # continue, so it stopped it (§9). A *decision* to stop (a cost ceiling, a
+    # restricted model) is not an error and does not appear here -- it appears
+    # in `runtime_governance_decisions` with its own reason code, and reaches
+    # the execution row as `GOVERNANCE_EXECUTION_STOPPED`.
+    GOVERNANCE_POLICY_NOT_FOUND = "GOVERNANCE_POLICY_NOT_FOUND"
+    GOVERNANCE_POLICY_INVALID = "GOVERNANCE_POLICY_INVALID"
+    GOVERNANCE_CHECKPOINT_UNEVALUABLE = "GOVERNANCE_CHECKPOINT_UNEVALUABLE"
+    GOVERNANCE_EXECUTION_STOPPED = "GOVERNANCE_EXECUTION_STOPPED"
     EXECUTION_ALREADY_COMPLETED = "EXECUTION_ALREADY_COMPLETED"
     EXECUTION_CANCELLED = "EXECUTION_CANCELLED"
     EXECUTION_TIMED_OUT = "EXECUTION_TIMED_OUT"
@@ -696,6 +709,14 @@ _STATUS: dict[str, int] = {
     ErrorCode.JOB_HANDLER_UNKNOWN: status.HTTP_422_UNPROCESSABLE_ENTITY,
     ErrorCode.EXECUTION_NOT_FOUND: status.HTTP_404_NOT_FOUND,
     ErrorCode.TRACE_NOT_FOUND: status.HTTP_404_NOT_FOUND,
+    ErrorCode.GOVERNANCE_POLICY_NOT_FOUND: status.HTTP_404_NOT_FOUND,
+    ErrorCode.GOVERNANCE_POLICY_INVALID: status.HTTP_422_UNPROCESSABLE_ENTITY,
+    # 503 rather than 500: the platform is not broken, it is refusing to
+    # proceed while it cannot evaluate a mandatory control. That is a
+    # temporary, retryable condition from the caller's point of view.
+    ErrorCode.GOVERNANCE_CHECKPOINT_UNEVALUABLE: status.HTTP_503_SERVICE_UNAVAILABLE,
+    # 403, alongside RUNTIME_POLICY_DENIED: a governed refusal, not a fault.
+    ErrorCode.GOVERNANCE_EXECUTION_STOPPED: status.HTTP_403_FORBIDDEN,
     ErrorCode.EXECUTION_ALREADY_COMPLETED: status.HTTP_409_CONFLICT,
     ErrorCode.EXECUTION_CANCELLED: status.HTTP_409_CONFLICT,
     ErrorCode.EXECUTION_TIMED_OUT: status.HTTP_504_GATEWAY_TIMEOUT,

@@ -178,6 +178,14 @@ PERMISSION_CATALOG: dict[str, str] = {
     "runtime.cost.view": "View runtime cost and token usage",
     "runtime.approval.review": "Approve or reject runtime approval requests",
     "runtime.kill_switch.execute": "Activate the runtime kill switch at any scope",
+    # Phase 4.3 -- runtime governance. One code, not a family: this guards
+    # writing the rules that can halt a running execution, which nothing
+    # existing covers. Reading a decision reuses `runtime.execution.view`,
+    # because "why did this execution stop" is a fact about an execution rather
+    # than a separate capability -- a second code for it would leave operators
+    # holding execution-view unable to answer the one question this phase
+    # exists to answer (§16, avoid permission inflation).
+    "runtime.governance.manage": "Configure runtime governance policies that can halt a running execution",
     # Per-organization model-provider credentials (Phase 5.7a.5).
     "runtime.provider.view": "View configured model-provider credentials (metadata and hint only, never the value)",
     "runtime.provider.manage": "Configure, replace, delete and test model-provider credentials",

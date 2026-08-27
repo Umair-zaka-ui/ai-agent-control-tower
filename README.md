@@ -16,7 +16,7 @@
 >
 > **Milestone 3** (Deployment, Release & Operations — **COMPLETE, 10/10**): the deployment lifecycle core, governed environments & promotion, the release gate, weighted traffic allocation with a version resolver and fail-closed execution gate, the canary rollout engine with AI-aware release health, blue-green/recreate strategies, **automated rollback** — per-tenant trigger policies that roll a failing candidate back on their own, strictly subordinate to the kill switch — a **distributed scheduler** whose instances coordinate through Postgres leases so every due job runs exactly once, and a **distributed execution worker fleet** — agent executions now run on independently-operable worker processes that hold no database lock across model or tool network I/O, with **rolling deployment** defined over real worker cohorts rather than simulated counters, and the **Release Operations Center** — twelve operational views through which an operator sees and drives all of it, with dangerous actions confirmation-gated and unsafe state shown rather than smoothed over. See [`docs/deployment/`](docs/deployment/).
 >
-> **Milestone 4** (Runtime Governance & Observability — **in progress, 1/10**): Phase 4.1 laid the instrumentation contract. A trace follows an execution across every hop on the `correlation_id` rails that already existed but were almost never populated; spans are **derived from the domain rows rather than stored**, so the telemetry plane duplicates nothing and can never disagree with what actually happened; telemetry is **best-effort and non-gating** — the one subsystem here that deliberately fails open, because it is not the business transaction; and an isolated secret scrubber runs on the write path under a **METADATA_ONLY** baseline, so no prompt, tool payload, model output or private model reasoning is captured at all. See [`docs/observability/`](docs/observability/).
+> **Milestone 4** (Runtime Governance & Observability — **in progress, 3/10**): Phase 4.1 laid the instrumentation contract. A trace follows an execution across every hop on the `correlation_id` rails that already existed but were almost never populated; spans are **derived from the domain rows rather than stored**, so the telemetry plane duplicates nothing and can never disagree with what actually happened; telemetry is **best-effort and non-gating** — the one subsystem here that deliberately fails open, because it is not the business transaction; and an isolated secret scrubber runs on the write path under a **METADATA_ONLY** baseline, so no prompt, tool payload, model output or private model reasoning is captured at all. See [`docs/observability/`](docs/observability/).
 >
 > **Current state at a glance** — [Where the project is now](#where-the-project-is-now) below, or [`REPO_STATE.md`](REPO_STATE.md) for the verified, exhaustive version.
 
@@ -42,7 +42,7 @@ is the document to trust if it and this README ever disagree.*
 |---|---|
 | Backend tests | **1,770 passed**, 0 failed, 1 deselected |
 | Frontend tests | **327 passed** |
-| Live schema | **124 tables**, migration head `0046_trace_explorer_index` |
+| Live schema | **126 tables**, migration head `0047_runtime_governance` |
 | HTTP routes | **544** |
 
 ### Milestones
@@ -54,7 +54,7 @@ is the document to trust if it and this README ever disagree.*
 | **Milestone 1** — real execution | **Complete** | Model provider abstraction, a real OpenAI-compatible adapter, streaming & token/cost accounting, an error taxonomy with retry/circuit-breaking, per-organization encrypted credentials, HTTP tool execution behind an SSRF egress guard, tool schema validation, and the model-driven tool invocation loop |
 | **Milestone 2** — Enterprise Integration Framework | **Complete (9/9)** | Connector abstraction/lifecycle, a pluggable authentication framework, registry & health, a connector SDK, four generic connectors (REST, database, storage, queue), and external identity federation (OIDC + SAML) |
 | **Milestone 3** — Deployment, Release & Operations | **Complete (10/10)** | Deployment lifecycle core, environments & promotion, the release gate, weighted traffic allocation + version resolver, the canary engine, blue-green/recreate/rolling strategies, automated rollback with per-tenant trigger policies, a distributed scheduler, a distributed execution worker fleet, and the Release Operations Center over all of it |
-| **Milestone 4** — Runtime Governance & Observability | **In progress (2/10)** | **4.1**: trace/span context on the existing `correlation_id` rails, bounded semantic attributes, a non-gating runtime-event contract, an isolated secret scrubber and the METADATA_ONLY baseline. **4.2**: full trace assembly and the trace explorer — search by trace/agent/version/environment/model/tool/status/error/time, and reconstruct any execution's chronology. Spans stay derived, not stored: 4.2 measured assembly at 0.74ms p50 over 90,695 executions and added one index rather than a projection. Next: 4.3 governance engine |
+| **Milestone 4** — Runtime Governance & Observability | **In progress (3/10)** | **4.1**: trace/span context on the existing `correlation_id` rails, bounded semantic attributes, a non-gating runtime-event contract, an isolated secret scrubber and the METADATA_ONLY baseline. **4.2**: full trace assembly and the trace explorer — search by trace/agent/version/environment/model/tool/status/error/time, and reconstruct any execution's chronology. Spans stay derived, not stored: 4.2 measured assembly at 0.74ms p50 over 90,695 executions and added one index rather than a projection. **4.3**: the runtime governance engine — six checkpoints *inside* the tool loop, one structured ALLOW/DENY/CHALLENGE/STOP decision, the four pre-existing termination caps **generalized into it** so there is exactly one enforcement path, and a governance plane that **fails closed** (the deliberate inverse of telemetry). Next: 4.4 cost governance & budgets |
 
 **What "complete" means for Milestone 1**: an agent that is registered,
 versioned, signed and deployed genuinely executes end to end — it calls a real
@@ -535,9 +535,12 @@ enforced, not just modeled. See [docs/runtime/](docs/runtime/)
 for the full set — architecture, agent-lifecycle, versioning, deployments,
 executions, workers-and-queue, capabilities-and-tools, gateways,
 runtime-policy-and-approvals, health-and-observability,
-operations-and-kill-switch and security. The telemetry plane added by
-Milestone 4 lives beside it in [docs/observability/](docs/observability/) —
-architecture (the three-plane model), semantic-conventions and privacy.
+operations-and-kill-switch, security, and — added by Milestone 4's Phase 4.3 —
+runtime-governance and runtime-policy-checkpoints, which cover the *in-loop*
+enforcement engine as distinct from the admission-time policy gate above. The
+telemetry plane added by Milestone 4 lives beside it in
+[docs/observability/](docs/observability/) — architecture (the three-plane
+model), tracing, semantic-conventions and privacy.
 
 ### Enterprise Agent Registry (Phase 5.1)
 
@@ -816,7 +819,7 @@ governed AI, integrates with the enterprise in both directions, and deploys,
 releases, monitors, routes, rolls back and operates agent versions safely at
 production scale.
 
-### Milestone 4 — Runtime Governance & Observability (in progress, 1/10)
+### Milestone 4 — Runtime Governance & Observability (in progress, 3/10)
 
 **Phase 4.1 — Runtime Telemetry & Trace Context Foundation.** The
 instrumentation contract the remaining nine sub-phases build on. Deliberately
@@ -847,6 +850,51 @@ Four properties define the result:
   removes nine classes of secret on the write path, content is off by default
   (`METADATA_ONLY`), and private model reasoning is excluded from *every*
   capture mode structurally rather than switched off in one.
+
+**Phase 4.2 — Unified AI Execution Trace.** Full trace assembly plus an
+explorer: search executions by trace, agent, version, environment, model, tool,
+status, error or time, and reconstruct any one execution's chronology from the
+rows that already exist. ADR-0008 had named this phase in advance as the point
+to revisit the derived-spans decision *with real numbers*, so it was measured —
+assembly runs at **0.74ms p50** over 90,695 executions, and **no projection was
+added**. The measurement did expose something the fragmented development data
+was hiding: `agent_executions` had no `created_at` index at all, so the
+explorer's default listing would have degraded to a sequential scan for any
+tenant with real volume. One index fixed the shape, turning an
+O(rows-the-tenant-owns) bitmap-plus-sort into an O(limit) ordered scan. A trace
+shows **metadata only** — no prompt text, no tool arguments, no model output;
+that boundary is 4.8's to move, and it is enforced upstream of the routes rather
+than in them.
+
+**Phase 4.3 — Runtime Governance Enforcement Engine.** The platform can now
+govern an agent *while it runs*. At six checkpoints inside the
+model→tool→model loop, one engine returns **ALLOW / DENY / CHALLENGE / STOP**
+with an explicit reason and obligation — cost ceilings, restricted models and
+tools, data sensitivity, duration, per-tool limits, approval obligations.
+
+Three properties are worth stating, because each was a decision rather than an
+implementation detail:
+
+- **One enforcement path.** The loop already enforced four termination caps with
+  inline `if` statements. This phase **generalized them into the engine** rather
+  than running a second mechanism beside them — two enforcers can disagree about
+  whether to stop an execution, and the winner would be whichever check the loop
+  reached first. Every cap still produces its original outcome, and the
+  orchestrator no longer contains a cap comparison at all, asserted over the AST.
+- **Governance fails closed — the deliberate inverse of telemetry.** A mandatory
+  checkpoint that cannot be evaluated **stops** the execution, where a telemetry
+  failure is swallowed and the execution continues. Those two rules now live
+  inches apart in one loop, and both directions are tested: a telemetry failure
+  never changes a governance decision, and a broken telemetry plane cannot
+  suppress a governance stop. See
+  [ADR-0009](docs/architecture/adr/0009-runtime-governance-as-a-fail-closed-plane.md).
+- **Policy is enforced *around* the model, never by asking it to comply**, and no
+  checkpoint holds a database lock across model or tool I/O — the M1 deadlock
+  discipline, now inside the loop and proven against a second real connection.
+
+A governance STOP can trigger the **existing** kill switch where a policy asks
+for it; the engine implements no suspension of its own and never clears a kill.
+See [`docs/runtime/runtime-governance.md`](docs/runtime/runtime-governance.md).
 
 ---
 
