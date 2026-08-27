@@ -116,6 +116,9 @@ already is the trace**:
 |---|---|
 | `execution` | `agent_executions` (root) |
 | `authorization` | a phase, not a row — no table of its own |
+| `runtime_policy` | a phase (Phase 4.2) |
+| `queue` | a computed gap, `queued_at`→`started_at` (Phase 4.2) |
+| `approval` | `runtime_approvals` (Phase 4.2) |
 | `attempt` | `execution_attempts` |
 | `model_call` | the `assistant` row in `execution_messages` for that iteration |
 | `tool_call` | `tool_calls` |
@@ -231,13 +234,20 @@ table" is a claim that deserves to be verifiable against a real execution rather
 than only in a unit test. It returns metadata only, and it is tenant-scoped —
 another tenant's execution is indistinguishable from one that does not exist.
 
+> **Superseded surface (Phase 4.2).** The canonical trace API is now
+> `/api/v1/observability/` — see [tracing.md](./tracing.md). This 4.1 route is
+> retained and delegates to the same assembler, so the two cannot diverge, but
+> new callers should use the observability prefix.
+
 ## What Phase 4.1 deliberately did not build
 
-The trace explorer and timeline UI (4.2), the governance enforcement engine
-(4.3), cost governance (4.4), behavioral signals (4.5), OpenTelemetry export
-(4.6), SLOs and alerting (4.7), the full telemetry policy / retention / access
-system (4.8 — only the METADATA_ONLY baseline and the scrubber land here), the
-observability center (4.9), and hardening (4.10).
+~~The trace explorer and timeline UI (4.2)~~ — **the trace explorer and
+assembly shipped in Phase 4.2**, see [tracing.md](./tracing.md); its *UI* is
+deferred to the observability center (4.9). Still out of scope: the governance
+enforcement engine (4.3), cost governance (4.4), behavioral signals (4.5),
+OpenTelemetry export (4.6), SLOs and alerting (4.7), the full telemetry policy /
+retention / access system (4.8 — only the METADATA_ONLY baseline and the
+scrubber land here), the observability center (4.9), and hardening (4.10).
 
 It also changed no execution behaviour and duplicated no domain data. Every
 later M4 phase builds on this contract.
@@ -246,6 +256,8 @@ later M4 phase builds on this contract.
 
 - [semantic-conventions.md](./semantic-conventions.md) — the attribute
   vocabulary and the bounded-cardinality rule
+- [tracing.md](./tracing.md) — the assembly walk, the explorer, and the
+  metadata/content boundary (Phase 4.2)
 - [privacy.md](./privacy.md) — the scrubber, METADATA_ONLY, and the
   no-chain-of-thought rule
 - [ADR-0008](../architecture/adr/0008-telemetry-as-a-derived-plane.md) — why

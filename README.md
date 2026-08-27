@@ -42,8 +42,8 @@ is the document to trust if it and this README ever disagree.*
 |---|---|
 | Backend tests | **1,770 passed**, 0 failed, 1 deselected |
 | Frontend tests | **327 passed** |
-| Live schema | **124 tables**, migration head `0045_runtime_telemetry_context` |
-| HTTP routes | **541** |
+| Live schema | **124 tables**, migration head `0046_trace_explorer_index` |
+| HTTP routes | **544** |
 
 ### Milestones
 
@@ -54,7 +54,7 @@ is the document to trust if it and this README ever disagree.*
 | **Milestone 1** — real execution | **Complete** | Model provider abstraction, a real OpenAI-compatible adapter, streaming & token/cost accounting, an error taxonomy with retry/circuit-breaking, per-organization encrypted credentials, HTTP tool execution behind an SSRF egress guard, tool schema validation, and the model-driven tool invocation loop |
 | **Milestone 2** — Enterprise Integration Framework | **Complete (9/9)** | Connector abstraction/lifecycle, a pluggable authentication framework, registry & health, a connector SDK, four generic connectors (REST, database, storage, queue), and external identity federation (OIDC + SAML) |
 | **Milestone 3** — Deployment, Release & Operations | **Complete (10/10)** | Deployment lifecycle core, environments & promotion, the release gate, weighted traffic allocation + version resolver, the canary engine, blue-green/recreate/rolling strategies, automated rollback with per-tenant trigger policies, a distributed scheduler, a distributed execution worker fleet, and the Release Operations Center over all of it |
-| **Milestone 4** — Runtime Governance & Observability | **In progress (1/10)** | Phase 4.1: trace/span context on the existing `correlation_id` rails, stable bounded semantic attributes, a non-gating runtime-event contract, an isolated secret scrubber and the METADATA_ONLY capture baseline. Spans are derived, not stored — two columns, no table. Next: 4.2 trace explorer |
+| **Milestone 4** — Runtime Governance & Observability | **In progress (2/10)** | **4.1**: trace/span context on the existing `correlation_id` rails, bounded semantic attributes, a non-gating runtime-event contract, an isolated secret scrubber and the METADATA_ONLY baseline. **4.2**: full trace assembly and the trace explorer — search by trace/agent/version/environment/model/tool/status/error/time, and reconstruct any execution's chronology. Spans stay derived, not stored: 4.2 measured assembly at 0.74ms p50 over 90,695 executions and added one index rather than a projection. Next: 4.3 governance engine |
 
 **What "complete" means for Milestone 1**: an agent that is registered,
 versioned, signed and deployed genuinely executes end to end — it calls a real
@@ -1341,10 +1341,12 @@ lifecycle — so it is replaced here with the actual current queue rather than l
 to read as pending. [`ROADMAP.md`](ROADMAP.md) is the maintained plan and
 [`REPO_STATE.md`](REPO_STATE.md) §9 the honest gap list.*
 
-**Milestone 3 is complete, and Milestone 4 has opened.** Phase 4.1 (Runtime
-Telemetry & Trace Context Foundation) shipped the instrumentation contract the
-remaining nine sub-phases build on. Next: Phase 4.2, the trace explorer and
-execution timeline.
+**Milestone 3 is complete, and Milestone 4 is under way (2/10).** Phase 4.1
+shipped the instrumentation contract; Phase 4.2 built the trace explorer and
+full trace assembly on top of it, and — per ADR-0008 — proved with measurements
+that traces do not need a materialized span store. Next: Phase 4.3, the runtime
+governance engine, which will author the decisions 4.2's trace nodes already
+know how to display.
 
 **Known gaps, stated plainly** (the full list is [`REPO_STATE.md`](REPO_STATE.md)
 §9): CAPTCHA verification is a placeholder; the Phase 3 analytics cost figures are

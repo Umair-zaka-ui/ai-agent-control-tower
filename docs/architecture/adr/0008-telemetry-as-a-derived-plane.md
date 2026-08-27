@@ -169,11 +169,119 @@ warns about.
   every test passing except the one that asserts the session is usable after a
   failure. That test is the load-bearing one and should not be deleted.
 
+## Measurement outcome (Phase 4.2, 2026-08-26)
+
+> This ADR said: *"Phase 4.2 measures trace-list latency. If assembling traces
+> for a list view exceeds the budget, the answer is a read projection or an
+> index, decided there with real numbers — not a span table added on suspicion."*
+> It was measured. **No projection was added. One index was.**
+
+### What was measured
+
+Against the live development database at **90,695 executions / 355,377
+runtime_events**, warm, 40 iterations per shape:
+
+| Query | p50 | p95 | Seq scan? |
+|---|---|---|---|
+| Explorer list (tenant + recency + LIMIT 50) | 0.53ms | 0.65ms | No |
+| Explorer, filtered (status + 30-day window) | 0.51ms | 0.63ms | No |
+| Explorer, lookup by trace id | 0.15ms | 0.26ms | No |
+| **Trace-detail assembly** (4-table walk) | **0.74ms** | **1.08ms** | No |
+| Trace events for an execution | 0.14ms | 0.15ms | No |
+
+Every explorer filter dimension, measured separately:
+
+| Filter | p50 | Filter | p50 |
+|---|---|---|---|
+| base (tenant + recency) | 0.23ms | model (join version JSONB) | 0.49ms |
+| status | 0.24ms | tool (EXISTS on `tool_calls`) | 0.87ms |
+| environment (join deployment) | 0.36ms | error class | 0.30ms |
+
+### The decision: assembly stands, no materialization
+
+Trace assembly runs three orders of magnitude inside any reasonable budget.
+Every child table (`execution_attempts`, `execution_messages`, `tool_calls`,
+`runtime_approvals`) already carries an `execution_id` index, so the walk is
+index-backed end to end and costs a fixed number of queries regardless of how
+many spans a trace contains.
+
+**A read projection would have optimized a query that costs less than a
+millisecond**, at the price of a second copy of the data to keep in sync — the
+exact §13 duplication this ADR rejected, reintroduced for no measured gain. So
+none was added, and the numbers above are recorded so the restraint is
+falsifiable rather than merely asserted.
+
+### What the measurement also found, which mattered more
+
+The dev data is fragmented across **62,126 organizations**, so the busiest
+tenant owns only 500 executions. That made every tenant-scoped query look fast
+for a reason that would not hold for a real customer — a benchmark that
+confirms what you hoped is worth less than one that surprises you, so the honest
+worst case was measured too: *one tenant owning the whole table*.
+
+| Worst-case shape | p50 | p95 | Plan |
+|---|---|---|---|
+| all-rows recency LIMIT 50 | 26.94ms | 142.27ms | **Parallel Seq Scan** |
+| all-rows + status filter | 24.83ms | 136.99ms | **Parallel Seq Scan** |
+| all-rows 30-day window | 28.64ms | 133.77ms | **Parallel Seq Scan** |
+
+`agent_executions` had **no index on `created_at` at all** — not standalone, not
+composite. The explorer's default query therefore planned as a bitmap scan over
+every row a tenant owns, followed by a top-N sort. At 500 rows that is 0.2ms and
+invisible; at 500,000 it is the whole table.
+
+**Migration 0046** adds `(organization_id, created_at DESC)`. Before and after,
+same query, same tenant:
+
+```
+BEFORE   Bitmap Heap Scan -> rows=500 -> top-N heapsort    18 buffers   0.196ms
+AFTER    Index Scan       -> rows=50  -> (no Sort node)     4 buffers   0.043ms
+```
+
+The disappearing `Sort` node is the point, far more than the 0.15ms. Bitmap plus
+sort is **O(rows the tenant owns)**; an index walked in `created_at DESC` order
+and stopped at the LIMIT is **O(limit)** — flat as a tenant grows.
+
+**This is not a §13 duplication and does not weaken this ADR.** An index stores
+no independent copy of anything: it contains only values already in the table's
+own columns, Postgres maintains it, and nothing reads it as a source of truth
+because it is not a source of anything. It is an access path to the
+authoritative table. The distinction that matters is between *a faster route to
+the truth* (an index) and *a second thing that claims to be the truth* (a
+projection). This ADR forbids the second, not the first.
+
+### Why no further indexes
+
+Every filtered variant lands between 0.24ms and 0.87ms once the tenant+recency
+index does the narrowing. A composite index per filter combination would be
+speculative bloat — write amplification on the hottest table in the system, paid
+on every execution insert, to speed up reads that are already sub-millisecond.
+If a combination later proves slow at real volume, it earns its own index then,
+with its own numbers.
+
+### Where this is now checked
+
+The measurement is a **recorded test** (`test_ac07_adr0008_*` in
+`backend/tests/runtime/test_execution_tracing.py`), not a note in a commit
+message, so "assembly is fast enough" keeps being checked rather than having
+been true once. A companion test asserts the plan reaches its rows through
+`ix_agent_executions_org_created` and never sequentially scans, and a second
+asserts the sort elision at volume against the busiest tenant present.
+
+One nuance found while writing those tests and worth stating, because it looks
+like a failure and is not: for a tenant owning almost nothing, Postgres
+correctly prefers a bitmap index scan plus a trivial sort over an ordered
+traversal — sorting fourteen estimated rows is cheaper than walking the index in
+order. Asserting "no Sort" unconditionally would demand a *worse* plan for the
+small-tenant case. The sort elision is a property at volume, and it is tested
+there.
+
 ## Revisit when
 
-- **Phase 4.2 measures trace-list latency.** If assembling traces for a list
-  view exceeds the budget, the answer is a read projection or an index, decided
-  there with real numbers — not a span table added on suspicion.
+- ~~**Phase 4.2 measures trace-list latency.**~~ **Done — see "Measurement
+  outcome" above.** Assembly measured 0.74ms p50 at 90,695 executions, so no
+  projection was added; the measurement did expose a missing `created_at` index,
+  fixed by migration 0046. The next trigger is below.
 - **An OTel collector is introduced (4.6).** Exporting to an external backend
   means spans exist outside this database. That does not change which plane is
   authoritative, but it does mean this ADR should state explicitly that the

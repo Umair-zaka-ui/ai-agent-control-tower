@@ -2190,7 +2190,48 @@ Backend **1,895 passed**, 0 failed, 1 deselected (1,770 baseline + 125 new); fro
 
 **Milestone 4 now has 1 of 10 sub-phases done.**
 
-**Next: Phase 4.2 — Trace Explorer & Execution Timeline.**
+**Milestone 4 now has 1 of 10 sub-phases done.**
+
+### Phase 4.2 — Unified AI Execution Trace (Trace Explorer & Timeline) ✅ (2026-08-26)
+
+The phase ADR-0008 named in advance as the point to revisit the derived-spans
+decision **with real numbers**. It was measured, and the answer was recorded
+either way — which was the whole point of setting the trigger.
+
+- **Assembly stands; no materialization.** At 90,695 executions / 355,377
+  runtime_events: trace assembly **0.74ms p50 / 1.08ms p95**, all six explorer
+  filter dimensions **0.23–0.87ms p50**, no sequential scans. A projection would
+  have optimized a sub-millisecond query at the price of a second copy to keep in
+  sync. The numbers are in ADR-0008 and in an executable benchmark test.
+- **But the measurement found a real cliff the dev data was hiding.** 62,126
+  organizations means the busiest tenant owns 500 executions, so everything
+  looked fast for a reason that would not survive a real customer. The honest
+  worst case exposed a `Parallel Seq Scan` at 26.94ms p50 / 142.27ms p95:
+  `agent_executions` had **no `created_at` index at all**. Migration `0046` adds
+  `(organization_id, created_at DESC)`, turning a bitmap-plus-sort that is
+  **O(rows the tenant owns)** into an ordered index scan that is **O(limit)**.
+- **Four missing node categories added** — authorization, runtime_policy, queue,
+  approval. Six of ten kinds are row-backed and name their row; four are computed
+  phases that say so. The **queue node has no row anywhere** and is kept because
+  it is frequently the largest interval in a slow trace.
+- **A real 4.1 bug fixed**: the root span started at `started_at`, so 4.2's new
+  gate nodes rendered before their own parent. The root is now a true envelope.
+- **Metadata only, enforced upstream of the routes** — neither read model reads a
+  content column, asserted over the AST. `runtime.trace.content.view` is named
+  in code and deliberately unregistered.
+- **Tenant isolation in §34's stronger form**: a cross-tenant trace id is
+  byte-identical to a nonexistent one.
+- **Deviation reported**: reuses the pre-existing `runtime.telemetry.view` rather
+  than registering the suggested `runtime.observability.view` synonym.
+- **Frontend deferred to 4.9** (the observability center), as the prompt permits.
+
+Routes 541 → **544**; schema unchanged at 124 tables; head `0046`, reversible.
+Backend **1,947 passed**, 0 failed, 1 deselected (1,895 + 52); frontend **327**
+unchanged.
+
+**Milestone 4 now has 2 of 10 sub-phases done.**
+
+**Next: Phase 4.3 — Runtime Governance Engine.**
 
 ## Future (Phase 3+)
 
