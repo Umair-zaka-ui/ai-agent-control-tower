@@ -196,11 +196,54 @@ class CostItem(BaseModel):
 
 
 class CostAnalytics(BaseModel):
+    """**Deprecated as of Phase 4.4.** See ``deprecation`` below.
+
+    This model carries a *heuristic estimate*, not measured spend: flat
+    placeholder constants multiplied by row counts from the Phase-3
+    ``agent_actions`` table, which has no connection to ``AgentExecution`` and
+    therefore no connection to what any model call actually cost. ``estimated``
+    has defaulted to ``True`` since it was written, which was honest, but the
+    field is easy to miss beside a field called ``total``.
+
+    The real figure lives at ``GET /api/v1/cost/summary``, aggregated from
+    ``agent_executions.cost_amount`` with ``pricing_version`` provenance.
+    """
+
     items: list[CostItem] = Field(default_factory=list)
     total: float
     currency: str = "USD"
     period_label: str
     estimated: bool = True
+    # M4-4.4-FR-040 -- deprecated in place. The endpoint keeps working exactly
+    # as it did; this field is how a client finds out it should not be relying
+    # on it. Deliberately part of the response rather than only a header or a
+    # doc note: the consumers most in need of the warning are the ones reading
+    # `total` out of a JSON body, not the ones reading changelogs.
+    deprecation: "CostDeprecationNotice | None" = None
+
+
+class CostDeprecationNotice(BaseModel):
+    """Why this figure should not be trusted, and what to use instead."""
+
+    deprecated: bool = True
+    since: str = "Phase 4.4"
+    reason: str = (
+        "This total is a heuristic estimate derived from agent_actions row counts "
+        "multiplied by flat placeholder constants. It is not measured spend and has "
+        "never been reconciled against real model-provider cost."
+    )
+    replacement: str = "GET /api/v1/cost/summary"
+    detail: str = (
+        "The replacement aggregates agent_executions.cost_amount -- the real per-execution "
+        "cost computed by PricingService at execution time, carrying the pricing_version "
+        "that produced it. It reports actual and estimated spend as separate figures and "
+        "never presents one as the other."
+    )
+    removal: str = (
+        "Scheduled for removal once the Phase 4.9 observability center replaces the "
+        "Phase-3 analytics dashboard that consumes it. Until then this endpoint keeps "
+        "working unchanged."
+    )
 
 
 # --------------------------------------------------------------------------- #

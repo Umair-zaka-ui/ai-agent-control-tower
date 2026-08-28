@@ -319,6 +319,20 @@ class Settings(BaseSettings):
     # deliberately separate.
     WORKER_STALE_AFTER_SECONDS: float = 90.0
 
+    # --- Phase 4.4: cost governance & budgets (ACT-SRS-M4 §4.4, §11) ---
+    # How much a HARD_LIMIT/APPROVAL_REQUIRED budget holds for an execution
+    # when the budget itself names no `reservation_estimate`.
+    #
+    # The value is a trade, and neither direction is free: hold too much and a
+    # tight budget admits fewer concurrent executions than it could afford;
+    # hold too little and more executions are in flight than the remaining
+    # balance can cover if they all overrun their hold. It is small on purpose
+    # -- a default that guessed high would make every unconfigured budget
+    # behave as if it were much smaller than its owner wrote down, which is the
+    # surprising direction. Owners who need a conservative hold set it per
+    # budget, where the knowledge of what their executions cost actually lives.
+    BUDGET_DEFAULT_RESERVATION: float = 0.05
+
     # --- Phase 2: email notifications (SMTP / Mailtrap for development) ---
     NOTIFICATIONS_ENABLED: bool = False
     SMTP_HOST: str = "sandbox.smtp.mailtrap.io"

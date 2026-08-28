@@ -31,6 +31,7 @@ from app.authorization.resources.routes import router as resources_router
 from app.authorization.abac.routes import router as abac_router
 from app.authorization.admin.routes import router as admin_router
 from app.governance.routes import router as governance_router
+from app.finops.routes import router as finops_router
 from app.runtime.governance.routes import router as runtime_governance_router
 from app.runtime.routes import router as runtime_router
 from app.integration.routes import router as integration_router
@@ -175,3 +176,11 @@ app.include_router(observability_router)
 # a checkpoint. That is what keeps "one enforcement path" true of the HTTP
 # surface as well as of the loop.
 app.include_router(runtime_governance_router)
+# Phase 4.4 -- cost governance and FinOps under /api/v1/cost and
+# /api/v1/budgets. The canonical financial view over *real* per-execution cost,
+# distinct from the legacy /analytics/cost, which aggregates the Phase-3
+# agent_actions table with flat placeholder constants and is now deprecated in
+# place rather than rewired. No route here enforces a budget: enforcement runs
+# in the tool loop through the 4.3 governance engine, which stays the one place
+# that decides whether an execution may continue.
+app.include_router(finops_router)

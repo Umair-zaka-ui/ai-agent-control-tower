@@ -121,6 +121,65 @@ def _cap_repeated_call(ctx: CheckpointContext) -> GovernanceDecision | None:
 
 
 # --------------------------------------------------------------------------- #
+# Budget constraints (Phase 4.4) -- a third tier, between the built-in caps and
+# the configured policies.
+#
+# **Why a separate tier rather than another built-in cap or another policy
+# constraint.** Not a built-in cap, because `BUILTIN_CAPS`'s ordering is a
+# preserved behavioural contract from Phase 5.6a.3 that a test asserts
+# exactly -- appending to it would have meant weakening that assertion to make
+# room, which is precisely the "do not weaken an existing test" line. Not a
+# policy constraint, because a budget is not a row in
+# `runtime_governance_policies` and pretending otherwise would put a foreign
+# key somewhere it cannot point.
+#
+# It is still **one enforcement path**: the same `evaluate()` call, the same
+# `GovernanceDecision`, the same persistence and audit. Phase 4.4 supplies the
+# number; Phase 4.3 decides what to do about it, which is the division the
+# whole design rests on.
+# --------------------------------------------------------------------------- #
+def _budget_constraint(ctx: CheckpointContext) -> GovernanceDecision | None:
+    """M4-4.4-FR-030..032 — what a budget's remaining headroom means.
+
+    Only ``HARD_LIMIT`` and ``APPROVAL_REQUIRED`` reach here at all;
+    ``INFORMATIONAL`` and ``WARNING`` budgets emit their signals in
+    ``app.finops`` and never populate a checkpoint context, so there is no path
+    by which they could block. That is FR-032 enforced by construction rather
+    than by a branch that could be edited.
+
+    The comparison is against **remaining headroom already net of this
+    execution's own reservation**, which is why it reads ``<= 0`` rather than
+    trying to re-derive what the execution has spent: the reservation was taken
+    before the loop began and the balance the engine was handed already
+    excludes it. Subtracting the running cost again here would double-count the
+    execution against its own hold."""
+    if ctx.budget_remaining is None or ctx.budget_mode not in ("HARD_LIMIT", "APPROVAL_REQUIRED"):
+        return None
+    if ctx.budget_mode == "APPROVAL_REQUIRED":
+        if ctx.budget_over_threshold and not ctx.approval_granted:
+            return GovernanceDecision(
+                checkpoint=Checkpoint.BEFORE_FIRST_MODEL_CALL,  # stamped by the caller
+                decision=Decision.CHALLENGE,
+                reason_code=ReasonCode.BUDGET_APPROVAL_REQUIRED,
+                reason=(f"Budget '{ctx.budget_name}' has reached its approval threshold "
+                        f"({ctx.budget_remaining:.6f} {ctx.budget_currency} remaining); "
+                        f"this execution requires human approval."),
+                error_code=ErrorCode.RUNTIME_APPROVAL_REQUIRED,
+            )
+        return None
+    if ctx.budget_remaining <= 0:
+        return GovernanceDecision(
+            checkpoint=Checkpoint.BEFORE_FIRST_MODEL_CALL,  # stamped by the caller
+            decision=Decision.STOP, reason_code=ReasonCode.BUDGET_EXCEEDED,
+            reason=(f"Budget '{ctx.budget_name}' is exhausted "
+                    f"({ctx.budget_remaining:.6f} {ctx.budget_currency} remaining)."),
+            termination_reason="BUDGET_EXCEEDED",
+            error_code=ErrorCode.BUDGET_EXCEEDED,
+        )
+    return None
+
+
+# --------------------------------------------------------------------------- #
 # Policy constraints
 # --------------------------------------------------------------------------- #
 def _number(spec: dict, key: str) -> float | None:
@@ -386,6 +445,21 @@ POLICY_CONSTRAINTS: dict[Checkpoint, tuple[PolicyConstraint, ...]] = {
 # API to reject a misspelled key loudly (GOVERNANCE_POLICY_INVALID) instead of
 # storing a rule that silently never fires -- a governance control that does
 # nothing is worse than one that is absent, because someone believes it works.
+# Phase 4.4. Evaluated after the built-in caps and before the configured
+# policies, at the checkpoints where spend is a fact worth re-reading: the two
+# iteration boundaries (before dispatching more work) and the final output.
+# Deliberately *not* at the tool checkpoints -- a tool call does not move the
+# budget, and re-evaluating an unchanged number per tool call would be cost
+# without a decision.
+BUDGET_CONSTRAINTS: dict[Checkpoint, tuple[BuiltinCap, ...]] = {
+    Checkpoint.BEFORE_FIRST_MODEL_CALL: (_budget_constraint,),
+    Checkpoint.AFTER_MODEL_RESPONSE: (),
+    Checkpoint.BEFORE_TOOL_EXECUTION: (),
+    Checkpoint.AFTER_TOOL_EXECUTION: (),
+    Checkpoint.BEFORE_NEXT_ITERATION: (_budget_constraint,),
+    Checkpoint.BEFORE_FINAL_OUTPUT: (),
+}
+
 KNOWN_CONSTRAINT_KEYS: frozenset[str] = frozenset({
     "max_execution_cost", "min_remaining_cost", "max_total_tokens",
     "max_model_calls", "max_tool_calls", "max_calls_per_tool",

@@ -61,6 +61,11 @@ a METADATA_ONLY capture baseline. Spans are **derived** from the domain rows
 rather than stored, so a timeline per execution is assembled by walking
 foreign keys — `GET /runtime/executions/{execution_id}/trace`.
 
+**Also implemented (Phase 4.4)**: real-cost aggregation and budgets — see
+[cost-governance.md](./cost-governance.md) and [budgets.md](./budgets.md).
+The cost figures on this page's dashboard are the legacy *estimated*
+analytics, now deprecated in place.
+
 **Also implemented (Phase 4.2)**: the trace explorer and full trace assembly —
 search executions by trace, agent, version, environment, model, tool, status,
 error or time, and reconstruct any single execution's chronology from the

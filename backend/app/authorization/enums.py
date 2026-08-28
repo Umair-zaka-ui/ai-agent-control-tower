@@ -277,6 +277,18 @@ class AuthorizationAuditEvent(str, enum.Enum):
     # itself rather than by re-recording the fact here.
     RUNTIME_POLICY_EVALUATED = "RUNTIME_POLICY_EVALUATED"
     RUNTIME_EXECUTION_STOPPED = "RUNTIME_EXECUTION_STOPPED"
+    # Cost governance & FinOps (Phase 4.4, ACT-SRS-M4 §4.4, §17).
+    # `_THRESHOLD_REACHED` is the durable signal an INFORMATIONAL/WARNING
+    # budget emits when utilization crosses its configured percentage -- a
+    # record, not a notification (delivery is out of scope this phase).
+    # `_BLOCKED` marks a budget that had no headroom left when an execution
+    # asked for it; the *stop itself* is audited by 4.3's own
+    # RUNTIME_EXECUTION_STOPPED, because the engine is what stopped it. Two
+    # events for one stop would misrepresent which subsystem decided.
+    # `meta` carries budget id/name/mode/period/utilization only -- never a
+    # payload or a credential.
+    RUNTIME_BUDGET_THRESHOLD_REACHED = "RUNTIME_BUDGET_THRESHOLD_REACHED"
+    RUNTIME_BUDGET_BLOCKED = "RUNTIME_BUDGET_BLOCKED"
     RUNTIME_KILL_SWITCH_ACTIVATED = "RUNTIME_KILL_SWITCH_ACTIVATED"
     RUNTIME_ROLLBACK_COMPLETED = "RUNTIME_ROLLBACK_COMPLETED"
     # Enterprise Agent Registry (Phase 5.1 §67).

@@ -38,6 +38,7 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import replace
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -50,7 +51,7 @@ from app.models.runtime import (
     RuntimeGovernanceDecision,
     RuntimeGovernancePolicy,
 )
-from app.runtime.governance.constraints import BUILTIN_CAPS, POLICY_CONSTRAINTS
+from app.runtime.governance.constraints import BUDGET_CONSTRAINTS, BUILTIN_CAPS, POLICY_CONSTRAINTS
 from app.runtime.governance.contract import (
     Checkpoint,
     CheckpointContext,
@@ -91,12 +92,14 @@ class RuntimeGovernanceEngine:
         # the policies say, we do not know whether a *mandatory* one applies.
         self._unevaluable: str | None = None
         self._approval_granted = False
+        self._budget = None
 
     # ------------------------------------------------------------------ #
     # Binding
     # ------------------------------------------------------------------ #
     def bind(self, execution: AgentExecution, *, environment_id: uuid.UUID | None,
-             agent_id: uuid.UUID | None) -> "RuntimeGovernanceEngine":
+             agent_id: uuid.UUID | None, budget: "Any | None" = None,
+             ) -> "RuntimeGovernanceEngine":
         """Resolve and snapshot the policy set for this execution.
 
         A failure here does **not** raise. It latches ``_unevaluable``, and the
@@ -113,6 +116,11 @@ class RuntimeGovernanceEngine:
         approval loop rather than an approval. One query per attempt, not one
         per checkpoint."""
         self._approval_granted = self._has_approval(execution)
+        # Phase 4.4 supplies this; the engine only reads it. A budget with no
+        # headroom is a *fact about money*, and turning that fact into a
+        # decision is this engine's job and nothing else's -- which is how
+        # budgets got enforcement without a second enforcement path.
+        self._budget = budget
         try:
             self._policies = tuple(GovernancePolicyService(self.db).resolve(
                 execution.organization_id, environment_id=environment_id, agent_id=agent_id))
@@ -162,7 +170,11 @@ class RuntimeGovernanceEngine:
            Platform loop-safety comes before tenant configuration because a
            tenant policy must not be able to extend a platform cap by
            objecting first and terminating with a different reason.
-        4. **Policy constraints**, most specific policy first.
+        4. **Budget constraints** (Phase 4.4). A budget is a harder fact than a
+           configured rule, and when both would object its message is the more
+           useful one: "you are out of money" explains the stop better than
+           "a policy ceiling was reached".
+        5. **Policy constraints**, most specific policy first.
         """
         try:
             killed = self._kill_state(ctx)
@@ -193,6 +205,29 @@ class RuntimeGovernanceEngine:
         # obligation has been granted is the engine's own bookkeeping, and a
         # loop that had to remember to pass it would eventually forget.
         ctx = replace(ctx, approval_granted=self._approval_granted)
+        if self._budget is not None:
+            ctx = replace(
+                ctx, budget_id=self._budget.budget_id, budget_name=self._budget.name,
+                budget_mode=self._budget.mode, budget_remaining=self._budget.remaining,
+                budget_currency=self._budget.currency,
+                budget_over_threshold=self._budget.over_threshold,
+            )
+        # Phase 4.4 -- the budget tier. After platform loop-safety (a tenant's
+        # budget must not be able to keep a loop running past a cap) and before
+        # configured policy (a budget is a harder fact than a policy rule, and
+        # its message is the more useful one when both would object).
+        for constraint in BUDGET_CONSTRAINTS[checkpoint]:
+            try:
+                decision = constraint(ctx)
+            except Exception as exc:  # noqa: BLE001 -- §9: governance fails CLOSED
+                logger.warning("Budget constraint failed at %s for execution %s: %s",
+                               checkpoint.value, ctx.execution_id, exc)
+                return self._record(self._unevaluable_decision(
+                    checkpoint, "A budget constraint could not be evaluated at this "
+                                "checkpoint."), ctx)
+            if decision is not None:
+                return self._record(replace(decision, checkpoint=checkpoint), ctx)
+
         for policy in self._policies:
             decision = self._evaluate_policy(policy, checkpoint, ctx)
             if decision is not None:
@@ -384,7 +419,8 @@ class RuntimeGovernanceEngine:
                 trace_id=ctx.trace_id, checkpoint=decision.checkpoint.value,
                 decision=decision.decision.value, reason_code=decision.reason_code.value,
                 reason=decision.reason, obligation=decision.obligation,
-                policy_id=decision.policy_id, iteration=ctx.iteration,
+                policy_id=decision.policy_id, budget_id=ctx.budget_id,
+                iteration=ctx.iteration,
             ))
             self.db.flush()
         except Exception as exc:  # noqa: BLE001

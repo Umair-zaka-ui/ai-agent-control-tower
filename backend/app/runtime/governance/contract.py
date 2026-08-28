@@ -116,6 +116,12 @@ class ReasonCode(str, Enum):
     DATA_SENSITIVITY = "DATA_SENSITIVITY"
     MAX_EXECUTION_DURATION = "MAX_EXECUTION_DURATION"
 
+    # --- Budgets (Phase 4.4). The budget itself is accounted for in
+    # `app.finops`; these are the codes the *engine* reports when a budget
+    # constraint decides. Enforcement stays here, in one place.
+    BUDGET_EXCEEDED = "BUDGET_EXCEEDED"
+    BUDGET_APPROVAL_REQUIRED = "BUDGET_APPROVAL_REQUIRED"
+
     # --- Intervention & failure --------------------------------------------
     KILL_SWITCH_ACTIVE = "KILL_SWITCH_ACTIVE"
     CHECKPOINT_UNEVALUABLE = "CHECKPOINT_UNEVALUABLE"
@@ -268,6 +274,17 @@ class CheckpointContext:
     # ``RuntimeGovernanceEngine.bind`` for why an approval constraint that
     # could not see its own approval is a loop rather than a control.
     approval_granted: bool = False
+    # --- Budget state (Phase 4.4) ------------------------------------------
+    # Stamped by the engine at bind time from `app.finops`, never supplied by
+    # the loop. A HARD_LIMIT/APPROVAL_REQUIRED budget with no headroom becomes
+    # a *constraint the engine evaluates*, not a second thing that can stop an
+    # execution -- see `_budget_constraint` in `constraints.py`.
+    budget_id: uuid.UUID | None = None
+    budget_name: str | None = None
+    budget_mode: str | None = None
+    budget_remaining: float | None = None
+    budget_currency: str = "USD"
+    budget_over_threshold: bool = False
 
 
 # --------------------------------------------------------------------------- #
