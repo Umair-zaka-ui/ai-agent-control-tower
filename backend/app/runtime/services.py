@@ -92,6 +92,8 @@ from app.runtime.governance.contract import (
     GovernanceChallenged,
     GovernanceStopped,
 )
+from app.finops.guard import BudgetGuard
+from app.finops.reservations import ReservationService
 from app.runtime.governance.engine import RuntimeGovernanceEngine
 from app.runtime.providers.errors import ProviderRequestFailedError
 from app.runtime.providers.types import RETRYABLE_PROVIDER_ERROR_CLASSES, ProviderErrorClass
@@ -2826,7 +2828,7 @@ class ToolLoopOrchestrator:
 
     def run(self, execution: AgentExecution, agent: Agent, version: AgentVersion,
            resolved_credential: ResolvedCredential | None, *, timeout_seconds: float,
-           ) -> tuple[dict, dict, dict]:
+           budget=None) -> tuple[dict, dict, dict]:
         from app.observability.trace import trace_id_for
         from app.runtime.providers.types import ModelMessage, ModelToolDefinition
 
@@ -2850,6 +2852,11 @@ class ToolLoopOrchestrator:
             execution,
             environment_id=deployment.environment_id if deployment else None,
             agent_id=execution.agent_id,
+            # Phase 4.4 -- the budget headroom this execution was admitted
+            # with, already net of its own reservation. The loop passes it
+            # through and never reads it: what it means is the engine's to
+            # decide.
+            budget=budget,
         )
         classifications = self._tool_classifications(tool_entries)
         trace_id = trace_id_for(execution)
@@ -3440,6 +3447,10 @@ class ExecutionWorkerService:
             execution.completed_at = _now()
             attempt.status = "CANCELLED"
             attempt.completed_at = _now()
+            # Nothing ran, so nothing was spent -- but a previous attempt may
+            # have left a hold. Releasing is not optional tidiness: a leaked
+            # reservation permanently shrinks the tenant's budget.
+            ReservationService(self.db).release(execution.id, reason="cancelled before start")
             return
 
         agent = self.db.get(Agent, execution.agent_id)
@@ -3454,6 +3465,17 @@ class ExecutionWorkerService:
         # thread, never the session itself.
         resolved_credential = ProviderCredentialService(self.db).resolve_for_version(
             execution.organization_id, version)
+        # Phase 4.4 (M4-4.4-FR-020) -- reserve before anything is dispatched.
+        # BudgetGuard.prepare COMMITS its reservation, which is the point: a
+        # worker in another process sees only committed rows, and committing
+        # also releases the budget row's FOR UPDATE before any model call. The
+        # commit-before-dispatch rule, applied to money.
+        #
+        # A refused reservation does not stop anything here. It produces a
+        # constraint with no headroom, and the governance engine turns that
+        # into a STOP at its first checkpoint -- one enforcement path.
+        budget_constraint = BudgetGuard(self.db).prepare(
+            execution, agent=agent, version=version, deployment=deployment)
         try:
             # §36 — a hung model call must not hang the worker forever; the
             # per-call timeout below still bounds *each* model invocation
@@ -3463,6 +3485,7 @@ class ExecutionWorkerService:
             # ToolLoopOrchestrator.run().
             output_payload, model_usage, tool_usage = ToolLoopOrchestrator(self.db).run(
                 execution, agent, version, resolved_credential, timeout_seconds=timeout_seconds,
+                budget=budget_constraint,
             )
 
             # --- Pre-existing explicit `input_payload["tool_calls"]`
@@ -3539,6 +3562,8 @@ class ExecutionWorkerService:
                 execution.pricing_version = None
                 execution.cost_is_estimated = False
 
+            # Phase 4.4 (M4-4.4-FR-021) -- the hold becomes the real charge.
+            BudgetGuard(self.db).settle(execution)
             _set_execution_status(execution, "SUCCEEDED")
             execution.completed_at = _now()
             execution.duration_ms = int((execution.completed_at - execution.started_at).total_seconds() * 1000)
@@ -3596,6 +3621,7 @@ class ExecutionWorkerService:
         execution.error_code = exc.code
         execution.error_message = exc.message
         execution.decision = "REQUIRE_APPROVAL"
+        BudgetGuard(self.db).settle(execution)
         if exc.resumable:
             attempt.status = "CANCELLED"
             _set_execution_status(execution, "PENDING_APPROVAL")
@@ -3624,6 +3650,11 @@ class ExecutionWorkerService:
                                   .total_seconds() * 1000)
         execution.error_code = code
         execution.error_message = message
+        # Phase 4.4 (M4-4.4-FR-021/023) -- a failed execution's spend is still
+        # spend, so the hold is reconciled to whatever the transcript records
+        # rather than simply released. An execution that failed before its
+        # first model call spent nothing and gets its hold back.
+        BudgetGuard(self.db).settle(execution)
         # Denials, policy failures and input errors are never retried (§34).
         # A timeout *is* retryable (§34: "may retry only if retry policy
         # allows" — the default policy allows it) — it just reports as
@@ -3672,6 +3703,13 @@ class ExecutionWorkerService:
                          # dependency failure is exactly what the retry policy
                          # exists for.
                          ErrorCode.GOVERNANCE_EXECUTION_STOPPED, ErrorCode.KILL_SWITCH_ACTIVE,
+                         # Phase 4.4 -- an exhausted budget is still exhausted on
+                         # the next attempt, and each retry would take (and then
+                         # release) another reservation against a budget that has
+                         # nothing left. Retrying here would burn attempts to
+                         # reach the identical decision, which is the same
+                         # reasoning that made a governance STOP non-retryable.
+                         ErrorCode.BUDGET_EXCEEDED,
                          ProviderErrorClass.CONTENT_FILTERED.value, ProviderErrorClass.CONTEXT_LENGTH_EXCEEDED.value,
                          ProviderErrorClass.AUTHENTICATION_FAILED.value, ProviderErrorClass.INVALID_REQUEST.value,
                          ProviderErrorClass.UNKNOWN.value}

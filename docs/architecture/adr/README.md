@@ -28,6 +28,7 @@ rejected*.
 | [0007](./0007-stateful-session-validation.md) | Validate the session on every authenticated request | Accepted |
 | [0008](./0008-telemetry-as-a-derived-plane.md) | Telemetry is a derived plane, never a source of truth | Accepted |
 | [0009](./0009-runtime-governance-as-a-fail-closed-plane.md) | Runtime governance is a fail-closed plane, evaluated on one enforcement path | Accepted |
+| [0010](./0010-budget-reservation-semantics.md) | Budgets are enforced by reservation, and the guarantee is about reservations | Accepted |
 
 ## Status values
 

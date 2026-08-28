@@ -33,6 +33,8 @@ same governance and security controls as everything else on the platform.
 | [runtime-policy-and-approvals.md](runtime-policy-and-approvals.md) | Runtime limits, **admission-time** policy evaluation, human approval |
 | [runtime-governance.md](runtime-governance.md) | Phase 4.3 — the **in-loop** governance engine, its decisions, and the fail-closed/fail-open plane split |
 | [runtime-policy-checkpoints.md](runtime-policy-checkpoints.md) | Phase 4.3 — the six checkpoints, every constraint, and the transaction boundary at each |
+| [cost-governance.md](cost-governance.md) | Phase 4.4 — real per-execution spend, provenance, deterministic anomalies, and the deprecated legacy estimate |
+| [budgets.md](budgets.md) | Phase 4.4 — budget scopes and modes, reserve-then-reconcile, and the seam into 4.3's enforcement |
 | [health-and-observability.md](health-and-observability.md) | Heartbeats, health, telemetry, cost tracking, the dashboard |
 | [operations-and-kill-switch.md](operations-and-kill-switch.md) | Operations Center, suspension, the emergency kill switch |
 | [security.md](security.md) | Default deny, tenant isolation, checksum tampering, audit |

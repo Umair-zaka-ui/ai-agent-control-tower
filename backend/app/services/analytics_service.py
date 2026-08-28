@@ -36,6 +36,7 @@ from app.schemas.analytics import (
     AnalyticsOverview,
     AnalyticsReport,
     CostAnalytics,
+    CostDeprecationNotice,
     CostItem,
     FleetHealth,
     HighRiskAgent,
@@ -843,6 +844,15 @@ def cost_analytics(db: Session, org: uuid.UUID) -> CostAnalytics:
         items=items,
         total=round(sum(i.amount for i in items), 2),
         period_label="All time (estimated)",
+        # M4-4.4-FR-040 -- deprecated in place, not rewired. Rewiring this to
+        # real cost would have been a bigger change than it looks: the Phase-3
+        # dashboard reading it expects these six synthetic categories
+        # (human review, policy evaluation, storage), none of which
+        # `agent_executions` knows anything about. Pointing it at real data
+        # would have meant silently redefining every number on a dashboard this
+        # phase does not own, mid-milestone. So it keeps working exactly as it
+        # did and says what it is.
+        deprecation=CostDeprecationNotice(),
     )
 
 

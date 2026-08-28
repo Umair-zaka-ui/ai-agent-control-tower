@@ -310,6 +310,18 @@ class ErrorCode:
     GOVERNANCE_POLICY_INVALID = "GOVERNANCE_POLICY_INVALID"
     GOVERNANCE_CHECKPOINT_UNEVALUABLE = "GOVERNANCE_CHECKPOINT_UNEVALUABLE"
     GOVERNANCE_EXECUTION_STOPPED = "GOVERNANCE_EXECUTION_STOPPED"
+    # Cost governance & FinOps (Phase 4.4).
+    #
+    # `BUDGET_EXCEEDED` reaches an execution row only through a Phase 4.3
+    # governance decision -- Phase 4.4 never stops an execution itself, so this
+    # code names the *reason* a stop happened rather than an independent
+    # refusal. `BUDGET_RESERVATION_CONFLICT` is the reservation claim losing a
+    # race it must lose (the partial unique index refusing a second live hold
+    # for one execution), which is the idempotency guarantee working.
+    BUDGET_NOT_FOUND = "BUDGET_NOT_FOUND"
+    BUDGET_INVALID = "BUDGET_INVALID"
+    BUDGET_EXCEEDED = "BUDGET_EXCEEDED"
+    BUDGET_RESERVATION_CONFLICT = "BUDGET_RESERVATION_CONFLICT"
     EXECUTION_ALREADY_COMPLETED = "EXECUTION_ALREADY_COMPLETED"
     EXECUTION_CANCELLED = "EXECUTION_CANCELLED"
     EXECUTION_TIMED_OUT = "EXECUTION_TIMED_OUT"
@@ -717,6 +729,11 @@ _STATUS: dict[str, int] = {
     ErrorCode.GOVERNANCE_CHECKPOINT_UNEVALUABLE: status.HTTP_503_SERVICE_UNAVAILABLE,
     # 403, alongside RUNTIME_POLICY_DENIED: a governed refusal, not a fault.
     ErrorCode.GOVERNANCE_EXECUTION_STOPPED: status.HTTP_403_FORBIDDEN,
+    ErrorCode.BUDGET_NOT_FOUND: status.HTTP_404_NOT_FOUND,
+    ErrorCode.BUDGET_INVALID: status.HTTP_422_UNPROCESSABLE_ENTITY,
+    # 402 rather than 403: the request was permitted, the money was not there.
+    ErrorCode.BUDGET_EXCEEDED: status.HTTP_402_PAYMENT_REQUIRED,
+    ErrorCode.BUDGET_RESERVATION_CONFLICT: status.HTTP_409_CONFLICT,
     ErrorCode.EXECUTION_ALREADY_COMPLETED: status.HTTP_409_CONFLICT,
     ErrorCode.EXECUTION_CANCELLED: status.HTTP_409_CONFLICT,
     ErrorCode.EXECUTION_TIMED_OUT: status.HTTP_504_GATEWAY_TIMEOUT,

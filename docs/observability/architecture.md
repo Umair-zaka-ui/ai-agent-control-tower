@@ -254,7 +254,14 @@ another tenant's execution is indistinguishable from one that does not exist.
   [../runtime/runtime-governance.md](../runtime/runtime-governance.md) and
   [ADR-0009](../architecture/adr/0009-runtime-governance-as-a-fail-closed-plane.md).
 
-**Still out of scope:** cost governance (4.4), behavioral signals (4.5),
+- ~~Cost governance (4.4).~~ Shipped in **Phase 4.4** — real per-execution
+  spend aggregated from `agent_executions.cost_amount`, plus budgets enforced
+  by reservation. Its cost figures are the *domain* plane's, not this one's:
+  the legacy estimated analytics stays deprecated in place. See
+  [../runtime/cost-governance.md](../runtime/cost-governance.md) and
+  [ADR-0010](../architecture/adr/0010-budget-reservation-semantics.md).
+
+**Still out of scope:** behavioral signals (4.5),
 OpenTelemetry export (4.6), SLOs and alerting (4.7), the full telemetry policy /
 retention / access system (4.8 — only the METADATA_ONLY baseline and the
 scrubber land here), the observability center (4.9), and hardening (4.10).

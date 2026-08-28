@@ -30,6 +30,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -1802,7 +1803,160 @@ class RuntimeGovernanceDecision(Base, UUIDPrimaryKeyMixin):
         UUID(as_uuid=True), ForeignKey("runtime_governance_policies.id", ondelete="SET NULL"),
         nullable=True,
     )
+    # Phase 4.4. A budget-driven decision has no governance *policy* behind it
+    # -- a budget is not a row in `runtime_governance_policies` -- so lineage
+    # would lose which ceiling decided without this. Nullable and independent
+    # of `policy_id`: a decision has at most one of the two.
+    budget_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("budgets.id", ondelete="SET NULL"), nullable=True,
+    )
     iteration: Mapped[int | None] = mapped_column(Integer, nullable=True)
     evaluated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+class Budget(Base, UUIDPrimaryKeyMixin):
+    """Phase 4.4 (ACT-SRS-M4 §4.4, §11) -- a governed spending ceiling.
+
+    **This table holds no cost.** Real per-execution cost lives, and only
+    lives, on ``agent_executions.cost_amount`` with its ``pricing_version``
+    provenance (Phase 5.7a.3). A budget is a *limit* and a *mode*; the money is
+    counted from the authoritative rows. Creating a second cost store here
+    would be the §13 duplication Milestone 4 has already refused twice, and it
+    would be worse than the telemetry version of that mistake: two disagreeing
+    copies of a financial figure are not merely confusing.
+
+    ``mode`` is what makes budgets adoptable. An organization's first budget is
+    almost never a hard limit -- it is someone watching a number for a month to
+    see whether the platform agrees with their finance team. ``INFORMATIONAL``
+    and ``WARNING`` observe and signal; only ``HARD_LIMIT`` and
+    ``APPROVAL_REQUIRED`` reach the governance engine. The same reasoning gave
+    Phase 3.7's rollback triggers a ``NOTIFY_ONLY`` mode and Phase 4.3's
+    governance policies their ``mandatory`` flag.
+
+    ``reservation_estimate`` is the one column beyond the SRS's sketch, and it
+    earns its place: reserve-then-reconcile has to hold *something* before an
+    execution runs, and a model call's cost is unknowable until it returns. How
+    much to hold is a budget owner's tuning knob -- hold more and fewer
+    executions run concurrently against a tight budget, hold less and the
+    overshoot window widens. It is not derivable from anything else, so it is
+    stored rather than guessed. ``NULL`` falls back to
+    ``settings.BUDGET_DEFAULT_RESERVATION``.
+    """
+
+    __tablename__ = "budgets"
+    __table_args__ = (
+        CheckConstraint(
+            "scope_type IN ('ORGANIZATION', 'PROJECT', 'AGENT', 'ENVIRONMENT', 'MODEL')",
+            name="ck_budgets_scope_type"),
+        CheckConstraint(
+            "mode IN ('INFORMATIONAL', 'WARNING', 'HARD_LIMIT', 'APPROVAL_REQUIRED')",
+            name="ck_budgets_mode"),
+        CheckConstraint("period IN ('DAILY', 'MONTHLY', 'EXECUTION')", name="ck_budgets_period"),
+        CheckConstraint("limit_amount >= 0", name="ck_budgets_limit_non_negative"),
+        Index("ix_budgets_scope", "organization_id", "scope_type", "scope_id", "enabled"),
+    )
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # ORGANIZATION / PROJECT / AGENT / ENVIRONMENT / MODEL. `scope_id` is the
+    # scoped entity's id, or NULL at ORGANIZATION scope. Deliberately not a
+    # foreign key: it addresses four different tables, and a MODEL scope names
+    # a model identifier that is a string, not a row anywhere -- which is what
+    # `scope_value` carries.
+    scope_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    scope_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    scope_value: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    mode: Mapped[str] = mapped_column(String(20), nullable=False, default="INFORMATIONAL")
+    period: Mapped[str] = mapped_column(String(16), nullable=False, default="MONTHLY")
+    limit_amount: Mapped[float] = mapped_column(Numeric(18, 8), nullable=False)
+    currency: Mapped[str] = mapped_column(String(8), nullable=False, default="USD")
+    reservation_estimate: Mapped[float | None] = mapped_column(Numeric(18, 8), nullable=True)
+    # The fraction of `limit_amount` at which a WARNING budget starts
+    # signalling and an APPROVAL_REQUIRED budget starts challenging.
+    threshold_percent: Mapped[int] = mapped_column(Integer, nullable=False, default=80)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+
+
+class BudgetReservation(Base, UUIDPrimaryKeyMixin):
+    """Phase 4.4 (M4-4.4-FR-020..024) -- **the financial-consistency core.**
+
+    The failure this table exists to prevent (§11, §35): twenty workers each
+    read *"$9 remaining"* against a $10 budget, each decide they may spend $9,
+    and $180 is spent against a $10 budget. Reading a balance and then acting
+    on it is not safe when the read and the act are separated by a model call.
+
+    So a reservation *claims* an estimate before the execution runs -- the next
+    worker to look sees that amount already gone -- and is **reconciled** to
+    the real cost afterwards, releasing whatever was over-held.
+
+    **The claim is serialized by a ``FOR UPDATE`` on the budget row**, not by an
+    in-process lock, which §11 forbids explicitly and which would in any case
+    be worthless across the worker fleet Phase 3.9 built. See
+    ``ReservationService.reserve`` for the exact sequence and for the precise
+    guarantee it does and does not give.
+
+    **Idempotency is the database's, not a poll loop's.** A partial unique index
+    on ``(budget_id, execution_id) WHERE status <> 'RELEASED'`` means one
+    execution holds at most one live reservation against one budget -- Postgres
+    refuses the second insert rather than the application remembering not to
+    try. A *released* reservation does not participate, so a retried attempt
+    can claim afresh, which is what makes an execution's second attempt behave
+    like its first. Same reasoning as Phase 3.1's ``IdempotencyKey`` unique
+    constraint (the constraint *is* the concurrency primitive), reached without
+    its claim-then-poll machinery because a reservation has a natural key and
+    no result to await.
+
+    ``status`` is the whole lifecycle: ``RESERVED`` (held, execution in
+    flight), ``RECONCILED`` (actual known, counted for real), ``RELEASED`` (the
+    execution died or never spent; the hold is returned). A crashed worker's
+    reservation is released by the same stale-recovery path that recovers its
+    execution (M4-4.4-FR-023) -- a reservation that could leak would let one
+    crash permanently shrink a tenant's budget.
+    """
+
+    __tablename__ = "budget_reservations"
+    __table_args__ = (
+        CheckConstraint("status IN ('RESERVED', 'RECONCILED', 'RELEASED')",
+                        name="ck_budget_reservations_status"),
+        CheckConstraint("reserved_amount >= 0", name="ck_budget_reservations_amount"),
+        # The remaining-budget sum reads exactly these three columns.
+        Index("ix_budget_reservations_period", "budget_id", "period_key", "status"),
+        Index("ix_budget_reservations_execution", "execution_id"),
+        Index("uq_budget_reservations_live", "budget_id", "execution_id",
+              unique=True, postgresql_where=text("status <> 'RELEASED'")),
+    )
+
+    budget_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("budgets.id", ondelete="CASCADE"), nullable=False,
+    )
+    execution_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agent_executions.id", ondelete="CASCADE"), nullable=False,
+    )
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    reserved_amount: Mapped[float] = mapped_column(Numeric(18, 8), nullable=False)
+    actual_amount: Mapped[float | None] = mapped_column(Numeric(18, 8), nullable=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="RESERVED")
+    # The bucket this counts against: "2026-08-28" (DAILY), "2026-08"
+    # (MONTHLY), or the execution id (EXECUTION -- each execution is its own).
+    period_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    currency: Mapped[str] = mapped_column(String(8), nullable=False, default="USD")
+    reserved_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    reconciled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

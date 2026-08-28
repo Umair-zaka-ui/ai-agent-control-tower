@@ -176,6 +176,16 @@ PERMISSION_CATALOG: dict[str, str] = {
     "runtime.health.view": "View runtime health, worker and heartbeat status",
     "runtime.telemetry.view": "View runtime telemetry and execution traces",
     "runtime.cost.view": "View runtime cost and token usage",
+    # Phase 4.4 -- budgets. Two new codes, and `runtime.cost.view` deliberately
+    # reused for the cost read model rather than shadowed by a synonym (its
+    # description already named exactly this capability). Reading what was
+    # spent and configuring a ceiling that can halt production are genuinely
+    # different powers, and the second is a finance/admin decision rather than
+    # an observability one -- which is why `manage` is separate from `view`
+    # here even though 4.3 collapsed its own read permission into an existing
+    # one.
+    "runtime.budget.view": "View budgets and their utilization",
+    "runtime.budget.manage": "Create and configure budgets that can halt execution when exhausted",
     "runtime.approval.review": "Approve or reject runtime approval requests",
     "runtime.kill_switch.execute": "Activate the runtime kill switch at any scope",
     # Phase 4.3 -- runtime governance. One code, not a family: this guards
