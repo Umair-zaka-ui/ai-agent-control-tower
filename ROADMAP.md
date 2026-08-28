@@ -2283,9 +2283,53 @@ See [docs/runtime/runtime-governance.md](docs/runtime/runtime-governance.md),
 [runtime-policy-checkpoints.md](docs/runtime/runtime-policy-checkpoints.md) and
 [ADR-0009](docs/architecture/adr/0009-runtime-governance-as-a-fail-closed-plane.md).
 
-**Milestone 4 now has 3 of 10 sub-phases done.**
+### Phase 4.4 — Enterprise AI Cost Governance & FinOps ✅ (2026-08-28)
 
-**Next: Phase 4.4 — Cost Governance & Budgets.** The cost checkpoint built here
+Two gates: **cost truth** (Gate D) and **budget enforcement under concurrency**
+(Gate E — the §35 proof).
+
+- **The §35 race, proven with real separate Postgres sessions.** Twelve threads
+  on twelve connections race a $1.00 budget at $0.25 a hold; exactly four are
+  granted. The claim is serialized by `FOR UPDATE` on the budget row and the
+  lock is released by a commit before anything slow happens.
+- **The guarantee is stated precisely.** Total *reserved* never exceeds the
+  limit; total *actual* can, because a model call's cost is unknowable until it
+  returns. The overshoot is bounded, documented, and has its own test — see
+  [ADR-0010](docs/architecture/adr/0010-budget-reservation-semantics.md).
+- **One enforcement path preserved.** A refused reservation is not a refused
+  execution: 4.4 reports a number, 4.3's engine returns the STOP. `app/finops`
+  cannot write an execution's status, asserted over the AST.
+- **Cost truth**: real per-execution spend by org/agent/version/environment/
+  provider/model/project/department/time, with actual, estimated and *unpriced*
+  as three separate numbers.
+- **Immutable provenance (§10)** verified by 10×-ing a price and asserting
+  history is unchanged.
+- **Measured, no index added** — 0.80ms p50 tenant summary through 4.2's
+  existing index; the O(tenant size) worst case is inherent to summation and
+  only a forbidden rollup would fix it.
+- **Legacy `/analytics/cost` deprecated in place**, not rewired: the Phase-3
+  dashboard expects synthetic categories real cost has no equivalent for.
+- **Three defects found by the tests and fixed**: a retryable budget stop,
+  signalling budgets that could never signal, and a stale-queue starvation that
+  Phase 3.9 had already solved once.
+
+Routes 549 → **559**; schema 126 → **128 tables**; head `0048_cost_governance`,
+reversible. Backend **2,083 passed**, 0 failed, 1 deselected (2,024 + 59); frontend **327** unchanged
+(Cost Center UI deferred to 4.9).
+
+See [docs/runtime/cost-governance.md](docs/runtime/cost-governance.md),
+[budgets.md](docs/runtime/budgets.md) and
+[ADR-0010](docs/architecture/adr/0010-budget-reservation-semantics.md).
+
+**Milestone 4 now has 4 of 10 sub-phases done.**
+
+**Next: Phase 4.5 — Behavioral Signals.** Deterministic cost anomalies landed
+here; 4.5 adds the behavioural layer over this cost and runtime data.
+
+> **Legacy deprecation scheduled.** `GET /analytics/cost` is deprecated in place
+> as of 4.4 and is scheduled for removal once Phase 4.9's observability center
+> replaces the Phase-3 analytics dashboard that consumes it. It keeps working
+> unchanged until then. The cost checkpoint built here
 reads existing cost and reserves nothing; 4.4 adds the budgets and reservations
 it will consult, which also closes the concurrent-execution gap ADR-0009
 records as residual risk.
@@ -2300,6 +2344,9 @@ records as residual risk.
 | 4 | Governance **fails closed** on a mandatory unevaluable checkpoint | 4.3 | ADR-0009 |
 | 5 | Materialize only **with measured numbers** (4.2 measured and restrained) | 4.2 | ADR-0008 "Measurement outcome" |
 | 6 | Metadata only until 4.8 — content is a hard line, enforced upstream of routes | 4.2 | `docs/observability/tracing.md` |
+| 7 | **Real cost is authoritative**; the legacy estimate is deprecated in place, never rewired | 4.4 | `docs/runtime/cost-governance.md` |
+| 8 | **Budgets guarantee reservations, not actuals** — the overshoot is bounded and documented | 4.4 | ADR-0010 |
+| 9 | Budgets supply a constraint; **4.3 remains the only thing that stops an execution** | 4.4 | `app/finops/guard.py` |
 
 ## Future (Phase 3+)
 

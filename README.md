@@ -16,7 +16,7 @@
 >
 > **Milestone 3** (Deployment, Release & Operations — **COMPLETE, 10/10**): the deployment lifecycle core, governed environments & promotion, the release gate, weighted traffic allocation with a version resolver and fail-closed execution gate, the canary rollout engine with AI-aware release health, blue-green/recreate strategies, **automated rollback** — per-tenant trigger policies that roll a failing candidate back on their own, strictly subordinate to the kill switch — a **distributed scheduler** whose instances coordinate through Postgres leases so every due job runs exactly once, and a **distributed execution worker fleet** — agent executions now run on independently-operable worker processes that hold no database lock across model or tool network I/O, with **rolling deployment** defined over real worker cohorts rather than simulated counters, and the **Release Operations Center** — twelve operational views through which an operator sees and drives all of it, with dangerous actions confirmation-gated and unsafe state shown rather than smoothed over. See [`docs/deployment/`](docs/deployment/).
 >
-> **Milestone 4** (Runtime Governance & Observability — **in progress, 3/10**): Phase 4.1 laid the instrumentation contract. A trace follows an execution across every hop on the `correlation_id` rails that already existed but were almost never populated; spans are **derived from the domain rows rather than stored**, so the telemetry plane duplicates nothing and can never disagree with what actually happened; telemetry is **best-effort and non-gating** — the one subsystem here that deliberately fails open, because it is not the business transaction; and an isolated secret scrubber runs on the write path under a **METADATA_ONLY** baseline, so no prompt, tool payload, model output or private model reasoning is captured at all. See [`docs/observability/`](docs/observability/).
+> **Milestone 4** (Runtime Governance & Observability — **in progress, 4/10**): Phase 4.1 laid the instrumentation contract. A trace follows an execution across every hop on the `correlation_id` rails that already existed but were almost never populated; spans are **derived from the domain rows rather than stored**, so the telemetry plane duplicates nothing and can never disagree with what actually happened; telemetry is **best-effort and non-gating** — the one subsystem here that deliberately fails open, because it is not the business transaction; and an isolated secret scrubber runs on the write path under a **METADATA_ONLY** baseline, so no prompt, tool payload, model output or private model reasoning is captured at all. See [`docs/observability/`](docs/observability/).
 >
 > **Current state at a glance** — [Where the project is now](#where-the-project-is-now) below, or [`REPO_STATE.md`](REPO_STATE.md) for the verified, exhaustive version.
 
@@ -42,7 +42,7 @@ is the document to trust if it and this README ever disagree.*
 |---|---|
 | Backend tests | **1,770 passed**, 0 failed, 1 deselected |
 | Frontend tests | **327 passed** |
-| Live schema | **126 tables**, migration head `0047_runtime_governance` |
+| Live schema | **128 tables**, migration head `0048_cost_governance` |
 | HTTP routes | **544** |
 
 ### Milestones
@@ -54,7 +54,7 @@ is the document to trust if it and this README ever disagree.*
 | **Milestone 1** — real execution | **Complete** | Model provider abstraction, a real OpenAI-compatible adapter, streaming & token/cost accounting, an error taxonomy with retry/circuit-breaking, per-organization encrypted credentials, HTTP tool execution behind an SSRF egress guard, tool schema validation, and the model-driven tool invocation loop |
 | **Milestone 2** — Enterprise Integration Framework | **Complete (9/9)** | Connector abstraction/lifecycle, a pluggable authentication framework, registry & health, a connector SDK, four generic connectors (REST, database, storage, queue), and external identity federation (OIDC + SAML) |
 | **Milestone 3** — Deployment, Release & Operations | **Complete (10/10)** | Deployment lifecycle core, environments & promotion, the release gate, weighted traffic allocation + version resolver, the canary engine, blue-green/recreate/rolling strategies, automated rollback with per-tenant trigger policies, a distributed scheduler, a distributed execution worker fleet, and the Release Operations Center over all of it |
-| **Milestone 4** — Runtime Governance & Observability | **In progress (3/10)** | **4.1**: trace/span context on the existing `correlation_id` rails, bounded semantic attributes, a non-gating runtime-event contract, an isolated secret scrubber and the METADATA_ONLY baseline. **4.2**: full trace assembly and the trace explorer — search by trace/agent/version/environment/model/tool/status/error/time, and reconstruct any execution's chronology. Spans stay derived, not stored: 4.2 measured assembly at 0.74ms p50 over 90,695 executions and added one index rather than a projection. **4.3**: the runtime governance engine — six checkpoints *inside* the tool loop, one structured ALLOW/DENY/CHALLENGE/STOP decision, the four pre-existing termination caps **generalized into it** so there is exactly one enforcement path, and a governance plane that **fails closed** (the deliberate inverse of telemetry). Next: 4.4 cost governance & budgets |
+| **Milestone 4** — Runtime Governance & Observability | **In progress (4/10)** | **4.1**: trace/span context on the existing `correlation_id` rails, bounded semantic attributes, a non-gating runtime-event contract, an isolated secret scrubber and the METADATA_ONLY baseline. **4.2**: full trace assembly and the trace explorer — search by trace/agent/version/environment/model/tool/status/error/time, and reconstruct any execution's chronology. Spans stay derived, not stored: 4.2 measured assembly at 0.74ms p50 over 90,695 executions and added one index rather than a projection. **4.3**: the runtime governance engine — six checkpoints *inside* the tool loop, one structured ALLOW/DENY/CHALLENGE/STOP decision, the four pre-existing termination caps **generalized into it** so there is exactly one enforcement path, and a governance plane that **fails closed** (the deliberate inverse of telemetry). **4.4**: cost truth and FinOps — real per-execution spend aggregated by org/agent/version/environment/provider/model/project/time with actual, estimated and unpriced kept apart; immutable pricing provenance; deterministic spend anomalies; and budgets enforced by **reserve-then-reconcile**, proven against twelve concurrent Postgres sessions, supplying a constraint to 4.3 rather than becoming a second thing that can stop an execution. The legacy estimated cost endpoint is deprecated in place. Next: 4.5 behavioral signals |
 
 **What "complete" means for Milestone 1**: an agent that is registered,
 versioned, signed and deployed genuinely executes end to end — it calls a real
@@ -537,7 +537,8 @@ executions, workers-and-queue, capabilities-and-tools, gateways,
 runtime-policy-and-approvals, health-and-observability,
 operations-and-kill-switch, security, and — added by Milestone 4's Phase 4.3 —
 runtime-governance and runtime-policy-checkpoints, which cover the *in-loop*
-enforcement engine as distinct from the admission-time policy gate above. The
+enforcement engine as distinct from the admission-time policy gate above, and —
+added by Phase 4.4 — cost-governance and budgets. The
 telemetry plane added by Milestone 4 lives beside it in
 [docs/observability/](docs/observability/) — architecture (the three-plane
 model), tracing, semantic-conventions and privacy.
@@ -819,7 +820,7 @@ governed AI, integrates with the enterprise in both directions, and deploys,
 releases, monitors, routes, rolls back and operates agent versions safely at
 production scale.
 
-### Milestone 4 — Runtime Governance & Observability (in progress, 3/10)
+### Milestone 4 — Runtime Governance & Observability (in progress, 4/10)
 
 **Phase 4.1 — Runtime Telemetry & Trace Context Foundation.** The
 instrumentation contract the remaining nine sub-phases build on. Deliberately
@@ -895,6 +896,37 @@ implementation detail:
 A governance STOP can trigger the **existing** kill switch where a policy asks
 for it; the engine implements no suspension of its own and never clears a kill.
 See [`docs/runtime/runtime-governance.md`](docs/runtime/runtime-governance.md).
+
+**Phase 4.4 — Enterprise AI Cost Governance & FinOps.** What the platform
+actually spent, and budgets that hold when several workers spend at once.
+
+Cost truth first: every figure is aggregated from
+`agent_executions.cost_amount`, the real per-execution cost computed at
+execution time and carrying the `pricing_version` that produced it. **Actual,
+estimated and unpriced are three separate numbers** and are never added — a
+NULL cost means the platform could not meter that call, and treating "we don't
+know" as zero is how a spend figure becomes a lie someone repeats to their
+finance team. A past charge stays reconstructable after prices change, because
+a price change inserts a new row rather than editing the old one.
+
+Then budgets, and the problem they actually have to solve. Twenty workers each
+read *"$9 remaining"* against a $10 budget, each conclude they may spend $9,
+and $180 is spent — every worker having read a true balance and acted on it
+correctly. The defect is the gap between the read and the act, and here that
+gap contains a call to a model provider.
+
+So a budget is **reserved** before an execution runs and **reconciled** to real
+cost afterwards, with the claim serialized by a row lock in the database rather
+than in one process — proven with twelve real Postgres connections racing a
+$1.00 budget. What is guaranteed is stated exactly: total *reserved* never
+exceeds the limit; total *actual* can, because a model call's cost is unknowable
+until it returns. The overshoot is bounded, documented, and has its own test.
+
+A budget never stops an execution. It reports a number, and Phase 4.3's engine
+decides — so there is still exactly one thing on this platform that can halt a
+running agent. See [`docs/runtime/cost-governance.md`](docs/runtime/cost-governance.md),
+[`budgets.md`](docs/runtime/budgets.md) and
+[ADR-0010](docs/architecture/adr/0010-budget-reservation-semantics.md).
 
 ---
 

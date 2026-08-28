@@ -1,8 +1,8 @@
 # Backup and system-migration guide
 
-**Last verified 2026-08-26** after Phase 4.3 (runtime governance engine). Facts that matter for a restore,
+**Last verified 2026-08-28** after Phase 4.4 (cost governance & FinOps). Facts that matter for a restore,
 all re-checked live rather than carried forward: migration head
-**`0047_runtime_governance`**, **126 tables** (125 in `Base.metadata` — Alembic
+**`0048_cost_governance`**, **128 tables** (127 in `Base.metadata` — Alembic
 owns `alembic_version` and it is not a model), PostgreSQL **17.10** locally,
 `backend/.venv` on Python **3.13.14**, Node **v24.18.0**. Sections naming a
 version were corrected in the 2026-08-14 pass — the previous text said Python
@@ -94,6 +94,54 @@ restore depends on which half you get back.
   one table to halt the platform. If you are restoring into something that must
   serve traffic immediately, verify `runtime_governance_policies` is queryable
   *before* starting the workers.
+
+**Phase 4.4 adds durable state that is *financial*, and a restore can get it
+wrong in two opposite directions.** Phase 4.3 added rules that stop executions;
+this adds an accounting ledger, and a ledger can be restored too full or too
+empty. Both are bad, differently.
+
+- **`budgets` is durable configuration and must be restored.** Losing it
+  removes every ceiling: executions resume running with no limit, nothing
+  errors, and the platform is less governed than the operator believes —
+  exactly the failure mode described for `runtime_governance_policies` above,
+  with money attached. Treat a restore that omits this table the way you would
+  one that omitted RBAC grants.
+- **`budget_reservations` is not observability — it is the accounting.** This
+  is the important difference from every other Milestone 4 table. A restore
+  that loses reservation rows does not merely lose history: it **gives budget
+  back that was actually spent**, because a budget's committed total is the sum
+  of its `RESERVED` and `RECONCILED` rows. A tenant restored to yesterday's
+  reservations has yesterday's headroom and today's already-paid provider
+  bill.
+- **A restore can also leave holds that no longer correspond to anything.**
+  Rows in `RESERVED` whose executions were never restored (or were restored in
+  a terminal state) consume headroom for work that will never run. Run the
+  orphan sweep after restoring — it releases exactly those, and only those:
+  holds whose execution has reached a terminal state. It is deliberately not
+  time-based, so it will not touch a genuinely long-running execution's hold.
+- **A restart never resets a budget and never duplicates a reservation.** The
+  period balance is derived by summing the ledger for the current `period_key`,
+  not held in memory, so a process restart recomputes it exactly. And the
+  partial unique index on `(budget_id, execution_id) WHERE status <> 'RELEASED'`
+  means a retried claim after a crash cannot create a second live hold — the
+  database refuses it. Neither property depends on anything surviving in a
+  worker's memory, which is what makes recovery here uneventful.
+- **The one thing a restore cannot reconstruct is an in-flight overshoot.** An
+  execution that was mid-run when the snapshot was taken had a hold but not yet
+  an actual; after a restore its hold is either swept (if its execution came
+  back terminal) or still held (if it came back running). Neither is wrong, but
+  the spend that execution had already incurred with the provider is not in
+  `agent_executions` yet and will not be. That gap is bounded by one
+  execution's cost and is the same gap ADR-0010 documents for the live system.
+- **Real cost itself needs no special handling.** It lives on
+  `agent_executions.cost_amount` with its `pricing_version`, written in the
+  transaction that made the execution true, and this phase copies it nowhere.
+  Restore the executions and the cost is correct; there is no rollup to rebuild
+  and no aggregate that can be stale.
+- **`model_pricing` must be restored with the executions.** Provenance lookups
+  resolve a charge's `pricing_version` against it. Losing pricing rows does not
+  change any recorded `cost_amount` — those are immutable — but it does make a
+  past charge unexplainable, which is the §10 property gone.
 
 > **Read "Encryption keys" below before trusting any snapshot.** A verified
 > database dump plus a Git bundle is *not* sufficient to recover this platform's
