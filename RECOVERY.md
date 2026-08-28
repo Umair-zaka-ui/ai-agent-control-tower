@@ -1,8 +1,8 @@
 # Backup and system-migration guide
 
-**Last verified 2026-08-28** after Phase 4.4 (cost governance & FinOps). Facts that matter for a restore,
+**Last verified 2026-08-28** after Phase 4.5 (behavioral signals). Facts that matter for a restore,
 all re-checked live rather than carried forward: migration head
-**`0048_cost_governance`**, **128 tables** (127 in `Base.metadata` — Alembic
+**`0049_behavioral_signals`**, **129 tables** (128 in `Base.metadata` — Alembic
 owns `alembic_version` and it is not a model), PostgreSQL **17.10** locally,
 `backend/.venv` on Python **3.13.14**, Node **v24.18.0**. Sections naming a
 version were corrected in the 2026-08-14 pass — the previous text said Python
@@ -142,6 +142,39 @@ empty. Both are bad, differently.
   resolve a charge's `pricing_version` against it. Losing pricing rows does not
   change any recorded `cost_amount` — those are immutable — but it does make a
   past charge unexplainable, which is the §10 property gone.
+
+**Phase 4.5's findings are the one Milestone 4 table you can safely lose**, and
+saying so precisely matters more than it sounds, because the previous three
+phases each added state you cannot.
+
+- **`behavioral_findings` is derived, and it rebuilds.** Every finding is a
+  deterministic function of `agent_executions`, `tool_calls` and the thresholds
+  in code. Restore the executions and re-run the evaluation and you get
+  byte-identical findings — that is what "deterministic" buys, and it is the
+  practical difference between this table and `budget_reservations`, which
+  *cannot* be recomputed because it records money that was actually spent.
+- **So a restore that loses findings loses history, never behaviour.** Nothing
+  reads a finding to make a decision: Phase 4.3's engine is the only thing that
+  stops an execution and it does not consult them. Losing them costs an
+  operator their record of what was noticed, not the platform its ability to
+  notice again.
+- **Re-running an evaluation after a restore cannot double-count.** The unique
+  constraint on `(agent_id, signal_type, window_start, window_end)` means
+  re-evaluating a window that survived the snapshot is a no-op rather than a
+  duplicate. Sweeping the last few weeks of windows after a restore is a safe
+  operation, not one that needs care.
+- **The one thing that does not come back is a window whose executions did
+  not.** A finding about a window that is now partly missing would recompute
+  differently — correctly, from the data that exists — so a restored database
+  can honestly disagree with a pre-restore finding about the same window. That
+  is the derived plane behaving as designed, and it is why findings are not
+  evidence in the sense `runtime_governance_decisions` and
+  `budget_reservations` are.
+- **Thresholds are code, not data.** `DEFAULT_THRESHOLDS` lives in
+  `app/behavior/signals.py`; per-environment overrides ride on
+  `Environment.policy`, which is restored with the environments. There is no
+  separate configuration store to lose, and no restore can silently widen a
+  threshold.
 
 > **Read "Encryption keys" below before trusting any snapshot.** A verified
 > database dump plus a Git bundle is *not* sufficient to recover this platform's

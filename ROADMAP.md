@@ -2321,10 +2321,49 @@ See [docs/runtime/cost-governance.md](docs/runtime/cost-governance.md),
 [budgets.md](docs/runtime/budgets.md) and
 [ADR-0010](docs/architecture/adr/0010-budget-reservation-semantics.md).
 
-**Milestone 4 now has 4 of 10 sub-phases done.**
+### Phase 4.5 — Behavioral Signals & Runtime Anomaly Detection ✅ (2026-08-28)
 
-**Next: Phase 4.5 — Behavioral Signals.** Deterministic cost anomalies landed
-here; 4.5 adds the behavioural layer over this cost and runtime data.
+**A discipline-of-restraint phase: the hardest part was what not to build.**
+
+- **No ML, and the reason is stated.** *"0.87 anomalous"* is unauditable,
+  unappealable and ungovernable; *"tool `send_email` failed 34% of 118 calls
+  against a 3% baseline"* is none of those. Every rule is arithmetic; the
+  thresholds are declared, not learned.
+- **Determinism is structural.** The rules are pure functions of
+  `(candidate, baseline, thresholds)` — no session, no clock, no globals — and
+  a test runs a full evaluation three times comparing every field.
+- **Phase 3.5's engine reused, not forked**: veto → sufficiency → threshold →
+  baseline, `INSUFFICIENT_DATA` first-class, three of five state values
+  byte-identical and asserted against the live module.
+- **A prompt-vs-repo conflict reported and resolved**: the prompt's proposed
+  vocabulary would itself have been the fork it forbade. The shared middle is
+  kept exactly; the endpoints differ because 3.5 judges *fitness* and 4.5
+  judges *deviation*.
+- **Seven signals**, including two the error rate cannot see: a latency
+  *speedup*, and a loop that has started hitting its safety caps.
+- **Every finding explains itself from its own row** — metric, windows, sample
+  counts, observed value, threshold/baseline, and the crossing in words.
+- **Connector attribution deferred and named in every finding** rather than
+  invented (ACT-INT-FR-006).
+- **Signals only — 4.3 remains the sole enforcer**, asserted over the AST and
+  behaviourally; emission is non-gating.
+- **The 4.4/4.5 cost boundary demonstrated in both directions.**
+- **Measured, no index added** — Postgres combines two existing indexes via
+  `BitmapAnd`; the one undemonstrable shape got a recorded trigger instead.
+- **No scheduler built** — the evaluate op is idempotent at two levels so
+  Phase 3.8 can adopt it as a registration.
+
+Routes 559 → **562**; schema 128 → **129 tables**; no new permission; head
+`0049_behavioral_signals`, reversible. Backend **2,129 passed**, 0 failed, 1 deselected (2,083 + 46);
+frontend **327** unchanged (Behavior view deferred to 4.9).
+
+See [docs/runtime/behavioral-signals.md](docs/runtime/behavioral-signals.md).
+
+**Milestone 4 now has 5 of 10 sub-phases done.**
+
+**Next: Phase 4.6 — OpenTelemetry Export.** The trace context (4.1), assembled
+traces (4.2) and behavioral findings (4.5) all exist; 4.6 exports them to an
+external backend without any of them becoming dependent on one.
 
 > **Legacy deprecation scheduled.** `GET /analytics/cost` is deprecated in place
 > as of 4.4 and is scheduled for removal once Phase 4.9's observability center
@@ -2347,6 +2386,9 @@ records as residual risk.
 | 7 | **Real cost is authoritative**; the legacy estimate is deprecated in place, never rewired | 4.4 | `docs/runtime/cost-governance.md` |
 | 8 | **Budgets guarantee reservations, not actuals** — the overshoot is bounded and documented | 4.4 | ADR-0010 |
 | 9 | Budgets supply a constraint; **4.3 remains the only thing that stops an execution** | 4.4 | `app/finops/guard.py` |
+| 10 | **Deterministic and explainable only** — no opaque scoring; a finding that cannot explain itself is not emitted | 4.5 | `docs/runtime/behavioral-signals.md` |
+| 11 | Behavioral findings are **signals**; enforcement stays 4.3's, and emission is non-gating | 4.5 | `app/behavior/` |
+| 12 | **Connector attribution is deferred, not invented** — the runtime-never-knows boundary holds | 4.5 | ACT-INT-FR-006 |
 
 ## Future (Phase 3+)
 
