@@ -1960,3 +1960,90 @@ class BudgetReservation(Base, UUIDPrimaryKeyMixin):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     reconciled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class BehavioralFinding(Base, UUIDPrimaryKeyMixin):
+    """Phase 4.5 (ACT-SRS-M4 §4.5, Gate L) -- one deterministic behavioral
+    signal about one agent over one window, **with the reason it fired**.
+
+    **A new table rather than a `signal_type` discriminator on
+    ``deployment_health_evaluations``**, and the choice is about what each
+    table is *about* rather than about column overlap. A health evaluation is
+    release-scoped: it exists to answer "should this *version* get more
+    traffic", is keyed on ``agent_version_id`` and ``rollout_plan_id``, and its
+    rows are consumed by a rollout's stage gate. A behavioral finding is
+    agent-runtime-scoped: it asks "has this *agent's* behavior changed", spans
+    versions rather than comparing them, and is consumed by an operator (and,
+    in Phase 4.7, by an alert lifecycle). Sharing a table would have meant a
+    nullable ``rollout_plan_id`` that is always null on one half of the rows
+    and a ``signal_type`` that is always null on the other, plus a stage gate
+    that has to remember to filter -- a discriminator column standing in for
+    two tables.
+
+    **The engine shape is reused regardless**, which is the part that matters:
+    ``app.behavior.engine`` follows Phase 3.5's veto → sufficiency → threshold
+    → baseline order, and shares three of its five state values character for
+    character (see ``app.behavior.states``).
+
+    **Every non-NORMAL finding explains itself from this row alone**
+    (M4-4.5-FR-011). ``explanation`` is structured, not prose: metric, both
+    window bounds with their sample counts, observed value, threshold and/or
+    baseline, and the crossing in words. An operator can recompute the verdict
+    by hand from it. That is the whole point of the phase -- "this agent is
+    0.87 anomalous" is unauditable and unappealable; "tool `send_email` failed
+    34% of 118 calls this week against a 3% baseline" is neither.
+
+    ``attribution`` names the provider, model and tool where the data supports
+    it, and carries ``connector: null`` **permanently and on purpose**: the
+    runtime has no link recording which external system a version depends on
+    (ACT-INT-FR-006), so connector attribution is deferred rather than
+    invented. Naming the gap in the record is more honest than omitting the key.
+
+    Findings are **signals, never enforcement**. Nothing in ``app.behavior``
+    can stop an execution; Phase 4.3's engine remains the only thing that can.
+    """
+
+    __tablename__ = "behavioral_findings"
+    __table_args__ = (
+        CheckConstraint(
+            "state IN ('NORMAL', 'DEGRADED', 'ANOMALOUS', 'INSUFFICIENT_DATA', 'UNKNOWN')",
+            name="ck_behavioral_findings_state"),
+        Index("ix_behavioral_findings_agent_evaluated", "agent_id", "evaluated_at"),
+        Index("ix_behavioral_findings_org_evaluated", "organization_id", "evaluated_at"),
+        # The dedup key (AC-10). One window produces one finding per signal, no
+        # matter how often the evaluation is re-run -- which the Phase 3.8
+        # scheduler will do whenever a run overlaps or retries. Enforced by the
+        # database rather than by checking first, the same reasoning Phase 4.4
+        # used for its reservation idempotency.
+        UniqueConstraint("agent_id", "signal_type", "window_start", "window_end",
+                         name="uq_behavioral_findings_window"),
+    )
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    agent_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agents.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    agent_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agent_versions.id", ondelete="SET NULL"), nullable=True,
+    )
+    environment_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("environments.id", ondelete="SET NULL"), nullable=True,
+    )
+    signal_type: Mapped[str] = mapped_column(String(48), nullable=False)
+    state: Mapped[str] = mapped_column(String(20), nullable=False)
+    metric: Mapped[str] = mapped_column(String(48), nullable=False)
+    window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    window_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    sample_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    observed_value: Mapped[float | None] = mapped_column(Numeric(18, 6), nullable=True)
+    threshold_value: Mapped[float | None] = mapped_column(Numeric(18, 6), nullable=True)
+    baseline_value: Mapped[float | None] = mapped_column(Numeric(18, 6), nullable=True)
+    attribution: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    explanation: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    evaluated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )

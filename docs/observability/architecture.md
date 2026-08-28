@@ -261,7 +261,14 @@ another tenant's execution is indistinguishable from one that does not exist.
   [../runtime/cost-governance.md](../runtime/cost-governance.md) and
   [ADR-0010](../architecture/adr/0010-budget-reservation-semantics.md).
 
-**Still out of scope:** behavioral signals (4.5),
+- ~~Behavioral signals (4.5).~~ Shipped in **Phase 4.5** — deterministic,
+  explainable detection of how an agent's runtime behavior changes, reusing
+  Phase 3.5's evaluation engine shape. Like this plane it is non-gating and
+  fails open; unlike it, findings are *derived from* the domain rows rather
+  than emitted alongside them. See
+  [../runtime/behavioral-signals.md](../runtime/behavioral-signals.md).
+
+**Still out of scope:**
 OpenTelemetry export (4.6), SLOs and alerting (4.7), the full telemetry policy /
 retention / access system (4.8 — only the METADATA_ONLY baseline and the
 scrubber land here), the observability center (4.9), and hardening (4.10).

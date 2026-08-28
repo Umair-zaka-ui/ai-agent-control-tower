@@ -31,6 +31,7 @@ from app.authorization.resources.routes import router as resources_router
 from app.authorization.abac.routes import router as abac_router
 from app.authorization.admin.routes import router as admin_router
 from app.governance.routes import router as governance_router
+from app.behavior.routes import router as behavior_router
 from app.finops.routes import router as finops_router
 from app.runtime.governance.routes import router as runtime_governance_router
 from app.runtime.routes import router as runtime_router
@@ -184,3 +185,10 @@ app.include_router(runtime_governance_router)
 # in the tool loop through the 4.3 governance engine, which stays the one place
 # that decides whether an execution may continue.
 app.include_router(finops_router)
+# Phase 4.5 -- behavioral signals under /api/v1/runtime/behavior. Deterministic,
+# explainable detection of how an agent's runtime behavior changes, reusing
+# Phase 3.5's veto -> sufficiency -> threshold -> baseline engine shape. A
+# finding is a *signal*: nothing here can stop an execution, and no route can
+# invoke enforcement -- 4.3's engine stays the only thing that decides whether
+# a loop may continue.
+app.include_router(behavior_router)

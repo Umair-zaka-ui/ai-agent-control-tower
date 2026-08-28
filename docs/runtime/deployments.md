@@ -10,6 +10,12 @@ and one environment; `runtime_limits` and `configuration` are per-deployment
 JSONB, so the same version can run under different limits in STAGING vs.
 PRODUCTION.
 
+> **Reused by Phase 4.5.** The release-health engine's evaluation order —
+> veto → sufficiency → threshold → baseline, with `INSUFFICIENT_DATA`
+> first-class — is the shape behavioral signals follow, applied to a
+> broader signal set and a temporal rather than cross-version baseline.
+> See [behavioral-signals.md](./behavioral-signals.md).
+
 ## Lifecycle (§14) and the RECREATE strategy (§15)
 
 ```
