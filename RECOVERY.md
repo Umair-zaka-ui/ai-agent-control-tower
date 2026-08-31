@@ -203,6 +203,36 @@ worry about, and the split is deliberate.**
   exactly the export destinations that were configured at snapshot time — no
   drift, no shadow copy.
 
+**Phase 4.7 (SLOs & alerts) adds durable state that a restore must get right,
+and the split is deliberate.**
+
+- **SLO definitions are durable configuration.** `slo_definitions` is what
+  "good" means for this tenant — an SLI, a target, a window, an error budget.
+  Restore it and evaluation resumes against the same objectives. There is no
+  separate SLO-config store and no code default that stands in for a missing
+  row: no SLO row, no SLO.
+- **Open alerts are durable, and an open alert stays open.** `runtime_alerts`
+  carries the lifecycle state (`OPEN` / `ACKNOWLEDGED` / `RESOLVED` /
+  `SUPPRESSED`). A restore brings back exactly the alert queue as it was at
+  snapshot time — an acknowledged alert is still acknowledged, a suppressed one
+  still suppressed. Nothing re-derives alert state on boot, and nothing should:
+  an alert is an operator's record of a condition, not a computed view.
+- **`slo_evaluations` is append-only and losing it loses history, not
+  behaviour.** Each row is a deterministic function of `agent_executions` /
+  `tool_calls` over a window and the SLO's own fields — re-run the evaluate op
+  and you get byte-identical verdicts for any window whose executions survived
+  the snapshot. The `(slo_id, window_start, window_end)` unique constraint makes
+  re-evaluating a survived window a no-op, so sweeping the last few windows
+  after a restore is a safe operation, not one that needs care.
+- **The dedup guarantee holds across a restore.** `uq_runtime_alerts_active_dedup`
+  is a database index, restored with the table, so a post-restore evaluate op
+  cannot double-raise an alert for a condition that already has an active row.
+- **What does not come back is an alert for a condition whose evidence did
+  not.** An alert references a `slo_evaluations` / `behavioral_findings` row by
+  a soft pointer; if that evidence is now missing, the `context` JSONB still
+  carries a self-contained copy of the explanation, so the alert remains
+  readable — it just cannot be re-joined to a row that no longer exists.
+
 > **Read "Encryption keys" below before trusting any snapshot.** A verified
 > database dump plus a Git bundle is *not* sufficient to recover this platform's
 > encrypted secrets, and the automated scripts do not cover the key material.

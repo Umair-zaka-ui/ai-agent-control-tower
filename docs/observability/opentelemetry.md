@@ -17,7 +17,7 @@ runtime change, no vendor SDK in the platform, no lock-in — swapping Datadog f
 Grafana for Splunk is editing one config value.
 
 This phase **exports** what phases 4.1–4.5 already produce. It creates no new
-telemetry semantics. It builds no SLOs or alerts (4.7), no telemetry retention
+telemetry semantics. It builds no telemetry retention
 or content policy (4.8), and no operator center (4.9).
 
 ## The adapter boundary

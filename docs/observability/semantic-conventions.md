@@ -158,8 +158,8 @@ and `metric_label_set()`, which reuses `HIGH_CARDINALITY_ATTRIBUTES` /
 `SENSITIVE_ATTRIBUTES` / `METRIC_DIMENSIONS` here as its denylist and allowlist,
 plus a small declared 4.6 extension for two bounded behavioral-finding enums.
 There is still no metrics *storage* backend and there will not be one — the
-customer's collector stores. SLOs and alerting are 4.7. See
-[metrics.md](./metrics.md).
+customer's collector stores. SLOs and alerting shipped in **Phase 4.7** on this
+allowlist and the domain rows — see [`../operations/slos.md`](../operations/slos.md).
 
 ## Testing
 

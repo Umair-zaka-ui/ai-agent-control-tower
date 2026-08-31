@@ -299,6 +299,24 @@ class AuthorizationAuditEvent(str, enum.Enum):
     # would sit. Routine per-span export is telemetry, not audit, and is not
     # recorded here.
     RUNTIME_TELEMETRY_EXPORT_CONFIGURED = "RUNTIME_TELEMETRY_EXPORT_CONFIGURED"
+    # SLOs, alert rules & incident signals (Phase 4.7, ACT-SRS-M4 §4.7, §17,
+    # §18). `_SLO_CONFIGURED` covers defining/editing/deleting a service
+    # objective (a `meta.action` field says which) -- a material config change,
+    # like a budget or a governance policy. The four `_ALERT_*` events are the
+    # lifecycle transitions (M4-4.7-FR-011): `_CREATED` is written on a new
+    # alert *and* on a re-open (`meta.reopened`); `_ACKNOWLEDGED`/`_RESOLVED`/
+    # `_SUPPRESSED` carry the actor, or no actor with `meta.auto` when a later
+    # evaluation cleared the condition on its own. `meta` carries the alert id,
+    # the dedup key, the severity and the source -- never a payload, a tool
+    # argument or a model output, so no secret reaches the audit record.
+    # Routine SLO *evaluation* is not audited: it is a telemetry-plane record
+    # in `slo_evaluations`, and inventing an audit event for every quiet
+    # window would bury the transitions that matter (the 4.3/4.5 reasoning).
+    RUNTIME_SLO_CONFIGURED = "RUNTIME_SLO_CONFIGURED"
+    RUNTIME_ALERT_CREATED = "RUNTIME_ALERT_CREATED"
+    RUNTIME_ALERT_ACKNOWLEDGED = "RUNTIME_ALERT_ACKNOWLEDGED"
+    RUNTIME_ALERT_RESOLVED = "RUNTIME_ALERT_RESOLVED"
+    RUNTIME_ALERT_SUPPRESSED = "RUNTIME_ALERT_SUPPRESSED"
     RUNTIME_KILL_SWITCH_ACTIVATED = "RUNTIME_KILL_SWITCH_ACTIVATED"
     RUNTIME_ROLLBACK_COMPLETED = "RUNTIME_ROLLBACK_COMPLETED"
     # Enterprise Agent Registry (Phase 5.1 §67).

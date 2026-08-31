@@ -278,10 +278,20 @@ another tenant's execution is indistinguishable from one that does not exist.
   [ADR-0011](../architecture/adr/0011-opentelemetry-export-as-a-fail-open-plane.md)).
   See [opentelemetry.md](./opentelemetry.md) and [metrics.md](./metrics.md).
 
+- ~~SLOs and alerting (4.7).~~ Shipped in **Phase 4.7** — runtime service
+  objectives (SLI / target / window / error budget), evaluated deterministically
+  with INSUFFICIENT_DATA honesty (the 3.5/4.5 shape), and a first-class alert
+  lifecycle (OPEN → ACKNOWLEDGED → RESOLVED → SUPPRESSED) that a breach or a
+  significant behavioral finding raises. It stays a signal: it never stops an
+  execution and never delivers a notification. See
+  [`../operations/slos.md`](../operations/slos.md),
+  [`../operations/alerts.md`](../operations/alerts.md), and
+  [ADR-0012](../architecture/adr/0012-alerts-as-signal-creation-not-notification.md).
+
 **Still out of scope:**
-SLOs and alerting (4.7), the full telemetry policy / retention / access system
-(4.8 — only the METADATA_ONLY baseline and the scrubber land here), the
-observability center (4.9), and hardening (4.10).
+The full telemetry policy / retention / access system (4.8 — only the
+METADATA_ONLY baseline and the scrubber land here), the observability center
+(4.9), and hardening (4.10).
 
 It also changed no execution behaviour and duplicated no domain data. Every
 later M4 phase builds on this contract.

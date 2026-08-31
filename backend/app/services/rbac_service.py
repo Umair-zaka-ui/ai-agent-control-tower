@@ -193,6 +193,14 @@ PERMISSION_CATALOG: dict[str, str] = {
     # metadata off-platform -- so configuring the export target has its own
     # manage code, and it is audited.
     "runtime.telemetry.export.manage": "Configure the OpenTelemetry export target (endpoint, on/off) for an environment",
+    # Phase 4.7 -- SLOs and alerts. Reading an SLO, its evaluations, or an alert
+    # is a derived-telemetry read and reuses `runtime.telemetry.view` (the 4.2/
+    # 4.4/4.5 precedent). Two management powers are genuinely distinct: defining
+    # a service objective (what "good" means) and working the alert queue
+    # (acknowledge / resolve / suppress) are different jobs, often held by
+    # different people, so they get separate codes rather than one broad one.
+    "runtime.slo.manage": "Define, edit and evaluate runtime service objectives (SLOs)",
+    "runtime.alert.manage": "Acknowledge, resolve and suppress runtime alerts",
     "runtime.approval.review": "Approve or reject runtime approval requests",
     "runtime.kill_switch.execute": "Activate the runtime kill switch at any scope",
     # Phase 4.3 -- runtime governance. One code, not a family: this guards

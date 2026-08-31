@@ -79,6 +79,15 @@ surface at `GET /metrics` (authenticated, tenant-scoped, bounded-cardinality
 labels). See [../observability/opentelemetry.md](../observability/opentelemetry.md)
 and [../observability/metrics.md](../observability/metrics.md).
 
-**Still not implemented**: the trace explorer *UI* (deferred to the observability
-center, 4.9), and alerting thresholds / SLOs (§82; 4.7 — the metrics surface
-4.7 builds on landed in 4.6). The dashboard remains pull-based, not push-based.
+**Also implemented (Phase 4.7)**: runtime SLOs (SLI / target / window / error
+budget) evaluated deterministically, and a first-class alert lifecycle
+(OPEN → ACKNOWLEDGED → RESOLVED → SUPPRESSED) that an SLO breach or a significant
+behavioral finding raises — deduplicated so one condition is one alert. It is a
+signal, not a notification: nothing here delivers an alert anywhere. See
+[`../operations/slos.md`](../operations/slos.md) and
+[`../operations/alerts.md`](../operations/alerts.md).
+
+**Still not implemented**: the trace explorer *UI* and the SLO Dashboard / Alert
+Center (deferred to the observability center, 4.9), and **notification delivery**
+for alerts (a future integration — 4.7 built the signal, not the notifier). The
+dashboard remains pull-based, not push-based.

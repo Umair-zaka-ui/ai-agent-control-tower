@@ -331,6 +331,20 @@ class ErrorCode:
     # is never an error code: it is fail-open telemetry, visible only as
     # exporter-health state (M4-4.6-FR-022). An execution never sees either.
     EXPORT_CONFIG_INVALID = "EXPORT_CONFIG_INVALID"
+    # SLOs, alert rules & incident signals (Phase 4.7, ACT-SRS-M4 §4.7).
+    #
+    # `SLO_DEFINITION_INVALID` is a validation failure on defining/editing an
+    # objective (an unknown SLI, a ratio target outside (0,1], a self-
+    # contradictory direction). `ALERT_TRANSITION_INVALID` is an illegal
+    # lifecycle move (resolving an already-resolved alert, acknowledging a
+    # suppressed one) -- 409, not a fault. There is **no** SLO/alert error for
+    # a breach: a breach is a signal, not an error, and never reaches an
+    # execution (M4-4.7-FR-020). There is no notification error because nothing
+    # is delivered (M4-4.7-FR-021).
+    SLO_DEFINITION_INVALID = "SLO_DEFINITION_INVALID"
+    SLO_NOT_FOUND = "SLO_NOT_FOUND"
+    ALERT_NOT_FOUND = "ALERT_NOT_FOUND"
+    ALERT_TRANSITION_INVALID = "ALERT_TRANSITION_INVALID"
     EXECUTION_ALREADY_COMPLETED = "EXECUTION_ALREADY_COMPLETED"
     EXECUTION_CANCELLED = "EXECUTION_CANCELLED"
     EXECUTION_TIMED_OUT = "EXECUTION_TIMED_OUT"
@@ -744,6 +758,10 @@ _STATUS: dict[str, int] = {
     ErrorCode.BUDGET_EXCEEDED: status.HTTP_402_PAYMENT_REQUIRED,
     ErrorCode.BUDGET_RESERVATION_CONFLICT: status.HTTP_409_CONFLICT,
     ErrorCode.EXPORT_CONFIG_INVALID: status.HTTP_422_UNPROCESSABLE_ENTITY,
+    ErrorCode.SLO_DEFINITION_INVALID: status.HTTP_422_UNPROCESSABLE_ENTITY,
+    ErrorCode.SLO_NOT_FOUND: status.HTTP_404_NOT_FOUND,
+    ErrorCode.ALERT_NOT_FOUND: status.HTTP_404_NOT_FOUND,
+    ErrorCode.ALERT_TRANSITION_INVALID: status.HTTP_409_CONFLICT,
     ErrorCode.EXECUTION_ALREADY_COMPLETED: status.HTTP_409_CONFLICT,
     ErrorCode.EXECUTION_CANCELLED: status.HTTP_409_CONFLICT,
     ErrorCode.EXECUTION_TIMED_OUT: status.HTTP_504_GATEWAY_TIMEOUT,

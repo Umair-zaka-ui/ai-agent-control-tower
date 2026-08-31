@@ -119,6 +119,5 @@ successive scrapes of the window, or — better — from the pushed span stream.
 
 ## Not in this phase
 
-SLOs and alerting are 4.7. This surface exposes the numbers; it does not decide
-what a bad number is or what to do about it. A metrics *storage* backend (a
+SLOs and alerting shipped in **Phase 4.7**, on top of this surface's *source of truth* (the domain rows) rather than the scraped gauges — see [`../operations/slos.md`](../operations/slos.md). This surface still only exposes numbers; it does not decide what a bad number is. A metrics *storage* backend (a
 TSDB) is out entirely — the customer's collector stores; the platform exposes.
