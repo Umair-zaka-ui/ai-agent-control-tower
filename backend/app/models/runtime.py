@@ -2047,3 +2047,198 @@ class BehavioralFinding(Base, UUIDPrimaryKeyMixin):
     evaluated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+class SLODefinition(Base, UUIDPrimaryKeyMixin):
+    """Phase 4.7 (ACT-SRS-M4 §3.6, §4.7, Gate J) -- one runtime service
+    objective: an SLI, a target, an observation window, and an error budget.
+
+    ``sli`` names *what is measured* (``success_rate`` / ``latency_p95`` /
+    ``timeout_rate`` / ``provider_error_rate`` / ``tool_failure_rate`` /
+    ``queue_delay``); the direction of the objective is a fixed property of the
+    SLI (see ``app.slo.sli.SLI_SPECS``), not a stored column, so an operator
+    cannot define a self-contradictory "success rate below 0.99 is good".
+
+    ``target`` is a ratio for the rate SLIs and milliseconds for the latency
+    ones. ``window`` is a rolling spec (``1h`` / ``24h`` / ``7d`` / ``30d``).
+    ``error_budget`` is the allowed "bad fraction" over the window -- for
+    ``success_rate`` it defaults to ``1 - target``; for the "lower is better"
+    rate SLIs to ``target``; for the latency SLIs to a small fraction of
+    samples permitted to exceed the target (default 0.05). It is stored so it
+    can be tuned, and defaulted on create so it is never absent.
+
+    Definitions are **durable** (they survive a restart; see ``RECOVERY.md``)
+    and tenant-scoped. Evaluation is a separate, append-only record
+    (:class:`SLOEvaluation`)."""
+
+    __tablename__ = "slo_definitions"
+    __table_args__ = (
+        CheckConstraint(
+            "sli IN ('success_rate','latency_p95','timeout_rate',"
+            "'provider_error_rate','tool_failure_rate','queue_delay')",
+            name="ck_slo_definitions_sli"),
+        CheckConstraint(
+            "scope_type IN ('ORGANIZATION','AGENT','VERSION','ENVIRONMENT')",
+            name="ck_slo_definitions_scope_type"),
+        # One SLO name per tenant -- the human-facing dedup. Two SLOs over the
+        # same SLI/scope with different targets are legal (a warn and a page
+        # threshold), so the scope is not itself unique.
+        UniqueConstraint("organization_id", "name", name="uq_slo_definitions_org_name"),
+        Index("ix_slo_definitions_org_enabled", "organization_id", "enabled"),
+    )
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    scope_type: Mapped[str] = mapped_column(String(16), nullable=False, default="ORGANIZATION")
+    scope_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    sli: Mapped[str] = mapped_column(String(48), nullable=False)
+    target: Mapped[float] = mapped_column(Numeric(18, 6), nullable=False)
+    window: Mapped[str] = mapped_column(String(16), nullable=False, default="24h")
+    error_budget: Mapped[float] = mapped_column(Numeric(18, 6), nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class SLOEvaluation(Base, UUIDPrimaryKeyMixin):
+    """Phase 4.7 -- one deterministic evaluation of one SLO over one window.
+    **Append-only** (survives, never mutated -- ``RECOVERY.md``).
+
+    ``state`` is ``MET`` / ``BREACHED`` / ``INSUFFICIENT_DATA`` / ``UNKNOWN``;
+    the last two are spelled exactly as 3.5's ``health_state`` and 4.5's
+    ``SignalState`` spell them (``app.slo.states``). ``explanation`` carries
+    everything needed to recompute the verdict by hand: the SLI, the target,
+    both window bounds, the sample count, the observed value, the error budget
+    and how much of it was consumed. No model, no scoring.
+
+    The unique constraint on ``(slo_id, window_start, window_end)`` is the
+    idempotency primitive -- the 3.8 scheduler re-running an evaluation over
+    the same window produces one row, enforced by the database, the same
+    reasoning 4.5 used for ``uq_behavioral_findings_window``."""
+
+    __tablename__ = "slo_evaluations"
+    __table_args__ = (
+        CheckConstraint(
+            "state IN ('MET','BREACHED','INSUFFICIENT_DATA','UNKNOWN')",
+            name="ck_slo_evaluations_state"),
+        UniqueConstraint("slo_id", "window_start", "window_end",
+                         name="uq_slo_evaluations_window"),
+        Index("ix_slo_evaluations_slo_evaluated", "slo_id", "evaluated_at"),
+        Index("ix_slo_evaluations_org_evaluated", "organization_id", "evaluated_at"),
+    )
+
+    slo_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("slo_definitions.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    window_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    sample_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    observed_value: Mapped[float | None] = mapped_column(Numeric(18, 6), nullable=True)
+    state: Mapped[str] = mapped_column(String(20), nullable=False)
+    budget_consumed: Mapped[float | None] = mapped_column(Numeric(18, 6), nullable=True)
+    budget_remaining: Mapped[float | None] = mapped_column(Numeric(18, 6), nullable=True)
+    explanation: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    evaluated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class RuntimeAlert(Base, UUIDPrimaryKeyMixin):
+    """Phase 4.7 (ACT-SRS-M4 §4.7, §18, Gate K) -- a first-class, durable,
+    auditable alert with a real lifecycle.
+
+    **One lifecycle, two evidence sources (§18, mandatory report #1).** An
+    alert is *not* a copy of a finding or an SLO evaluation -- ``source`` +
+    ``source_id`` point at the evidence, which stays in its own table
+    (``behavioral_findings`` / ``slo_evaluations``). A behavioral finding is a
+    finding; it becomes an alert only when it meets a defined significance
+    (state ``ANOMALOUS``, not merely ``DEGRADED``), and an SLO evaluation
+    becomes an alert only when ``BREACHED``. Escalation is explicit and
+    threshold-defined, never automatic.
+
+    **One ongoing condition is one active alert (M4-4.7-FR-013).** ``dedup_key``
+    backs a partial unique index over ``(organization_id, dedup_key)`` WHERE
+    ``status IN ('OPEN','ACKNOWLEDGED')`` -- the database decides the race, the
+    same primitive Phase 3.7 used for ``uq_rollback_events_dedup``. A RESOLVED
+    alert **re-opens** on recurrence (``recurrence_count`` increments); a
+    SUPPRESSED one does not -- that is what suppressing it means.
+
+    **A signal, never a notification.** This row is the product. Nothing in
+    ``app.slo`` sends it anywhere; a future notification integration consumes
+    these rows. And a signal, never enforcement: an alert never stops or alters
+    an execution (Phase 4.3 is the only thing that can).
+
+    ``summary`` is a platform-authored templated sentence -- never a prompt, a
+    tool argument or a model output (§10)."""
+
+    __tablename__ = "runtime_alerts"
+    __table_args__ = (
+        CheckConstraint("source IN ('SLO','BEHAVIORAL')", name="ck_runtime_alerts_source"),
+        CheckConstraint("severity IN ('INFO','WARNING','HIGH','CRITICAL')",
+                        name="ck_runtime_alerts_severity"),
+        CheckConstraint("status IN ('OPEN','ACKNOWLEDGED','RESOLVED','SUPPRESSED')",
+                        name="ck_runtime_alerts_status"),
+        Index("uq_runtime_alerts_active_dedup", "organization_id", "dedup_key",
+              unique=True,
+              postgresql_where=text("status IN ('OPEN', 'ACKNOWLEDGED')")),
+        Index("ix_runtime_alerts_org_status_opened", "organization_id", "status", "opened_at"),
+        Index("ix_runtime_alerts_org_severity", "organization_id", "severity"),
+        Index("ix_runtime_alerts_agent", "agent_id", "opened_at"),
+    )
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    source: Mapped[str] = mapped_column(String(24), nullable=False)
+    #: The evidence row: a ``slo_evaluations.id`` or a ``behavioral_findings.id``.
+    #: Not an FK -- the evidence tables have different shapes and an alert
+    #: outlives a cascade of either, so the pointer is soft and the context
+    #: JSONB carries a self-contained copy of the explanation.
+    source_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    slo_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("slo_definitions.id", ondelete="SET NULL"), nullable=True)
+    severity: Mapped[str] = mapped_column(String(12), nullable=False, default="WARNING")
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="OPEN")
+
+    agent_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agents.id", ondelete="SET NULL"), nullable=True)
+    agent_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agent_versions.id", ondelete="SET NULL"), nullable=True)
+    environment_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("environments.id", ondelete="SET NULL"), nullable=True)
+    execution_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    trace_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+    metric: Mapped[str] = mapped_column(String(48), nullable=False)
+    threshold_value: Mapped[float | None] = mapped_column(Numeric(18, 6), nullable=True)
+    observed_value: Mapped[float | None] = mapped_column(Numeric(18, 6), nullable=True)
+    baseline_value: Mapped[float | None] = mapped_column(Numeric(18, 6), nullable=True)
+
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    dedup_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    context: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    recurrence_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+    opened_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now())
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now())
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    acknowledged_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolved_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    suppressed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())

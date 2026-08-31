@@ -221,9 +221,13 @@ changes where a derived view can be *read*; it does not add a plane.
   scrapes metrics over `GET /metrics` and pushes only spans. A deployment whose
   collector cannot scrape (a push-only vendor gateway) would need an OTLP
   metrics exporter added behind the same adapter.
-- **4.7 turns metrics into SLOs/alerts.** The alert lifecycle is explicitly out
-  of scope here. When 4.7 builds it, it should confirm that an alert rule never
-  becomes a governance input — the plane discipline this ADR relies on.
+- ~~**4.7 turns metrics into SLOs/alerts.**~~ **Done — see
+  [ADR-0012](./0012-alerts-as-signal-creation-not-notification.md).** Phase 4.7
+  built SLOs and a first-class alert lifecycle. It kept the plane discipline:
+  an SLO breach / alert is a signal, never a governance input and never an
+  enforcer (`app/slo` imports no governance engine, AST-asserted). It also
+  reads the domain rows for its SLIs rather than the scraped `/metrics` gauges —
+  the two share a source of truth, not a query.
 - **The OTel SDK ships a breaking major version.** The absorption happens in
   `app/telemetry_export/sinks.py`; if it ever cannot, that is a signal the
   adapter boundary is in the wrong place.

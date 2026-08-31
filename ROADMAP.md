@@ -2408,11 +2408,59 @@ unmodified `main`).
 See [docs/observability/opentelemetry.md](docs/observability/opentelemetry.md)
 and [metrics.md](docs/observability/metrics.md).
 
-**Milestone 4 now has 6 of 10 sub-phases done.**
+### Phase 4.7 — SLOs, Alert Rules & Incident Signals ✅ (2026-08-31)
 
-**Next: Phase 4.7 — SLOs & Alerting.** The metrics surface (4.6) exposes the
-numbers; 4.7 decides what a bad number is and manages the alert lifecycle on
-top of it — without an alert rule ever becoming a governance input.
+**A discipline-of-restraint phase: build the signal, not the notification platform.**
+
+- **No notification delivery was built, and the restraint is enforceable.**
+  `app/slo` imports no `requests`/`httpx`/`smtplib`/`slack`/`pagerduty`/email
+  service and defines no `send`/`notify`/`deliver`/`page` method — two AST tests
+  fail the build on any. Alert creation ≠ external notification (§4.7); this
+  phase owns creation. The alert **record** is the product; 4.9 and future
+  integrations consume it. [ADR-0012](docs/architecture/adr/0012-alerts-as-signal-creation-not-notification.md).
+- **SLOs**: SLI + target + window (`1h`/`6h`/`24h`/`7d`/`30d`) + error budget.
+  Six SLIs over the real rows (`success_rate`, `timeout_rate`,
+  `provider_error_rate`, `tool_failure_rate`, `latency_p95`, `queue_delay`) —
+  not the 4.6 `/metrics` gauges; the two share a source of truth, not a query.
+  The objective direction is a fixed property of the SLI, not a storable column.
+- **Deterministic, explainable evaluation reusing the 3.5/4.5 shape**: veto →
+  sufficiency → objective → budget. `INSUFFICIENT_DATA` first-class (below 20
+  terminal samples). Shared state values spelled exactly as 3.5/4.5, asserted
+  live. Error-budget consumption tracked; a burned budget reads `remaining = 0`.
+- **One alert lifecycle over two evidence sources (§18)**: `runtime_alerts` is a
+  distinct table referencing `slo_evaluations`/`behavioral_findings` — **not** a
+  shared table re-homing 4.5's. Escalation is explicit: SLO → alert only when
+  `BREACHED`; finding → alert only when `ANOMALOUS` (a `DEGRADED` finding stays
+  a finding). No "incident" concept.
+- **Lifecycle OPEN → ACKNOWLEDGED → RESOLVED → SUPPRESSED**, every transition
+  audited. **DB-enforced dedup** (`uq_runtime_alerts_active_dedup`, partial
+  unique `WHERE status IN ('OPEN','ACKNOWLEDGED')`, the 3.7 primitive): one
+  ongoing condition is one alert; a RESOLVED alert re-opens on recurrence, a
+  SUPPRESSED one does not. Proven under a real 8-thread Postgres race.
+- **Signal, not enforcement**: 4.3 remains the only thing that stops an
+  execution — `app/slo` references no kill switch / governance engine /
+  execution-state mutation (AST-asserted), and `app/runtime`/`app/workers`
+  import nothing from it. Non-gating.
+- **The interim idempotent evaluate op** for 3.8's scheduler to adopt (the
+  4.5/3.7/3.5 pattern); `uq_slo_evaluations_window` makes a re-run a no-op.
+  **No scheduler built.**
+
+Migration `0050_slos_and_alerts` — three new tables, no existing table changed,
+no backfill, reversible. **No index on `agent_executions`/`tool_calls`.** Routes
+566 → **578**; schema 129 → **132 tables**; two permissions
+(`runtime.slo.manage`, `runtime.alert.manage`); four error codes; five audit
+events. Backend **2,221 passed**, 0 failed, 1 deselected (2,180 + 41); frontend
+**327** unchanged (SLO Dashboard + Alert Center are 4.9).
+
+See [docs/operations/slos.md](docs/operations/slos.md) and
+[docs/operations/alerts.md](docs/operations/alerts.md).
+
+**Milestone 4 now has 7 of 10 sub-phases done.**
+
+**Next: Phase 4.8 — Telemetry Policy, Retention & Access.** 4.1 set the
+METADATA_ONLY baseline and the scrubber; 4.8 builds the per-environment content-
+capture policy, retention windows, and the access controls that a deliberate
+opt-in to content capture requires.
 
 > **Legacy deprecation scheduled.** `GET /analytics/cost` is deprecated in place
 > as of 4.4 and is scheduled for removal once Phase 4.9's observability center
@@ -2437,6 +2485,8 @@ top of it — without an alert rule ever becoming a governance input.
 | 12 | **Connector attribution is deferred, not invented** — the runtime-never-knows boundary holds | 4.5 | ACT-INT-FR-006 |
 | 13 | **Open standards at the boundary, no vendor in core** — the OTel SDK is behind one adapter; core imports nothing vendor-shaped (AST-asserted) | 4.6 | ADR-0011, `app/telemetry_export/` |
 | 14 | **Exporter failure ≠ execution failure** — export is fail-open telemetry, buffering is bounded (never an unbounded queue), export runs off the hot path | 4.6 | ADR-0011, `docs/observability/opentelemetry.md` |
+| 15 | **An alert is a durable signal; creation ≠ notification** — no Slack/email/PagerDuty/webhook delivery is built (AST-enforced); a future integration consumes the record | 4.7 | ADR-0012, `app/slo/` |
+| 16 | **Findings feed one alert lifecycle, not a parallel concept** — `runtime_alerts` references `behavioral_findings`/`slo_evaluations`; escalation is explicit (ANOMALOUS/BREACHED), never automatic | 4.7 | ADR-0012, `docs/operations/alerts.md` |
 
 ## Future (Phase 3+)
 
