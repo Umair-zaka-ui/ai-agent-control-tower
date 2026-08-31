@@ -176,6 +176,33 @@ phases each added state you cannot.
   separate configuration store to lose, and no restore can silently widen a
   threshold.
 
+**Phase 4.6 (OpenTelemetry export) adds no durable state that a restore must
+worry about, and the split is deliberate.**
+
+- **The export buffer is ephemeral — dropped on restart, and never a phantom.**
+  `BoundedSpanBuffer` is in-process memory holding spans on their way to a
+  collector. A crash or restart loses whatever it held; a freshly-started
+  dispatcher looks back only `TELEMETRY_EXPORT_SCHEDULER_LOOKBACK_SECONDS`
+  (300s) for terminal executions and no further. So a restart can mean a few
+  minutes of spans never reach the collector — that is the accepted cost of
+  bounded memory (ADR-0011), and it is *observability* loss, never domain loss:
+  the executions themselves are in `agent_executions`, and their traces can be
+  re-assembled and re-exported at any time because export ids are deterministic.
+- **Exporter health is in-process and resets cleanly.** `exporter_health` is a
+  process-local counter set (last error, throughput, buffer depth), like the
+  circuit breakers in `app.runtime.services`. A restart zeroes it, which is
+  honest — the buffer it described is also gone. Nothing reads it to make a
+  decision; it is a status surface only.
+- **Export configuration is durable, and rides on state you already restore.**
+  The per-environment `telemetry_export` block lives in `Environment.policy`
+  JSONB, restored with the environments. The platform default is env vars
+  (`TELEMETRY_EXPORT_*`), which belong with the deployment config, not the
+  database. There is no separate export-config store to lose.
+- **A restore cannot resurrect a stale collector target.** Because config is in
+  `Environment.policy` and nowhere else, restoring the environments restores
+  exactly the export destinations that were configured at snapshot time — no
+  drift, no shadow copy.
+
 > **Read "Encryption keys" below before trusting any snapshot.** A verified
 > database dump plus a Git bundle is *not* sufficient to recover this platform's
 > encrypted secrets, and the automated scripts do not cover the key material.

@@ -23,7 +23,10 @@ rule is enforced structurally rather than remembered.
 
 There is no metrics *backend* in this phase -- exporters are 4.6 and SLOs are
 4.7. The allowlist lands now anyway, because the cheapest moment to make a
-mistake impossible is before anything can make it.
+mistake impossible is before anything can make it. (Phase 4.6 built the metrics
+surface on this allowlist: :mod:`app.telemetry_export.metrics` reuses
+:data:`METRIC_DIMENSIONS`, :data:`HIGH_CARDINALITY_ATTRIBUTES` and
+:data:`SENSITIVE_ATTRIBUTES` verbatim as its label denylist/allowlist.)
 """
 
 from __future__ import annotations

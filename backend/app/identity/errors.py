@@ -322,6 +322,15 @@ class ErrorCode:
     BUDGET_INVALID = "BUDGET_INVALID"
     BUDGET_EXCEEDED = "BUDGET_EXCEEDED"
     BUDGET_RESERVATION_CONFLICT = "BUDGET_RESERVATION_CONFLICT"
+    # OpenTelemetry & metrics interoperability (Phase 4.6, ACT-SRS-M4 §4.6).
+    #
+    # `EXPORT_CONFIG_INVALID` is the *only* export error that surfaces as an
+    # HTTP error, and it is a validation failure on a config write -- a
+    # malformed endpoint, an unknown protocol, a header naming a platform
+    # secret. A *runtime* export failure (collector unreachable, slow, 500ing)
+    # is never an error code: it is fail-open telemetry, visible only as
+    # exporter-health state (M4-4.6-FR-022). An execution never sees either.
+    EXPORT_CONFIG_INVALID = "EXPORT_CONFIG_INVALID"
     EXECUTION_ALREADY_COMPLETED = "EXECUTION_ALREADY_COMPLETED"
     EXECUTION_CANCELLED = "EXECUTION_CANCELLED"
     EXECUTION_TIMED_OUT = "EXECUTION_TIMED_OUT"
@@ -734,6 +743,7 @@ _STATUS: dict[str, int] = {
     # 402 rather than 403: the request was permitted, the money was not there.
     ErrorCode.BUDGET_EXCEEDED: status.HTTP_402_PAYMENT_REQUIRED,
     ErrorCode.BUDGET_RESERVATION_CONFLICT: status.HTTP_409_CONFLICT,
+    ErrorCode.EXPORT_CONFIG_INVALID: status.HTTP_422_UNPROCESSABLE_ENTITY,
     ErrorCode.EXECUTION_ALREADY_COMPLETED: status.HTTP_409_CONFLICT,
     ErrorCode.EXECUTION_CANCELLED: status.HTTP_409_CONFLICT,
     ErrorCode.EXECUTION_TIMED_OUT: status.HTTP_504_GATEWAY_TIMEOUT,

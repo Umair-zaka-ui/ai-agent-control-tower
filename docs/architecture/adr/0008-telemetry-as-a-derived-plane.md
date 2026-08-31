@@ -282,10 +282,15 @@ there.
   outcome" above.** Assembly measured 0.74ms p50 at 90,695 executions, so no
   projection was added; the measurement did expose a missing `created_at` index,
   fixed by migration 0046. The next trigger is below.
-- **An OTel collector is introduced (4.6).** Exporting to an external backend
-  means spans exist outside this database. That does not change which plane is
-  authoritative, but it does mean this ADR should state explicitly that the
-  exported copy is also derived.
+- ~~**An OTel collector is introduced (4.6).**~~ **Done — see
+  [ADR-0011](./0011-opentelemetry-export-as-a-fail-open-plane.md).** Phase 4.6
+  added OTLP export behind an adapter. It does not change which plane is
+  authoritative: the exported spans are produced by the same `TraceAssembler`
+  from the same domain rows and are a downstream projection, exactly as the
+  platform's own trace view is. A disagreement between a collector's span and an
+  `agent_executions` row is resolved in favour of the row. ADR-0011 also draws
+  the fail-open line for export *specifically* (an exporter outage never affects
+  an execution) and the bounded-buffer rule (retry is never an unbounded queue).
 - **Anything requires event completeness.** If a later requirement needs a
   guaranteed-complete event stream (a billing feed, a regulatory report), it
   must not be built on `runtime_events`. That requirement should reopen this
