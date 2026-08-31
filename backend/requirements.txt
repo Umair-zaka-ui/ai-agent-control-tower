@@ -52,6 +52,18 @@ argon2-cffi==23.1.0  # argon2id password hashing (SRS 4.2.2.1 §11)
 bcrypt==4.0.1        # retained: verifies pre-4.2.2.1 hashes, auto-upgraded to argon2id
 python-multipart==0.0.20
 
+# --- Observability / OpenTelemetry export (Phase 4.6, ACT-SRS-M4 §4.6, §27) ---
+# The OpenTelemetry SDK + OTLP/HTTP exporter. Imported ONLY by
+# app/telemetry_export/sinks.py (the adapter boundary) and nowhere else in the
+# codebase -- `test_otel_interop.py` walks the AST of every other package and
+# fails on a stray `import opentelemetry`. This is deliberately the vendor-
+# neutral OTLP stack, never a vendor-specific exporter: Datadog / Azure Monitor
+# / Grafana / Splunk / Elastic all ingest OTLP, so switching collectors is a
+# config change, not a dependency change. `requests`, `protobuf` and
+# `googleapis-common-protos` come in transitively via the OTLP proto exporter.
+opentelemetry-sdk==1.44.0
+opentelemetry-exporter-otlp-proto-http==1.44.0
+
 # --- Testing ---
 pytest==8.3.4
 httpx==0.28.1

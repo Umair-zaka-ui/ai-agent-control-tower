@@ -32,6 +32,8 @@ from app.authorization.abac.routes import router as abac_router
 from app.authorization.admin.routes import router as admin_router
 from app.governance.routes import router as governance_router
 from app.behavior.routes import router as behavior_router
+from app.telemetry_export.routes import router as telemetry_export_router
+from app.telemetry_export.routes import metrics_router as telemetry_metrics_router
 from app.finops.routes import router as finops_router
 from app.runtime.governance.routes import router as runtime_governance_router
 from app.runtime.routes import router as runtime_router
@@ -192,3 +194,11 @@ app.include_router(finops_router)
 # invoke enforcement -- 4.3's engine stays the only thing that decides whether
 # a loop may continue.
 app.include_router(behavior_router)
+# Phase 4.6 -- OpenTelemetry & metrics interoperability. Export management under
+# /api/v1/observability/export and a Prometheus exposition at GET /metrics. The
+# OTel SDK lives behind app/telemetry_export's adapter and nowhere else in the
+# codebase; export is fail-open telemetry (an exporter outage never touches an
+# execution), buffering is bounded, and export runs off the hot path in a
+# background dispatcher, not in the model->tool loop.
+app.include_router(telemetry_export_router)
+app.include_router(telemetry_metrics_router)

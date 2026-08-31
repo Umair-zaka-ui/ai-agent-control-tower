@@ -186,6 +186,13 @@ PERMISSION_CATALOG: dict[str, str] = {
     # one.
     "runtime.budget.view": "View budgets and their utilization",
     "runtime.budget.manage": "Create and configure budgets that can halt execution when exhausted",
+    # Phase 4.6 -- OpenTelemetry & metrics interoperability. Reading exporter
+    # health and the metrics surface is an observability read, so it reuses
+    # `runtime.telemetry.view`. Pointing the platform's telemetry at a third-
+    # party collector is a different, material act -- it sends operational
+    # metadata off-platform -- so configuring the export target has its own
+    # manage code, and it is audited.
+    "runtime.telemetry.export.manage": "Configure the OpenTelemetry export target (endpoint, on/off) for an environment",
     "runtime.approval.review": "Approve or reject runtime approval requests",
     "runtime.kill_switch.execute": "Activate the runtime kill switch at any scope",
     # Phase 4.3 -- runtime governance. One code, not a family: this guards

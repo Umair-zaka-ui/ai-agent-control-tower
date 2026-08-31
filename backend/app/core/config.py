@@ -333,6 +333,45 @@ class Settings(BaseSettings):
     # budget, where the knowledge of what their executions cost actually lives.
     BUDGET_DEFAULT_RESERVATION: float = 0.05
 
+    # --- Phase 4.6: OpenTelemetry & metrics interoperability (ACT-SRS-M4 §4.6) ---
+    # The platform default export configuration. A tenant may override
+    # `enabled`/`endpoint`/`protocol`/`headers` per environment in
+    # `Environment.policy["telemetry_export"]`; buffer sizing and timeouts stay
+    # platform-level (a tenant tuning the buffer to 1 would turn drop-oldest
+    # into "drop everything" and call it configuration).
+    #
+    # OFF by default, everywhere, including every test run -- the same
+    # conservative default 4.1 used for content capture, and the same opt-in
+    # posture as CONNECTOR_HEALTH_SCHEDULER_ENABLED. An unconfigured platform
+    # exports nothing and runs no background dispatcher thread.
+    TELEMETRY_EXPORT_ENABLED: bool = False
+    # `otlp-http` (real) or `null` (configured-but-inert). Never a vendor name:
+    # Datadog / Azure Monitor / Grafana / Splunk / Elastic all consume OTLP.
+    TELEMETRY_EXPORT_PROTOCOL: str = "otlp-http"
+    # The OTLP/HTTP collector endpoint, e.g. http://otel-collector:4318/v1/traces.
+    TELEMETRY_EXPORT_OTLP_ENDPOINT: str = ""
+    # Extra collector headers -- where a vendor's own auth token goes. Carried
+    # opaquely; never logged, audited, or echoed in a health read.
+    TELEMETRY_EXPORT_HEADERS: dict[str, str] = {}
+    # Bounded buffer (M4-4.6-FR-021): a hard ceiling on buffered spans. Reached
+    # only when the collector is down long enough for the dispatcher to lap it;
+    # past it the full-policy runs. Never unbounded -- that option does not exist.
+    TELEMETRY_EXPORT_BUFFER_MAX_SPANS: int = 10_000
+    TELEMETRY_EXPORT_BATCH_SIZE: int = 512
+    TELEMETRY_EXPORT_TIMEOUT_SECONDS: float = 5.0
+    # drop_oldest | drop_newest | block_bounded. `drop_oldest` keeps the newest
+    # telemetry, which is what an operator watching a live incident wants.
+    TELEMETRY_EXPORT_FULL_POLICY: str = "drop_oldest"
+    # The background dispatcher that reads terminal executions, assembles their
+    # traces and exports them. Opt-in, like the connector-health scheduler: the
+    # API process does not grow a thread just by starting. Drive it a cycle at
+    # a time from a test or a worker via ExportDispatcher.run_once().
+    TELEMETRY_EXPORT_SCHEDULER_ENABLED: bool = False
+    TELEMETRY_EXPORT_SCHEDULER_INTERVAL_SECONDS: float = 30.0
+    # How far back a freshly-started dispatcher looks for terminal executions.
+    # Bounded so a restart exports the recent past, not the entire backlog.
+    TELEMETRY_EXPORT_SCHEDULER_LOOKBACK_SECONDS: float = 300.0
+
     # --- Phase 2: email notifications (SMTP / Mailtrap for development) ---
     NOTIFICATIONS_ENABLED: bool = False
     SMTP_HOST: str = "sandbox.smtp.mailtrap.io"

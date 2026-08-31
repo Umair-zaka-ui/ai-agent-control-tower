@@ -16,7 +16,7 @@
 >
 > **Milestone 3** (Deployment, Release & Operations — **COMPLETE, 10/10**): the deployment lifecycle core, governed environments & promotion, the release gate, weighted traffic allocation with a version resolver and fail-closed execution gate, the canary rollout engine with AI-aware release health, blue-green/recreate strategies, **automated rollback** — per-tenant trigger policies that roll a failing candidate back on their own, strictly subordinate to the kill switch — a **distributed scheduler** whose instances coordinate through Postgres leases so every due job runs exactly once, and a **distributed execution worker fleet** — agent executions now run on independently-operable worker processes that hold no database lock across model or tool network I/O, with **rolling deployment** defined over real worker cohorts rather than simulated counters, and the **Release Operations Center** — twelve operational views through which an operator sees and drives all of it, with dangerous actions confirmation-gated and unsafe state shown rather than smoothed over. See [`docs/deployment/`](docs/deployment/).
 >
-> **Milestone 4** (Runtime Governance & Observability — **in progress, 5/10**): Phase 4.1 laid the instrumentation contract. A trace follows an execution across every hop on the `correlation_id` rails that already existed but were almost never populated; spans are **derived from the domain rows rather than stored**, so the telemetry plane duplicates nothing and can never disagree with what actually happened; telemetry is **best-effort and non-gating** — the one subsystem here that deliberately fails open, because it is not the business transaction; and an isolated secret scrubber runs on the write path under a **METADATA_ONLY** baseline, so no prompt, tool payload, model output or private model reasoning is captured at all. See [`docs/observability/`](docs/observability/).
+> **Milestone 4** (Runtime Governance & Observability — **in progress, 6/10**): Phase 4.1 laid the instrumentation contract. A trace follows an execution across every hop on the `correlation_id` rails that already existed but were almost never populated; spans are **derived from the domain rows rather than stored**, so the telemetry plane duplicates nothing and can never disagree with what actually happened; telemetry is **best-effort and non-gating** — the one subsystem here that deliberately fails open, because it is not the business transaction; and an isolated secret scrubber runs on the write path under a **METADATA_ONLY** baseline, so no prompt, tool payload, model output or private model reasoning is captured at all. Phase 4.6 makes it **interoperable**: execution traces and operational metrics stream to any OTLP collector (Datadog, Grafana, Splunk, …) through an adapter that keeps every vendor and even the OTel SDK out of the core, and a collector outage can never affect an execution — export is fail-open with a bounded buffer, off the hot path. See [`docs/observability/`](docs/observability/).
 >
 > **Current state at a glance** — [Where the project is now](#where-the-project-is-now) below, or [`REPO_STATE.md`](REPO_STATE.md) for the verified, exhaustive version.
 
@@ -54,7 +54,7 @@ is the document to trust if it and this README ever disagree.*
 | **Milestone 1** — real execution | **Complete** | Model provider abstraction, a real OpenAI-compatible adapter, streaming & token/cost accounting, an error taxonomy with retry/circuit-breaking, per-organization encrypted credentials, HTTP tool execution behind an SSRF egress guard, tool schema validation, and the model-driven tool invocation loop |
 | **Milestone 2** — Enterprise Integration Framework | **Complete (9/9)** | Connector abstraction/lifecycle, a pluggable authentication framework, registry & health, a connector SDK, four generic connectors (REST, database, storage, queue), and external identity federation (OIDC + SAML) |
 | **Milestone 3** — Deployment, Release & Operations | **Complete (10/10)** | Deployment lifecycle core, environments & promotion, the release gate, weighted traffic allocation + version resolver, the canary engine, blue-green/recreate/rolling strategies, automated rollback with per-tenant trigger policies, a distributed scheduler, a distributed execution worker fleet, and the Release Operations Center over all of it |
-| **Milestone 4** — Runtime Governance & Observability | **In progress (5/10)** | **4.1**: trace/span context on the existing `correlation_id` rails, bounded semantic attributes, a non-gating runtime-event contract, an isolated secret scrubber and the METADATA_ONLY baseline. **4.2**: full trace assembly and the trace explorer — search by trace/agent/version/environment/model/tool/status/error/time, and reconstruct any execution's chronology. Spans stay derived, not stored: 4.2 measured assembly at 0.74ms p50 over 90,695 executions and added one index rather than a projection. **4.3**: the runtime governance engine — six checkpoints *inside* the tool loop, one structured ALLOW/DENY/CHALLENGE/STOP decision, the four pre-existing termination caps **generalized into it** so there is exactly one enforcement path, and a governance plane that **fails closed** (the deliberate inverse of telemetry). **4.4**: cost truth and FinOps — real per-execution spend aggregated by org/agent/version/environment/provider/model/project/time with actual, estimated and unpriced kept apart; immutable pricing provenance; deterministic spend anomalies; and budgets enforced by **reserve-then-reconcile**, proven against twelve concurrent Postgres sessions, supplying a constraint to 4.3 rather than becoming a second thing that can stop an execution. The legacy estimated cost endpoint is deprecated in place. **4.5**: deterministic, explainable behavioral signals — error-rate/latency/cost/tool-failure/tool-pattern/policy-denial/loop-termination — reusing 3.5's evaluation engine, `INSUFFICIENT_DATA` first-class, every finding self-explaining, **no ML by mandate**, connector attribution deferred and named rather than invented, and strictly signals (4.3 stays the only enforcer). Next: 4.6 OpenTelemetry export |
+| **Milestone 4** — Runtime Governance & Observability | **In progress (6/10)** | **4.1**: trace/span context on the existing `correlation_id` rails, bounded semantic attributes, a non-gating runtime-event contract, an isolated secret scrubber and the METADATA_ONLY baseline. **4.2**: full trace assembly and the trace explorer — search by trace/agent/version/environment/model/tool/status/error/time, and reconstruct any execution's chronology. Spans stay derived, not stored: 4.2 measured assembly at 0.74ms p50 over 90,695 executions and added one index rather than a projection. **4.3**: the runtime governance engine — six checkpoints *inside* the tool loop, one structured ALLOW/DENY/CHALLENGE/STOP decision, the four pre-existing termination caps **generalized into it** so there is exactly one enforcement path, and a governance plane that **fails closed** (the deliberate inverse of telemetry). **4.4**: cost truth and FinOps — real per-execution spend aggregated by org/agent/version/environment/provider/model/project/time with actual, estimated and unpriced kept apart; immutable pricing provenance; deterministic spend anomalies; and budgets enforced by **reserve-then-reconcile**, proven against twelve concurrent Postgres sessions, supplying a constraint to 4.3 rather than becoming a second thing that can stop an execution. The legacy estimated cost endpoint is deprecated in place. **4.5**: deterministic, explainable behavioral signals — error-rate/latency/cost/tool-failure/tool-pattern/policy-denial/loop-termination — reusing 3.5's evaluation engine, `INSUFFICIENT_DATA` first-class, every finding self-explaining, **no ML by mandate**, connector attribution deferred and named rather than invented, and strictly signals (4.3 stays the only enforcer). **4.6**: OpenTelemetry interoperability — execution traces and operational metrics to any OTLP collector, the SDK behind a one-module adapter (no vendor in core, AST-asserted), export **fail-open** with a **bounded** buffer and off the hot path (a collector outage never touches an execution, proven with a real collector-down run), metrics scraped over an authenticated tenant-scoped `/metrics` with bounded cardinality. Next: 4.7 SLOs & alerting |
 
 **What "complete" means for Milestone 1**: an agent that is registered,
 versioned, signed and deployed genuinely executes end to end — it calls a real
@@ -820,7 +820,7 @@ governed AI, integrates with the enterprise in both directions, and deploys,
 releases, monitors, routes, rolls back and operates agent versions safely at
 production scale.
 
-### Milestone 4 — Runtime Governance & Observability (in progress, 5/10)
+### Milestone 4 — Runtime Governance & Observability (in progress, 6/10)
 
 **Phase 4.1 — Runtime Telemetry & Trace Context Foundation.** The
 instrumentation contract the remaining nine sub-phases build on. Deliberately
@@ -962,6 +962,31 @@ more useful than omitting the field.
 
 And a finding is only ever a signal: nothing here can stop an execution. See
 [`docs/runtime/behavioral-signals.md`](docs/runtime/behavioral-signals.md).
+
+**Phase 4.6 — OpenTelemetry & Metrics Interoperability.** The platform now speaks
+OpenTelemetry at its boundary. An enterprise streams agent execution traces and
+operational metrics to Datadog, Azure Monitor, Grafana, Splunk, Elastic, or any
+OTLP collector by pointing at an endpoint — no runtime change, no vendor lock-in.
+
+The anti-lock-in property is structural, not a promise: the OpenTelemetry SDK is
+imported by exactly one module (`app/telemetry_export/sinks.py`, at function
+scope) and a test walks the AST of every other package to keep it that way.
+There is no vendor name anywhere in the code, so switching collectors is a
+config edit.
+
+And it is safe: a collector outage is an observability event, not an execution
+event. Export is **fail-open** and runs entirely off the hot path — a background
+dispatcher reads executions that have *already finished*, assembles their traces,
+and exports them after the fact, so there is no code path from an execution to an
+export to fail along. The buffer that makes retry possible is **bounded** — a
+hard cap measured in spans with a declared drop policy, never an unbounded queue
+that turns an observability outage into an out-of-memory. A recorded test runs a
+real execution with the collector down and proves the execution row, the
+telemetry events, and the audit rows are all untouched. Metrics are scraped over
+an authenticated, tenant-scoped `GET /metrics` with strictly bounded-cardinality
+labels. See [`docs/observability/opentelemetry.md`](docs/observability/opentelemetry.md)
+and [`metrics.md`](docs/observability/metrics.md), and
+[ADR-0011](docs/architecture/adr/0011-opentelemetry-export-as-a-fail-open-plane.md).
 
 ---
 
@@ -1456,12 +1481,13 @@ lifecycle — so it is replaced here with the actual current queue rather than l
 to read as pending. [`ROADMAP.md`](ROADMAP.md) is the maintained plan and
 [`REPO_STATE.md`](REPO_STATE.md) §9 the honest gap list.*
 
-**Milestone 3 is complete, and Milestone 4 is under way (2/10).** Phase 4.1
-shipped the instrumentation contract; Phase 4.2 built the trace explorer and
-full trace assembly on top of it, and — per ADR-0008 — proved with measurements
-that traces do not need a materialized span store. Next: Phase 4.3, the runtime
-governance engine, which will author the decisions 4.2's trace nodes already
-know how to display.
+**Milestone 3 is complete, and Milestone 4 is under way (6/10).** Phase 4.1
+shipped the instrumentation contract and 4.2 the trace explorer (no materialized
+span store, per ADR-0008); 4.3 added the fail-closed runtime governance engine,
+4.4 cost truth and reservation-enforced budgets, 4.5 deterministic behavioral
+signals, and 4.6 OpenTelemetry interoperability — traces and metrics to any OTLP
+collector, fail-open and off the hot path (ADR-0011). Next: Phase 4.7, SLOs and
+alerting on top of the 4.6 metrics surface.
 
 **Known gaps, stated plainly** (the full list is [`REPO_STATE.md`](REPO_STATE.md)
 §9): CAPTCHA verification is a placeholder; the Phase 3 analytics cost figures are

@@ -149,10 +149,17 @@ across every span kind instead of needing one per kind.
 `build()` ignores unknown keys rather than raising, so a caller assembling
 attributes from a domain row does not have to filter the row first.
 
-## There is no metrics backend yet
+## The metrics surface (Phase 4.6) and SLOs (4.7)
 
-Exporters are Phase 4.6 and SLOs are 4.7. The allowlist lands now anyway, because
-the cheapest moment to make a mistake impossible is before anything can make it.
+The allowlist landed in 4.1, before anything could misuse it — the cheapest
+moment to make a mistake impossible. **Phase 4.6** built the metrics surface on
+top of it: `GET /metrics` (Prometheus exposition, authenticated + tenant-scoped)
+and `metric_label_set()`, which reuses `HIGH_CARDINALITY_ATTRIBUTES` /
+`SENSITIVE_ATTRIBUTES` / `METRIC_DIMENSIONS` here as its denylist and allowlist,
+plus a small declared 4.6 extension for two bounded behavioral-finding enums.
+There is still no metrics *storage* backend and there will not be one — the
+customer's collector stores. SLOs and alerting are 4.7. See
+[metrics.md](./metrics.md).
 
 ## Testing
 

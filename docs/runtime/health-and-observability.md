@@ -71,9 +71,14 @@ search executions by trace, agent, version, environment, model, tool, status,
 error or time, and reconstruct any single execution's chronology from the
 existing rows. See [../observability/tracing.md](../observability/tracing.md).
 
+**Also implemented (Phase 4.6)**: export to an external tracing backend over
+OpenTelemetry — execution traces stream to any OTLP collector (Datadog, Grafana,
+Splunk, …) through an adapter that keeps the OTel SDK out of the core, fail-open
+so a collector outage never affects an execution; and a Prometheus metrics
+surface at `GET /metrics` (authenticated, tenant-scoped, bounded-cardinality
+labels). See [../observability/opentelemetry.md](../observability/opentelemetry.md)
+and [../observability/metrics.md](../observability/metrics.md).
+
 **Still not implemented**: the trace explorer *UI* (deferred to the observability
-center, 4.9), export to an external tracing backend such as OpenTelemetry (4.6),
-Prometheus-style metric names and a metrics backend (§52; 4.6/4.7 — the
-*cardinality rules* for them landed in 4.1, but nothing emits metrics yet), and
-alerting thresholds (§82; 4.7). The dashboard remains pull-based, not
-push-based.
+center, 4.9), and alerting thresholds / SLOs (§82; 4.7 — the metrics surface
+4.7 builds on landed in 4.6). The dashboard remains pull-based, not push-based.

@@ -2359,19 +2359,65 @@ frontend **327** unchanged (Behavior view deferred to 4.9).
 
 See [docs/runtime/behavioral-signals.md](docs/runtime/behavioral-signals.md).
 
-**Milestone 4 now has 5 of 10 sub-phases done.**
+### Phase 4.6 — OpenTelemetry & Metrics Interoperability ✅ (2026-08-31)
 
-**Next: Phase 4.6 — OpenTelemetry Export.** The trace context (4.1), assembled
-traces (4.2) and behavioral findings (4.5) all exist; 4.6 exports them to an
-external backend without any of them becoming dependent on one.
+**The platform speaks OpenTelemetry at its boundary — and a collector outage is
+an observability event, not an execution event.**
+
+- **The OTel SDK is behind one adapter package and nowhere else.**
+  `app/telemetry_export/sinks.py` is the only module that imports
+  `opentelemetry` (at function scope); a test walks the AST of every other
+  package and fails on a stray import. No vendor name in the code — switching
+  collectors is a config edit. [ADR-0011](docs/architecture/adr/0011-opentelemetry-export-as-a-fail-open-plane.md).
+- **Export is fail-open and off the hot path entirely.** A background
+  `ExportDispatcher` reads *already-terminal* executions, assembles their
+  traces (4.2), converts, and hands them to a sink. The runtime is never
+  instrumented — no code path from an execution to an export to fail along.
+- **The §36 proof is the gate**: a real execution completes normally with the
+  collector down — execution row byte-for-byte unchanged, no telemetry/audit
+  row written by export, errors visible via `exporter_health`, buffer bounded.
+  Also proven against a real `OTLPSpanExporter` on a dead port.
+- **Bounded buffering — never unbounded.** `BoundedSpanBuffer` caps on *spans*
+  with a declared full-policy (`drop_oldest` / `drop_newest` / `block_bounded`);
+  no "grow" option exists. The lock is never held across the network.
+- **Metrics scrape, not push.** `GET /metrics` — Prometheus text, tenant-scoped,
+  authenticated. Every label routed through 4.1's cardinality denylist +
+  `METRIC_DIMENSIONS`; a high-cardinality/sensitive label raises.
+- **Config**: platform default in `Settings`, per-environment override in
+  `Environment.policy["telemetry_export"]`. Manage route audited + idempotent;
+  header values never logged/audited/echoed.
+- **Extends ADR-0008**: exported spans are also derived; the domain row still
+  wins any disagreement. Plane discipline preserved — export never gates
+  execution, never a governance input; governance still fails closed.
+
+No new table, no migration (config in policy JSONB, health ephemeral). New
+dependency `opentelemetry-sdk` + `opentelemetry-exporter-otlp-proto-http`
+(1.44.0), behind the adapter only. `app/telemetry_export/` added; routes
+562 → **566**; one permission (`runtime.telemetry.export.manage`), one error
+code (`EXPORT_CONFIG_INVALID`), one audit event
+(`RUNTIME_TELEMETRY_EXPORT_CONFIGURED`); head stays `0049`. Backend
+**2,180 passed**, 0 failed, 1 deselected (2,129 + 51); frontend **327**
+unchanged (observability center is 4.9). Two existing 4.2 tests updated
+(intent-preserving, no production-code change): the route-prefix collision
+test for the two new routes, and the explorer query-plan test — loosened from
+naming the 0046 composite index to its documented invariant ("an
+organization-leading index, never a Seq Scan") after shared-database growth
+shifted the planner's bitmap-index choice for tiny tenants (reproduces on
+unmodified `main`).
+
+See [docs/observability/opentelemetry.md](docs/observability/opentelemetry.md)
+and [metrics.md](docs/observability/metrics.md).
+
+**Milestone 4 now has 6 of 10 sub-phases done.**
+
+**Next: Phase 4.7 — SLOs & Alerting.** The metrics surface (4.6) exposes the
+numbers; 4.7 decides what a bad number is and manages the alert lifecycle on
+top of it — without an alert rule ever becoming a governance input.
 
 > **Legacy deprecation scheduled.** `GET /analytics/cost` is deprecated in place
 > as of 4.4 and is scheduled for removal once Phase 4.9's observability center
 > replaces the Phase-3 analytics dashboard that consumes it. It keeps working
-> unchanged until then. The cost checkpoint built here
-reads existing cost and reserves nothing; 4.4 adds the budgets and reservations
-it will consult, which also closes the concurrent-execution gap ADR-0009
-records as residual risk.
+> unchanged until then.
 
 #### Milestone 4 rulings recorded so far
 
@@ -2389,6 +2435,8 @@ records as residual risk.
 | 10 | **Deterministic and explainable only** — no opaque scoring; a finding that cannot explain itself is not emitted | 4.5 | `docs/runtime/behavioral-signals.md` |
 | 11 | Behavioral findings are **signals**; enforcement stays 4.3's, and emission is non-gating | 4.5 | `app/behavior/` |
 | 12 | **Connector attribution is deferred, not invented** — the runtime-never-knows boundary holds | 4.5 | ACT-INT-FR-006 |
+| 13 | **Open standards at the boundary, no vendor in core** — the OTel SDK is behind one adapter; core imports nothing vendor-shaped (AST-asserted) | 4.6 | ADR-0011, `app/telemetry_export/` |
+| 14 | **Exporter failure ≠ execution failure** — export is fail-open telemetry, buffering is bounded (never an unbounded queue), export runs off the hot path | 4.6 | ADR-0011, `docs/observability/opentelemetry.md` |
 
 ## Future (Phase 3+)
 
@@ -2402,6 +2450,7 @@ the queue connector all remain driver-/backend-pending, not yet
 scheduled. Beyond that: retiring the legacy
 `/auth/login` surface (now the platform's only non-revocable
 credential), platform-layer MFA, SCIM bulk sync, Slack/webhook
-notifications, observability (Prometheus / OpenTelemetry), anomaly
+notifications, SLOs and alerting (4.7 — on top of the 4.6 metrics
+surface and OpenTelemetry export, both shipped), anomaly
 detection, load testing, a connector marketplace (Milestone 12), the
 visual Studio.

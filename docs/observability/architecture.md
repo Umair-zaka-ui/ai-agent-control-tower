@@ -268,10 +268,20 @@ another tenant's execution is indistinguishable from one that does not exist.
   than emitted alongside them. See
   [../runtime/behavioral-signals.md](../runtime/behavioral-signals.md).
 
+- ~~OpenTelemetry export (4.6).~~ Shipped in **Phase 4.6** — execution traces
+  and operational metrics stream to any OTLP collector through an adapter that
+  keeps the OTel SDK (and every vendor) out of the core. Export is fail-open —
+  this plane's non-gating posture extended to *export*: a collector outage never
+  affects an execution, buffering is bounded, and the dispatcher runs off the
+  hot path reading already-terminal executions. The exported spans are also
+  derived (ADR-0008 extended by
+  [ADR-0011](../architecture/adr/0011-opentelemetry-export-as-a-fail-open-plane.md)).
+  See [opentelemetry.md](./opentelemetry.md) and [metrics.md](./metrics.md).
+
 **Still out of scope:**
-OpenTelemetry export (4.6), SLOs and alerting (4.7), the full telemetry policy /
-retention / access system (4.8 — only the METADATA_ONLY baseline and the
-scrubber land here), the observability center (4.9), and hardening (4.10).
+SLOs and alerting (4.7), the full telemetry policy / retention / access system
+(4.8 — only the METADATA_ONLY baseline and the scrubber land here), the
+observability center (4.9), and hardening (4.10).
 
 It also changed no execution behaviour and duplicated no domain data. Every
 later M4 phase builds on this contract.
@@ -284,5 +294,11 @@ later M4 phase builds on this contract.
   metadata/content boundary (Phase 4.2)
 - [privacy.md](./privacy.md) — the scrubber, METADATA_ONLY, and the
   no-chain-of-thought rule
+- [opentelemetry.md](./opentelemetry.md) — the OTLP export adapter, fail-open
+  semantics, and the bounded buffer (Phase 4.6)
+- [metrics.md](./metrics.md) — the Prometheus metrics surface and its
+  bounded-cardinality rule (Phase 4.6)
 - [ADR-0008](../architecture/adr/0008-telemetry-as-a-derived-plane.md) — why
   telemetry is derived
+- [ADR-0011](../architecture/adr/0011-opentelemetry-export-as-a-fail-open-plane.md)
+  — why export is fail-open behind a replaceable adapter

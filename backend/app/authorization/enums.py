@@ -289,6 +289,16 @@ class AuthorizationAuditEvent(str, enum.Enum):
     # payload or a credential.
     RUNTIME_BUDGET_THRESHOLD_REACHED = "RUNTIME_BUDGET_THRESHOLD_REACHED"
     RUNTIME_BUDGET_BLOCKED = "RUNTIME_BUDGET_BLOCKED"
+    # OpenTelemetry & metrics interoperability (Phase 4.6, ACT-SRS-M4 §4.6,
+    # §17). Pointing the platform's telemetry export at a third-party collector
+    # (or turning it off) is a material configuration change -- it sends
+    # operational metadata off-platform -- so the endpoint/on-off change is
+    # audited. `meta` carries the environment id, the enabled flag, the
+    # protocol and the endpoint *host* (scheme+host+port, no path, no
+    # credentials) -- never a header value, which is where a vendor API key
+    # would sit. Routine per-span export is telemetry, not audit, and is not
+    # recorded here.
+    RUNTIME_TELEMETRY_EXPORT_CONFIGURED = "RUNTIME_TELEMETRY_EXPORT_CONFIGURED"
     RUNTIME_KILL_SWITCH_ACTIVATED = "RUNTIME_KILL_SWITCH_ACTIVATED"
     RUNTIME_ROLLBACK_COMPLETED = "RUNTIME_ROLLBACK_COMPLETED"
     # Enterprise Agent Registry (Phase 5.1 §67).

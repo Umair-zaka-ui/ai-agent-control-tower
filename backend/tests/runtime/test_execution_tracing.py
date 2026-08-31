@@ -504,24 +504,30 @@ def test_ac06_the_explorer_query_uses_the_index_and_does_not_scan(
     """Asserted against the real query plan, not inferred from timing.
 
     **What this asserts and what it deliberately does not.** The invariant that
-    must hold for every tenant is that the query reaches its rows through
-    ``ix_agent_executions_org_created`` and never sequentially scans
-    ``agent_executions``. That is checked here.
+    must hold for every tenant is that the query reaches its rows through an
+    **organization-leading index** on ``agent_executions`` and **never
+    sequentially scans** the table. That is checked here.
 
-    It does *not* assert the absence of a ``Sort`` node, and the reason is worth
-    recording rather than quietly dropping. For a tenant owning almost nothing --
-    which a freshly-registered test organization is -- Postgres correctly
-    prefers a bitmap index scan plus a trivial top-N sort over walking the index
-    in order, because sorting fourteen estimated rows is cheaper than an ordered
-    traversal. Asserting "no Sort" here would demand a plan that is *worse* for
-    the case being tested, and would fail against a correct planner.
+    It does *not* pin the specific index, and the reason is the same one the
+    docstring already gave for not asserting the absence of a ``Sort`` node. For
+    a tenant owning almost nothing -- a freshly-registered test organization --
+    Postgres correctly prefers a *bitmap* scan plus a trivial top-N sort over an
+    ordered index walk, and for the bitmap path it picks whichever
+    ``organization_id``-leading index is physically smaller. On a small table
+    that is ``ix_agent_executions_org_created`` (migration 0046); once the table
+    is large enough that the single-column ``ix_agent_executions_org`` (present
+    since Milestone 1) is meaningfully more compact, the planner picks that one
+    for the bitmap -- an equally index-backed plan, and still O(rows the tenant
+    owns), which for a tiny tenant is the right call. Pinning the composite by
+    name here would fail against a correct planner once the dev database grew,
+    which is exactly what happened (a value change in shared planner statistics,
+    not a code regression -- Phase 4.6, which touches neither this query nor its
+    indexes, changed nothing here and the failure reproduces on unmodified
+    ``main``). The *value* of the 0046 composite -- sort elision at volume -- is
+    guarded by :func:`test_ac06_at_volume_the_index_elides_the_sort`, which
+    remains specific.
 
-    The sort elision is a property of the query at *volume*, and it was measured
-    there: on the development database's busiest real tenant the same query
-    plans as ``Index Scan ... rows=50`` with no Sort node at all, against
-    ``Bitmap Heap Scan -> rows=500 -> top-N heapsort`` before migration 0046.
-    Both plans are recorded in ADR-0008, which is where a claim backed by a
-    measurement belongs."""
+    Both plans (before/after 0046, at volume) are recorded in ADR-0008."""
     org = uuid.UUID(admin["organization_id"])
     sql = ("SELECT id FROM agent_executions WHERE organization_id = :o "
            "ORDER BY created_at DESC LIMIT 50")
@@ -529,7 +535,9 @@ def test_ac06_the_explorer_query_uses_the_index_and_does_not_scan(
         text("EXPLAIN (ANALYZE) " + sql), {"o": org}))
 
     assert "Seq Scan on agent_executions" not in plan, plan
-    assert "ix_agent_executions_org_created" in plan, plan
+    # An organization-leading index, either one -- see the docstring.
+    assert ("ix_agent_executions_org_created" in plan
+            or "ix_agent_executions_org" in plan), plan
 
 
 def test_ac06_at_volume_the_index_elides_the_sort(db_session: Session) -> None:
@@ -809,8 +817,22 @@ def test_ac13_the_observability_prefix_does_not_collide(client: TestClient) -> N
     from fastapi.routing import APIRoute
 
     paths = [r.path for r in main_module.app.routes if isinstance(r, APIRoute)]
-    observability = [p for p in paths if p.startswith("/api/v1/observability")]
-    assert len(observability) == 3, observability
+    observability = {p for p in paths if p.startswith("/api/v1/observability")}
+    # 4.2's governed-observability trace surface: exactly these three.
+    assert {
+        "/api/v1/observability/traces",
+        "/api/v1/observability/traces/{trace_id}",
+        "/api/v1/observability/executions/{execution_id}/trace",
+    } <= observability
+    # 4.6 added the export-management surface under the same prefix; nothing else.
+    assert observability - {
+        "/api/v1/observability/traces",
+        "/api/v1/observability/traces/{trace_id}",
+        "/api/v1/observability/executions/{execution_id}/trace",
+    } == {
+        "/api/v1/observability/export/config",
+        "/api/v1/observability/export/health",
+    }
     assert not [p for p in observability if "analytics" in p]
     # And no duplicate path anywhere in the app.
     assert len(paths) == len(set((p, tuple(sorted(r.methods)))
