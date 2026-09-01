@@ -245,7 +245,8 @@ another tenant's execution is indistinguishable from one that does not exist.
 
 - ~~The trace explorer and timeline UI (4.2).~~ The explorer and full trace
   assembly shipped in **Phase 4.2** — see [tracing.md](./tracing.md). Its *UI*
-  is still deferred, to the observability center (4.9).
+  shipped in **Phase 4.9** as the Trace Explorer and Trace Detail views of the
+  observability center.
 - ~~The governance enforcement engine (4.3).~~ Shipped in **Phase 4.3**, and it
   is the deliberate **inverse of this plane**: governance fails *closed* where
   telemetry fails *open*, and the two now live inches apart inside the same
@@ -296,9 +297,15 @@ another tenant's execution is indistinguishable from one that does not exist.
   stronger, audited permission; per-class retention with a safe idempotent
   expiration sweep. See [privacy.md](./privacy.md), [retention.md](./retention.md),
   and [ADR-0013](../architecture/adr/0013-trace-content-capture-and-access-policy.md).
+- ~~The observability center (4.9).~~ Shipped in **Phase 4.9** — nine
+  per-persona operator views over the 4.1–4.8 engines (Runtime Overview, Trace
+  Explorer, Trace Detail, Cost Center, Governance Decisions, Behavior &
+  Anomalies, SLO Dashboard, Alert Center, Telemetry Policy). Read + trigger
+  only; the Trace Detail content pane inherits 4.8's access governance in full.
+  See [`../operations/observability-center.md`](../operations/observability-center.md).
 
 **Still out of scope:**
-The observability center (4.9) and hardening (4.10).
+Hardening and the milestone proof (4.10).
 
 It also changed no execution behaviour and duplicated no domain data. Every
 later M4 phase builds on this contract.

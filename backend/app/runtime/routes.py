@@ -2095,3 +2095,68 @@ def list_rollouts(agent_id: uuid.UUID | None = None,
     return OperationsReadModel(db).rollouts(
         actor, agent_id=agent_id, environment_id=environment_id,
         active_only=active_only, limit=min(max(limit, 1), 500))
+
+
+# --------------------------------------------------------------------------- #
+# Phase 4.9 -- the Enterprise Runtime Governance & Observability Center read
+# models (ACT-SRS-M4 §4.9). Read-only aggregation over the 4.1-4.8 engines --
+# nothing here computes domain state, and a test asserts no mutation call
+# appears in app/runtime/observability_center.py. Only two, because every other
+# 4.9 view is fed by an endpoint 4.1-4.8 already exposes; these two are
+# genuinely missing (the fleet-wide overview composite, and a tenant-wide
+# governance-decision list -- 4.3 only exposed the lineage per execution).
+#
+# Content is never served here: the Trace Detail content pane uses 4.8's
+# GET /observability/traces/{trace_id}/content, with its distinct
+# runtime.trace.content.view permission and its RUNTIME_TRACE_CONTENT_VIEWED
+# audit. This module adds no content route.
+# --------------------------------------------------------------------------- #
+@router.get("/overview", response_model=dict)
+def runtime_overview(actor: User = Depends(require_permission(_TELEMETRY)),
+                     db: Session = Depends(get_db)):
+    """M4-4.9-FR-001 -- the Runtime Overview screen in one request: execution
+    volume and success rate over 24h (``INSUFFICIENT_DATA`` below the 20-sample
+    floor, never rendered as 0%), spend today (flagged if any row is
+    estimated), open alerts by severity, worker health, SLO breach count, recent
+    behavioral anomalies, and the org's effective capture mode. Exporter health
+    is fetched by the screen from the 4.6 ``/observability/export/health``
+    endpoint -- ``app/runtime`` does not read the OpenTelemetry export plane."""
+    from app.runtime.observability_center import ObservabilityCenterReadModel
+
+    return ObservabilityCenterReadModel(db).overview(actor)
+
+
+@router.get("/governance/decisions", response_model=dict)
+def list_all_governance_decisions(
+    decision: str | None = Query(default=None),
+    checkpoint: str | None = Query(default=None),
+    agent_id: uuid.UUID | None = Query(default=None),
+    reason_code: str | None = Query(default=None),
+    since: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    actor: User = Depends(require_permission(_EXEC_VIEW)),
+    db: Session = Depends(get_db),
+):
+    """M4-4.9-FR-005 -- every material governance decision for this tenant,
+    newest first, filterable by decision / checkpoint / agent / reason code /
+    time. Phase 4.3 exposed this lineage only per execution; the Governance
+    Decisions view needs the fleet-wide list.
+
+    Metadata only -- ``reason`` is a platform-templated sentence (a ceiling, a
+    tool name, a model name), never a prompt or model output. Tenant-scoped;
+    another tenant's decisions are simply absent."""
+    from datetime import datetime
+
+    from app.runtime.observability_center import ObservabilityCenterReadModel
+
+    parsed_since = None
+    if since:
+        try:
+            parsed_since = datetime.fromisoformat(since)
+        except ValueError as exc:
+            raise IdentityError(ErrorCode.VALIDATION_ERROR,
+                                f"Invalid 'since' timestamp: {since!r}.") from exc
+    return ObservabilityCenterReadModel(db).governance_decisions(
+        actor, decision=decision, checkpoint=checkpoint, agent_id=agent_id,
+        reason_code=reason_code, since=parsed_since, limit=limit, offset=offset)

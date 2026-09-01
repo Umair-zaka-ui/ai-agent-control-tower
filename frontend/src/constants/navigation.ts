@@ -10,6 +10,7 @@ import {
   Settings,
   ShieldAlert,
   Rocket,
+  Gauge,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -66,6 +67,27 @@ export const PRIMARY_NAV: NavItem[] = [
       { label: 'Release history', path: ROUTES.OPS_HISTORY },
       { label: 'Worker fleet', path: ROUTES.OPS_FLEET },
       { label: 'Scheduler', path: ROUTES.OPS_SCHEDULER },
+    ],
+  },
+  {
+    // Phase 4.9 — the Enterprise Runtime Governance & Observability Center.
+    // The operator control plane where all of Milestone 4 becomes visible:
+    // health, traces, cost, governance decisions, behaviour, SLOs, alerts and
+    // telemetry policy. Sits under Releases because during an incident an
+    // operator moves between the two.
+    label: 'Observability',
+    path: ROUTES.OBS_OVERVIEW,
+    icon: Gauge,
+    roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.REVIEWER],
+    children: [
+      { label: 'Runtime Overview', path: ROUTES.OBS_OVERVIEW },
+      { label: 'Trace Explorer', path: ROUTES.OBS_TRACES },
+      { label: 'Cost Center', path: ROUTES.OBS_COST },
+      { label: 'Governance Decisions', path: ROUTES.OBS_GOVERNANCE },
+      { label: 'Behavior & Anomalies', path: ROUTES.OBS_BEHAVIOR },
+      { label: 'SLO Dashboard', path: ROUTES.OBS_SLOS },
+      { label: 'Alert Center', path: ROUTES.OBS_ALERTS },
+      { label: 'Telemetry Policy', path: ROUTES.OBS_POLICY },
     ],
   },
   {
