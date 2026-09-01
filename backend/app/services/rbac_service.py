@@ -201,6 +201,24 @@ PERMISSION_CATALOG: dict[str, str] = {
     # different people, so they get separate codes rather than one broad one.
     "runtime.slo.manage": "Define, edit and evaluate runtime service objectives (SLOs)",
     "runtime.alert.manage": "Acknowledge, resolve and suppress runtime alerts",
+    # Phase 4.8 -- telemetry privacy, retention & access governance. Three new
+    # codes. `runtime.trace.content.view` is registered here for the first time
+    # (4.1 and 4.2 deliberately left it unregistered, naming it in code so the
+    # boundary had an owner; this phase is that owner). It is **strictly
+    # stronger** than `runtime.telemetry.view`: seeing that a tool failed 34% of
+    # the time is the metadata view; reading the PHI in that tool's arguments is
+    # this. It is never implied by executing an agent or by holding the metadata
+    # view -- a grant is deliberate, and every use is audited. The two
+    # `telemetry_policy` codes gate configuring what is captured and for how
+    # long (an admin/governance power), separate from the trace-content read.
+    "runtime.trace.content.view":
+        "Read trace content (prompts, tool arguments, tool results, model output) "
+        "-- distinct from and stronger than the metadata trace view; audited on every use",
+    "runtime.telemetry_policy.view":
+        "View telemetry capture policies, effective capture mode and retention policies",
+    "runtime.telemetry_policy.manage":
+        "Configure telemetry capture policies (what content is captured) and "
+        "retention policies (how long each telemetry class is kept)",
     "runtime.approval.review": "Approve or reject runtime approval requests",
     "runtime.kill_switch.execute": "Activate the runtime kill switch at any scope",
     # Phase 4.3 -- runtime governance. One code, not a family: this guards

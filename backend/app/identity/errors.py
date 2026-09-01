@@ -345,6 +345,23 @@ class ErrorCode:
     SLO_NOT_FOUND = "SLO_NOT_FOUND"
     ALERT_NOT_FOUND = "ALERT_NOT_FOUND"
     ALERT_TRANSITION_INVALID = "ALERT_TRANSITION_INVALID"
+    # Telemetry privacy, retention & access governance (Phase 4.8, ACT-SRS-M4
+    # §4.8).
+    #
+    # `TELEMETRY_POLICY_INVALID` / `RETENTION_POLICY_INVALID` are validation
+    # failures on a capture- or retention-policy write (an unknown mode, an
+    # unknown classification, a retention below an evidence-class floor) -- 422.
+    # `TRACE_CONTENT_ACCESS_DENIED` is 403 and is deliberately *distinct* from
+    # the generic `PERMISSION_DENIED`: it means the trace exists for this tenant
+    # but the caller holds only the metadata view, not `runtime.trace.content.
+    # view`. A trace that does not exist for the tenant is `TRACE_NOT_FOUND`
+    # (404) -- cross-tenant existence is never leaked (§34, M4-4.8-FR-011).
+    # None of these ever reaches an execution -- capture and retention are
+    # non-gating (§9).
+    TELEMETRY_POLICY_INVALID = "TELEMETRY_POLICY_INVALID"
+    TELEMETRY_POLICY_NOT_FOUND = "TELEMETRY_POLICY_NOT_FOUND"
+    RETENTION_POLICY_INVALID = "RETENTION_POLICY_INVALID"
+    TRACE_CONTENT_ACCESS_DENIED = "TRACE_CONTENT_ACCESS_DENIED"
     EXECUTION_ALREADY_COMPLETED = "EXECUTION_ALREADY_COMPLETED"
     EXECUTION_CANCELLED = "EXECUTION_CANCELLED"
     EXECUTION_TIMED_OUT = "EXECUTION_TIMED_OUT"
@@ -762,6 +779,10 @@ _STATUS: dict[str, int] = {
     ErrorCode.SLO_NOT_FOUND: status.HTTP_404_NOT_FOUND,
     ErrorCode.ALERT_NOT_FOUND: status.HTTP_404_NOT_FOUND,
     ErrorCode.ALERT_TRANSITION_INVALID: status.HTTP_409_CONFLICT,
+    ErrorCode.TELEMETRY_POLICY_INVALID: status.HTTP_422_UNPROCESSABLE_ENTITY,
+    ErrorCode.TELEMETRY_POLICY_NOT_FOUND: status.HTTP_404_NOT_FOUND,
+    ErrorCode.RETENTION_POLICY_INVALID: status.HTTP_422_UNPROCESSABLE_ENTITY,
+    ErrorCode.TRACE_CONTENT_ACCESS_DENIED: status.HTTP_403_FORBIDDEN,
     ErrorCode.EXECUTION_ALREADY_COMPLETED: status.HTTP_409_CONFLICT,
     ErrorCode.EXECUTION_CANCELLED: status.HTTP_409_CONFLICT,
     ErrorCode.EXECUTION_TIMED_OUT: status.HTTP_504_GATEWAY_TIMEOUT,

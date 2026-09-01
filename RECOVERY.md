@@ -1,8 +1,9 @@
 # Backup and system-migration guide
 
-**Last verified 2026-08-28** after Phase 4.5 (behavioral signals). Facts that matter for a restore,
+**Last verified 2026-09-01** after Phase 4.8 (telemetry privacy, retention & access governance);
+the 4.6/4.7/4.8 sections below were added in their own passes. Facts that matter for a restore,
 all re-checked live rather than carried forward: migration head
-**`0049_behavioral_signals`**, **129 tables** (128 in `Base.metadata` — Alembic
+**`0051_telemetry_privacy`**, **135 tables** (134 in `Base.metadata` — Alembic
 owns `alembic_version` and it is not a model), PostgreSQL **17.10** locally,
 `backend/.venv` on Python **3.13.14**, Node **v24.18.0**. Sections naming a
 version were corrected in the 2026-08-14 pass — the previous text said Python
@@ -27,12 +28,12 @@ nothing in it is authoritative and nothing in it needs special handling:
 - **Traces need no recovery at all.** Spans are not stored; they are recomputed
   by pure function from the domain rows. A restored database produces
   byte-identical span ids for every execution it contains.
-- The **capture baseline is durable configuration, and it is a constant**:
-  `METADATA_ONLY`, defined in `app/observability/capture.py`, not in the
-  database and not in an environment variable. A restore cannot lose it, and a
-  misconfigured environment cannot silently widen it. Phase 4.8 moves this to
-  per-environment policy, at which point it becomes restorable state and this
-  section must be revisited.
+- The **capture baseline is durable configuration**. Through 4.7 it was a
+  constant (`METADATA_ONLY` in `app/observability/capture.py`). **Phase 4.8
+  makes it restorable state** — see the Phase 4.8 section below. The *default*
+  when no policy row is present is still the constant `METADATA_ONLY`, so a
+  restore that loses the `telemetry_capture_policies` table entirely fails safe
+  (less capture), never toward `FULL_CONTENT`.
 - `agent_executions.request_id` and `runtime_events.span_id` are nullable and
   were never backfilled, so a restore to a pre-4.1 dump followed by
   `alembic upgrade head` produces a correct, fully-traceable database with those
@@ -232,6 +233,34 @@ and the split is deliberate.**
   a soft pointer; if that evidence is now missing, the `context` JSONB still
   carries a self-contained copy of the explanation, so the alert remains
   readable — it just cannot be re-joined to a row that no longer exists.
+
+**Phase 4.8 (telemetry privacy, retention & access) adds durable state, and a
+restore must not resurrect purged content or reset a policy.**
+
+- **Capture and retention policies are durable configuration.**
+  `telemetry_capture_policies` and `telemetry_retention_policies` are the only
+  place a tenant's choices live — there is no code default that stands in for a
+  missing row except the platform constant `METADATA_ONLY` (capture) and the
+  per-class `DEFAULT_RETENTION_DAYS` (retention). A restore brings back exactly
+  the policies as they were at snapshot time. **If the tables are lost
+  entirely, resolution falls back to `METADATA_ONLY` and the default retention
+  windows — the safe direction (less capture), never `FULL_CONTENT`.**
+- **A restart never resurrects purged content.** `trace_content` rows deleted by
+  a retention sweep are gone; a restore from a *newer* dump does not bring them
+  back, and a restore from an *older* dump followed by `alembic upgrade head`
+  simply carries whatever `trace_content` that dump held — the retention sweep
+  is re-run on the next scheduled/manual `POST .../retention/run` and re-expires
+  anything past its window. The sweep is idempotent, so re-running it is safe.
+- **`trace_content` is derived and rebuildable.** It is materialised from the
+  domain rows (`execution_messages`, payload columns) on the next authorised
+  content view. A restore that loses `trace_content` but keeps the domain rows
+  loses only the cached, redacted copy — the next content view re-materialises
+  it under whatever capture policy is then in force. (This means a policy
+  *loosened* after a restore will, on the next view, materialise content for
+  older executions — the same materialise-on-read behaviour documented in
+  `privacy.md`, not a restore anomaly.)
+- **Nothing in the capture or retention path can affect an execution**, restored
+  or live — it is telemetry-plane, non-gating (§9).
 
 > **Read "Encryption keys" below before trusting any snapshot.** A verified
 > database dump plus a Git bundle is *not* sufficient to recover this platform's

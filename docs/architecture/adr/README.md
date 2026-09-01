@@ -31,6 +31,7 @@ rejected*.
 | [0010](./0010-budget-reservation-semantics.md) | Budgets are enforced by reservation, and the guarantee is about reservations | Accepted |
 | [0011](./0011-opentelemetry-export-as-a-fail-open-plane.md) | OpenTelemetry export is a fail-open plane behind a replaceable adapter | Accepted |
 | [0012](./0012-alerts-as-signal-creation-not-notification.md) | An alert is a durable signal; creation is not notification | Accepted |
+| [0013](./0013-trace-content-capture-and-access-policy.md) | Trace content is a governed, separately-stored, separately-permissioned data class | Accepted |
 
 ## Status values
 

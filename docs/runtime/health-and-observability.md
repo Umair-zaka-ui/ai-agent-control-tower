@@ -87,7 +87,17 @@ signal, not a notification: nothing here delivers an alert anywhere. See
 [`../operations/slos.md`](../operations/slos.md) and
 [`../operations/alerts.md`](../operations/alerts.md).
 
-**Still not implemented**: the trace explorer *UI* and the SLO Dashboard / Alert
-Center (deferred to the observability center, 4.9), and **notification delivery**
-for alerts (a future integration — 4.7 built the signal, not the notifier). The
-dashboard remains pull-based, not push-based.
+**Also implemented (Phase 4.8)**: telemetry capture policy
+(`METADATA_ONLY` / `REDACTED_CONTENT` / `FULL_CONTENT` / `DISABLED`) per tenant /
+environment / agent / classification, defaulting conservatively; trace **content**
+served from `GET /api/v1/observability/traces/{trace_id}/content` — scrubbed of
+secrets, redacted per classification, chain-of-thought never included — gated by
+`runtime.trace.content.view` (a distinct, stronger permission, audited on every
+use); and per-class retention with a safe, idempotent expiration sweep. See
+[`../observability/privacy.md`](../observability/privacy.md) and
+[`../observability/retention.md`](../observability/retention.md).
+
+**Still not implemented**: the trace explorer *UI*, the SLO Dashboard / Alert
+Center, and a Telemetry Policy admin view (deferred to the observability center,
+4.9), and **notification delivery** for alerts (a future integration — 4.7 built
+the signal, not the notifier). The dashboard remains pull-based, not push-based.

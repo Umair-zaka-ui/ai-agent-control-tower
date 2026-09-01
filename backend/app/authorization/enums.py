@@ -317,6 +317,18 @@ class AuthorizationAuditEvent(str, enum.Enum):
     RUNTIME_ALERT_ACKNOWLEDGED = "RUNTIME_ALERT_ACKNOWLEDGED"
     RUNTIME_ALERT_RESOLVED = "RUNTIME_ALERT_RESOLVED"
     RUNTIME_ALERT_SUPPRESSED = "RUNTIME_ALERT_SUPPRESSED"
+    # Telemetry privacy, retention & access governance (Phase 4.8, ACT-SRS-M4
+    # §4.8, §17). `_POLICY_CHANGED` covers every capture- and retention-policy
+    # write. `_TRACE_CONTENT_VIEWED` is emitted on **every** successful content
+    # view (M4-4.8-FR-022) -- it records the actor and the resources, never the
+    # content itself (the audit is of the access, not the payload).
+    # `_RETENTION_RUN` records a sweep that actually deleted something (class +
+    # count). Routine reads and empty sweeps are not audited -- they are
+    # telemetry-plane facts, not administrative changes.
+    RUNTIME_TELEMETRY_POLICY_CHANGED = "RUNTIME_TELEMETRY_POLICY_CHANGED"
+    RUNTIME_TRACE_CONTENT_VIEWED = "RUNTIME_TRACE_CONTENT_VIEWED"
+    RUNTIME_TRACE_EXPORTED = "RUNTIME_TRACE_EXPORTED"
+    RUNTIME_TELEMETRY_RETENTION_RUN = "RUNTIME_TELEMETRY_RETENTION_RUN"
     RUNTIME_KILL_SWITCH_ACTIVATED = "RUNTIME_KILL_SWITCH_ACTIVATED"
     RUNTIME_ROLLBACK_COMPLETED = "RUNTIME_ROLLBACK_COMPLETED"
     # Enterprise Agent Registry (Phase 5.1 §67).

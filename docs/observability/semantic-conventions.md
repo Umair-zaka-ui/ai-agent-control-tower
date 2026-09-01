@@ -178,4 +178,8 @@ guard — adding it to the set adds a test for it.
 ## See also
 
 - [architecture.md](./architecture.md) — the three-plane model and trace assembly
-- [privacy.md](./privacy.md) — what may be captured at all
+- [privacy.md](./privacy.md) — capture policy, the four modes, and
+  redact-before-persist (Phase 4.8); the metadata attributes here are what
+  `METADATA_ONLY` captures, and the denylist above is reused by 4.8's
+  classification redaction
+- [retention.md](./retention.md) — per-class retention (Phase 4.8)

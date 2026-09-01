@@ -17,8 +17,12 @@ runtime change, no vendor SDK in the platform, no lock-in — swapping Datadog f
 Grafana for Splunk is editing one config value.
 
 This phase **exports** what phases 4.1–4.5 already produce. It creates no new
-telemetry semantics. It builds no telemetry retention
-or content policy (4.8), and no operator center (4.9).
+telemetry semantics, and no operator center (4.9). Telemetry retention and
+content-capture policy are **Phase 4.8's** — see
+[privacy.md](./privacy.md) and [retention.md](./retention.md). What 4.6 exports
+is trace **metadata** (the same derived spans the 4.2 assembler produces);
+exported spans carry no prompt, tool argument, tool result or model output, so
+the content-capture policy does not change what leaves over OTLP.
 
 ## The adapter boundary
 

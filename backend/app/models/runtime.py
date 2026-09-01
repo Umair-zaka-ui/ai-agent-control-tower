@@ -2242,3 +2242,130 @@ class RuntimeAlert(Base, UUIDPrimaryKeyMixin):
     suppressed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+# --------------------------------------------------------------------------- #
+# Phase 4.8 -- telemetry privacy, retention & access governance
+# (ACT-SRS-M4 §3.5, §4.8, §7, §14, §16, §17, §24, §34; migration 0051).
+# --------------------------------------------------------------------------- #
+class TelemetryCapturePolicy(Base, UUIDPrimaryKeyMixin):
+    """M4-4.8-FR-001..004 -- one capture-policy row for a scope.
+
+    A row applies to the intersection of the scope columns that are set: a row
+    with only ``organization_id`` is the tenant default; adding
+    ``environment_id`` narrows it to one environment; adding ``agent_id`` and/or
+    ``classification`` narrows it further. ``organization_id IS NULL`` is the
+    *platform default* row (there is exactly one, seeded conservatively).
+
+    Resolution (``app.telemetry_privacy.policy.resolve``) walks most-specific
+    first: ``classification > agent > environment > tenant > platform-default``.
+    The effective mode is one of ``METADATA_ONLY`` / ``REDACTED_CONTENT`` /
+    ``FULL_CONTENT`` / ``DISABLED``; a production or sensitively-classified
+    scope with no explicit row resolves to ``METADATA_ONLY`` (never
+    ``FULL_CONTENT``), and a malformed/absent policy fails toward *less*
+    capture, not more.
+
+    Never holds a secret (the rule shared with every other policy row in this
+    codebase)."""
+
+    __tablename__ = "telemetry_capture_policies"
+    __table_args__ = (
+        CheckConstraint(
+            "mode IN ('METADATA_ONLY','REDACTED_CONTENT','FULL_CONTENT','DISABLED')",
+            name="ck_telemetry_capture_policies_mode"),
+    )
+
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=True, index=True)
+    environment_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("environments.id", ondelete="CASCADE"), nullable=True)
+    agent_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agents.id", ondelete="CASCADE"), nullable=True)
+    classification: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    mode: Mapped[str] = mapped_column(String(20), nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class TelemetryRetentionPolicy(Base, UUIDPrimaryKeyMixin):
+    """M4-4.8-FR-030..031 -- retention in days for one telemetry class.
+
+    Six classes, not one global period: ``metrics_aggregate`` /
+    ``trace_metadata`` / ``trace_content`` / ``alert_history`` /
+    ``governance_decision`` / ``financial_record``. Financial and
+    governance/audit evidence has a longer floor than detailed content
+    payloads (§24) -- see ``app.telemetry_privacy.retention.RETENTION_FLOORS``.
+    ``organization_id IS NULL`` is the platform-default row."""
+
+    __tablename__ = "telemetry_retention_policies"
+    __table_args__ = (
+        CheckConstraint(
+            "telemetry_class IN ('metrics_aggregate','trace_metadata','trace_content',"
+            "'alert_history','governance_decision','financial_record')",
+            name="ck_telemetry_retention_policies_class"),
+        CheckConstraint("retention_days > 0", name="ck_telemetry_retention_policies_days"),
+    )
+
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=True, index=True)
+    telemetry_class: Mapped[str] = mapped_column(String(32), nullable=False)
+    retention_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class TraceContent(Base, UUIDPrimaryKeyMixin):
+    """M4-4.8-FR-010..012, FR-032 -- the governed telemetry copy of an
+    execution's content.
+
+    Materialised on the first authorised content view and never before. It is a
+    *view* of domain rows (``execution_messages``,
+    ``agent_executions.input_payload/output_payload``,
+    ``tool_calls.input_summary/output_summary``), and it deliberately does not
+    share their lifetime: the domain rows are authoritative and outlive this,
+    while this expires on the ``trace_content`` retention schedule. Secret
+    scrubbing (§14) and classification redaction run **before** a row is written
+    here -- ``body`` is never persisted raw, in any mode. ``mode_applied``
+    records which capture mode produced the row; ``redacted`` / ``secret_scrubbed``
+    say what was removed. No chain-of-thought reaches this table in any mode
+    (§7) -- ``app.observability.capture.strip_reasoning`` runs first."""
+
+    __tablename__ = "trace_content"
+    __table_args__ = (
+        CheckConstraint(
+            "mode_applied IN ('METADATA_ONLY','REDACTED_CONTENT','FULL_CONTENT','DISABLED')",
+            name="ck_trace_content_mode"),
+        UniqueConstraint("execution_id", "source_table", "source_id", "sequence",
+                         name="uq_trace_content_source"),
+        Index("ix_trace_content_created", "created_at"),
+        Index("ix_trace_content_org_execution", "organization_id", "execution_id"),
+    )
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False, index=True)
+    execution_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agent_executions.id", ondelete="CASCADE"),
+        nullable=False, index=True)
+    trace_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    source_table: Mapped[str] = mapped_column(String(32), nullable=False)
+    source_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    role: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    classification: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    mode_applied: Mapped[str] = mapped_column(String(20), nullable=False)
+    redacted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    secret_scrubbed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    body: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now())
