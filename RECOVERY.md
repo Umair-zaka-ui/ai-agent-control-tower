@@ -1,8 +1,11 @@
 # Backup and system-migration guide
 
-**Last verified 2026-09-01** after Phase 4.8 (telemetry privacy, retention & access governance);
-the 4.6/4.7/4.8 sections below were added in their own passes. Facts that matter for a restore,
-all re-checked live rather than carried forward: migration head
+**Last verified 2026-09-01** after Phase 4.9 (the Observability Center);
+the 4.6/4.7/4.8 sections below were added in their own passes. **Phase 4.9 added no
+durable state** — it is the operator frontend plus two read-only aggregation
+endpoints (`app/runtime/observability_center.py`), no migration, no new table, no
+materialised read model; a restore needs nothing new for it. Facts that matter for
+a restore, all re-checked live rather than carried forward: migration head
 **`0051_telemetry_privacy`**, **135 tables** (134 in `Base.metadata` — Alembic
 owns `alembic_version` and it is not a model), PostgreSQL **17.10** locally,
 `backend/.venv` on Python **3.13.14**, Node **v24.18.0**. Sections naming a

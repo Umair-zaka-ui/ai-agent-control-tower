@@ -97,7 +97,15 @@ use); and per-class retention with a safe, idempotent expiration sweep. See
 [`../observability/privacy.md`](../observability/privacy.md) and
 [`../observability/retention.md`](../observability/retention.md).
 
-**Still not implemented**: the trace explorer *UI*, the SLO Dashboard / Alert
-Center, and a Telemetry Policy admin view (deferred to the observability center,
-4.9), and **notification delivery** for alerts (a future integration — 4.7 built
-the signal, not the notifier). The dashboard remains pull-based, not push-based.
+**Also implemented (Phase 4.9)**: the **Enterprise Runtime Governance &
+Observability Center** — nine per-persona operator views over the 4.1–4.8
+engines (Runtime Overview, Trace Explorer, Trace Detail, Cost Center, Governance
+Decisions, Behavior & Anomalies, SLO Dashboard, Alert Center, Telemetry Policy).
+Read + trigger only; the Trace Detail content pane renders content only to
+`runtime.trace.content.view` holders, through 4.8's audited endpoint. See
+[`../operations/observability-center.md`](../operations/observability-center.md).
+
+**Still not implemented**: **notification delivery** for alerts (a future
+integration — 4.7 built the signal, not the notifier), and the 4.10 hardening
+pass / end-to-end milestone proof. The dashboard remains pull-based, not
+push-based.

@@ -2499,11 +2499,58 @@ is 4.9).
 See [docs/observability/privacy.md](docs/observability/privacy.md) and
 [docs/observability/retention.md](docs/observability/retention.md).
 
-**Milestone 4 now has 8 of 10 sub-phases done.**
+### Phase 4.9 — Enterprise Runtime Governance & Observability Center ✅ (2026-09-01)
 
-**Next: Phase 4.9 — the observability center.** 4.1–4.8 built the telemetry,
-tracing, governance, cost, behavior, export, SLO/alert and privacy layers; 4.9
-assembles the operator-facing center that safely exposes them.
+**The operator control plane where all of Milestone 4 becomes visible. The M4
+analogue of M3's Release Operations Center (3.10), same pattern: read + trigger
+only, server authoritative, truthful state, dangerous actions
+confirmation-gated. Closes Gate M.**
+
+- **Nine per-persona operator views** (`frontend/src/modules/observability/`):
+  Runtime Overview, Trace Explorer, Trace Detail, Cost Center, Governance
+  Decisions, Behavior & Anomalies, SLO Dashboard, Alert Center, Telemetry
+  Policy. Reuses the 3.10 frontend pattern and components (`ConfirmActionDialog`
+  / `useGuardedAction` imported verbatim). No new design system.
+- **Per-persona assembly (§29)** — a persona lens (Platform Engineer / SRE /
+  Security-CISO / Governance Officer / FinOps / Eng-Management / CIO-CTO)
+  narrows the visible views; it never grants access (each view is
+  permission-gated, the server re-authorizes), and the choice is a
+  `localStorage` convenience.
+- **Content governance inherited from 4.8, in full** — the Trace Detail content
+  pane renders content only to `runtime.trace.content.view` holders (a
+  metadata-only operator sees a truthful gated message, never the content);
+  fetches content **only** through 4.8's audited endpoint (no bypass — a test
+  asserts one `apiClient` `/content` call); shows capture mode truthfully
+  (`METADATA_ONLY`/`DISABLED` → "no content captured, not an error"); honours
+  404-vs-403.
+- **Read + trigger; every action is an existing 4.x operation** (alert
+  ack/resolve/suppress → 4.7; capture-policy edit + retention run → 4.8). The
+  server authorizes, isolates by tenant, honours idempotency, audits.
+- **Dangerous actions confirmation-gated** — suppress-with-reason, raise capture
+  to a content mode (type-to-confirm), run retention. Truthful state throughout
+  (burned budget "spent", `INSUFFICIENT_DATA` its own state, degraded exporter
+  banner). Concurrency conflicts surface and refresh, never silent retry.
+- **Two new read-only backend aggregation endpoints** in
+  `app/runtime/observability_center.py` (read-only by construction, AST-asserted):
+  `GET /api/v1/runtime/overview` (the fleet composite; `success_rate` is `null`
+  below the 20-sample floor, never 0%; exporter health stays out — `app/runtime`
+  never reads the export plane) and `GET /api/v1/runtime/governance/decisions`
+  (the tenant-wide decision list 4.3 never exposed; `reason` is a templated
+  sentence, never content).
+
+**No migration, no new table** — this phase reads existing data. Head stays
+`0051_telemetry_privacy`. Routes 588 → **590** (+2); no new permission, error
+code or audit event. **32 new frontend tests** + **8 new backend tests**, no
+existing test changed. Frontend **359 passed** (327 + 32); backend **2,265
+passed**, 0 failed, 1 deselected (2,257 + 8).
+
+See [docs/operations/observability-center.md](docs/operations/observability-center.md).
+
+**Milestone 4 now has 9 of 10 sub-phases done.**
+
+**Next: Phase 4.10 — hardening and the milestone proof.** The last phase: an
+end-to-end demonstration tying trace → governance → cost → redaction → audit →
+export into one runtime-governed execution, plus the hardening pass.
 
 > **Legacy deprecation scheduled.** `GET /analytics/cost` is deprecated in place
 > as of 4.4 and is scheduled for removal once Phase 4.9's observability center
@@ -2533,6 +2580,8 @@ assembles the operator-facing center that safely exposes them.
 | 17 | **Content is a distinct data class** — a dedicated `trace_content` store (not redact-in-place), scrubbed + redacted before persist, gated by `runtime.trace.content.view` (distinct, stronger, audited), never implied by execute/metadata | 4.8 | ADR-0013, `docs/observability/privacy.md` |
 | 18 | **Conservative capture default** — production/sensitive resolves to `METADATA_ONLY`, never `FULL_CONTENT` without an explicit policy; a misconfiguration fails toward *less* capture | 4.8 | `app/telemetry_privacy/policy.py` |
 | 19 | **Retention deletes telemetry, never domain truth** — per-class expiry; `governance_decision`/`financial_record` retain-only; a `trace_content` purge spares the execution row | 4.8 | ADR-0013, `docs/observability/retention.md` |
+| 20 | **The operator center is read + trigger only** — no new domain logic; two read-only aggregation endpoints (AST-asserted no-mutation); every action is an existing 4.x operation the server re-authorizes | 4.9 | `app/runtime/observability_center.py`, `docs/operations/observability-center.md` |
+| 21 | **The center renders content only through 4.8's audited endpoint** — no bypass route; a metadata-only operator sees a truthful gated state, not the content and not an error; capture mode shown truthfully; 404-vs-403 honoured | 4.9 | `docs/operations/observability-center.md` |
 
 ## Future (Phase 3+)
 

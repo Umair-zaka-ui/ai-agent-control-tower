@@ -123,6 +123,20 @@ export const ROUTES = {
   OPS_ROLLBACK: '/operations/rollback',
   OPS_FLEET: '/operations/fleet',
   OPS_SCHEDULER: '/operations/scheduler',
+
+  // Phase 4.9 — the Enterprise Runtime Governance & Observability Center. The
+  // operator-facing control plane where all of Milestone 4 becomes visible:
+  // health, traces, cost, governance decisions, behavior, SLOs, alerts and
+  // telemetry policy. Read + trigger only; the server authorizes everything.
+  OBS_OVERVIEW: '/observability',
+  OBS_TRACES: '/observability/traces',
+  OBS_TRACE_DETAIL: '/observability/traces/:executionId',
+  OBS_COST: '/observability/cost',
+  OBS_GOVERNANCE: '/observability/governance',
+  OBS_BEHAVIOR: '/observability/behavior',
+  OBS_SLOS: '/observability/slos',
+  OBS_ALERTS: '/observability/alerts',
+  OBS_POLICY: '/observability/policy',
   /** ABAC administration (Phase 4.3.5 §33). */
   ABAC_POLICIES: '/authorization/abac',
   ABAC_SIMULATOR: '/authorization/abac/simulator',

@@ -29,6 +29,17 @@ import {
   WorkerFleetPage,
 } from '@/modules/operations'
 import {
+  AlertCenterPage,
+  BehaviorAnomaliesPage,
+  CostCenterPage,
+  GovernanceDecisionsPage,
+  RuntimeOverviewPage as ObservabilityOverviewPage,
+  SloDashboardPage,
+  TelemetryPolicyPage,
+  TraceDetailPage,
+  TraceExplorerPage,
+} from '@/modules/observability'
+import {
   AgentDetailsPage,
   AgentEditPage,
   AgentsListPage,
@@ -330,6 +341,20 @@ export function AppRoutes() {
           <Route path={ROUTES.OPS_ROLLBACK} element={<RollbackWizardPage />} />
           <Route path={ROUTES.OPS_FLEET} element={<WorkerFleetPage />} />
           <Route path={ROUTES.OPS_SCHEDULER} element={<SchedulerJobsPage />} />
+          {/* Phase 4.9 — the Enterprise Runtime Governance & Observability
+              Center. Nine operator views over the Milestone 4 engines; read +
+              trigger only, the server authorizes everything, and the Trace
+              Detail content pane is governed by 4.8's runtime.trace.content.view
+              permission and its per-view audit. */}
+          <Route path={ROUTES.OBS_OVERVIEW} element={<ObservabilityOverviewPage />} />
+          <Route path={ROUTES.OBS_TRACES} element={<TraceExplorerPage />} />
+          <Route path={ROUTES.OBS_TRACE_DETAIL} element={<TraceDetailPage />} />
+          <Route path={ROUTES.OBS_COST} element={<CostCenterPage />} />
+          <Route path={ROUTES.OBS_GOVERNANCE} element={<GovernanceDecisionsPage />} />
+          <Route path={ROUTES.OBS_BEHAVIOR} element={<BehaviorAnomaliesPage />} />
+          <Route path={ROUTES.OBS_SLOS} element={<SloDashboardPage />} />
+          <Route path={ROUTES.OBS_ALERTS} element={<AlertCenterPage />} />
+          <Route path={ROUTES.OBS_POLICY} element={<TelemetryPolicyPage />} />
           {/* ABAC administration (Phase 4.3.5 §33) */}
           <Route path={ROUTES.ABAC_POLICIES} element={<ABACPoliciesPage />} />
           <Route path={`${ROUTES.ABAC_POLICIES}/new`} element={<CreateABACPolicyPage />} />
