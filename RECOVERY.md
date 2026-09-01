@@ -1,13 +1,24 @@
 # Backup and system-migration guide
 
-**Last verified 2026-09-01** after Phase 4.9 (the Observability Center);
-the 4.6/4.7/4.8 sections below were added in their own passes. **Phase 4.9 added no
-durable state** — it is the operator frontend plus two read-only aggregation
-endpoints (`app/runtime/observability_center.py`), no migration, no new table, no
-materialised read model; a restore needs nothing new for it. Facts that matter for
-a restore, all re-checked live rather than carried forward: migration head
-**`0051_telemetry_privacy`**, **135 tables** (134 in `Base.metadata` — Alembic
-owns `alembic_version` and it is not a model), PostgreSQL **17.10** locally,
+**Last verified 2026-09-02** after Phase 4.10 (Milestone 4 proof & hardening);
+the 4.6/4.7/4.8 sections below were added in their own passes. **Phases 4.9 and
+4.10 added no durable state** — 4.9 is the operator frontend plus two read-only
+aggregation endpoints, and 4.10 is a proof/test phase with no product code at
+all. `test_milestone_4_proof.py::test_ac11` *proves* the recovery property
+directly: after a simulated restart (a fresh `Session`), the governance policy,
+the budget, the capture policy and an `OPEN` alert are all still there and
+effective, nothing is reset, `resolve_capture_mode` still returns the configured
+mode, and no phantom worker appears. **The M4 durable-state inventory is final**
+— see the per-phase sections below (4.1 none · 4.2 none · 4.3
+`runtime_governance_policies` + append-only `runtime_governance_decisions` · 4.4
+`budgets` + `budget_reservations` · 4.5 `behavioral_findings` (rebuildable) · 4.6
+none (exporter health is in-process) · 4.7 `slo_definitions` + append-only
+`slo_evaluations` + `runtime_alerts` · 4.8 `telemetry_capture_policies` +
+`telemetry_retention_policies` + `trace_content` (rebuildable) · 4.9/4.10 none).
+Facts that matter for a restore, all re-checked live rather than carried
+forward: migration head **`0051_telemetry_privacy`**, **135 tables** (134 in
+`Base.metadata` — Alembic owns `alembic_version` and it is not a model),
+PostgreSQL **17.10** locally,
 `backend/.venv` on Python **3.13.14**, Node **v24.18.0**. Sections naming a
 version were corrected in the 2026-08-14 pass — the previous text said Python
 3.12 and Node 22 LTS, and its `py -3.12 -m venv` command would now fail outright

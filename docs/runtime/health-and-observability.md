@@ -105,7 +105,13 @@ Read + trigger only; the Trace Detail content pane renders content only to
 `runtime.trace.content.view` holders, through 4.8's audited endpoint. See
 [`../operations/observability-center.md`](../operations/observability-center.md).
 
+**Also demonstrated (Phase 4.10)**: the **§33 end-to-end proof** — one real
+governed execution threading trace → governance (mid-loop stop) → cost (budget
+in bound) → redaction → audit → OTLP export — plus tenant privacy, the budget
+race, and both plane directions (telemetry fails open, governance fails closed).
+All fifteen §41 completion gates are closed. **Milestone 4 is complete.** See
+[`milestone-4-proof.md`](./milestone-4-proof.md).
+
 **Still not implemented**: **notification delivery** for alerts (a future
-integration — 4.7 built the signal, not the notifier), and the 4.10 hardening
-pass / end-to-end milestone proof. The dashboard remains pull-based, not
-push-based.
+integration — 4.7 built the signal, not the notifier). The dashboard remains
+pull-based, not push-based.
