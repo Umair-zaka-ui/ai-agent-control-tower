@@ -10,7 +10,7 @@
 > | Family | Numbers | Book | Subject | Status |
 > |---|---|---|---|---|
 > | **Historical (Book-07)** | `Phase 4` / `Part 4.1`, `4.2.1`, `4.2.2.x`, `Phase 4.3` / `Part 4.3.1–4.3.8` | Enterprise Identity & Authorization | Identity foundation, authentication, RBAC/ABAC, IGA | Complete |
-> | **Milestone 4 (ACT-SRS-M4)** | `Phase 4.1 – 4.10`, requirement ids `M4-4.1-FR-xxx` | Runtime Governance & Observability | Telemetry, tracing, governance engine, cost, SLOs | In progress |
+> | **Milestone 4 (ACT-SRS-M4)** | `Phase 4.1 – 4.10`, requirement ids `M4-4.1-FR-xxx` | Runtime Governance & Observability | Telemetry, tracing, governance engine, cost, SLOs, privacy, observability center | **Complete** |
 >
 > **How to tell them apart at a glance.** The historical family always appears
 > under a `## Phase 4 —` or `## Phase 4.3 —` heading and is written as
@@ -2122,7 +2122,13 @@ instrumentation contract (4.1), the trace explorer (4.2), the governance
 enforcement engine (4.3), cost governance (4.4), behavioral signals (4.5),
 OpenTelemetry export (4.6), SLOs and alerting (4.7), the telemetry
 privacy/retention/access system (4.8), the observability center (4.9), and
-hardening (4.10).
+hardening + the end-to-end proof (4.10).
+
+**MILESTONE 4 IS COMPLETE (10/10, 2026-09-02).** All fifteen §41 completion
+gates A–O are closed, each mapped to a named passing proof. The §33 end-to-end
+proof demonstrates one real governed execution threading trace → governance →
+cost → redaction → audit → export. See the Phase 4.10 entry below and
+[`docs/runtime/milestone-4-proof.md`](docs/runtime/milestone-4-proof.md).
 
 **The four rulings this milestone is built on:**
 
@@ -2546,11 +2552,72 @@ passed**, 0 failed, 1 deselected (2,257 + 8).
 
 See [docs/operations/observability-center.md](docs/operations/observability-center.md).
 
-**Milestone 4 now has 9 of 10 sub-phases done.**
+### Phase 4.10 — Enterprise Hardening & the Milestone 4 Proof ✅ (2026-09-02)
 
-**Next: Phase 4.10 — hardening and the milestone proof.** The last phase: an
-end-to-end demonstration tying trace → governance → cost → redaction → audit →
-export into one runtime-governed execution, plus the hardening pass.
+**A proof phase, not a feature phase. MILESTONE 4 IS COMPLETE (10/10).** It builds
+no product capability — it *demonstrates*, on one real governed execution, that
+every M4 layer operates together, and re-proves the three enterprise properties
+at the milestone level. All fifteen §41 gates (A–O) are closed.
+
+- **The §33 end-to-end proof** (`backend/tests/runtime/test_milestone_4_proof.py`,
+  `test_ac01`–`test_ac05`) — one fixture configures a real execution (deployed
+  version, real priced model, tool, governance cost policy, `HARD_LIMIT` budget,
+  `REDACTED_CONTENT` capture policy, a planted secret) and runs it. Every
+  assertion is a **real effect of the run, not a pre-inserted row** (proven
+  structurally). Threads: routed to the deployed version → worker claim
+  (`execution_attempts`, `started_at`) → real tokens + real priced cost → tool
+  request → **governance evaluates mid-loop and permits the tool** → second
+  model call → **governance STOPs the loop with an explicit reason** as spend
+  approaches the bound (`GOVERNANCE_EXECUTION_STOPPED`, one `STOP`,
+  `MIN_REMAINING_COST`, model called exactly twice) → **budget within bound**
+  (reserved ≤ limit; spend 0.002 ≤ 0.0025) → **trace reconstructs** → **secret
+  redacted** (absent from `trace_content` and from the OTLP wire) → **metrics
+  reflect it** → **decision audited** (`RUNTIME_EXECUTION_STOPPED`) → **telemetry
+  OTLP-valid** (round-tripped through the encoder).
+- **§34 tenant privacy** (`test_ac06`) — two orgs, adversarial matrix over the
+  whole M4 read surface including 4.9's aggregation endpoints; no cross-tenant
+  metadata / content / existence leak; a known trace id → 404, not content.
+- **§35 budget race** (`test_ac07`) — twelve concurrent workers on **real
+  separate `SessionLocal()` connections**; exactly four $0.25 holds fit $1.00;
+  `sum(reserved) ≤ limit`, decided by the database.
+- **§36 both plane directions** — telemetry **fails open** (`test_ac08`: a real
+  execution `SUCCEEDED` with a failing sink; exporter degraded + visible,
+  buffer bounded, execution row byte-identical); governance **fails closed**
+  (`test_ac09`: a mandatory unevaluable checkpoint STOPs with
+  `GOVERNANCE_CHECKPOINT_UNEVALUABLE` and `loop_iterations == 0` — never
+  proceeds ungoverned).
+- **Hardening** (`test_ac10`–`test_ac11`) — the explorer stays capped and
+  `EXPLAIN`-verified free of a Seq Scan at 400 executions/tenant; `/metrics`
+  cardinality stays bounded across 40 error codes; a simulated restart leaves
+  the governance policy, budget, capture policy and an `OPEN` alert intact.
+- **The §41 gate-closure audit** (`test_ac12`) — all fifteen gates A–O map to a
+  named passing proof (the A–O ↔ concern mapping reconstructed from per-phase
+  `Gate X` references + the build prompt; the SRS §41 table is not in the repo).
+- **The one finding, not a defect** — the §36 governance proof first left the
+  execution `QUEUED`; reading `_fail_or_retry` confirmed
+  `GOVERNANCE_CHECKPOINT_UNEVALUABLE` is *deliberately* retryable (fail-closed is
+  about the attempt; the requeue is the retry policy). `test_ac09` asserts the
+  honest property, not a weakened one. **No proof weakened; no product code
+  changed.**
+
+No migration, no new table/route/permission/error-code/audit-event. Head stays
+`0051_telemetry_privacy`; routes stay **590**; schema stays **135 tables**. One
+new file, `test_milestone_4_proof.py` (15 tests); no existing test changed.
+Backend **2,280 passed**, 0 failed, 1 deselected (2,265 + 15); frontend **359
+passed**, unchanged. **Gate O — the entire M1/M2/M3/4.1–4.9 suite passes
+unchanged — is itself the proof.**
+
+See [docs/runtime/milestone-4-proof.md](docs/runtime/milestone-4-proof.md).
+
+### 🏁 MILESTONE 4 — Enterprise Runtime Governance & Observability — is COMPLETE (10/10)
+
+All fifteen completion gates A–O are closed. The platform now executes real
+governed AI (M1), integrates with the enterprise in both directions (M2),
+deploys and operates versions safely at production scale (M3), and
+**understands, governs, controls, investigates and financially manages what its
+agents do while they execute (M4)** — demonstrated end to end, not merely built.
+The strategic outcome ACT-SRS-M4 set out to reach: *build, govern, deploy and
+operate enterprise AI with complete runtime accountability.*
 
 > **Legacy deprecation scheduled.** `GET /analytics/cost` is deprecated in place
 > as of 4.4 and is scheduled for removal once Phase 4.9's observability center
@@ -2582,6 +2649,20 @@ export into one runtime-governed execution, plus the hardening pass.
 | 19 | **Retention deletes telemetry, never domain truth** — per-class expiry; `governance_decision`/`financial_record` retain-only; a `trace_content` purge spares the execution row | 4.8 | ADR-0013, `docs/observability/retention.md` |
 | 20 | **The operator center is read + trigger only** — no new domain logic; two read-only aggregation endpoints (AST-asserted no-mutation); every action is an existing 4.x operation the server re-authorizes | 4.9 | `app/runtime/observability_center.py`, `docs/operations/observability-center.md` |
 | 21 | **The center renders content only through 4.8's audited endpoint** — no bypass route; a metadata-only operator sees a truthful gated state, not the content and not an error; capture mode shown truthfully; 404-vs-403 honoured | 4.9 | `docs/operations/observability-center.md` |
+| 22 | **A proof demonstrates real runtime behaviour, never row insertion** — the §33 proof configures a budget/policy and asserts the engine *actually* stopped the loop, the budget *actually* held, the trace *actually* reconstructs; a proof that cannot pass reveals a gap to fix, never an assertion to weaken | 4.10 | `docs/runtime/milestone-4-proof.md`, `test_milestone_4_proof.py` |
+| 23 | **`GOVERNANCE_CHECKPOINT_UNEVALUABLE` is retryable** — fail-closed stops the *attempt* (the loop never runs past the checkpoint); the requeue is the retry policy, because a transient dependency may recover. Not a bug — confirmed against `_fail_or_retry`'s own comment | 4.10 | `docs/runtime/milestone-4-proof.md` "The one finding" |
+
+**§41 gate-closure audit (all closed):** A end-to-end governed execution (4.10) ·
+B trace foundation (4.1) · C trace explorer (4.2) · D cost truth (4.4) · E budget
+race §35 (4.4) · F telemetry privacy (4.8) · G governance enforcement (4.3) ·
+H OTLP fail-open export (4.6) · I bounded-cardinality metrics (4.6) · J SLOs (4.7)
+· K alert lifecycle (4.7) · L behavioral signals (4.5) · M observability center
+(4.9) · N telemetry-failure resilience §36 (4.6) · O regression, M1–M3/4.1–4.9
+unchanged (4.10). Each maps to a named passing proof — see
+[`docs/runtime/milestone-4-proof.md`](docs/runtime/milestone-4-proof.md). The A–O
+letter↔concern mapping is reconstructed from the per-phase `Gate X` references
+plus the 4.10 build prompt; the SRS §41 consolidated table is not carried in the
+repo (a reported SRS/repo observation).
 
 ## Future (Phase 3+)
 

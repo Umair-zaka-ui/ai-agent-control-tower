@@ -304,8 +304,13 @@ another tenant's execution is indistinguishable from one that does not exist.
   only; the Trace Detail content pane inherits 4.8's access governance in full.
   See [`../operations/observability-center.md`](../operations/observability-center.md).
 
-**Still out of scope:**
-Hardening and the milestone proof (4.10).
+- ~~Hardening and the milestone proof (4.10).~~ Shipped in **Phase 4.10** — the
+  §33 end-to-end proof (one real governed execution threading trace →
+  governance → cost → redaction → audit → export), the three enterprise proofs
+  (§34 tenant privacy, §35 budget race, §36 both plane directions), the
+  hardening pass, and the §41 gate-closure audit (all fifteen gates A–O
+  closed). **Milestone 4 is complete.** See
+  [`../runtime/milestone-4-proof.md`](../runtime/milestone-4-proof.md).
 
 It also changed no execution behaviour and duplicated no domain data. Every
 later M4 phase builds on this contract.
@@ -325,6 +330,10 @@ later M4 phase builds on this contract.
   semantics, and the bounded buffer (Phase 4.6)
 - [metrics.md](./metrics.md) — the Prometheus metrics surface and its
   bounded-cardinality rule (Phase 4.6)
+- [../operations/observability-center.md](../operations/observability-center.md)
+  — the operator control plane over all of Milestone 4 (Phase 4.9)
+- [../runtime/milestone-4-proof.md](../runtime/milestone-4-proof.md) — the §33
+  end-to-end proof and the §41 gate-closure audit (Phase 4.10)
 - [ADR-0008](../architecture/adr/0008-telemetry-as-a-derived-plane.md) — why
   telemetry is derived
 - [ADR-0011](../architecture/adr/0011-opentelemetry-export-as-a-fail-open-plane.md)
