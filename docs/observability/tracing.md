@@ -149,21 +149,25 @@ per-request id and timestamp differ). Resolving the id branch without the tenant
 filter would let one tenant confirm another's execution id by observing the
 difference between a 404 and an empty list.
 
-## The content line — metadata now, content in 4.8
+## The content line — metadata here, content governed by 4.8
 
-**This is the hard boundary of the phase.** A trace shows timings, statuses,
-resource identities, error classes, cost, token counts, which tool, which model,
-which decision. It does **not** show prompt text, tool arguments or results, or
-model output.
+**This is the hard boundary of the 4.2 surface.** A trace on *these* routes shows
+timings, statuses, resource identities, error classes, cost, token counts, which
+tool, which model, which decision. It does **not** show prompt text, tool
+arguments or results, or model output.
 
 Enforced upstream of the routes: neither the assembler nor the explorer reads a
 content column at all, asserted over the AST as attribute reads. So the boundary
 cannot be undone by a route change alone.
 
-`runtime.trace.content.view` is **named in code and deliberately not registered**
-in the permission catalog. Naming it gives the boundary a visible owner;
-registering it would create a grantable permission that guards nothing, which
-teaches operators it is safe to grant — the same reasoning 4.1 used.
+**Phase 4.8 moved the content boundary** and now owns it. `runtime.trace.content.view`
+is **registered** (4.1/4.2 named it in code without registering it, so the
+boundary had a visible owner; 4.8 is that owner). It is a distinct permission,
+strictly stronger than `runtime.telemetry.view`, never implied by execute or by
+the metadata view, and every use is audited. Trace **content** —
+scrubbed of secrets, redacted per classification, chain-of-thought never
+included — is served from `GET /api/v1/observability/traces/{trace_id}/content`,
+governed by capture policy. See [privacy.md](./privacy.md).
 
 ## Permissions
 
@@ -181,6 +185,7 @@ are recorded in this phase's report and in `REPO_STATE.md`.)
 | GET | `/api/v1/observability/traces` | Explorer — filter, search, paginate |
 | GET | `/api/v1/observability/traces/{trace_id}` | One trace by trace id |
 | GET | `/api/v1/observability/executions/{id}/trace` | One execution's trace (canonical) |
+| GET | `/api/v1/observability/traces/{trace_id}/content` | Trace **content** — 4.8, `runtime.trace.content.view`, audited |
 
 Phase 4.1's `/api/v1/runtime/executions/{id}/trace` is retained and delegates to
 the same assembler, so the two cannot diverge. New callers should use the

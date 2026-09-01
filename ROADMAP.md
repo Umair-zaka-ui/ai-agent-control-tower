@@ -2455,12 +2455,55 @@ events. Backend **2,221 passed**, 0 failed, 1 deselected (2,180 + 41); frontend
 See [docs/operations/slos.md](docs/operations/slos.md) and
 [docs/operations/alerts.md](docs/operations/alerts.md).
 
-**Milestone 4 now has 7 of 10 sub-phases done.**
+### Phase 4.8 — Telemetry Privacy, Retention & Access Governance ✅ (2026-09-01)
 
-**Next: Phase 4.8 — Telemetry Policy, Retention & Access.** 4.1 set the
-METADATA_ONLY baseline and the scrubber; 4.8 builds the per-environment content-
-capture policy, retention windows, and the access controls that a deliberate
-opt-in to content capture requires.
+**The last policy-heavy phase: it makes the telemetry plane a governed,
+security-sensitive data system. Closes Gate F (privacy).**
+
+- **Capture policy, four modes** — `METADATA_ONLY` / `REDACTED_CONTENT` /
+  `FULL_CONTENT` / `DISABLED` — resolved per tenant / environment / agent /
+  data-classification, precedence `classification > agent > environment >
+  tenant > platform-default`, fully explained by `GET .../telemetry/effective-mode`.
+- **Conservative default (M4-4.8-FR-002)**: a production or sensitively-classified
+  scope with no explicit policy resolves to `METADATA_ONLY`, never
+  `FULL_CONTENT`; a malformed stored mode coerces toward `METADATA_ONLY`.
+  Content capture is opt-in everywhere.
+- **Content-storage decision: a dedicated `trace_content` store**, materialised on
+  the first authorised view — the domain rows (`execution_messages`, payload
+  columns) are domain truth the loop and detail page depend on; redacting them in
+  place would corrupt execution state and break "retention deletes telemetry, not
+  domain truth". [ADR-0013](docs/architecture/adr/0013-trace-content-capture-and-access-policy.md).
+- **Scrub before persist in every content mode; no chain-of-thought in any mode**:
+  `strip_reasoning` (§7) → `scrub` (§14) → classification masking
+  (`REDACTED_CONTENT` only), all before the `trace_content` insert. `FULL_CONTENT`
+  keeps business content but the secret scrubber still runs.
+- **Content view is a distinct, stronger, audited permission**:
+  `runtime.trace.content.view` — registered here for the first time, not in the
+  read-only bundle, never implied by execute or metadata; every view audited
+  (`RUNTIME_TRACE_CONTENT_VIEWED`, actor + resource, never payload). **404-vs-403
+  discipline**: absent-for-tenant → 404, present-but-unpermitted → 403.
+- **Retention per class** + a safe, idempotent, bounded, 3.8-schedulable sweep;
+  `governance_decision` / `financial_record` are retain-only (evidence outlives
+  payloads). A purge spares the execution row and its transcript. **No scheduler
+  built.**
+- **Non-gating**: `app/telemetry_privacy` references no kill switch / governance
+  engine / execution-state mutation (AST-asserted).
+
+Migration `0051_telemetry_privacy` — three new tables, no existing table changed,
+no backfill, reversible. Routes 578 → **588**; schema 132 → **135 tables**; three
+permissions (`runtime.trace.content.view`, `runtime.telemetry_policy.view`/`.manage`);
+four error codes; four audit events. Backend **2,257 passed**, 0 failed, 1
+deselected (2,221 + 36); frontend **327** unchanged (a Telemetry Policy admin view
+is 4.9).
+
+See [docs/observability/privacy.md](docs/observability/privacy.md) and
+[docs/observability/retention.md](docs/observability/retention.md).
+
+**Milestone 4 now has 8 of 10 sub-phases done.**
+
+**Next: Phase 4.9 — the observability center.** 4.1–4.8 built the telemetry,
+tracing, governance, cost, behavior, export, SLO/alert and privacy layers; 4.9
+assembles the operator-facing center that safely exposes them.
 
 > **Legacy deprecation scheduled.** `GET /analytics/cost` is deprecated in place
 > as of 4.4 and is scheduled for removal once Phase 4.9's observability center
@@ -2476,7 +2519,7 @@ opt-in to content capture requires.
 | 3 | **One enforcement path** — generalize the existing caps, never parallel them | 4.3 | ADR-0009, `app/runtime/governance/` |
 | 4 | Governance **fails closed** on a mandatory unevaluable checkpoint | 4.3 | ADR-0009 |
 | 5 | Materialize only **with measured numbers** (4.2 measured and restrained) | 4.2 | ADR-0008 "Measurement outcome" |
-| 6 | Metadata only until 4.8 — content is a hard line, enforced upstream of routes | 4.2 | `docs/observability/tracing.md` |
+| 6 | Metadata only on the 4.2 surface; content moved to 4.8 behind capture policy + a distinct audited permission (ruling #17) | 4.2 → 4.8 | `docs/observability/tracing.md`, `docs/observability/privacy.md` |
 | 7 | **Real cost is authoritative**; the legacy estimate is deprecated in place, never rewired | 4.4 | `docs/runtime/cost-governance.md` |
 | 8 | **Budgets guarantee reservations, not actuals** — the overshoot is bounded and documented | 4.4 | ADR-0010 |
 | 9 | Budgets supply a constraint; **4.3 remains the only thing that stops an execution** | 4.4 | `app/finops/guard.py` |
@@ -2487,6 +2530,9 @@ opt-in to content capture requires.
 | 14 | **Exporter failure ≠ execution failure** — export is fail-open telemetry, buffering is bounded (never an unbounded queue), export runs off the hot path | 4.6 | ADR-0011, `docs/observability/opentelemetry.md` |
 | 15 | **An alert is a durable signal; creation ≠ notification** — no Slack/email/PagerDuty/webhook delivery is built (AST-enforced); a future integration consumes the record | 4.7 | ADR-0012, `app/slo/` |
 | 16 | **Findings feed one alert lifecycle, not a parallel concept** — `runtime_alerts` references `behavioral_findings`/`slo_evaluations`; escalation is explicit (ANOMALOUS/BREACHED), never automatic | 4.7 | ADR-0012, `docs/operations/alerts.md` |
+| 17 | **Content is a distinct data class** — a dedicated `trace_content` store (not redact-in-place), scrubbed + redacted before persist, gated by `runtime.trace.content.view` (distinct, stronger, audited), never implied by execute/metadata | 4.8 | ADR-0013, `docs/observability/privacy.md` |
+| 18 | **Conservative capture default** — production/sensitive resolves to `METADATA_ONLY`, never `FULL_CONTENT` without an explicit policy; a misconfiguration fails toward *less* capture | 4.8 | `app/telemetry_privacy/policy.py` |
+| 19 | **Retention deletes telemetry, never domain truth** — per-class expiry; `governance_decision`/`financial_record` retain-only; a `trace_content` purge spares the execution row | 4.8 | ADR-0013, `docs/observability/retention.md` |
 
 ## Future (Phase 3+)
 

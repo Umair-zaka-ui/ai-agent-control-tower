@@ -114,13 +114,18 @@ def current_mode() -> CaptureMode:
     """The effective capture mode.
 
     One resolution point, so "what does this platform capture?" has one answer
-    and one place to change it. 4.1 always answers ``METADATA_ONLY``: the
-    per-environment override is 4.8's job, and wiring a settings key for it now
-    would create a switch with nothing behind it -- a way to *believe* content
-    capture is configured while no code path honours it.
+    and one place to change it. This function is the **platform baseline** and
+    still always answers ``METADATA_ONLY`` -- the conservative default that
+    applies when no policy narrows the scope.
 
-    Deliberately a function, not a constant, so that 4.8 can make it consult
-    ``Environment.policy`` without every caller changing."""
+    **Phase 4.8 added the per-scope policy layer on top** (see
+    ``app.telemetry_privacy.policy.resolve_capture_mode``): a tenant / env /
+    agent / classification can opt in to ``REDACTED_CONTENT`` or
+    ``FULL_CONTENT``, or opt out to ``DISABLED``. That resolution is done in the
+    telemetry-privacy package against ``telemetry_capture_policies`` rows, not
+    here -- this module stays the isolated, dependency-free primitive it was
+    built as, and the 4.8 layer imports *it* (for ``strip_reasoning`` and the
+    ``NEVER`` floor), never the other way round."""
     return DEFAULT_CAPTURE_MODE
 
 

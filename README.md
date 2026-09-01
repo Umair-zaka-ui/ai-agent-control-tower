@@ -16,7 +16,7 @@
 >
 > **Milestone 3** (Deployment, Release & Operations — **COMPLETE, 10/10**): the deployment lifecycle core, governed environments & promotion, the release gate, weighted traffic allocation with a version resolver and fail-closed execution gate, the canary rollout engine with AI-aware release health, blue-green/recreate strategies, **automated rollback** — per-tenant trigger policies that roll a failing candidate back on their own, strictly subordinate to the kill switch — a **distributed scheduler** whose instances coordinate through Postgres leases so every due job runs exactly once, and a **distributed execution worker fleet** — agent executions now run on independently-operable worker processes that hold no database lock across model or tool network I/O, with **rolling deployment** defined over real worker cohorts rather than simulated counters, and the **Release Operations Center** — twelve operational views through which an operator sees and drives all of it, with dangerous actions confirmation-gated and unsafe state shown rather than smoothed over. See [`docs/deployment/`](docs/deployment/).
 >
-> **Milestone 4** (Runtime Governance & Observability — **in progress, 7/10**): Phase 4.1 laid the instrumentation contract. A trace follows an execution across every hop on the `correlation_id` rails that already existed but were almost never populated; spans are **derived from the domain rows rather than stored**, so the telemetry plane duplicates nothing and can never disagree with what actually happened; telemetry is **best-effort and non-gating** — the one subsystem here that deliberately fails open, because it is not the business transaction; and an isolated secret scrubber runs on the write path under a **METADATA_ONLY** baseline, so no prompt, tool payload, model output or private model reasoning is captured at all. Phase 4.6 makes it **interoperable**: execution traces and operational metrics stream to any OTLP collector (Datadog, Grafana, Splunk, …) through an adapter that keeps every vendor and even the OTel SDK out of the core, and a collector outage can never affect an execution — export is fail-open with a bounded buffer, off the hot path. See [`docs/observability/`](docs/observability/).
+> **Milestone 4** (Runtime Governance & Observability — **in progress, 8/10**): Phase 4.1 laid the instrumentation contract. A trace follows an execution across every hop on the `correlation_id` rails that already existed but were almost never populated; spans are **derived from the domain rows rather than stored**, so the telemetry plane duplicates nothing and can never disagree with what actually happened; telemetry is **best-effort and non-gating** — the one subsystem here that deliberately fails open, because it is not the business transaction; and an isolated secret scrubber runs on the write path under a **METADATA_ONLY** baseline. Phase 4.6 makes it **interoperable**: execution traces and operational metrics stream to any OTLP collector (Datadog, Grafana, Splunk, …) through an adapter that keeps every vendor and even the OTel SDK out of the core, and a collector outage can never affect an execution — export is fail-open with a bounded buffer, off the hot path. Phase 4.8 makes the telemetry plane a **governed data system**: what is captured is a deliberate per-tenant/environment/agent/classification policy (`METADATA_ONLY` / `REDACTED_CONTENT` / `FULL_CONTENT` / `DISABLED`) defaulting conservatively; content is scrubbed of secrets and redacted **before** it is ever persisted, and chain-of-thought never is; reading trace content is a **distinct, stronger, audited permission** that executing or seeing metadata does not grant; and every telemetry class expires on its own schedule while domain and financial truth persist. See [`docs/observability/`](docs/observability/).
 >
 > **Current state at a glance** — [Where the project is now](#where-the-project-is-now) below, or [`REPO_STATE.md`](REPO_STATE.md) for the verified, exhaustive version.
 
@@ -54,7 +54,7 @@ is the document to trust if it and this README ever disagree.*
 | **Milestone 1** — real execution | **Complete** | Model provider abstraction, a real OpenAI-compatible adapter, streaming & token/cost accounting, an error taxonomy with retry/circuit-breaking, per-organization encrypted credentials, HTTP tool execution behind an SSRF egress guard, tool schema validation, and the model-driven tool invocation loop |
 | **Milestone 2** — Enterprise Integration Framework | **Complete (9/9)** | Connector abstraction/lifecycle, a pluggable authentication framework, registry & health, a connector SDK, four generic connectors (REST, database, storage, queue), and external identity federation (OIDC + SAML) |
 | **Milestone 3** — Deployment, Release & Operations | **Complete (10/10)** | Deployment lifecycle core, environments & promotion, the release gate, weighted traffic allocation + version resolver, the canary engine, blue-green/recreate/rolling strategies, automated rollback with per-tenant trigger policies, a distributed scheduler, a distributed execution worker fleet, and the Release Operations Center over all of it |
-| **Milestone 4** — Runtime Governance & Observability | **In progress (7/10)** | **4.1**: trace/span context on the existing `correlation_id` rails, bounded semantic attributes, a non-gating runtime-event contract, an isolated secret scrubber and the METADATA_ONLY baseline. **4.2**: full trace assembly and the trace explorer — search by trace/agent/version/environment/model/tool/status/error/time, and reconstruct any execution's chronology. Spans stay derived, not stored: 4.2 measured assembly at 0.74ms p50 over 90,695 executions and added one index rather than a projection. **4.3**: the runtime governance engine — six checkpoints *inside* the tool loop, one structured ALLOW/DENY/CHALLENGE/STOP decision, the four pre-existing termination caps **generalized into it** so there is exactly one enforcement path, and a governance plane that **fails closed** (the deliberate inverse of telemetry). **4.4**: cost truth and FinOps — real per-execution spend aggregated by org/agent/version/environment/provider/model/project/time with actual, estimated and unpriced kept apart; immutable pricing provenance; deterministic spend anomalies; and budgets enforced by **reserve-then-reconcile**, proven against twelve concurrent Postgres sessions, supplying a constraint to 4.3 rather than becoming a second thing that can stop an execution. The legacy estimated cost endpoint is deprecated in place. **4.5**: deterministic, explainable behavioral signals — error-rate/latency/cost/tool-failure/tool-pattern/policy-denial/loop-termination — reusing 3.5's evaluation engine, `INSUFFICIENT_DATA` first-class, every finding self-explaining, **no ML by mandate**, connector attribution deferred and named rather than invented, and strictly signals (4.3 stays the only enforcer). **4.6**: OpenTelemetry interoperability — execution traces and operational metrics to any OTLP collector, the SDK behind a one-module adapter (no vendor in core, AST-asserted), export **fail-open** with a **bounded** buffer and off the hot path (a collector outage never touches an execution, proven with a real collector-down run), metrics scraped over an authenticated tenant-scoped `/metrics` with bounded cardinality. **4.7**: runtime SLOs (SLI/target/window/error budget) evaluated deterministically with INSUFFICIENT_DATA honesty, and a first-class alert lifecycle (OPEN → ACKNOWLEDGED → RESOLVED → SUPPRESSED) an SLO breach or a significant behavioral finding raises — DB-deduplicated so one condition is one alert, and **a signal, not a notifier**: no Slack/email/PagerDuty delivery is built (AST-enforced), a future integration consumes the record. Next: 4.8 telemetry policy, retention & access |
+| **Milestone 4** — Runtime Governance & Observability | **In progress (8/10)** | **4.1**: trace/span context on the existing `correlation_id` rails, bounded semantic attributes, a non-gating runtime-event contract, an isolated secret scrubber and the METADATA_ONLY baseline. **4.2**: full trace assembly and the trace explorer — search by trace/agent/version/environment/model/tool/status/error/time, and reconstruct any execution's chronology. Spans stay derived, not stored: 4.2 measured assembly at 0.74ms p50 over 90,695 executions and added one index rather than a projection. **4.3**: the runtime governance engine — six checkpoints *inside* the tool loop, one structured ALLOW/DENY/CHALLENGE/STOP decision, the four pre-existing termination caps **generalized into it** so there is exactly one enforcement path, and a governance plane that **fails closed** (the deliberate inverse of telemetry). **4.4**: cost truth and FinOps — real per-execution spend aggregated by org/agent/version/environment/provider/model/project/time with actual, estimated and unpriced kept apart; immutable pricing provenance; deterministic spend anomalies; and budgets enforced by **reserve-then-reconcile**, proven against twelve concurrent Postgres sessions, supplying a constraint to 4.3 rather than becoming a second thing that can stop an execution. The legacy estimated cost endpoint is deprecated in place. **4.5**: deterministic, explainable behavioral signals — error-rate/latency/cost/tool-failure/tool-pattern/policy-denial/loop-termination — reusing 3.5's evaluation engine, `INSUFFICIENT_DATA` first-class, every finding self-explaining, **no ML by mandate**, connector attribution deferred and named rather than invented, and strictly signals (4.3 stays the only enforcer). **4.6**: OpenTelemetry interoperability — execution traces and operational metrics to any OTLP collector, the SDK behind a one-module adapter (no vendor in core, AST-asserted), export **fail-open** with a **bounded** buffer and off the hot path (a collector outage never touches an execution, proven with a real collector-down run), metrics scraped over an authenticated tenant-scoped `/metrics` with bounded cardinality. **4.7**: runtime SLOs (SLI/target/window/error budget) evaluated deterministically with INSUFFICIENT_DATA honesty, and a first-class alert lifecycle (OPEN → ACKNOWLEDGED → RESOLVED → SUPPRESSED) an SLO breach or a significant behavioral finding raises — DB-deduplicated so one condition is one alert, and **a signal, not a notifier**: no Slack/email/PagerDuty delivery is built (AST-enforced), a future integration consumes the record. **4.8**: telemetry privacy, retention & access governance — capture policy in four modes per tenant/environment/agent/classification, defaulting conservatively (production/sensitive never resolves to `FULL_CONTENT` without an explicit policy; a misconfiguration fails toward *less* capture); content materialised into a dedicated `trace_content` store on first authorised view, scrubbed of secrets and classification-redacted **before persistence** in every mode, chain-of-thought never captured; `runtime.trace.content.view` a distinct permission strictly stronger than the metadata view, audited on every use, with a 404-vs-403 discipline that never leaks cross-tenant existence; per-class retention with a safe, idempotent, bounded expiration sweep that deletes telemetry but never domain truth. Next: 4.9 the observability center |
 
 **What "complete" means for Milestone 1**: an agent that is registered,
 versioned, signed and deployed genuinely executes end to end — it calls a real
@@ -541,7 +541,11 @@ enforcement engine as distinct from the admission-time policy gate above;
 cost-governance and budgets (Phase 4.4); and behavioral-signals (Phase 4.5). The
 telemetry plane added by Milestone 4 lives beside it in
 [docs/observability/](docs/observability/) — architecture (the three-plane
-model), tracing, semantic-conventions and privacy.
+model), tracing, semantic-conventions, opentelemetry and metrics (Phase 4.6),
+and — added by Phase 4.8 — privacy (capture policy, the four modes, the
+conservative default, redact-before-persist, and the distinct content
+permission) and retention (per-class expiry). Operational SLOs and the alert
+lifecycle (Phase 4.7) are in [docs/operations/](docs/operations/).
 
 ### Enterprise Agent Registry (Phase 5.1)
 
@@ -1013,6 +1017,43 @@ real eight-thread Postgres race. See
 [`docs/operations/slos.md`](docs/operations/slos.md),
 [`docs/operations/alerts.md`](docs/operations/alerts.md), and
 [ADR-0012](docs/architecture/adr/0012-alerts-as-signal-creation-not-notification.md).
+
+**Phase 4.8 — Telemetry Privacy, Retention & Access Governance.** Observability
+data is the sensitive part of the platform — prompts, model output, tool
+arguments and results, PHI, PII, secrets. This phase makes *what is captured* a
+deliberate, permissioned, audited policy rather than a debugging default.
+
+A **capture policy** resolves, per tenant / environment / agent /
+data-classification, to one of four modes — `METADATA_ONLY` / `REDACTED_CONTENT`
+/ `FULL_CONTENT` / `DISABLED` — with a documented precedence
+(`classification > agent > environment > tenant > platform-default`) and an
+explainable result. The default is the safety spine: a production or
+sensitively-classified scope with no explicit policy resolves to
+`METADATA_ONLY`, **never** `FULL_CONTENT`, and a malformed policy fails toward
+*less* capture, not more.
+
+When a mode permits content, it is written to a **dedicated `trace_content`
+store** — materialised on the first authorised view, never before — and every
+value is run through the pipeline **before persistence**: strip chain-of-thought
+(§7, no mode enables it), scrub secrets (§14, `FULL_CONTENT` included — full
+*business* content, never full secrets), then classification-mask for
+`REDACTED_CONTENT`. The domain rows the loop and the detail page depend on are
+never touched; the `trace_content` copy has its own retention lifetime.
+
+Reading trace content requires **`runtime.trace.content.view` — a distinct
+permission, strictly stronger than the metadata view**, not in the read-only
+bundle, never implied by executing an agent or seeing metadata, and audited on
+every use (`RUNTIME_TRACE_CONTENT_VIEWED`, actor + resource, never the payload).
+A trace absent for the tenant is 404; present but unpermitted is 403 — the
+discipline that never leaks cross-tenant existence.
+
+Retention is **per telemetry class** — content, trace metadata, metrics
+aggregates, alert history each on their own schedule; governance and financial
+evidence are retain-only and outlive every payload — enforced by a safe,
+idempotent, bounded expiration sweep that deletes telemetry and never domain
+truth. See [`docs/observability/privacy.md`](docs/observability/privacy.md),
+[`docs/observability/retention.md`](docs/observability/retention.md), and
+[ADR-0013](docs/architecture/adr/0013-trace-content-capture-and-access-policy.md).
 
 ---
 

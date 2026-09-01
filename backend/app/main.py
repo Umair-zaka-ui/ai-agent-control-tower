@@ -35,6 +35,8 @@ from app.behavior.routes import router as behavior_router
 from app.telemetry_export.routes import router as telemetry_export_router
 from app.slo.routes import router as slo_router
 from app.telemetry_export.routes import metrics_router as telemetry_metrics_router
+from app.telemetry_privacy.routes import content_router as trace_content_router
+from app.telemetry_privacy.routes import router as telemetry_privacy_router
 from app.finops.routes import router as finops_router
 from app.runtime.governance.routes import router as runtime_governance_router
 from app.runtime.routes import router as runtime_router
@@ -210,3 +212,12 @@ app.include_router(telemetry_metrics_router)
 # It stays a signal: nothing here stops an execution (4.3 does) and nothing
 # here delivers a notification (a future integration consumes these records).
 app.include_router(slo_router)
+# Phase 4.8 -- telemetry privacy, retention & access governance. Capture policy
+# (METADATA_ONLY / REDACTED_CONTENT / FULL_CONTENT / DISABLED) per tenant /
+# environment / agent / classification, defaulting conservatively; per-class
+# retention with a safe, idempotent, 3.8-schedulable expiration sweep; and the
+# trace-content read as a distinct, stronger, audited permission
+# (runtime.trace.content.view). Non-gating: no capture or retention operation
+# ever stops or alters an execution.
+app.include_router(telemetry_privacy_router)
+app.include_router(trace_content_router)

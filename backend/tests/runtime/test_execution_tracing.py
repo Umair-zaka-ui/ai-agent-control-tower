@@ -365,15 +365,19 @@ def test_ac04_the_read_models_never_touch_a_content_column() -> None:
         assert not leaked, f"{module.name} reads content column(s): {leaked}"
 
 
-def test_ac04_the_content_permission_is_not_registered() -> None:
-    """It is named in code so the boundary has a visible owner, but registering
-    it would create a grantable permission that guards nothing (4.1's reasoning,
-    carried forward)."""
-    from app.services.rbac_service import PERMISSION_CATALOG
+def test_ac04_the_content_permission_is_owned_by_phase_4_8() -> None:
+    """4.1 and 4.2 named ``runtime.trace.content.view`` in code without
+    registering it, so the content boundary had a visible owner while guarding
+    nothing yet. **Phase 4.8 is that owner**: it registers the permission,
+    gates ``GET /observability/traces/{id}/content`` on it, and audits every
+    use. It is strictly stronger than -- and never implied by -- the metadata
+    view this module uses."""
+    from app.services.rbac_service import PERMISSION_CATALOG, _READ_ONLY
 
-    assert "runtime.trace.content.view" not in PERMISSION_CATALOG
-    # And the permission this phase *does* use already existed -- 4.2 registered
-    # no synonym for a capability the catalog already described.
+    # Registered by 4.8, and deliberately not in the ambient read-only bundle.
+    assert "runtime.trace.content.view" in PERMISSION_CATALOG
+    assert "runtime.trace.content.view" not in _READ_ONLY
+    # The metadata permission this module uses is unchanged.
     assert PERMISSION_CATALOG["runtime.telemetry.view"] == (
         "View runtime telemetry and execution traces")
 
@@ -824,7 +828,8 @@ def test_ac13_the_observability_prefix_does_not_collide(client: TestClient) -> N
         "/api/v1/observability/traces/{trace_id}",
         "/api/v1/observability/executions/{execution_id}/trace",
     } <= observability
-    # 4.6 added the export-management surface under the same prefix; nothing else.
+    # 4.6 added the export-management surface and 4.8 the trace-content read
+    # under the same prefix; nothing else.
     assert observability - {
         "/api/v1/observability/traces",
         "/api/v1/observability/traces/{trace_id}",
@@ -832,6 +837,7 @@ def test_ac13_the_observability_prefix_does_not_collide(client: TestClient) -> N
     } == {
         "/api/v1/observability/export/config",
         "/api/v1/observability/export/health",
+        "/api/v1/observability/traces/{trace_id}/content",
     }
     assert not [p for p in observability if "analytics" in p]
     # And no duplicate path anywhere in the app.

@@ -288,10 +288,17 @@ another tenant's execution is indistinguishable from one that does not exist.
   [`../operations/alerts.md`](../operations/alerts.md), and
   [ADR-0012](../architecture/adr/0012-alerts-as-signal-creation-not-notification.md).
 
+- ~~Telemetry privacy, retention & access governance (4.8).~~ Shipped in
+  **Phase 4.8** — capture policy (`METADATA_ONLY` / `REDACTED_CONTENT` /
+  `FULL_CONTENT` / `DISABLED`) per tenant / environment / agent / classification,
+  defaulting conservatively; content scrubbed and redacted **before** it reaches
+  the governed `trace_content` store; `runtime.trace.content.view` as a distinct,
+  stronger, audited permission; per-class retention with a safe idempotent
+  expiration sweep. See [privacy.md](./privacy.md), [retention.md](./retention.md),
+  and [ADR-0013](../architecture/adr/0013-trace-content-capture-and-access-policy.md).
+
 **Still out of scope:**
-The full telemetry policy / retention / access system (4.8 — only the
-METADATA_ONLY baseline and the scrubber land here), the observability center
-(4.9), and hardening (4.10).
+The observability center (4.9) and hardening (4.10).
 
 It also changed no execution behaviour and duplicated no domain data. Every
 later M4 phase builds on this contract.
@@ -302,8 +309,11 @@ later M4 phase builds on this contract.
   vocabulary and the bounded-cardinality rule
 - [tracing.md](./tracing.md) — the assembly walk, the explorer, and the
   metadata/content boundary (Phase 4.2)
-- [privacy.md](./privacy.md) — the scrubber, METADATA_ONLY, and the
-  no-chain-of-thought rule
+- [privacy.md](./privacy.md) — capture policy, the four modes, the conservative
+  default, redact-before-persist, no chain-of-thought, and the distinct
+  content permission (Phase 4.8)
+- [retention.md](./retention.md) — per-class retention and the safe expiration
+  sweep (Phase 4.8)
 - [opentelemetry.md](./opentelemetry.md) — the OTLP export adapter, fail-open
   semantics, and the bounded buffer (Phase 4.6)
 - [metrics.md](./metrics.md) — the Prometheus metrics surface and its
