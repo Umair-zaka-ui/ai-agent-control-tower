@@ -48,6 +48,24 @@ from app.identity.errors import register_identity_exception_handlers
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    # Phase M4.11 — fail loud, before serving any request, if this
+    # installation is missing or holding the wrong encryption/signing key
+    # material. Never silently regenerate: a fresh key on an established
+    # install leaves every stored secret undecryptable while nothing looks
+    # wrong. See app/security/key_integrity.py and
+    # docs/security/key-management.md.
+    from app.core.database import SessionLocal
+    from app.security.key_integrity import verify_key_material
+
+    _db = SessionLocal()
+    try:
+        # Returns a loggable report (it logs its own one-line summary) or
+        # raises KeyMaterialError — deterministic, operator-actionable, no
+        # secret in the message — which we let propagate to abort startup.
+        verify_key_material(_db)
+    finally:
+        _db.close()
+
     # Phase 3.8 retired the interim in-process connector-health scheduler that
     # used to start here. Its own module docstring specified this retirement in
     # advance -- "delete this module, delete its one call site in app/main.py's

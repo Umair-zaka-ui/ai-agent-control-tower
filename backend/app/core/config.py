@@ -254,6 +254,25 @@ class Settings(BaseSettings):
     MODEL_CREDENTIAL_ENCRYPTION_KEY: str | None = None
     MODEL_CREDENTIAL_ENCRYPTION_KEY_PATH: str = "./.keys/model_credentials.key"
 
+    # --- Phase M4.11: key-material recovery & fail-loud integrity ------------
+    # The encryption-key provider seam (mirrors SIGNING_PROVIDER). LOCAL is the
+    # recovery-safe default; a KMS/Vault adapter attaches here — see
+    # app/security/encryption_provider.py and docs/security/key-management.md.
+    ENCRYPTION_KEY_PROVIDER: str = "LOCAL"
+    # Previously-active encryption keys retained so historical ciphertext still
+    # decrypts during/after a rotation (newest-first). A rotation = prepend the
+    # new key as MODEL_CREDENTIAL_ENCRYPTION_KEY and move the old one here.
+    MODEL_CREDENTIAL_ENCRYPTION_KEYS: list[str] = []
+    # Fail loud (refuse to serve) when an established install is missing or
+    # holding the wrong encryption/signing key, instead of silently
+    # regenerating. Only ever set false in a throwaway environment.
+    KEY_MATERIAL_FAIL_LOUD: bool = True
+    # Allow the startup check to deliberately bootstrap fresh key material when
+    # (and only when) the database has NO encrypted state at all. Off by
+    # default: a genuine new install bootstraps via `python -m app.security.keys
+    # bootstrap` or by setting MODEL_CREDENTIAL_ENCRYPTION_KEY explicitly.
+    ENCRYPTION_KEY_ALLOW_BOOTSTRAP: bool = False
+
     # --- Phase 5.6a.2: tool schema validation & resilience (ACT-TLX-FR-020..029) ---
     # Mirrors MODEL_PROVIDER_MAX_RETRIES/RETRY_*/CIRCUIT_* exactly -- the same
     # "equal jitter" backoff formula and three-state circuit breaker Phase

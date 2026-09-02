@@ -39,9 +39,19 @@ class SigningKeyService:
     def ensure_key(self, key_id: str) -> SigningKey:
         """Get-or-create the DB record for ``key_id``, generating the
         underlying keypair via the provider (a no-op if it already exists)
-        on first use."""
+        on first use.
+
+        Phase M4.11: when the DB row already exists, the provider must still
+        actually *hold* a usable private key for it — a row without its key
+        material is an established signing identity that has lost its key,
+        and silently minting a replacement here would orphan every
+        signature made under the original (M4.11-FR-002). That case fails
+        loud via ``verify_signing_material``."""
         key = self.db.execute(select(SigningKey).where(SigningKey.key_id == key_id)).scalar_one_or_none()
         if key is not None:
+            from app.security.key_integrity import verify_signing_material_for_key
+
+            verify_signing_material_for_key(self.provider, key)
             return key
         version = self.provider.ensure_key(key_id)
         public_key_pem = self.provider.get_public_key(key_id, version).decode("utf-8")

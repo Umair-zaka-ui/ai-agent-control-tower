@@ -285,9 +285,13 @@ try {
         '- frontend/.env (local build configuration)',
         '- backups/seed-credentials.txt (one-time raw agent API keys)',
         '- backend/var/dev-outbox.log (plaintext development email links/tokens)',
+        '- backend/.keys/ (Fernet encryption key + Ed25519 signing private keys)',
         '',
-        'Store required values in a password manager or export them separately with Export-ControlTowerSecrets.ps1.',
-        'On a new system, rotating JWT/database credentials and reissuing agent keys is safer than preserving active sessions.'
+        'Store required values in a password manager or export them separately with Export-ControlTowerSecrets.ps1',
+        '(which now includes backend/.keys/ by default).',
+        'REQUIRED for recovery: backend/.keys/ must be restored, or the platform fails loud at startup and',
+        'every stored secret is unreadable. See docs/security/key-management.md. Reissuing credentials instead',
+        'is a valid deliberate choice; a restore that silently omits the keys is not.'
     )
     [System.IO.File]::WriteAllLines((Join-Path $partial 'secrets-inventory.txt'), $secretsInventory, $utf8)
 

@@ -989,21 +989,30 @@ so there's nothing to accidentally log).
 `app/runtime/providers/credential_crypto.py` — Fernet (AES-128-CBC +
 HMAC-SHA256, authenticated symmetric encryption) via the `cryptography`
 package already vendored transitively through `python-jose[cryptography]`
-(no new dependency). The key comes from `settings.MODEL_CREDENTIAL_
-ENCRYPTION_KEY` if set; otherwise one is auto-generated and persisted to
-`settings.MODEL_CREDENTIAL_ENCRYPTION_KEY_PATH` (default `./.keys/
-model_credentials.key`, gitignored) — **the identical dev-convenience
-pattern Phase 5.2.4's `LocalKeyProvider` already established** for
-signing keys, deliberately reused rather than inventing a second one,
-including the loud warning logged on first auto-generation.
+(no new dependency). **Phase M4.11** moved key provenance behind an
+`EncryptionKeyProvider` seam (`app/security/encryption_provider.py`,
+mirroring `SigningProvider`): the key comes from
+`settings.MODEL_CREDENTIAL_ENCRYPTION_KEY` if set, otherwise from the local
+key file at `settings.MODEL_CREDENTIAL_ENCRYPTION_KEY_PATH` (default
+`./.keys/model_credentials.key`, gitignored). **It is no longer
+auto-generated when absent** — a missing key on an established install
+(any ciphertext in the database) fails loud at startup
+(`ENCRYPTION_KEY_MISSING_ESTABLISHED_INSTALL`); a wrong key fails too
+(`ENCRYPTION_KEY_MISMATCH`, via the `key_material_canary` verifier).
+Deliberate provisioning for a genuine new install is
+`python -m app.security.keys bootstrap`. The key ring is a `MultiFernet`
+over the active key plus `settings.MODEL_CREDENTIAL_ENCRYPTION_KEYS`
+(retained prior keys) for rotation.
 
-**Known Deviation (mirrors `ACT-VER-NFR-002`, Phase 5.2.4's own recorded
-deviation)**: a platform-held symmetric key necessarily enters process
-memory to encrypt/decrypt — no way to avoid that without an external
-KMS/HSM performing the operation server-side. Accepted pre-production;
-closes when Milestone 13 lands external KMS/vault integration, the exact
-closure condition 5.2.4 recorded for its own local signing provider. Not
-built here.
+**Known Deviation (mirrors `ACT-VER-NFR-002`)**: a platform-held symmetric
+key necessarily enters process memory to encrypt/decrypt — no way to avoid
+that without an external KMS/HSM performing the operation server-side.
+Accepted pre-production. **Mitigated by Phase M4.11**: the key material is
+now recoverable and fail-loud (`docs/security/key-management.md`,
+[ADR-0014](../architecture/adr/0014-key-material-recovery-and-fail-loud-integrity.md)),
+and the `EncryptionKeyProvider` seam makes an external KMS/Vault a
+configuration change (`ENCRYPTION_KEY_PROVIDER`) rather than a rewrite —
+the closure condition, unchanged.
 
 ### Resolution order (`ACT-MDL-FR-082`)
 

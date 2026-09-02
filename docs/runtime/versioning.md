@@ -595,7 +595,14 @@ concrete reason" — there isn't one here.
   disk into this process's memory for the duration of the `sign()` call.
   Accepted pre-production; **closes when Azure Key Vault** (which signs
   server-side and never exposes key material to the calling process) lands
-  as a second `SigningProvider`.
+  as a second `SigningProvider`. **Mitigated by Phase M4.11**: the local
+  signing key is now a recoverable, fail-loud asset — a missing or
+  mismatched private key for an established signing identity fails startup
+  (`SIGNING_PRIVATE_KEY_MISSING` / `SIGNING_KEY_MISMATCH`) rather than
+  being silently regenerated, and `LocalKeyProvider.ensure_key` takes an
+  `allow_bootstrap` flag the integrity check sets to `False`. See
+  `docs/security/key-management.md` and
+  [ADR-0014](../architecture/adr/0014-key-material-recovery-and-fail-loud-integrity.md).
 - **`ACT-VER-FR-070`** (a public, unauthenticated verification endpoint) is
   **deliberately deferred** — every route this phase adds requires
   authentication and organization scoping (see "Verification scope"

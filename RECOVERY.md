@@ -1,6 +1,30 @@
 # Backup and system-migration guide
 
-**Last verified 2026-09-02** after Phase 4.10 (Milestone 4 proof & hardening);
+**Last verified 2026-09-02** after Phase M4.11 (Production Integrity Closure —
+key-material recovery & fail-loud integrity). **The "Encryption keys — the one
+gap the scripts do not close" section below is CLOSED.** `backend/.keys/` is no
+longer an unbacked silent-loss hazard: an established installation that is
+missing or holding the wrong encryption/signing key now **fails loud at startup
+with a deterministic, operator-actionable error** (`KeyMaterialError`, no secret
+in the message) instead of silently regenerating a key and leaving every
+pre-existing ciphertext undecryptable. The key material has a supported,
+tested backup/restore procedure with proven cryptographic continuity. The full
+procedure is [`docs/security/key-management.md`](docs/security/key-management.md);
+[ADR-0014](docs/architecture/adr/0014-key-material-recovery-and-fail-loud-integrity.md)
+records the decision. Migration head is now **`0052_key_material_canary`**,
+**136 tables** (one additive table, `key_material_canary`; reversible,
+downgrade-tested, changes no decrypt behaviour for any existing row).
+
+M4.11 also proves the recovery property directly
+(`tests/runtime/test_key_material_integrity.py`): DB backup + correct keys ⇒
+pre-backup credential decrypts, pre-backup signature verifies, new signing
+continues; DB backup + missing key ⇒ loud deterministic failure, no
+regeneration, does not serve; DB backup + wrong key ⇒ deterministic safe
+failure — with no key or secret in any log, message or output.
+
+## Phase 4.10 and earlier
+
+The 4.6/4.7/4.8 sections below were added in their own passes. **Phases 4.9 and
 the 4.6/4.7/4.8 sections below were added in their own passes. **Phases 4.9 and
 4.10 added no durable state** — 4.9 is the operator frontend plus two read-only
 aggregation endpoints, and 4.10 is a proof/test phase with no product code at
@@ -278,7 +302,10 @@ restore must not resurrect purged content or reset a policy.**
 
 > **Read "Encryption keys" below before trusting any snapshot.** A verified
 > database dump plus a Git bundle is *not* sufficient to recover this platform's
-> encrypted secrets, and the automated scripts do not cover the key material.
+> encrypted secrets — the key material must be recovered too. As of Phase M4.11
+> a restore that omits it **fails loud at startup** instead of silently
+> corrupting access to every stored secret, and there is a supported,
+> tested procedure to back it up and restore it.
 
 This project uses two independent recovery channels:
 
@@ -313,45 +340,75 @@ The scripts under `scripts/backup/` are intentionally conservative:
 
 No backup or restore script stops Docker containers or PostgreSQL services.
 
-## Encryption keys — the one gap the scripts do not close
+## Encryption keys — CLOSED as of Phase M4.11
 
-**`backend/.keys/` is not backed up by anything, and without it a restored
-database's encrypted columns are permanently unreadable.** This was verified in
-the 2026-08-14 pass, not assumed: `.keys/` and `backend/.keys/` are both listed
-in `.gitignore`, so the Git bundle excludes them and `Backup-ControlTower.ps1`'s
-"nonignored untracked files" copy skips them by definition; and
-`Export-ControlTowerSecrets.ps1` archives a fixed list of three paths
-(`backend/.env`, `frontend/.env`, `backups/seed-credentials.txt`) that does not
-include them either. The directory currently holds 13,727 files on this machine.
+**Before M4.11 this was the one gap the scripts did not close**: `backend/.keys/`
+was in no backup, and if a required key was absent at startup the platform
+*silently generated a replacement* — after which new secrets encrypted and
+decrypted normally while every pre-existing ciphertext became permanently
+undecryptable, with nothing failing loudly. That silent data-loss is now a
+loud, deterministic, recoverable failure. The full procedure is
+[`docs/security/key-management.md`](docs/security/key-management.md); this
+section is the recovery-context summary.
 
-Two distinct kinds of key material live there, both introduced after this guide
-was first written:
+Two kinds of key material live in `backend/.keys/`:
 
-| Path | Introduced | What is lost without it |
+| Path | Setting | What is lost without it |
 |---|---|---|
-| `backend/.keys/model_credentials.key` (`MODEL_CREDENTIAL_ENCRYPTION_KEY_PATH`) | Phase 5.7a.5 | The Fernet key for **every encrypted secret in the database** — per-organization model-provider credentials, connector credentials, connector OAuth access/refresh tokens, tool credentials, and identity-federation client secrets. The ciphertext restores fine and decrypts to nothing. |
-| `backend/.keys/*.pem` (`SIGNING_KEY_PATH`) | Phase 5.2.4 | The Ed25519 **private** signing keys behind every version attestation. Public keys live in the database, so past signatures still verify; but the key cannot sign again, so rotation history and continuity of the signing identity are gone. |
+| `backend/.keys/model_credentials.key` | `MODEL_CREDENTIAL_ENCRYPTION_KEY_PATH` (or `MODEL_CREDENTIAL_ENCRYPTION_KEY` inline) | The Fernet key for **every encrypted secret in the database** — model-provider credentials, connector credentials, connector OAuth access/refresh tokens, tool credentials, identity-federation client secrets. |
+| `backend/.keys/{key_id}.v{n}.pem` | `SIGNING_KEY_PATH` | The Ed25519 **private** signing keys behind every version attestation. Public keys live in the database, so past signatures still verify; the identity just cannot sign again without the private key. |
 
-If the key is absent at startup the platform generates and persists a **new**
-one. Nothing fails loudly — new secrets encrypt and decrypt normally while every
-pre-existing ciphertext silently becomes undecryptable. That is why this is
-called out here rather than left to be discovered during an actual recovery.
+**What happens now on startup** (`app.main` lifespan → `verify_key_material`):
 
-Until the export script is extended to cover it, archive the directory manually
-alongside a snapshot, to the same marked target, with the same AES-256 treatment
-and a passphrase stored in a password manager:
+- The install mode is decided by **the presence of encrypted state in the
+  database, not the absence of a key file**. A restored database with
+  encrypted rows and no key is an *existing* install with lost keys — it
+  **fails loud** (`ENCRYPTION_KEY_MISSING_ESTABLISHED_INSTALL`), never
+  bootstraps.
+- A *wrong* key fails too (`ENCRYPTION_KEY_MISMATCH` /
+  `ENCRYPTION_KEY_CANNOT_DECRYPT`), via a `key_material_canary` verifier row
+  and a trial-decrypt of real ciphertext.
+- Signing: the configured default identity must still have a usable private
+  key whose public half matches the database
+  (`SIGNING_PRIVATE_KEY_MISSING` / `SIGNING_KEY_MISMATCH`).
+- Every failure message names the problem and the fix and **contains no key,
+  secret or ciphertext**.
+
+**Back up the key material** (do this after every bootstrap and rotation):
+
+```powershell
+cd backend
+.\.venv\Scripts\python.exe -m app.security.keys backup (Join-Path $target 'key-material')
+```
+
+This writes the key files plus a `MANIFEST.json` that *names* the required
+artifacts with SHA-256 checksums and non-secret fingerprints — never their
+contents. The written files hold raw key bytes, so wrap the folder with the
+same AES-256 treatment as a snapshot:
 
 ```powershell
 $sevenZip = 'C:\Program Files\7-Zip\7z.exe'
 $stamp = [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ')
 & $sevenZip a -t7z -mx=9 -mhe=on -p `
   (Join-Path $target "control-tower-keys-$stamp.7z") `
-  (Join-Path $repoRoot 'backend\.keys')
+  (Join-Path $target 'key-material')
 ```
 
-Preferred recovery behavior remains reissuing credentials rather than preserving
-them (see below) — but that is a decision to make deliberately, not one to have
-made for you by a backup that quietly omitted the keys.
+**Restore the key material** (step 2 of a full recovery, after the database,
+before serving traffic): decrypt the archive, copy `keys/*` into
+`backend\.keys\`, create `backend\.env`, then:
+
+```powershell
+cd backend
+.\.venv\Scripts\python.exe -m app.security.keys verify   # must print OK
+```
+
+`verify` is the key-continuity check. A half-restored state fails loud here;
+it does not partially serve.
+
+Reissuing credentials instead of preserving them is still a valid, safer
+choice for a fresh start — but it is now a *deliberate* decision, not one made
+for you by a backup that quietly omitted the keys.
 
 On Windows systems that block unsigned local PowerShell scripts, enable them only
 for the current terminal before running the commands below:
@@ -803,7 +860,13 @@ Package locks, migrations, Dockerfiles, application code, and documentation are
 already preserved by Git/GitHub and the verified Git bundle.
 
 **`backend/.keys/` is not on this list.** It is gitignored, so it looks like the
-same category of throwaway local state, and it is not — the platform will happily
-regenerate a key and leave every existing ciphertext unreadable. Treat it as
-secret material to be deliberately archived or deliberately abandoned, never as
-something that rebuilds itself.
+same category of throwaway local state, and it is not. As of Phase M4.11 the
+platform **no longer regenerates a missing key** — an established install that
+is missing or holding the wrong key fails loud at startup
+(`ENCRYPTION_KEY_MISSING_ESTABLISHED_INSTALL` / `ENCRYPTION_KEY_MISMATCH` /
+`SIGNING_PRIVATE_KEY_MISSING`). Treat `backend/.keys/` as secret material to be
+deliberately backed up (`python -m app.security.keys backup`, or
+`Export-ControlTowerSecrets.ps1`, which now includes it) and deliberately
+restored, or deliberately abandoned in favour of reissuing credentials — never
+as something that rebuilds itself. See
+[`docs/security/key-management.md`](docs/security/key-management.md).

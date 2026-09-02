@@ -11,6 +11,7 @@
 > |---|---|---|---|---|
 > | **Historical (Book-07)** | `Phase 4` / `Part 4.1`, `4.2.1`, `4.2.2.x`, `Phase 4.3` / `Part 4.3.1–4.3.8` | Enterprise Identity & Authorization | Identity foundation, authentication, RBAC/ABAC, IGA | Complete |
 > | **Milestone 4 (ACT-SRS-M4)** | `Phase 4.1 – 4.10`, requirement ids `M4-4.1-FR-xxx` | Runtime Governance & Observability | Telemetry, tracing, governance engine, cost, SLOs, privacy, observability center | **Complete** |
+> | **Phase M4.11** | `M4.11-FR-xxx` | Production Integrity Closure | Key-material recovery & fail-loud integrity — the M5 prerequisite | **Complete** |
 >
 > **How to tell them apart at a glance.** The historical family always appears
 > under a `## Phase 4 —` or `## Phase 4.3 —` heading and is written as
@@ -2130,6 +2131,23 @@ proof demonstrates one real governed execution threading trace → governance �
 cost → redaction → audit → export. See the Phase 4.10 entry below and
 [`docs/runtime/milestone-4-proof.md`](docs/runtime/milestone-4-proof.md).
 
+**Phase M4.11 — Production Integrity Closure — is COMPLETE (2026-09-02).** A
+bounded integrity/recovery phase between M4 and M5, closing the one verified
+production hazard that blocked Milestone 5: ACT's encryption and signing key
+material was in no backup, and a missing key at startup was *silently
+regenerated*, rendering every pre-existing ciphertext undecryptable with
+nothing failing loudly. That is now a loud, deterministic, recoverable failure;
+the key material has a supported, tested backup/restore procedure with proven
+cryptographic continuity; and a clean `EncryptionKeyProvider` seam makes an
+external KMS/Vault a documented next step rather than a rewrite. Migration head
+`0052_key_material_canary`, 136 tables, one additive table. See the Phase M4.11
+entry below, [`docs/security/key-management.md`](docs/security/key-management.md),
+and [ADR-0014](docs/architecture/adr/0014-key-material-recovery-and-fail-loud-integrity.md).
+**The production-integrity prerequisite for Milestone 5 is now satisfied** — next
+is generating ACT-SRS-M5 (the Universal Agent Control & Security Fabric), then
+its ten-phase decomposition, one phase at a time, each opening with a live
+REPO_STATE regeneration.
+
 **The four rulings this milestone is built on:**
 
 | # | Ruling | Where it stands |
@@ -2651,6 +2669,9 @@ operate enterprise AI with complete runtime accountability.*
 | 21 | **The center renders content only through 4.8's audited endpoint** — no bypass route; a metadata-only operator sees a truthful gated state, not the content and not an error; capture mode shown truthfully; 404-vs-403 honoured | 4.9 | `docs/operations/observability-center.md` |
 | 22 | **A proof demonstrates real runtime behaviour, never row insertion** — the §33 proof configures a budget/policy and asserts the engine *actually* stopped the loop, the budget *actually* held, the trace *actually* reconstructs; a proof that cannot pass reveals a gap to fix, never an assertion to weaken | 4.10 | `docs/runtime/milestone-4-proof.md`, `test_milestone_4_proof.py` |
 | 23 | **`GOVERNANCE_CHECKPOINT_UNEVALUABLE` is retryable** — fail-closed stops the *attempt* (the loop never runs past the checkpoint); the requeue is the retry policy, because a transient dependency may recover. Not a bug — confirmed against `_fail_or_retry`'s own comment | 4.10 | `docs/runtime/milestone-4-proof.md` "The one finding" |
+| 24 | **NEW vs EXISTING install is the presence of encrypted state in the database, not the absence of a key file** — a restored DB with rows and no key is EXISTING → fail loud, never bootstrap | M4.11 | ADR-0014, `app/security/install_mode.py` |
+| 25 | **Key material is never silently regenerated** — a missing/wrong encryption or signing key on an established install fails loud (`KeyMaterialError`, deterministic, no secret in the message); generation is only ever the explicit `bootstrap()` | M4.11 | ADR-0014, `app/security/key_integrity.py`, `docs/security/key-management.md` |
+| 26 | **The encryption-key provider seam mirrors `SigningProvider`; no vendor SDK in core** — `LocalEncryptionKeyProvider` default, KMS/Vault as a registry adapter, documented as future work | M4.11 | `app/security/encryption_provider.py` |
 
 **§41 gate-closure audit (all closed):** A end-to-end governed execution (4.10) ·
 B trace foundation (4.1) · C trace explorer (4.2) · D cost truth (4.4) · E budget
@@ -2663,6 +2684,57 @@ unchanged (4.10). Each maps to a named passing proof — see
 letter↔concern mapping is reconstructed from the per-phase `Gate X` references
 plus the 4.10 build prompt; the SRS §41 consolidated table is not carried in the
 repo (a reported SRS/repo observation).
+
+### Phase M4.11 — Production Integrity Closure (Key Material Recovery & Fail-Loud Integrity) ✅ (2026-09-02)
+
+**A bounded integrity/recovery phase between Milestone 4 and Milestone 5 — no new
+product capability.** It closes the one verified production hazard that blocked
+M5: ACT's encryption (Fernet) and signing (Ed25519) key material lived only on
+the local filesystem, was in no backup, and **a missing key at startup was
+silently regenerated** — after which new secrets encrypted/decrypted normally
+while every pre-existing ciphertext became permanently undecryptable, with
+nothing failing loudly.
+
+- **Fail loud, never regenerate** — `credential_crypto` / `LocalKeyProvider` no
+  longer generate a key on absence; `app.main` lifespan runs `verify_key_material(db)`
+  before serving. An established install missing/holding the wrong key aborts
+  startup with a deterministic `KeyMaterialError` carrying **no key or secret**.
+- **NEW vs EXISTING = presence of encrypted state in the DB** (`detect_install_mode`
+  probes every ciphertext table + the signed-attestation tables). A restored DB
+  with rows and no key is EXISTING → fail loud, never bootstrap (the negative
+  proof).
+- **Wrong key fails too** — the `key_material_canary` verifier row (migration
+  `0052`) plus a trial-decrypt of real ciphertext.
+- **Deliberate bootstrap** — `python -m app.security.keys bootstrap`, refuses an
+  EXISTING install; `ENCRYPTION_KEY_ALLOW_BOOTSTRAP` (off) for container first-run.
+- **Provider seam** — `EncryptionKeyProvider` mirroring `SigningProvider`;
+  `LocalEncryptionKeyProvider` default; KMS/Vault as a registry adapter,
+  documented as future work; no vendor SDK in core.
+- **Backup / restore / continuity** — `python -m app.security.keys backup|verify`;
+  `Export-ControlTowerSecrets.ps1` now includes `backend/.keys/`; a manifest that
+  names artifacts + checksums, never contents. Historical ciphertext decrypts,
+  historical signatures verify, new signing continues after an authorized
+  restore. The end-to-end production-integrity proof (`test_key_material_integrity.py::test_ac18`)
+  covers positive continuity + negative missing-key + negative wrong-key + no-leak.
+- **Rotation** — `MultiFernet` key ring (active + retained prior keys via
+  `MODEL_CREDENTIAL_ENCRYPTION_KEYS`), no re-encrypt transaction; a background
+  re-encrypt job deferred with its architecture recorded.
+
+One additive table (`key_material_canary`), head `0051_telemetry_privacy` →
+`0052_key_material_canary`, **136 tables**; reversible, downgrade-tested, changes
+no decrypt behaviour for any existing row. Routes unchanged at **590** (CLI
+surface). New settings `ENCRYPTION_KEY_PROVIDER` / `MODEL_CREDENTIAL_ENCRYPTION_KEYS`
+/ `KEY_MATERIAL_FAIL_LOUD` / `ENCRYPTION_KEY_ALLOW_BOOTSTRAP`. **23 new backend
+tests**; one existing fixture adapted, intent-preserving. Backend **2,303 passed**,
+0 failed, 1 deselected (2,280 + 23); frontend **359**, unchanged. See
+[`docs/security/key-management.md`](docs/security/key-management.md), the rewritten
+[`RECOVERY.md`](RECOVERY.md), and
+[ADR-0014](docs/architecture/adr/0014-key-material-recovery-and-fail-loud-integrity.md).
+
+**The production-integrity prerequisite for Milestone 5 is now satisfied.** Next:
+generate ACT-SRS-M5 (the Universal Agent Control & Security Fabric — a security
+and trust milestone), then its ten-phase decomposition, one phase at a time, each
+opening with a live REPO_STATE regeneration.
 
 ## Future (Phase 3+)
 
