@@ -1,8 +1,8 @@
 # ADR-0014 — Key material is a recoverable, fail-loud asset (never silently regenerated)
 
-- **Status:** Accepted
+- **Status:** Accepted (amended 2026-09-03 by Phase M4.11a — see the Amendment section)
 - **Date:** 2026-09-02
-- **Deciders:** Phase M4.11 (Milestone 4 — Production Integrity Closure)
+- **Deciders:** Phase M4.11 (Milestone 4 — Production Integrity Closure); amended by Phase M4.11a (Install-Mode Classification Hardening)
 - **Supersedes:** —
 - **Relates to:** ADR-0002 (PostgreSQL as sole datastore), the `ACT-VER-NFR-002`
   Known Deviation (local signing keys), `credential_crypto.py`'s Known Deviation
@@ -115,10 +115,59 @@ not as throwaway local state.**
   operator encrypts the container (RECOVERY.md), exactly as for
   `Export-ControlTowerSecrets.ps1`.
 
+## Amendment — Phase M4.11a (2026-09-03): the durable bootstrap marker
+
+**The defect this amends.** Decision point 1 above — *"the signal for NEW vs
+EXISTING is the presence of encrypted state in the database"* — was
+incomplete. Presence of ciphertext is a *sufficient* EXISTING signal but not a
+*necessary* one. An established installation can legitimately hold
+organizations, agents, policies and deployments while having **zero** encrypted
+credential rows and no signed attestation; under the as-built logic
+`detect_install_mode` classified such an install NEW, and if it had lost its
+key, `verify_encryption_material` would take the NEW path — silently minting a
+fresh cryptographic identity under `ENCRYPTION_KEY_ALLOW_BOOTSTRAP`, or (worse)
+directing the operator to bootstrap. That is the same silent-identity-loss this
+ADR exists to kill, surviving in the one path M4.11 did not harden.
+
+**The correction.** NEW is now a **positive durable fact**, not an inference
+from absence:
+
+- A single-row `installation_bootstrap` table (migration `0053`, additive,
+  reversible, tenant-neutral) records **once** that this installation completed
+  key bootstrap — a timestamp, the active key's non-secret fingerprint, the
+  provider, a schema tag. No key, no secret.
+- `detect_install_mode` ⇒ **EXISTING iff the marker is present OR any
+  encrypted/signed state exists**; **NEW iff the marker is absent AND there is
+  no such state**. Ciphertext/signed state stays a sufficient fast-path.
+- The marker is written atomically with the canary + signing identity at a
+  deliberate bootstrap, and **backfilled once at startup** after an existing
+  key is verified (canary match or trial-decrypt) — so an install that
+  bootstrapped under M4.11 becomes correctly EXISTING with no window in which
+  it reads as NEW.
+- A **five-state key taxonomy** (`KEY_ABSENT`, `KEY_MALFORMED`,
+  `KEY_PRESENT_BUT_WRONG`, `KEY_PROVIDER_UNAVAILABLE`,
+  `INSTALLATION_NEVER_BOOTSTRAPPED`) makes every failure mode a distinct,
+  operator-actionable error code with no material leak.
+  `KEY_PROVIDER_UNAVAILABLE` is explicitly **not** an install-mode signal — a
+  transient provider outage never makes an established install look NEW and
+  never falls back to generating a key.
+
+**Consequence.** A restored/cloned database carries the marker, so a restore
+without the key fails loud **even if the ciphertext tables were empty at backup
+time** — strengthening the negative-proof anchor. Every other M4.11 guarantee
+is unchanged; the classification only *tightens* (nothing that was EXISTING
+becomes NEW).
+
+**Residual risk retired.** The M4.11 residual note *"the only unguarded window
+is an EXISTING install with zero currently-readable ciphertext"* is closed by
+the marker.
+
 ## Revisit when
 
 - **An external KMS/Vault provider is implemented.** Confirm `verify_key_material`
-  validates a vault-held key (it currently deep-validates only `LocalKeyProvider`).
+  validates a vault-held key (it currently deep-validates only `LocalKeyProvider`),
+  and that its `check_available()` raises `ProviderUnavailableError` on a real
+  outage so the `KEY_PROVIDER_UNAVAILABLE` path engages.
 - **A right-to-erasure requirement reaches domain content.** Key rotation and
   crypto-shredding interact; that is a new phase.
 - **Signing moves to Azure Key Vault** (closes `ACT-VER-NFR-002`). The signing

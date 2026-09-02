@@ -45,6 +45,14 @@ from app.security.errors import KeyMaterialError
 _FINGERPRINT_DOMAIN = b"act-encryption-key-fingerprint-v1\x00"
 
 
+class ProviderUnavailableError(RuntimeError):
+    """The key provider itself could not be reached (a future KMS/Vault
+    outage). Phase M4.11a: this is deliberately **distinct** from "the key
+    is missing" — a transient provider outage must fail loud and must never
+    be mistaken for a new installation, and must never fall back to
+    generating a key (M4.11a-FR-023)."""
+
+
 def key_fingerprint(key: bytes) -> str:
     """A short, **non-secret** identifier for a key — a domain-separated
     SHA-256 prefix. Safe to print and to store in the clear (it is what an
@@ -73,6 +81,13 @@ class EncryptionKeyProvider(ABC):
     """Four methods, none of which generate key material as a side effect."""
 
     name: str = "ABSTRACT"
+
+    def check_available(self) -> None:
+        """Phase M4.11a — raise ``ProviderUnavailableError`` if the provider
+        backend cannot be reached at all (distinct from "the key is
+        missing"). Default: a no-op — a local file provider is always
+        reachable. A KMS/Vault adapter overrides this to ping the vault."""
+        return None
 
     @abstractmethod
     def is_present(self) -> bool:
@@ -138,6 +153,17 @@ class LocalEncryptionKeyProvider(EncryptionKeyProvider):
         return None
 
     # -- interface ------------------------------------------------------- #
+    def check_available(self) -> None:
+        """The local provider is reachable unless its configured key path is
+        occupied by something that is not a readable file (a directory, a
+        broken symlink) — that is a misconfiguration, not a missing key."""
+        if self._configured_value() is not None:
+            return
+        if self._key_path.exists() and not self._key_path.is_file():
+            raise ProviderUnavailableError(
+                f"the encryption key path {self._key_path} exists but is not a readable file"
+            )
+
     def is_present(self) -> bool:
         return self._configured_value() is not None or self._file_value() is not None
 

@@ -12,6 +12,7 @@
 > | **Historical (Book-07)** | `Phase 4` / `Part 4.1`, `4.2.1`, `4.2.2.x`, `Phase 4.3` / `Part 4.3.1–4.3.8` | Enterprise Identity & Authorization | Identity foundation, authentication, RBAC/ABAC, IGA | Complete |
 > | **Milestone 4 (ACT-SRS-M4)** | `Phase 4.1 – 4.10`, requirement ids `M4-4.1-FR-xxx` | Runtime Governance & Observability | Telemetry, tracing, governance engine, cost, SLOs, privacy, observability center | **Complete** |
 > | **Phase M4.11** | `M4.11-FR-xxx` | Production Integrity Closure | Key-material recovery & fail-loud integrity — the M5 prerequisite | **Complete** |
+> | **Phase M4.11a** | `M4.11a-FR-xxx` | Install-Mode Classification Hardening | The durable bootstrap marker + five-state key taxonomy — corrects M4.11's absence-inference | **Complete** |
 >
 > **How to tell them apart at a glance.** The historical family always appears
 > under a `## Phase 4 —` or `## Phase 4.3 —` heading and is written as
@@ -2139,14 +2140,23 @@ regenerated*, rendering every pre-existing ciphertext undecryptable with
 nothing failing loudly. That is now a loud, deterministic, recoverable failure;
 the key material has a supported, tested backup/restore procedure with proven
 cryptographic continuity; and a clean `EncryptionKeyProvider` seam makes an
-external KMS/Vault a documented next step rather than a rewrite. Migration head
-`0052_key_material_canary`, 136 tables, one additive table. See the Phase M4.11
-entry below, [`docs/security/key-management.md`](docs/security/key-management.md),
-and [ADR-0014](docs/architecture/adr/0014-key-material-recovery-and-fail-loud-integrity.md).
-**The production-integrity prerequisite for Milestone 5 is now satisfied** — next
-is generating ACT-SRS-M5 (the Universal Agent Control & Security Fabric), then
-its ten-phase decomposition, one phase at a time, each opening with a live
-REPO_STATE regeneration.
+external KMS/Vault a documented next step rather than a rewrite.
+
+**Phase M4.11a — Install-Mode Classification Hardening — is COMPLETE
+(2026-09-03).** A corrective phase: M4.11 inferred NEW from the *absence of
+encrypted state*, so an established install holding zero encrypted credential
+rows could be misread as new and silently handed a fresh identity after key
+loss. NEW is now a positive durable fact — a single-row `installation_bootstrap`
+marker (migration `0053`) — and startup resolves a deterministic five-state key
+taxonomy. Migration head `0053_installation_bootstrap`, 137 tables. See
+the Phase M4.11 and M4.11a entries below,
+[`docs/security/key-management.md`](docs/security/key-management.md), and the
+M4.11a amendment to
+[ADR-0014](docs/architecture/adr/0014-key-material-recovery-and-fail-loud-integrity.md).
+**With M4.11a the production-integrity prerequisite for Milestone 5 is satisfied
+without the residual edge case** — next is generating ACT-SRS-M5 (the Universal
+Agent Control & Security Fabric), then its ten-phase decomposition, one phase at
+a time, each opening with a live REPO_STATE regeneration.
 
 **The four rulings this milestone is built on:**
 
@@ -2669,9 +2679,11 @@ operate enterprise AI with complete runtime accountability.*
 | 21 | **The center renders content only through 4.8's audited endpoint** — no bypass route; a metadata-only operator sees a truthful gated state, not the content and not an error; capture mode shown truthfully; 404-vs-403 honoured | 4.9 | `docs/operations/observability-center.md` |
 | 22 | **A proof demonstrates real runtime behaviour, never row insertion** — the §33 proof configures a budget/policy and asserts the engine *actually* stopped the loop, the budget *actually* held, the trace *actually* reconstructs; a proof that cannot pass reveals a gap to fix, never an assertion to weaken | 4.10 | `docs/runtime/milestone-4-proof.md`, `test_milestone_4_proof.py` |
 | 23 | **`GOVERNANCE_CHECKPOINT_UNEVALUABLE` is retryable** — fail-closed stops the *attempt* (the loop never runs past the checkpoint); the requeue is the retry policy, because a transient dependency may recover. Not a bug — confirmed against `_fail_or_retry`'s own comment | 4.10 | `docs/runtime/milestone-4-proof.md` "The one finding" |
-| 24 | **NEW vs EXISTING install is the presence of encrypted state in the database, not the absence of a key file** — a restored DB with rows and no key is EXISTING → fail loud, never bootstrap | M4.11 | ADR-0014, `app/security/install_mode.py` |
+| 24 | **NEW vs EXISTING is a positive durable fact, not an inference from absent ciphertext** — EXISTING iff the `installation_bootstrap` marker is present OR any encrypted/signed state exists; NEW iff the marker is absent AND no such state. A missing key file never by itself implies NEW *(M4.11 shipped the ciphertext-only rule; M4.11a corrected it — an established install with zero encrypted rows was misread as NEW)* | M4.11 → M4.11a | ADR-0014 + its M4.11a amendment, `app/security/install_mode.py`, `app/security/installation.py` |
 | 25 | **Key material is never silently regenerated** — a missing/wrong encryption or signing key on an established install fails loud (`KeyMaterialError`, deterministic, no secret in the message); generation is only ever the explicit `bootstrap()` | M4.11 | ADR-0014, `app/security/key_integrity.py`, `docs/security/key-management.md` |
 | 26 | **The encryption-key provider seam mirrors `SigningProvider`; no vendor SDK in core** — `LocalEncryptionKeyProvider` default, KMS/Vault as a registry adapter, documented as future work | M4.11 | `app/security/encryption_provider.py` |
+| 27 | **The five-state key taxonomy** — `KEY_ABSENT` / `KEY_MALFORMED` / `KEY_PRESENT_BUT_WRONG` / `KEY_PROVIDER_UNAVAILABLE` / `INSTALLATION_NEVER_BOOTSTRAPPED`, each a distinct operator-safe code, no material leak. `KEY_PROVIDER_UNAVAILABLE` is *not* an install-mode signal — a provider outage never makes an established install look NEW or bootstrap | M4.11a | `app/security/key_integrity.py`, `docs/security/key-management.md` |
+| 28 | **The bootstrap marker is written once and backfilled after verification** — a deliberate bootstrap writes it atomically with the canary + signing identity; startup backfills it (`recorded_via="backfill"`) only once an existing key is verified, so an M4.11-bootstrapped install has no window in which it reads as NEW | M4.11a | `app/security/installation.py`, `app/security/bootstrap.py` |
 
 **§41 gate-closure audit (all closed):** A end-to-end governed execution (4.10) ·
 B trace foundation (4.1) · C trace explorer (4.2) · D cost truth (4.4) · E budget
@@ -2731,10 +2743,62 @@ tests**; one existing fixture adapted, intent-preserving. Backend **2,303 passed
 [`RECOVERY.md`](RECOVERY.md), and
 [ADR-0014](docs/architecture/adr/0014-key-material-recovery-and-fail-loud-integrity.md).
 
-**The production-integrity prerequisite for Milestone 5 is now satisfied.** Next:
-generate ACT-SRS-M5 (the Universal Agent Control & Security Fabric — a security
-and trust milestone), then its ten-phase decomposition, one phase at a time, each
-opening with a live REPO_STATE regeneration.
+**The production-integrity prerequisite for Milestone 5 was declared satisfied
+here — see Phase M4.11a below for the one edge case that had to be corrected
+first.**
+
+### Phase M4.11a — Install-Mode Classification Hardening (Durable Bootstrap Marker) ✅ (2026-09-03)
+
+**A corrective phase for M4.11 — no new product capability.** M4.11's
+NEW-vs-EXISTING classification inferred "NEW installation" from the *absence of
+encrypted state*, which is unsafe: an established install can legitimately hold
+organizations, agents, policies and deployments while having **zero** encrypted
+credential rows — and under that logic, if it lost its key, `detect_install_mode`
+saw no ciphertext, classified it NEW, and let bootstrap silently mint a fresh
+cryptographic identity. The same silent-identity-loss M4.11 existed to kill,
+surviving in the one path the build didn't harden.
+
+- **NEW is now a positive durable fact.** A single-row `installation_bootstrap`
+  table (migration `0053`) records once that this installation completed key
+  bootstrap — timestamp, active key's non-secret fingerprint, provider, schema
+  tag. No key, no secret.
+- **Corrected `detect_install_mode`:** EXISTING iff **marker present OR any
+  encrypted/signed state**; NEW iff **marker absent AND no such state**.
+  Ciphertext/signed state stays a *sufficient* fast-path. A missing key file
+  never by itself implies NEW.
+- **The edge case closed** (`test_m411a_ac03`): established + zero ciphertext +
+  marker + key lost ⇒ fails loud (EXISTING), never bootstraps — even with
+  `ENCRYPTION_KEY_ALLOW_BOOTSTRAP`. Proven both ways (old `has_encrypted_state`
+  signal → NEW; marker → EXISTING).
+- **Five-state key taxonomy** (`test_m411a_ac05`): `KEY_ABSENT`, `KEY_MALFORMED`,
+  `KEY_PRESENT_BUT_WRONG`, `KEY_PROVIDER_UNAVAILABLE`,
+  `INSTALLATION_NEVER_BOOTSTRAPPED` — each a distinct operator-safe code, no
+  material leak. `KEY_PROVIDER_UNAVAILABLE` (a KMS/Vault outage, via a new
+  `EncryptionKeyProvider.check_available()` seam) is explicitly not an
+  install-mode signal.
+- **One-time backfill:** startup writes the marker (`recorded_via="backfill"`)
+  only once an existing key is verified — no window in which an M4.11-bootstrapped
+  install reads as NEW; idempotent; a wrong key never gets a marker.
+- **Half-init guards** fail loud (`INSTALLATION_BOOTSTRAP_INCOMPLETE`,
+  `ENCRYPTION_KEY_UNVERIFIED_ESTABLISHED_INSTALL`).
+- **Every M4.11 guarantee preserved**; the M4.11 E2E (`test_ac18`) **extended,
+  not weakened**, with the zero-ciphertext-loses-key leg.
+
+One additive table (`installation_bootstrap`), head `0052_key_material_canary` →
+`0053_installation_bootstrap`, **137 tables**; reversible,
+downgrade-tested, changes no decrypt behaviour for any existing row. Routes
+unchanged at **590**. The classification only *tightens* — nothing that was
+EXISTING becomes NEW. 14 new backend tests (`test_m411a_*`); two existing M4.11 tests
+adjusted intent-preserving. Backend **2,317 passed**, 0 failed, 1 deselected
+(2,303 + 14); frontend **359**, unchanged. See [`docs/security/key-management.md`](docs/security/key-management.md),
+the amended [`RECOVERY.md`](RECOVERY.md), and the M4.11a amendment to
+[ADR-0014](docs/architecture/adr/0014-key-material-recovery-and-fail-loud-integrity.md).
+
+**With M4.11a, the production-integrity prerequisite for Milestone 5 is
+satisfied without the residual edge case.** Next: generate ACT-SRS-M5 (the
+Universal Agent Control & Security Fabric — a security and trust milestone),
+then its ten-phase decomposition, one phase at a time, each opening with a live
+REPO_STATE regeneration.
 
 ## Future (Phase 3+)
 

@@ -12,7 +12,8 @@ Structure:
 
 - ``errors``            — ``KeyMaterialError`` (deterministic, operator-actionable, no secret in the message)
 - ``encryption_provider`` — the ``EncryptionKeyProvider`` seam (mirrors ``SigningProvider``) + the local recovery-safe default
-- ``install_mode``      — ``detect_install_mode`` — NEW vs EXISTING, decided by the *presence of encrypted state in the database*, not the absence of a file
+- ``installation``      — the durable ``installation_bootstrap`` marker (M4.11a): a positive, once-written "this install completed key bootstrap" fact
+- ``install_mode``      — ``detect_install_mode`` — NEW vs EXISTING, decided by the bootstrap marker OR any encrypted/signed state; NEW only when the marker is absent *and* there is no such state (M4.11a corrected this — absence of ciphertext is not NEW)
 - ``canary``            — the key-validation canary: a wrong key fails, not only an absent one
 - ``key_integrity``     — ``verify_key_material`` — the fail-loud startup/first-use check (called from ``app.main``'s lifespan)
 - ``bootstrap``         — the deliberate, documented new-install bootstrap contract (``python -m app.security.keys``)

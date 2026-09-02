@@ -1,21 +1,27 @@
-"""Phase M4.11 M4.11-FR-010..013 — NEW_INSTALL vs EXISTING_INSTALL_WITH_LOST_KEY.
+"""Phase M4.11 / M4.11a — NEW_INSTALL vs EXISTING_INSTALL.
 
-**The signal is the presence of encrypted state in the database — not the
-absence of a key file.** "File missing ⇒ new install ⇒ generate" is exactly
-the hazard M4.11 closes. The correct, un-foolable rule is the inverse:
+**Phase M4.11a corrected the signal.** M4.11 inferred NEW from the *absence
+of encrypted state*, which is unsafe: an established installation can
+legitimately hold organizations, agents, policies and deployments while
+having *zero* encrypted credential rows — and under that logic, if it lost
+its key, it was classified NEW and bootstrap could silently mint a fresh
+cryptographic identity.
 
-- if the database holds *any* ciphertext (a provider / connector / tool
-  credential, a cached OAuth token, a federation client secret) or *any*
-  signed attestation, this is an **EXISTING** install. A missing or wrong
-  key is lost/invalid key material → fail loud, never bootstrap.
-- only a database with *no* encrypted state at all is a **NEW** install,
-  where a deliberate bootstrap is safe.
+The corrected rule (M4.11a-FR-003):
 
-A restored database with rows but no key is therefore always EXISTING — the
-rows are the proof — which is the negative-proof anchor (M4.11-FR-012).
+- **EXISTING** iff the durable ``installation_bootstrap`` marker is present
+  **OR** any encrypted/signed state exists. Ciphertext / a signed
+  attestation remains a *sufficient* fast-path — it just is no longer the
+  *only* signal.
+- **NEW** iff the marker is absent **AND** there is no encrypted or signed
+  state. Even then, bootstrap stays deliberate (the
+  ``ENCRYPTION_KEY_ALLOW_BOOTSTRAP`` gate + the ``keys bootstrap`` CLI) —
+  never automatic.
 
-The probe is a cheap ``SELECT 1 ... LIMIT 1`` per table, guarded by a live
-table-existence check so it is safe to run at any point after migrations.
+So a missing key file *never by itself* implies NEW. NEW is a positive
+durable fact (the marker being absent), and every ambiguous shape
+(established-but-no-ciphertext, restored, cloned, half-initialised) falls on
+the safe EXISTING / fail-loud side.
 """
 
 from __future__ import annotations
@@ -25,6 +31,8 @@ from dataclasses import dataclass
 
 from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
+
+from app.security.installation import marker_present
 
 
 class InstallMode(str, enum.Enum):
@@ -72,6 +80,8 @@ class InstallModeReport:
     mode: InstallMode
     encrypted_state_tables: tuple[str, ...]
     signed_state_tables: tuple[str, ...]
+    #: M4.11a — the durable bootstrap-completed marker is present
+    bootstrap_marker: bool = False
 
     @property
     def has_encrypted_state(self) -> bool:
@@ -80,6 +90,20 @@ class InstallModeReport:
     @property
     def has_signed_state(self) -> bool:
         return bool(self.signed_state_tables)
+
+    @property
+    def has_any_state(self) -> bool:
+        return self.has_encrypted_state or self.has_signed_state
+
+    @property
+    def reason(self) -> str:
+        if self.bootstrap_marker:
+            return "bootstrap marker present"
+        if self.has_encrypted_state:
+            return "encrypted state: " + ", ".join(self.encrypted_state_tables)
+        if self.has_signed_state:
+            return "signed state: " + ", ".join(self.signed_state_tables)
+        return "no marker and no encrypted or signed state"
 
 
 def _tables_with_rows(db: Session, probes: tuple[EncryptedStateProbe, ...]) -> tuple[str, ...]:
@@ -94,7 +118,13 @@ def _tables_with_rows(db: Session, probes: tuple[EncryptedStateProbe, ...]) -> t
 
 
 def detect_install_mode(db: Session) -> InstallModeReport:
+    marker = marker_present(db)
     encrypted = _tables_with_rows(db, CIPHERTEXT_PROBES)
     signed = _tables_with_rows(db, SIGNED_STATE_PROBES)
-    mode = InstallMode.EXISTING if (encrypted or signed) else InstallMode.NEW
-    return InstallModeReport(mode=mode, encrypted_state_tables=encrypted, signed_state_tables=signed)
+    mode = InstallMode.EXISTING if (marker or encrypted or signed) else InstallMode.NEW
+    return InstallModeReport(
+        mode=mode,
+        encrypted_state_tables=encrypted,
+        signed_state_tables=signed,
+        bootstrap_marker=marker,
+    )
