@@ -54,12 +54,42 @@ class LocalKeyProvider(SigningProvider):
                 versions.append(int(suffix))
         return max(versions) if versions else 0
 
-    def ensure_key(self, key_id: str) -> int:
+    # -- Phase M4.11 — fail-loud helpers -------------------------------- #
+    def has_private_key(self, key_id: str, version: int) -> bool:
+        """True iff the private key file for this version is present on
+        disk. (The public half living in the DB is not enough to sign
+        again — M4.11-FR-030.)"""
+        return self._private_key_path(key_id, version).exists()
+
+    def derive_public_key_pem(self, key_id: str, version: int) -> bytes:
+        """Loads the *private* key file and returns its public half, PEM
+        encoded — used to detect a wrong key (a present private key that is
+        not the one whose public half the database recorded)."""
+        private_key = serialization.load_pem_private_key(
+            self._private_key_path(key_id, version).read_bytes(), password=None
+        )
+        return private_key.public_key().public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo,
+        )
+
+    def ensure_key(self, key_id: str, *, allow_bootstrap: bool = True) -> int:
         """Auto-generates version 1 of ``key_id`` if no version exists yet.
-        Returns the current (highest) version number either way."""
+        Returns the current (highest) version number either way.
+
+        ``allow_bootstrap=False`` (used by the fail-loud integrity check and
+        by an established-install sign path) turns a missing key into a
+        loud error instead of a silent new identity — a new keypair here
+        for a ``key_id`` the database already knows would orphan every
+        signature made under the old one (M4.11-FR-002)."""
         current = self._current_version(key_id)
         if current > 0:
             return current
+        if not allow_bootstrap:
+            raise IdentityError(
+                ErrorCode.SIGNING_KEY_NOT_FOUND,
+                f"No local signing key material for '{key_id}' and bootstrap is disallowed here.",
+            )
         logger.warning(
             "Generating a new local Ed25519 signing keypair for '%s' at %s -- this is a "
             "development convenience, NOT production-grade key management. Production "

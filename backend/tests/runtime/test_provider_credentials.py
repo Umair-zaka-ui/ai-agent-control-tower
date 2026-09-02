@@ -144,9 +144,20 @@ def _run_execution(client: TestClient, admin: dict, agent_id: str, *, input_payl
 def _fresh_encryption_key(monkeypatch, tmp_path) -> None:
     """Every test in this file gets its own encryption key file, so no
     test's stored ciphertext depends on whatever key another test run (or
-    a real developer's ``.keys/`` directory) happens to have."""
+    a real developer's ``.keys/`` directory) happens to have.
+
+    Phase M4.11: ``credential_crypto`` no longer generates a key when one
+    is absent (a missing key on an established install is now a loud
+    failure, not a silent regeneration). This fixture provisions its own
+    throwaway key file explicitly — the deliberate-bootstrap contract for
+    a fresh, isolated install."""
+    from cryptography.fernet import Fernet
+
+    key_path = tmp_path / "model_credentials.key"
+    key_path.write_bytes(Fernet.generate_key())
     monkeypatch.setattr(settings, "MODEL_CREDENTIAL_ENCRYPTION_KEY", None)
-    monkeypatch.setattr(settings, "MODEL_CREDENTIAL_ENCRYPTION_KEY_PATH", str(tmp_path / "model_credentials.key"))
+    monkeypatch.setattr(settings, "MODEL_CREDENTIAL_ENCRYPTION_KEY_PATH", str(key_path))
+    monkeypatch.setattr(settings, "MODEL_CREDENTIAL_ENCRYPTION_KEYS", [])
     credential_crypto.reset_cached_key()
     yield
     credential_crypto.reset_cached_key()

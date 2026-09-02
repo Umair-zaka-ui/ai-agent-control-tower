@@ -52,6 +52,7 @@ from app.models.organization_hierarchy import (
 )
 from app.models.permission import Permission
 from app.models.scheduler import JobDefinition, JobRun
+from app.models.security import KeyMaterialCanary
 from app.models.worker import WorkerRegistration
 from app.models.resource_authorization import (
     OwnershipHistory,
@@ -204,4 +205,5 @@ __all__ = [
     "ConnectorCredential",
     "ConnectorOAuthToken",
     "ConnectorHealthCheck",
+    "KeyMaterialCanary",
 ]

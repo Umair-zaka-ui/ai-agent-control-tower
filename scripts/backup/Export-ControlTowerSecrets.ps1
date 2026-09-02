@@ -3,7 +3,14 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$DestinationRoot,
 
-    [switch]$IncludeDevelopmentOutbox
+    [switch]$IncludeDevelopmentOutbox,
+
+    # Phase M4.11: also include backend/.keys/ (the Fernet encryption key and
+    # the Ed25519 signing private keys). Without these a restored database's
+    # encrypted columns are unreadable and the signing identity cannot sign
+    # again. On by default now that the platform fails loud on a missing key
+    # rather than silently regenerating one — see docs/security/key-management.md.
+    [bool]$IncludeKeyMaterial = $true
 )
 
 Set-StrictMode -Version Latest
@@ -40,6 +47,16 @@ if ($IncludeDevelopmentOutbox) {
     $outbox = Join-Path $repoRoot 'backend\var\dev-outbox.log'
     if (Test-Path -LiteralPath $outbox -PathType Leaf) { $secretFiles.Add('backend\var\dev-outbox.log') }
 }
+if ($IncludeKeyMaterial) {
+    $keysDir = Join-Path $repoRoot 'backend\.keys'
+    if (Test-Path -LiteralPath $keysDir -PathType Container) {
+        $secretFiles.Add('backend\.keys')
+        Write-Host 'Including backend\.keys\ (encryption + signing key material).'
+    }
+    else {
+        Write-Warning 'backend\.keys\ not found — no key material to export. Bootstrap or restore it first.'
+    }
+}
 if ($secretFiles.Count -eq 0) { throw 'No secret files were found to export.' }
 
 $stamp = [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ')
@@ -69,3 +86,9 @@ $checksum = "$archive.sha256"
 Write-Host "Encrypted secret archive created: $archive"
 Write-Host "Checksum: $checksum"
 Write-Host 'Test the passphrase with: 7z t -p <archive>'
+if ($IncludeKeyMaterial) {
+    Write-Host ''
+    Write-Host 'On restore: extract backend\.keys\, then run'
+    Write-Host '  cd backend; .\.venv\Scripts\python.exe -m app.security.keys verify'
+    Write-Host 'It must print OK before the platform serves traffic.'
+}
