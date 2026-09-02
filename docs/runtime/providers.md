@@ -996,11 +996,12 @@ mirroring `SigningProvider`): the key comes from
 key file at `settings.MODEL_CREDENTIAL_ENCRYPTION_KEY_PATH` (default
 `./.keys/model_credentials.key`, gitignored). **It is no longer
 auto-generated when absent** — a missing key on an established install
-(any ciphertext in the database) fails loud at startup
-(`ENCRYPTION_KEY_MISSING_ESTABLISHED_INSTALL`); a wrong key fails too
-(`ENCRYPTION_KEY_MISMATCH`, via the `key_material_canary` verifier).
-Deliberate provisioning for a genuine new install is
-`python -m app.security.keys bootstrap`. The key ring is a `MultiFernet`
+fails loud at startup (`ENCRYPTION_KEY_MISSING_ESTABLISHED_INSTALL`); a wrong
+key fails too (`ENCRYPTION_KEY_MISMATCH`, via the `key_material_canary`
+verifier). "Established" is the durable `installation_bootstrap` marker OR any
+encrypted/signed state (Phase M4.11a — the marker means a missing key file is
+never itself read as a new install). Deliberate provisioning for a genuine
+new install is `python -m app.security.keys bootstrap`. The key ring is a `MultiFernet`
 over the active key plus `settings.MODEL_CREDENTIAL_ENCRYPTION_KEYS`
 (retained prior keys) for rotation.
 

@@ -1,19 +1,25 @@
 # Backup and system-migration guide
 
-**Last verified 2026-09-02** after Phase M4.11 (Production Integrity Closure —
-key-material recovery & fail-loud integrity). **The "Encryption keys — the one
-gap the scripts do not close" section below is CLOSED.** `backend/.keys/` is no
-longer an unbacked silent-loss hazard: an established installation that is
-missing or holding the wrong encryption/signing key now **fails loud at startup
-with a deterministic, operator-actionable error** (`KeyMaterialError`, no secret
-in the message) instead of silently regenerating a key and leaving every
+**Last verified 2026-09-03** after Phase M4.11a (Install-Mode Classification
+Hardening — the durable bootstrap marker), which corrected Phase M4.11
+(Production Integrity Closure). **The "Encryption keys — the one gap the
+scripts do not close" section below is CLOSED.** `backend/.keys/` is no longer
+an unbacked silent-loss hazard: an established installation that is missing or
+holding the wrong encryption/signing key now **fails loud at startup with a
+deterministic, operator-actionable error** (`KeyMaterialError`, no secret in
+the message) instead of silently regenerating a key and leaving every
 pre-existing ciphertext undecryptable. The key material has a supported,
 tested backup/restore procedure with proven cryptographic continuity. The full
 procedure is [`docs/security/key-management.md`](docs/security/key-management.md);
 [ADR-0014](docs/architecture/adr/0014-key-material-recovery-and-fail-loud-integrity.md)
-records the decision. Migration head is now **`0052_key_material_canary`**,
-**136 tables** (one additive table, `key_material_canary`; reversible,
-downgrade-tested, changes no decrypt behaviour for any existing row).
+(with its M4.11a amendment) records the decision. Migration head is now
+**`0053_installation_bootstrap`**, **137 tables** (two additive tables,
+`key_material_canary` and `installation_bootstrap`; both reversible,
+downgrade-tested, changing no decrypt behaviour for any existing row).
+**M4.11a** anchors NEW-vs-EXISTING to a durable `installation_bootstrap`
+marker rather than to the *absence of ciphertext* — so an established install
+that holds zero encrypted credential rows can no longer be misread as new and
+silently handed a fresh identity after key loss.
 
 M4.11 also proves the recovery property directly
 (`tests/runtime/test_key_material_integrity.py`): DB backup + correct keys ⇒
@@ -25,7 +31,6 @@ failure — with no key or secret in any log, message or output.
 ## Phase 4.10 and earlier
 
 The 4.6/4.7/4.8 sections below were added in their own passes. **Phases 4.9 and
-the 4.6/4.7/4.8 sections below were added in their own passes. **Phases 4.9 and
 4.10 added no durable state** — 4.9 is the operator frontend plus two read-only
 aggregation endpoints, and 4.10 is a proof/test phase with no product code at
 all. `test_milestone_4_proof.py::test_ac11` *proves* the recovery property
@@ -340,7 +345,7 @@ The scripts under `scripts/backup/` are intentionally conservative:
 
 No backup or restore script stops Docker containers or PostgreSQL services.
 
-## Encryption keys — CLOSED as of Phase M4.11
+## Encryption keys — CLOSED as of Phase M4.11 (hardened in M4.11a)
 
 **Before M4.11 this was the one gap the scripts did not close**: `backend/.keys/`
 was in no backup, and if a required key was absent at startup the platform
@@ -351,6 +356,16 @@ loud, deterministic, recoverable failure. The full procedure is
 [`docs/security/key-management.md`](docs/security/key-management.md); this
 section is the recovery-context summary.
 
+**Phase M4.11a closed the one residual edge case:** M4.11 inferred "NEW
+installation" from the *absence of encrypted state*, so an established install
+that happened to hold zero encrypted credential rows could, after key loss, be
+misread as new and silently handed a fresh identity. Classification is now
+anchored to a **durable `installation_bootstrap` marker** (migration `0053`) —
+a positive fact written once at bootstrap (or backfilled at startup after an
+existing key is verified). Its presence ⇒ EXISTING, unambiguously. A
+restored/cloned database carries the marker, so **a restore without the key
+fails loud even if the ciphertext tables were empty at backup time.**
+
 Two kinds of key material live in `backend/.keys/`:
 
 | Path | Setting | What is lost without it |
@@ -360,14 +375,16 @@ Two kinds of key material live in `backend/.keys/`:
 
 **What happens now on startup** (`app.main` lifespan → `verify_key_material`):
 
-- The install mode is decided by **the presence of encrypted state in the
-  database, not the absence of a key file**. A restored database with
-  encrypted rows and no key is an *existing* install with lost keys — it
-  **fails loud** (`ENCRYPTION_KEY_MISSING_ESTABLISHED_INSTALL`), never
-  bootstraps.
+- The install mode is decided by **the durable `installation_bootstrap`
+  marker OR any encrypted/signed state** — not by whether a key file exists,
+  and not by ciphertext alone. A missing key on any EXISTING install (marker
+  present, or credentials, or signatures) **fails loud**
+  (`ENCRYPTION_KEY_MISSING_ESTABLISHED_INSTALL`), never bootstraps.
 - A *wrong* key fails too (`ENCRYPTION_KEY_MISMATCH` /
   `ENCRYPTION_KEY_CANNOT_DECRYPT`), via a `key_material_canary` verifier row
-  and a trial-decrypt of real ciphertext.
+  and a trial-decrypt of real ciphertext. A malformed key fails as
+  `ENCRYPTION_KEY_MALFORMED`; a provider outage as
+  `ENCRYPTION_KEY_PROVIDER_UNAVAILABLE` (never mistaken for a new install).
 - Signing: the configured default identity must still have a usable private
   key whose public half matches the database
   (`SIGNING_PRIVATE_KEY_MISSING` / `SIGNING_KEY_MISMATCH`).

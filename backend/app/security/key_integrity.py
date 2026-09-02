@@ -1,32 +1,38 @@
-"""Phase M4.11 M4.11-FR-001..004, M4.11-FR-030..032 — the fail-loud check.
+"""Phase M4.11 / M4.11a — the fail-loud key-material check.
 
 ``verify_key_material(db)`` is called once at startup (``app.main``'s
 lifespan), before the platform serves any request that could decrypt or
-sign. It is a pure read plus, at most, one idempotent canary write. It
-either returns a ``KeyIntegrityReport`` (safe to log — no secrets) or raises
-``KeyMaterialError`` (also safe to log), and **it never generates a
-replacement key for an established installation**.
+sign. It is a pure read plus, at most, one idempotent canary write and one
+idempotent bootstrap-marker write. It either returns a ``KeyIntegrityReport``
+(safe to log — no secrets) or raises ``KeyMaterialError`` (also safe to
+log), and **it never generates a replacement key for an established
+installation**.
 
-The decision table (encryption):
+**Phase M4.11a — the five-state key taxonomy** (M4.11a-FR-020). Startup key
+evaluation deterministically resolves to exactly one:
 
-| install mode | key present | canary        | outcome                        |
-|--------------|-------------|---------------|--------------------------------|
-| EXISTING     | no          | —             | FAIL LOUD (lost key)           |
-| EXISTING     | yes         | matches       | OK (steady state)              |
-| EXISTING     | yes         | mismatches    | FAIL LOUD (wrong key)          |
-| EXISTING     | yes         | absent        | trial-decrypt real ciphertext: |
-|              |             |               |  decrypts → OK, write canary   |
-|              |             |               |  fails   → FAIL LOUD (wrong)   |
-| NEW          | no          | —             | bootstrap iff allowed, else    |
-|              |             |               |  FAIL LOUD (needs bootstrap)   |
-| NEW          | yes         | —             | OK, write canary               |
+| state                            | when                                                       | outcome |
+|----------------------------------|------------------------------------------------------------|---------|
+| ``KEY_PROVIDER_UNAVAILABLE``     | the provider backend can't be reached (a KMS/Vault outage) | FAIL LOUD — never an install-mode signal, never bootstraps |
+| ``KEY_ABSENT``                   | established install, no key found                          | FAIL LOUD (lost key) |
+| ``KEY_MALFORMED``                | a key is present but not a structurally valid key          | FAIL LOUD |
+| ``KEY_PRESENT_BUT_WRONG``        | valid structure, fails the canary / can't decrypt real data| FAIL LOUD (wrong key) |
+| ``INSTALLATION_NEVER_BOOTSTRAPPED`` | no marker, no encrypted/signed state, **no key**         | the only path to a deliberate bootstrap |
+| (``OK``)                         | key present + canary matches / trial-decrypt succeeds       | serve; backfill the marker if absent |
 
-Signing is checked independently: every ``signing_keys`` row must still have
-a usable private key on the provider whose public half matches the database.
+An install-mode of EXISTING now comes from **the durable
+``installation_bootstrap`` marker OR any encrypted/signed state** — a
+missing key file, or an empty set of ciphertext tables, no longer implies
+NEW.
+
+Signing is checked independently: the configured default signing identity
+must still have a usable private key on the provider whose public half
+matches the database.
 """
 
 from __future__ import annotations
 
+import enum
 import logging
 from dataclasses import dataclass, field
 
@@ -35,11 +41,25 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.security.canary import check_key_against_canary, trial_decrypt_succeeds, write_canary
-from app.security.encryption_provider import EncryptionKeyProvider, get_encryption_key_provider
+from app.security.encryption_provider import (
+    EncryptionKeyProvider,
+    ProviderUnavailableError,
+    get_encryption_key_provider,
+)
 from app.security.errors import KeyMaterialError
 from app.security.install_mode import InstallMode, detect_install_mode
+from app.security.installation import marker_present, record_bootstrap
 
 logger = logging.getLogger(__name__)
+
+
+class KeyState(str, enum.Enum):
+    OK = "OK"
+    KEY_ABSENT = "KEY_ABSENT"
+    KEY_MALFORMED = "KEY_MALFORMED"
+    KEY_PRESENT_BUT_WRONG = "KEY_PRESENT_BUT_WRONG"
+    KEY_PROVIDER_UNAVAILABLE = "KEY_PROVIDER_UNAVAILABLE"
+    INSTALLATION_NEVER_BOOTSTRAPPED = "INSTALLATION_NEVER_BOOTSTRAPPED"
 
 
 @dataclass
@@ -54,9 +74,18 @@ class KeyIntegrityReport:
         return (
             f"key-material integrity OK — install={self.install_mode} "
             f"encryption[provider={enc.get('provider')} fp={enc.get('fingerprint')} "
-            f"validation={enc.get('validation')}] "
+            f"state={enc.get('key_state')} validation={enc.get('validation')}] "
             f"signing[keys={sig.get('keys_checked', 0)} validation={sig.get('validation')}]"
         )
+
+
+def _ok(provider: EncryptionKeyProvider, validation: str) -> dict:
+    return {
+        "provider": provider.name,
+        "fingerprint": provider.fingerprint(),
+        "key_state": KeyState.OK.value,
+        "validation": validation,
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -64,17 +93,32 @@ class KeyIntegrityReport:
 # --------------------------------------------------------------------------- #
 def verify_encryption_material(db: Session, *, allow_bootstrap: bool = False) -> dict:
     report = detect_install_mode(db)
+    established = report.mode is InstallMode.EXISTING
     provider = get_encryption_key_provider()
-    established = report.has_encrypted_state
 
+    # ---- KEY_PROVIDER_UNAVAILABLE — evaluated first, and NOT an install-mode
+    #      signal: a transient provider outage never makes an established
+    #      install look NEW and never falls back to generating a key.
+    try:
+        provider.check_available()
+    except ProviderUnavailableError as exc:
+        raise KeyMaterialError(
+            "ENCRYPTION_KEY_PROVIDER_UNAVAILABLE",
+            f"the encryption key provider '{provider.name}' could not be reached",
+            remediation=(
+                "restore connectivity to the key provider and restart; the platform will not start "
+                "without its key provider and will never fall back to generating a key"
+            ),
+        ) from exc
+
+    # ---- KEY_ABSENT / INSTALLATION_NEVER_BOOTSTRAPPED
     if not provider.is_present():
         if established:
             raise KeyMaterialError(
                 "ENCRYPTION_KEY_MISSING_ESTABLISHED_INSTALL",
                 (
-                    "the database holds encrypted data ("
-                    + ", ".join(report.encrypted_state_tables)
-                    + ") but no provider-credential encryption key is available"
+                    f"this is an established installation ({report.reason}) but no "
+                    "provider-credential encryption key is available"
                 ),
                 remediation=(
                     "restore backend/.keys/model_credentials.key (or set "
@@ -83,29 +127,43 @@ def verify_encryption_material(db: Session, *, allow_bootstrap: bool = False) ->
                     "it would leave every stored secret undecryptable"
                 ),
             )
+        # marker absent AND no encrypted/signed state AND no key -> the one bootstrap-eligible state
         if allow_bootstrap or settings.ENCRYPTION_KEY_ALLOW_BOOTSTRAP:
             provider.bootstrap()
+            provider = get_encryption_key_provider()
             write_canary(db, provider)
-            return {
-                "provider": provider.name,
-                "fingerprint": provider.fingerprint(),
-                "validation": "BOOTSTRAPPED",
-            }
+            record_bootstrap(db, provider, recorded_via="bootstrap")
+            return _ok(provider, "BOOTSTRAPPED")
         raise KeyMaterialError(
-            "ENCRYPTION_KEY_MISSING_NEW_INSTALL",
-            "no provider-credential encryption key is configured and this looks like a new installation",
+            "INSTALLATION_NEVER_BOOTSTRAPPED",
+            "this installation has no encryption key and no record of ever completing key bootstrap",
             remediation=(
-                "run `python -m app.security.keys bootstrap` to provision one deliberately, or set "
-                "MODEL_CREDENTIAL_ENCRYPTION_KEY explicitly"
+                "for a genuinely new installation run `python -m app.security.keys bootstrap` "
+                "(or set MODEL_CREDENTIAL_ENCRYPTION_KEY and ENCRYPTION_KEY_ALLOW_BOOTSTRAP); "
+                "for a restore, restore the key material from the recovery archive"
             ),
         )
 
-    # Present — but is it the right one?
-    fingerprint = provider.fingerprint()  # also validates base64/length (raises KeyMaterialError)
+    # ---- KEY_MALFORMED — a key is present but not a valid key structure
+    try:
+        provider.get_key()
+    except KeyMaterialError as exc:
+        if exc.code == "ENCRYPTION_KEY_INVALID":
+            raise KeyMaterialError(
+                "ENCRYPTION_KEY_MALFORMED",
+                "an encryption key is present but is not a structurally valid key",
+                remediation=(
+                    "restore a valid key from the recovery archive; a malformed key is never used "
+                    "and is never replaced automatically"
+                ),
+            ) from exc
+        raise
 
+    # ---- KEY_PRESENT_BUT_WRONG vs OK
     canary = check_key_against_canary(db, provider)
     if canary is True:
-        return {"provider": provider.name, "fingerprint": fingerprint, "validation": "CANARY_MATCH"}
+        _backfill_marker(db, provider, report)
+        return _ok(provider, "CANARY_MATCH")
     if canary is False:
         raise KeyMaterialError(
             "ENCRYPTION_KEY_MISMATCH",
@@ -116,7 +174,7 @@ def verify_encryption_material(db: Session, *, allow_bootstrap: bool = False) ->
             ),
         )
 
-    # No canary row for this fingerprint yet — prove the key another way.
+    # No canary row for this fingerprint yet — prove the key against real data.
     trial = trial_decrypt_succeeds(db, provider)
     if trial is False:
         raise KeyMaterialError(
@@ -126,12 +184,50 @@ def verify_encryption_material(db: Session, *, allow_bootstrap: bool = False) ->
                 "restore the correct key from the recovery archive — see docs/security/key-management.md"
             ),
         )
-    write_canary(db, provider)
-    return {
-        "provider": provider.name,
-        "fingerprint": fingerprint,
-        "validation": "TRIAL_DECRYPT" if trial else "REGISTERED",
-    }
+    if trial is True:
+        write_canary(db, provider)
+        _backfill_marker(db, provider, report)
+        return _ok(provider, "TRIAL_DECRYPT")
+
+    # trial is None — no canary and no ciphertext to verify the key against.
+    if established:
+        # marker present or signed state exists, but nothing decryptable to check.
+        raise KeyMaterialError(
+            "ENCRYPTION_KEY_UNVERIFIED_ESTABLISHED_INSTALL",
+            (
+                f"this is an established installation ({report.reason}) but the encryption key "
+                "cannot be verified — there is no canary and no encrypted data to test it against"
+            ),
+            remediation=(
+                "restore the key material and the key_material_canary rows from a consistent "
+                "recovery archive; do not start with an unverified key on an established install"
+            ),
+        )
+    # not established (no marker, no state) but a key IS present: half-init.
+    if allow_bootstrap or settings.ENCRYPTION_KEY_ALLOW_BOOTSTRAP:
+        # deliberate: adopt this operator-provided key as the installation identity
+        write_canary(db, provider)
+        record_bootstrap(db, provider, recorded_via="bootstrap")
+        return _ok(provider, "ADOPTED_KEY")
+    raise KeyMaterialError(
+        "INSTALLATION_BOOTSTRAP_INCOMPLETE",
+        (
+            "an encryption key is present but this installation has no record of completing key "
+            "bootstrap and no data to verify the key against"
+        ),
+        remediation=(
+            "if this is a fresh install, run `python -m app.security.keys bootstrap` "
+            "(it adopts a present key); if this is a restore, also restore the database "
+            "(which carries the bootstrap marker) and the canary rows"
+        ),
+    )
+
+
+def _backfill_marker(db: Session, provider: EncryptionKeyProvider, report) -> None:
+    """M4.11a-FR-009 — once an existing key is *verified*, record the durable
+    marker if it is not already there. Idempotent; safe mid-upgrade."""
+    if not report.bootstrap_marker and marker_present(db) is False:
+        record_bootstrap(db, provider, recorded_via="backfill")
 
 
 # --------------------------------------------------------------------------- #
@@ -228,9 +324,11 @@ def verify_key_material(db: Session, *, allow_bootstrap: bool = False) -> KeyInt
         )
         return KeyIntegrityReport(install_mode="UNCHECKED")
 
-    mode = detect_install_mode(db).mode
+    # Encryption first — it may backfill the bootstrap marker, so read the
+    # authoritative install mode after it runs.
     encryption = verify_encryption_material(db, allow_bootstrap=allow_bootstrap)
     signing = verify_signing_material(db)
+    mode = detect_install_mode(db).mode
     report = KeyIntegrityReport(
         install_mode=mode.value if isinstance(mode, InstallMode) else str(mode),
         encryption=encryption,

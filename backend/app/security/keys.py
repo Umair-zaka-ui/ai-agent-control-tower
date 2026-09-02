@@ -24,7 +24,8 @@ def _status(db) -> int:
     from app.security.install_mode import detect_install_mode
 
     report = detect_install_mode(db)
-    print(f"install mode:            {report.mode.value}")
+    print(f"install mode:            {report.mode.value}  ({report.reason})")
+    print(f"bootstrap marker:        {'present' if report.bootstrap_marker else 'ABSENT'}")
     print(f"encrypted-state tables:  {', '.join(report.encrypted_state_tables) or '(none)'}")
     print(f"signed-state tables:     {', '.join(report.signed_state_tables) or '(none)'}")
     try:
@@ -56,7 +57,8 @@ def _bootstrap(db) -> int:
     except KeyMaterialError as exc:
         print(f"FAIL  {exc}", file=sys.stderr)
         return 1
-    print("bootstrapped fresh key material:")
+    verb = "adopted the present" if result.adopted_existing_key else "provisioned fresh"
+    print(f"{verb} key material and recorded the bootstrap marker:")
     print(f"  encryption: provider={result.encryption_provider} fingerprint={result.encryption_fingerprint}")
     print(
         f"  signing:    key_id={result.signing_key_id} v{result.signing_key_version} "
