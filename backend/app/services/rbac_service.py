@@ -245,6 +245,14 @@ PERMISSION_CATALOG: dict[str, str] = {
     "runtime.agent.identity.replace": "Replace an agent's machine identity",
     "runtime.agent.ownership.view": "View agent ownership and ownership history",
     "runtime.agent.ownership.transfer": "Transfer agent ownership roles",
+    # Universal Agent Asset Model + Ownership (Phase 5.1 / M5.1 §11, §12).
+    # ``claim`` is a distinct capability: taking first responsibility for a
+    # discovered/unowned agent, not moving an already-held owner role
+    # (``ownership.transfer``) nor a native lifecycle action (``register``).
+    "runtime.agent.claim": "Claim responsibility for a discovered/unclaimed agent",
+    "runtime.agent.control.manage":
+        "Perform server-authoritative agent control-state transitions "
+        "(register into scope, enroll into governance, and the safe reverses)",
     "runtime.agent.validation.view": "View agent validation runs and reports",
     "runtime.agent.duplicate.review": "Review and decide on detected duplicate agents",
     "runtime.agent.import": "Bulk-import agent registrations",

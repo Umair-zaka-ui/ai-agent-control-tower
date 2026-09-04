@@ -36,14 +36,18 @@ from app.runtime.registry.duplicates import AgentDuplicateDetectionService
 from app.runtime.registry.identity import AgentIdentityAssociationService
 from app.runtime.registry.imports_exports import AgentExportService, AgentImportService
 from app.runtime.registry.migration import AgentMigrationService
+from app.runtime.registry.control import AgentControlStateService
 from app.runtime.registry.ownership import AgentOwnershipService
 from app.runtime.registry.schemas import (
+    AgentClaimRequest,
+    AgentControlStateRead,
     AgentIdentityRead,
     AgentLifecycleActionRequest,
     AgentOwnershipRead,
     AgentRegistrationCreate,
     AgentRegistryRead,
     AgentRegistryUpdate,
+    ControlStateTransitionRequest,
     DuplicateMatchRead,
     DuplicateReviewRequest,
     ExportJobRead,
@@ -228,6 +232,8 @@ _IDENTITY_CREATE = "runtime.agent.identity.create"
 _IDENTITY_REPLACE = "runtime.agent.identity.replace"
 _OWNERSHIP_VIEW = "runtime.agent.ownership.view"
 _OWNERSHIP_TRANSFER = "runtime.agent.ownership.transfer"
+_CLAIM = "runtime.agent.claim"
+_CONTROL_MANAGE = "runtime.agent.control.manage"
 _VALIDATION_VIEW = "runtime.agent.validation.view"
 _DUPLICATE_REVIEW = "runtime.agent.duplicate.review"
 _IMPORT = "runtime.agent.import"
@@ -451,6 +457,48 @@ def ownership_history(agent_id: uuid.UUID, actor: User = Depends(require_permiss
                       db: Session = Depends(get_db)):
     AgentRegistryService(db).get_or_404(actor, agent_id)
     return AgentOwnershipService(db).history(agent_id)
+
+
+# --------------------------------------------------------------------------- #
+# Universal Agent Asset Model — control state + claim (Phase 5.1 / M5.1
+# §8, §11, §16). ``control_state`` is server-authoritative: it moves ONLY
+# through these endpoints, never the general POST/PATCH /agents path.
+# --------------------------------------------------------------------------- #
+@router.get("/agents/{agent_id}/control-state", response_model=AgentControlStateRead)
+def get_control_state(agent_id: uuid.UUID, actor: User = Depends(require_permission(_VIEW)),
+                      db: Session = Depends(get_db)):
+    agent = AgentRegistryService(db).get_or_404(actor, agent_id)
+    return AgentControlStateRead.model_validate(agent)
+
+
+@router.post("/agents/{agent_id}/claim", response_model=AgentRegistryRead)
+def claim_agent(agent_id: uuid.UUID, payload: AgentClaimRequest, request: Request,
+                actor: User = Depends(require_permission(_CLAIM)), db: Session = Depends(get_db)):
+    from app.runtime.deployment.idempotency import IdempotencyService
+
+    registry = AgentRegistryService(db)
+    agent = registry.get_or_404(actor, agent_id)
+    key = request.headers.get("Idempotency-Key")
+
+    def _do() -> dict:
+        claimed = AgentControlStateService(db).claim(
+            actor, agent, owner_type=payload.owner_type, owner_id=payload.owner_id,
+            reason=payload.reason)
+        return {"agent_id": str(claimed.id)}
+
+    result, _replayed = IdempotencyService(db).execute(
+        organization_id=actor.organization_id, operation="agent.claim", key=key,
+        payload={"agent_id": str(agent_id), "owner_id": str(payload.owner_id)}, fn=_do)
+    return registry.get_or_404(actor, uuid.UUID(result["agent_id"]))
+
+
+@router.post("/agents/{agent_id}/control-state", response_model=AgentRegistryRead)
+def transition_control_state(agent_id: uuid.UUID, payload: ControlStateTransitionRequest,
+                             actor: User = Depends(require_permission(_CONTROL_MANAGE)),
+                             db: Session = Depends(get_db)):
+    agent = AgentRegistryService(db).get_or_404(actor, agent_id)
+    return AgentControlStateService(db).transition(
+        actor, agent, payload.target_state, reason=payload.reason)
 
 
 # --------------------------------------------------------------------------- #

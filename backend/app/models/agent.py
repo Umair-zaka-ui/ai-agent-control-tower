@@ -4,9 +4,21 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -25,6 +37,14 @@ class Agent(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __table_args__ = (
         UniqueConstraint("organization_id", "slug", name="uq_agents_org_slug"),
         UniqueConstraint("organization_id", "external_reference", name="uq_agents_org_external_ref"),
+        CheckConstraint(
+            "control_state IN ('DISCOVERED', 'CLAIMED', 'REGISTERED', 'GOVERNED')",
+            name="ck_agents_control_state",
+        ),
+        CheckConstraint(
+            "origin_category IN ('NATIVE', 'EXTERNAL', 'UNKNOWN')",
+            name="ck_agents_origin_category",
+        ),
     )
 
     organization_id: Mapped[uuid.UUID] = mapped_column(
@@ -127,6 +147,50 @@ class Agent(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     # SQLAlchemy's ``StaleDataError``, caught at the service layer and
     # translated to ``AGENT_CONCURRENT_MODIFICATION``.
     row_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+    # --- Phase 5.1 (M5.1): Universal Agent Asset Model + Ownership ---
+    # These four dimensions make the one canonical registry able to describe
+    # the whole spectrum — native / external / discovered / claimed /
+    # registered / governed / unknown — truthfully. They are *additive* and
+    # orthogonal to everything above; in particular ``control_state`` is a
+    # distinct question from ``lifecycle_status`` (see below) and the existing
+    # 13-state lifecycle machine is completely unchanged.
+    #
+    # ``control_state`` — the relationship and *real enforcement authority*
+    # ACT has over this agent, NOT its operational lifecycle:
+    #   DISCOVERED  — ACT knows it exists; no authority.
+    #   CLAIMED     — an owner has taken responsibility; still not governed.
+    #   REGISTERED  — brought under ACT's registry/policy scope.
+    #   GOVERNED    — ACT has real enforcement authority (every native agent;
+    #                 external agents reach this only at NATIVE/GATEWAY
+    #                 enforcement, which is Phase 5.7 — not M5.1).
+    # Server-authoritative: never client-settable (absent from every write
+    # schema). Native rows are GOVERNED and may be in *any* lifecycle_status.
+    control_state: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="GOVERNED", server_default="GOVERNED", index=True
+    )
+    # ``origin_category`` — provenance category. A small, stable set so it can
+    # carry a CHECK constraint; a new vendor never forces a migration because
+    # the *provider* is the soft field below.
+    #   NATIVE    — created/owned/executed by ACT.
+    #   EXTERNAL  — exists outside ACT (real evidence required — 5.2 provides it).
+    #   UNKNOWN   — seen but not yet classified (reconciliation refines it — 5.2).
+    origin_category: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="NATIVE", server_default="NATIVE"
+    )
+    # ``origin_provider`` — soft platform/vendor identifier (ACT_NATIVE,
+    # MICROSOFT, AWS, GOOGLE, OPENAI, ANTHROPIC, LANGGRAPH, CREWAI, CUSTOM,
+    # UNKNOWN, …). Deliberately a plain string, NOT a DB enum: a new vendor is
+    # a new value, never a schema change.
+    origin_provider: Mapped[str] = mapped_column(
+        String(50), nullable=False, default="ACT_NATIVE", server_default="ACT_NATIVE"
+    )
+    # Discovery metadata — COLUMNS ONLY. Phase 5.2 populates these; M5.1
+    # discovers/observes/reconciles nothing. Native rows leave them null.
+    first_observed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_observed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    discovery_source_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    discovery_confidence: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
 
     organization: Mapped["Organization"] = relationship(back_populates="agents")
     permissions: Mapped[list["Permission"]] = relationship(

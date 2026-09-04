@@ -20,6 +20,7 @@ pass through before it can version, deploy or execute.
 | Doc | Covers |
 |---|---|
 | [domain-model.md](domain-model.md) | The `agents`/`agent_definitions` extensions and the 7 new registry tables |
+| [asset-model.md](asset-model.md) | **M5.1** — the universal agent asset model: `control_state` (distinct from `lifecycle_status`), provenance, discovery placeholders, and the server-authoritative claim workflow that lets the *one* registry describe external/discovered agents too |
 | [registration.md](registration.md) | The 10-step registration wizard, draft creation, the `register` lifecycle action |
 | [agent-definitions.md](agent-definitions.md) | Framework/entrypoint/requirement declarations |
 | [identity-association.md](identity-association.md) | Mandatory machine identity, the 1:1 constraint, associate/create/replace |
