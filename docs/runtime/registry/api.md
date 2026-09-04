@@ -43,6 +43,24 @@ POST /agents/{agentId}/ownership/transfer
 GET  /agents/{agentId}/ownership/history
 ```
 
+## Control state + claim (Universal Agent Asset Model, M5.1)
+
+```
+GET  /agents/{agentId}/control-state          asset-model snapshot (control_state, origin_*,
+                                               discovery metadata)               [runtime.agent.view]
+POST /agents/{agentId}/claim                   DISCOVERED -> CLAIMED; sets owner; writes
+                                               ownership history; Idempotency-Key aware
+                                                                                 [runtime.agent.claim]
+POST /agents/{agentId}/control-state           server-authoritative CLAIMED -> REGISTERED ->
+                                               GOVERNED (+ safe reverses); {target_state, reason}
+                                                                        [runtime.agent.control.manage]
+```
+
+`control_state` / `origin_*` are **read-only** on `GET/POST/PATCH /agents` —
+they are absent from the write schemas, so a client cannot mass-assign them.
+Cross-tenant → 404 (no existence leak); in-tenant-unpermitted → 403. See
+[asset-model.md](asset-model.md).
+
 ## Machine identity
 
 ```
@@ -96,11 +114,12 @@ GET  /agents/migration/records
 
 ## Permissions
 
-~25 new `runtime.agent.*` codes in `PERMISSION_CATALOG`
+~27 new `runtime.agent.*` codes in `PERMISSION_CATALOG`
 (`app/services/rbac_service.py`) — `register`, `submit`, `reject`, `resume`,
 `deprecate`, `archive`, `restore`, `identity.associate`, `identity.create`,
 `identity.replace`, `ownership.view`, `ownership.transfer`,
-`validation.view`, `duplicate.review`, `import`, `export`, `audit.view`.
+`validation.view`, `duplicate.review`, `import`, `export`, `audit.view`, plus
+M5.1's `claim` and `control.manage`.
 Every `runtime.*` code is automatically part of `ROLE_RUNTIME_ADMIN`
 (`_RUNTIME_ADMIN` in `app/authorization/catalog.py`), and `ADMIN`/
 `SUPER_ADMIN` legacy roles get the full catalog either way.

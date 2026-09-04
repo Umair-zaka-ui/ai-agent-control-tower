@@ -153,6 +153,16 @@ class AgentRegistryRead(BaseModel):
     metadata: dict = Field(validation_alias="extra_metadata")
     registration_source: str
     external_reference: str | None
+    # --- Universal Agent Asset Model (Phase 5.1 / M5.1) -- read-only; these
+    # are server-authoritative and never accepted on a write. ``control_state``
+    # is a DISTINCT dimension from ``lifecycle_status`` (both appear above).
+    control_state: str
+    origin_category: str
+    origin_provider: str
+    first_observed_at: datetime | None
+    last_observed_at: datetime | None
+    discovery_source_ref: str | None
+    discovery_confidence: Decimal | None
     created_by: uuid.UUID | None
     updated_by: uuid.UUID | None
     row_version: int
@@ -207,6 +217,47 @@ class AgentOwnershipRead(BaseModel):
     owner_id: uuid.UUID | None
     technical_owner_id: uuid.UUID | None
     compliance_owner_id: uuid.UUID | None
+
+
+# --------------------------------------------------------------------------- #
+# Universal Agent Asset Model — claim + control-state (Phase 5.1 / M5.1
+# §8, §11, §16). ``control_state`` is NEVER accepted on the general agent
+# create/update path; it moves only through these dedicated, server-
+# authoritative endpoints.
+# --------------------------------------------------------------------------- #
+class AgentClaimRequest(BaseModel):
+    """Body for POST .../{agentId}/claim — an authorized user takes
+    responsibility for a discovered/unclaimed agent."""
+
+    owner_type: str = _OWNER_TYPE
+    owner_id: uuid.UUID
+    reason: str = Field(min_length=1)
+
+
+class ControlStateTransitionRequest(BaseModel):
+    """Body for POST .../{agentId}/control-state — a server-authoritative
+    control-state move. The service validates the transition is legal;
+    illegal or unauthorized moves are rejected."""
+
+    target_state: str = Field(pattern="^(CLAIMED|REGISTERED|GOVERNED)$")
+    reason: str | None = None
+
+
+class AgentControlStateRead(BaseModel):
+    """Current asset-model snapshot — GET .../{agentId}/control-state."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    control_state: str
+    lifecycle_status: str
+    origin_category: str
+    origin_provider: str
+    owner_type: str | None
+    owner_id: uuid.UUID | None
+    first_observed_at: datetime | None
+    last_observed_at: datetime | None
+    discovery_source_ref: str | None
+    discovery_confidence: Decimal | None
 
 
 # --------------------------------------------------------------------------- #

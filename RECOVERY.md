@@ -1,8 +1,18 @@
 # Backup and system-migration guide
 
-**Last verified 2026-09-03** after Phase M4.11a (Install-Mode Classification
-Hardening — the durable bootstrap marker), which corrected Phase M4.11
-(Production Integrity Closure). **The "Encryption keys — the one gap the
+**Last verified 2026-09-04** after Phase 5.1 / M5.1 (Universal Agent Asset
+Model + Ownership — the first phase of Milestone 5). That phase adds **seven
+columns to `agents`** (migration `0054_agent_asset_model`, additive, reversible,
+downgrade-tested, no new table — still **137 tables**) with an idempotent
+backfill setting every pre-existing agent row to `control_state=GOVERNED` /
+`origin_category=NATIVE` / `origin_provider=ACT_NATIVE`; it touches no key
+material, no backup artifact and no restore step. Migration head is now
+**`0054_agent_asset_model`**. Everything below about key material is unchanged
+and still current.
+
+**Previously verified 2026-09-03** after Phase M4.11a (Install-Mode
+Classification Hardening — the durable bootstrap marker), which corrected Phase
+M4.11 (Production Integrity Closure). **The "Encryption keys — the one gap the
 scripts do not close" section below is CLOSED.** `backend/.keys/` is no longer
 an unbacked silent-loss hazard: an established installation that is missing or
 holding the wrong encryption/signing key now **fails loud at startup with a
@@ -12,10 +22,11 @@ pre-existing ciphertext undecryptable. The key material has a supported,
 tested backup/restore procedure with proven cryptographic continuity. The full
 procedure is [`docs/security/key-management.md`](docs/security/key-management.md);
 [ADR-0014](docs/architecture/adr/0014-key-material-recovery-and-fail-loud-integrity.md)
-(with its M4.11a amendment) records the decision. Migration head is now
-**`0053_installation_bootstrap`**, **137 tables** (two additive tables,
-`key_material_canary` and `installation_bootstrap`; both reversible,
-downgrade-tested, changing no decrypt behaviour for any existing row).
+(with its M4.11a amendment) records the decision. The two key-material tables
+`key_material_canary` (migration `0052`) and `installation_bootstrap` (migration
+`0053`) are additive, reversible, downgrade-tested, and change no decrypt
+behaviour for any existing row. **137 tables** total; migration head
+**`0054_agent_asset_model`** (Phase 5.1 — see the note above).
 **M4.11a** anchors NEW-vs-EXISTING to a durable `installation_bootstrap`
 marker rather than to the *absence of ciphertext* — so an established install
 that holds zero encrypted credential rows can no longer be misread as new and

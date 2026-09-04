@@ -36,6 +36,17 @@ sending `{"lifecycle_status": "ACTIVE", ...}` has that key ignored before it
 ever reaches the service layer. Verified by
 `test_update_cannot_bypass_lifecycle_status_directly`.
 
+The same protection covers the M5.1 asset-model fields: neither
+`AgentRegistrationCreate` nor `AgentRegistryUpdate` carries `control_state`,
+`origin_category` or `origin_provider`, so `{"control_state": "GOVERNED"}` in a
+`POST` or `PATCH` body is dropped and never written — a client cannot
+mass-assign its way to governance. `control_state` moves only through the
+dedicated, server-authoritative `POST /agents/{id}/claim` and
+`POST /agents/{id}/control-state` endpoints (see
+[asset-model.md](asset-model.md)). Verified by
+`test_ac07_client_cannot_set_control_state_via_create` /
+`test_ac07_client_cannot_set_control_state_via_update`.
+
 ## Credential handling
 
 - `documentation_url`/`repository_url` reject embedded credentials

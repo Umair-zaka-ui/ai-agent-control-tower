@@ -13,6 +13,7 @@
 > | **Milestone 4 (ACT-SRS-M4)** | `Phase 4.1 – 4.10`, requirement ids `M4-4.1-FR-xxx` | Runtime Governance & Observability | Telemetry, tracing, governance engine, cost, SLOs, privacy, observability center | **Complete** |
 > | **Phase M4.11** | `M4.11-FR-xxx` | Production Integrity Closure | Key-material recovery & fail-loud integrity — the M5 prerequisite | **Complete** |
 > | **Phase M4.11a** | `M4.11a-FR-xxx` | Install-Mode Classification Hardening | The durable bootstrap marker + five-state key taxonomy — corrects M4.11's absence-inference | **Complete** |
+> | **Milestone 5 (ACT-SRS-M5)** | `M5.x-FR-xxx` / `ACT-*` | Universal Agent Control & Security Fabric | One canonical registry describing native + external + discovered agents; provenance; control state; discovery; graph; MCP; posture; threat/containment; external gateway; command center | **In progress — 5.1 complete** |
 >
 > **How to tell them apart at a glance.** The historical family always appears
 > under a `## Phase 4 —` or `## Phase 4.3 —` heading and is written as
@@ -2799,6 +2800,68 @@ satisfied without the residual edge case.** Next: generate ACT-SRS-M5 (the
 Universal Agent Control & Security Fabric — a security and trust milestone),
 then its ten-phase decomposition, one phase at a time, each opening with a live
 REPO_STATE regeneration.
+
+## Milestone 5 — Universal Agent Control & Security Fabric (ACT-SRS-M5)
+
+The security-and-trust milestone: make ACT's one canonical registry able to
+represent, discover, relate, assess, and — where it truly can — govern *every*
+agent in an enterprise, native or not. Decomposed into phases 5.1 (asset model),
+5.2 (discovery + reconciliation), 5.3 (graph + authority chain), 5.4 (MCP +
+dependency graph), 5.5 (posture + shadow detection), 5.6 (runtime threat +
+containment), 5.7 (external governance gateway), 5.8 (command center), 5.9
+(assurance + compliance). Each opens with a live REPO_STATE regeneration.
+
+### Phase 5.1 / M5.1 — Universal Agent Asset Model + Ownership ✅ (2026-09-04)
+
+**The foundation, and nothing more.** The one canonical `agents` registry is
+extended *in place* (never a second registry) so it can truthfully describe
+native / external / discovered / claimed / registered / governed / unknown
+agents. No discovery, graph, MCP, posture, threat, containment, gateway or UI
+machinery — those are 5.2–5.9.
+
+- **Seven additive columns on `agents`** (migration `0054_agent_asset_model`,
+  no new table): `control_state` (`DISCOVERED`/`CLAIMED`/`REGISTERED`/`GOVERNED`,
+  `CHECK` + index), `origin_category` (`NATIVE`/`EXTERNAL`/`UNKNOWN`, `CHECK`),
+  `origin_provider` (soft vendor string — **not** a DB enum, so a new vendor is
+  never a migration), and discovery placeholders `first_observed_at` /
+  `last_observed_at` / `discovery_source_ref` / `discovery_confidence` (columns
+  only — Phase 5.2 populates them).
+- **`control_state` is a DISTINCT dimension from `lifecycle_status`.** The
+  existing 13-state lifecycle machine and its ~27 consumers are byte-for-byte
+  unchanged; a native agent is `GOVERNED` (control) in any lifecycle state; both
+  fields coexist per row and are read independently (`test_ac03`).
+- **Server-authoritative, mass-assignment structurally impossible.**
+  `control_state` / `origin_*` are absent from every write schema; a client
+  cannot set them via `POST`/`PATCH /agents`. They move only through
+  `POST /agents/{id}/claim` and `POST /agents/{id}/control-state`, which authorize
+  via the existing `AuthorizationGateway`, lock the row `FOR UPDATE`, validate the
+  transition matrix, and write the existing `AgentOwnershipHistory` + audit trail.
+  `DISCOVERED → GOVERNED` directly is rejected; enrolling into `GOVERNED` needs an
+  accountable owner.
+- **Claim ≠ governance.** Claiming a `DISCOVERED` agent → `CLAIMED`
+  (responsibility), never `GOVERNED` (enforcement — 5.7). Idempotent via
+  `Idempotency-Key`; concurrency-safe (real separate Postgres sessions,
+  deterministic `AGENT_CLAIM_CONFLICT`).
+- **Ownership reuses everything** — the three owner columns,
+  `AgentOwnershipHistory`, the org hierarchy. **No new ownership/people table**
+  (gap analysis found no genuine gap).
+- **Tenant isolation:** cross-tenant → 404 (no existence leak), in-tenant-unpermitted
+  → 403.
+- **The external-agent forward-compat invariant** (`test_ac12`): the model
+  represents a real agent living entirely outside ACT with **no discovery code** —
+  so the post-M5 physical validation proceeds without redesign.
+- **Backfill:** every pre-existing agent row (58,044 live) → `GOVERNED` / `NATIVE`
+  / `ACT_NATIVE`, idempotent — a known truth, not an inference. Additive,
+  reversible, downgrade-tested; revision id 22 chars.
+
+Head `0053_installation_bootstrap` → `0054_agent_asset_model`; **137 tables**
+(no new table); routes **590 → 593**. 2 new permissions
+(`runtime.agent.claim`, `runtime.agent.control.manage`), 3 error codes, 2 audit
+events. **33 new backend tests** (`test_agent_asset_model.py` — AC-01..AC-17 +
+the §22 end-to-end proof), no existing test weakened. Backend **2,350 passed**,
+0 failed, 1 deselected (2,317 + 33); frontend **359**, untouched (all M5 UI
+deferred to 5.8). See [`docs/runtime/registry/asset-model.md`](docs/runtime/registry/asset-model.md)
+and [ADR-0015](docs/architecture/adr/0015-universal-agent-asset-model-and-control-state.md).
 
 ## Future (Phase 3+)
 

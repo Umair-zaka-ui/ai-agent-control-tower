@@ -23,6 +23,32 @@ already existed), and `row_version` (optimistic concurrency, §53 — see
 LOW/MEDIUM/HIGH/CRITICAL) and this phase's declared risk classification
 reuses it.
 
+## `agents` — Universal Agent Asset Model (migration `0054_agent_asset_model`, M5.1)
+
+Four additive dimensions so the one canonical registry can describe native,
+external, discovered, claimed, registered, governed and unknown agents —
+still no parallel table. Full treatment in
+[asset-model.md](asset-model.md).
+
+- `control_state` — `DISCOVERED` / `CLAIMED` / `REGISTERED` / `GOVERNED`
+  (`CHECK`-constrained, indexed, `default GOVERNED`). The real enforcement
+  authority ACT has over the agent — a **distinct dimension** from
+  `lifecycle_status`, which is unchanged. Server-authoritative: absent from
+  every write schema, moved only by `POST /agents/{id}/claim` and
+  `POST /agents/{id}/control-state`.
+- `origin_category` — `NATIVE` / `EXTERNAL` / `UNKNOWN` (`CHECK`-constrained,
+  `default NATIVE`).
+- `origin_provider` — soft vendor/platform string, **not** a DB enum
+  (`default ACT_NATIVE`); a new vendor is never a migration.
+- `first_observed_at` / `last_observed_at` / `discovery_source_ref` /
+  `discovery_confidence` — discovery metadata, **columns only**, Phase 5.2
+  populates them; native rows leave them `NULL`.
+
+Backfill: every pre-existing agent row is set to
+`control_state=GOVERNED, origin_category=NATIVE, origin_provider=ACT_NATIVE`
+(idempotent) — every existing agent *is* native and governed, so this states
+a known truth rather than inferring one.
+
 Two new constraints: `UniqueConstraint(organization_id, slug)` and
 `UniqueConstraint(organization_id, external_reference)` — both allow
 multiple NULLs (Postgres doesn't compare NULLs for uniqueness), so existing
