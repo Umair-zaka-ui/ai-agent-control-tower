@@ -1,14 +1,33 @@
 # Backup and system-migration guide
 
-**Last verified 2026-09-04** after Phase 5.1 / M5.1 (Universal Agent Asset
-Model + Ownership — the first phase of Milestone 5). That phase adds **seven
-columns to `agents`** (migration `0054_agent_asset_model`, additive, reversible,
-downgrade-tested, no new table — still **137 tables**) with an idempotent
-backfill setting every pre-existing agent row to `control_state=GOVERNED` /
-`origin_category=NATIVE` / `origin_provider=ACT_NATIVE`; it touches no key
-material, no backup artifact and no restore step. Migration head is now
-**`0054_agent_asset_model`**. Everything below about key material is unchanged
-and still current.
+**Last verified 2026-09-05** after Phase 5.2 / M5.2 (Agent Discovery
+Framework — the first Milestone 5 phase that reaches outside ACT). Four new
+tables (migration `0055_agent_discovery`, additive, reversible,
+downgrade-tested — **141 tables**): `discovery_sources`, `discovery_runs`,
+`discovery_observations`, `discovery_findings`. **Durable state, all of it**
+— `discovery_sources` (source configuration, including an encrypted secret
+column using the same `credential_crypto` key as every other stored
+credential — see the encryption-keys section below, unchanged by this
+phase), `discovery_runs` and `discovery_findings` are operator-facing history
+and open work that a restore must bring back intact. `discovery_observations`
+is durable evidence, not derived/rebuildable state — a restore that loses it
+loses the audit trail of *what a source reported and when*, though the
+canonical `agents` rows reconciliation already produced from it remain
+correct and unaffected (reconciliation is not re-run automatically on
+restore; a fresh sweep after restore will re-populate current evidence, not
+historical evidence). No key material, no backup artifact and no restore
+step is touched by this phase — the encrypted secret column follows the
+existing `backend/.keys/` recovery procedure below exactly, like every other
+encrypted-at-rest column in this schema. Migration head is now
+**`0055_agent_discovery`**.
+
+**Previously verified 2026-09-04** after Phase 5.1 / M5.1 (Universal Agent
+Asset Model + Ownership). That phase added **seven columns to `agents`**
+(migration `0054_agent_asset_model`) with an idempotent backfill setting
+every pre-existing agent row to `control_state=GOVERNED` /
+`origin_category=NATIVE` / `origin_provider=ACT_NATIVE`; it touched no key
+material, no backup artifact and no restore step. Everything below about key
+material is unchanged and still current.
 
 **Previously verified 2026-09-03** after Phase M4.11a (Install-Mode
 Classification Hardening — the durable bootstrap marker), which corrected Phase
@@ -25,8 +44,8 @@ procedure is [`docs/security/key-management.md`](docs/security/key-management.md
 (with its M4.11a amendment) records the decision. The two key-material tables
 `key_material_canary` (migration `0052`) and `installation_bootstrap` (migration
 `0053`) are additive, reversible, downgrade-tested, and change no decrypt
-behaviour for any existing row. **137 tables** total; migration head
-**`0054_agent_asset_model`** (Phase 5.1 — see the note above).
+behaviour for any existing row. **141 tables** total; migration head
+**`0055_agent_discovery`** (Phase 5.2 — see the note above).
 **M4.11a** anchors NEW-vs-EXISTING to a durable `installation_bootstrap`
 marker rather than to the *absence of ciphertext* — so an established install
 that holds zero encrypted credential rows can no longer be misread as new and

@@ -122,8 +122,14 @@ def test_ac01_m411_and_m411a_prerequisites_present_and_head_recorded() -> None:
         "KEY_PROVIDER_UNAVAILABLE", "INSTALLATION_NEVER_BOOTSTRAPPED",
     }
     versions = sorted((_BACKEND / "migrations" / "versions").glob("*.py"))
-    assert versions[-1].stem == "0054_agent_asset_model"
-    assert {"0052_key_material_canary", "0053_installation_bootstrap"} <= {v.stem for v in versions}
+    # Phase 5.2 (Agent Discovery Framework) chains from this phase's own
+    # 0054_agent_asset_model and is expected to have since moved the head --
+    # the migration this test's own phase built is present in the chain,
+    # which is the actual M5.1 prerequisite; the moving head belongs to the
+    # discovery test suite (tests/discovery/test_discovery_framework.py's own
+    # test_ac01), not to this one.
+    assert {"0052_key_material_canary", "0053_installation_bootstrap",
+            "0054_agent_asset_model"} <= {v.stem for v in versions}
     repo_state = (_REPO / "REPO_STATE.md").read_text(encoding="utf-8")
     assert "0054_agent_asset_model" in repo_state
 
@@ -569,13 +575,19 @@ def test_ac12_model_represents_a_real_external_agent_with_no_discovery_code(clie
 
 
 def test_ac12_no_discovery_or_graph_machinery_shipped() -> None:
+    """At M5.1's own time this asserted NO discovery/graph/posture machinery
+    existed anywhere. Phase 5.2 (Agent Discovery Framework) has since shipped
+    legitimately, under the sibling `app/discovery/` package (never inside
+    `app/runtime/`, preserving the invariant this test actually cares about)
+    -- so `discovery_runs`/`discovery_observations` are expected now, not a
+    violation. Graph (5.3) and posture (5.5) still do not exist."""
     from app.core.database import Base
 
     names = set(Base.metadata.tables)
-    for banned in ("discovery_runs", "discovery_observations", "agent_graph_edges",
-                   "agent_edges", "posture_findings", "reconciliation_runs"):
+    for banned in ("agent_graph_edges", "agent_edges", "posture_findings", "reconciliation_runs"):
         assert banned not in names
     assert not (_BACKEND / "app" / "runtime" / "discovery").exists()
+    assert (_BACKEND / "app" / "discovery").exists()  # 5.2's own sibling package
 
 
 # --------------------------------------------------------------------------- #

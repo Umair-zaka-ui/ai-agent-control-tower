@@ -189,6 +189,37 @@ def rollback_trigger_evaluation(ctx: HandlerContext) -> dict:
 
 
 # --------------------------------------------------------------------------- #
+# Handler: agent discovery sweep (Phase 5.2 / M5.2)
+# --------------------------------------------------------------------------- #
+@register("discovery.sweep")
+def discovery_sweep(ctx: HandlerContext) -> dict:
+    """Sweeps every enabled ``DiscoverySource`` for this organization.
+
+    One handler call may run several sources; each source's own
+    ``DiscoveryRunService.run_source`` holds the transaction-boundary
+    discipline (fetch with no DB lock held, then short reconcile
+    transactions) documented in ``app/discovery/service.py``. One source's
+    failure must not stop the sweep -- the same one-failure-must-not-kill-
+    the-loop discipline every other multi-item handler in this file uses."""
+    from app.discovery.service import DiscoverySourceService, DiscoveryRunService
+
+    if ctx.actor is None:
+        raise IdentityError(ErrorCode.VALIDATION_ERROR,
+                           "The discovery sweep job is tenant-scoped and requires an organization.")
+    sources = DiscoverySourceService(ctx.db).list_enabled(ctx.organization_id)
+
+    swept, failures = 0, 0
+    for source in sources:
+        try:
+            DiscoveryRunService(ctx.db).run_source(ctx.actor, source, trigger="SCHEDULED")
+            swept += 1
+        except Exception:  # noqa: BLE001 -- one source must not stop the sweep
+            ctx.db.rollback()
+            failures += 1
+    return {"sources_swept": swept, "failures": failures}
+
+
+# --------------------------------------------------------------------------- #
 # Handler: retention / expired-state cleanup
 # --------------------------------------------------------------------------- #
 @register("platform.expired_state_cleanup")

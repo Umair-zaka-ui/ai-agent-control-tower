@@ -269,6 +269,14 @@ PERMISSION_CATALOG: dict[str, str] = {
     # bypass), so it is gated by this permission like any other admin-only config.
     "identity.federation.view": "View an organization's identity federation (SSO) configurations",
     "identity.federation.manage": "Create, configure and remove identity federation (SSO) connections",
+    # Agent Discovery Framework (Phase 5.2 / M5.2). Two codes, mirroring the
+    # connector precedent (`integration.connector.view`/`.manage`) exactly --
+    # reading sources/runs/observations/findings vs. configuring a source,
+    # triggering a sweep, or resolving a finding.
+    "discovery.source.view":
+        "View discovery sources, run history, observations and reconciliation/staleness findings",
+    "discovery.source.manage":
+        "Configure discovery sources, trigger a manual sweep, and resolve or dismiss findings",
 }
 
 _ALL = set(PERMISSION_CATALOG)
