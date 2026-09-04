@@ -397,3 +397,15 @@ class AuthorizationAuditEvent(str, enum.Enum):
     # tool bridges did not audit individual calls, since neither build
     # prompt required it; this one (FR-145) explicitly does.
     INTEGRATION_CONNECTOR_OBJECT_ACCESSED = "INTEGRATION_CONNECTOR_OBJECT_ACCESSED"
+    # Agent Discovery Framework (Phase 5.2 / M5.2). Observations themselves
+    # are not individually audited -- append-only + immutable (REVOKE
+    # UPDATE/DELETE) already gives them tamper-evidence; these events cover
+    # source configuration and the decisions reconciliation makes.
+    DISCOVERY_SOURCE_CREATED = "DISCOVERY_SOURCE_CREATED"
+    DISCOVERY_SOURCE_UPDATED = "DISCOVERY_SOURCE_UPDATED"
+    DISCOVERY_RUN_STARTED = "DISCOVERY_RUN_STARTED"
+    DISCOVERY_RUN_COMPLETED = "DISCOVERY_RUN_COMPLETED"
+    DISCOVERY_AGENT_CREATED = "DISCOVERY_AGENT_CREATED"
+    DISCOVERY_AGENT_LINKED = "DISCOVERY_AGENT_LINKED"
+    DISCOVERY_FINDING_RAISED = "DISCOVERY_FINDING_RAISED"
+    DISCOVERY_FINDING_RESOLVED = "DISCOVERY_FINDING_RESOLVED"

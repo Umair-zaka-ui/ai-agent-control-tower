@@ -13,7 +13,7 @@
 > | **Milestone 4 (ACT-SRS-M4)** | `Phase 4.1 – 4.10`, requirement ids `M4-4.1-FR-xxx` | Runtime Governance & Observability | Telemetry, tracing, governance engine, cost, SLOs, privacy, observability center | **Complete** |
 > | **Phase M4.11** | `M4.11-FR-xxx` | Production Integrity Closure | Key-material recovery & fail-loud integrity — the M5 prerequisite | **Complete** |
 > | **Phase M4.11a** | `M4.11a-FR-xxx` | Install-Mode Classification Hardening | The durable bootstrap marker + five-state key taxonomy — corrects M4.11's absence-inference | **Complete** |
-> | **Milestone 5 (ACT-SRS-M5)** | `M5.x-FR-xxx` / `ACT-*` | Universal Agent Control & Security Fabric | One canonical registry describing native + external + discovered agents; provenance; control state; discovery; graph; MCP; posture; threat/containment; external gateway; command center | **In progress — 5.1 complete** |
+> | **Milestone 5 (ACT-SRS-M5)** | `M5.x-FR-xxx` / `ACT-*` | Universal Agent Control & Security Fabric | One canonical registry describing native + external + discovered agents; provenance; control state; discovery; graph; MCP; posture; threat/containment; external gateway; command center | **In progress — 5.1, 5.2 complete** |
 >
 > **How to tell them apart at a glance.** The historical family always appears
 > under a `## Phase 4 —` or `## Phase 4.3 —` heading and is written as
@@ -2862,6 +2862,56 @@ the §22 end-to-end proof), no existing test weakened. Backend **2,350 passed**,
 0 failed, 1 deselected (2,317 + 33); frontend **359**, untouched (all M5 UI
 deferred to 5.8). See [`docs/runtime/registry/asset-model.md`](docs/runtime/registry/asset-model.md)
 and [ADR-0015](docs/architecture/adr/0015-universal-agent-asset-model-and-control-state.md).
+
+### Phase 5.2 / M5.2 — Agent Discovery Framework ✅ (2026-09-05)
+
+**The first Milestone 5 phase that reaches outside ACT.** Builds the
+vendor-neutral discovery framework on top of 5.1's asset model: adapters that
+observe agents in external systems, append-only observations (evidence, not
+truth), and reconciliation that derives canonical `agents` state from that
+evidence — plus one real, non-mocked reference adapter proving the whole path.
+
+- **No DB lock or open transaction across external I/O** — the permanent M1
+  deadlock rule, extended here for the first time to a real network call.
+  Structural: `DiscoveryAdapter.fetch()` accepts no `Session` parameter at
+  all. Behavioral: a real local HTTP response held open mid-fetch does not
+  block a concurrent `FOR UPDATE` on the same source row from a separate
+  session.
+- **Observations are append-only evidence** (`discovery_observations`,
+  `UPDATE`/`DELETE` revoked from `PUBLIC`, scrubbed of secrets before
+  persistence) — never truth, never written to `agents` directly.
+- **Reconciliation is deterministic and never silently merges/splits**: exact
+  `(organization_id, external_reference)` matching, a fixed `0.75` confidence
+  threshold, exactly three outcomes (CREATE via the 5.1
+  `AgentProvenanceService` seam / LINK discovery-metadata-only / FLAG a
+  finding). A collision with a NATIVE agent always flags, never links. A
+  concurrent create race yields exactly one agent (real separate Postgres
+  sessions).
+- **Staleness is a finding, not a deletion** — a missing agent gets an
+  `OPEN` `STALE_AGENT` finding, `control_state` unchanged; re-observation
+  auto-resolves it.
+- **Discovery ≠ control**, proven again: a discovered agent cannot be
+  directly set to `GOVERNED`.
+- **One reference adapter (`HTTP_AGENT_REGISTRY`), not a vendor catalog** —
+  proven against a real local `http.server`; Azure/AWS/LangGraph/CrewAI/
+  Kubernetes/MCP adapters explicitly deferred.
+- **Sweeps run on the existing 3.8 scheduler** (`discovery.sweep` handler) —
+  no new scheduler. Adapters use `GovernedHttpClient` exclusively; per-source
+  credentials reuse the `ToolCredential` encrypted-storage pattern; the
+  manual-trigger API is `Idempotency-Key`-aware.
+
+Head `0054_agent_asset_model` → `0055_agent_discovery`; **four new tables**
+(`discovery_sources`, `discovery_runs`, `discovery_observations`,
+`discovery_findings`), **141 tables** total; routes **593 → 603** (+10, all
+under `/api/v1/discovery`). 2 new permissions
+(`discovery.source.view`/`.manage`), 7 error codes, 8 audit events. **35 new
+backend tests** (`tests/discovery/test_discovery_framework.py` —
+AC-01..AC-21 + the §15 end-to-end proof), no existing test weakened. Backend
+**2,385 passed**, 0 failed, 1 deselected (2,350 + 35); frontend **359**,
+untouched (all M5 UI deferred to 5.8). See
+[`docs/discovery/framework.md`](docs/discovery/framework.md),
+[`docs/discovery/reconciliation.md`](docs/discovery/reconciliation.md), and
+[ADR-0016](docs/architecture/adr/0016-discovery-evidence-vs-canonical-truth.md).
 
 ## Future (Phase 3+)
 
