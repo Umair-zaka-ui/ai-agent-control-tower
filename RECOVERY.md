@@ -1,6 +1,23 @@
 # Backup and system-migration guide
 
-**Last verified 2026-09-05** after Phase 5.2 / M5.2 (Agent Discovery
+**Last verified 2026-09-08** after Phase 5.3 / M5.3 (Identity, Delegation &
+Trust Graph — the pivotal Milestone 5 phase). **One new table** (migration
+`0056_control_graph`, additive, reversible, downgrade-tested — **142
+tables**): `control_graph_edges` — typed, directed, tenant-scoped edges
+between existing node rows. **Durable state**: the edges are operator- and
+audit-relevant relationships (trust edges an operator created; delegation
+edges mirroring `delegations` rows) that a restore must bring back intact.
+They hold **no secret material** — an endpoint is `(type, id)` only, and
+`evidence` is a pointer back to the row that authorised the edge, never a
+credential. Nothing derived is stored: the **authority chain and every
+reachability query are recursive CTEs assembled at read time** (ADR-0017,
+NO graph database, NO projection), so a restore of `control_graph_edges` +
+the existing execution/identity/`delegations` rows is sufficient — there is
+no projection/cache to rebuild. No key material, no backup artifact and no
+restore step is touched by this phase. Migration head is now
+**`0056_control_graph`**.
+
+**Previously verified 2026-09-05** after Phase 5.2 / M5.2 (Agent Discovery
 Framework — the first Milestone 5 phase that reaches outside ACT). Four new
 tables (migration `0055_agent_discovery`, additive, reversible,
 downgrade-tested — **141 tables**): `discovery_sources`, `discovery_runs`,

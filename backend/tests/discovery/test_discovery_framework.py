@@ -141,8 +141,12 @@ def test_ac01_5_1_substrate_present_and_head_recorded() -> None:
     from app.runtime.registry.control import AgentControlStateService, AgentProvenanceService  # noqa: F401
 
     versions = sorted((_BACKEND / "migrations" / "versions").glob("*.py"))
-    assert versions[-1].stem == "0055_agent_discovery"
-    assert {"0054_agent_asset_model"} <= {v.stem for v in versions}
+    # Phase 5.3 (Identity, Delegation & Trust Graph) chains from this phase's
+    # own 0055_agent_discovery and is expected to have since moved the head --
+    # the migration this test's phase built is present in the chain, which is
+    # the actual M5.2 prerequisite; the moving head belongs to the later
+    # phase's own AC-01 (tests/graph/test_control_graph.py).
+    assert {"0054_agent_asset_model", "0055_agent_discovery"} <= {v.stem for v in versions}
     repo_state = (_REPO / "REPO_STATE.md").read_text(encoding="utf-8")
     assert "0055_agent_discovery" in repo_state
 

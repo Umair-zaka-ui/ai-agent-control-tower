@@ -58,6 +58,7 @@ _RESOURCE_GROUP: dict[str, str] = {
     "permission": "authorization",
     "rbac": "authorization",
     "runtime": "runtime",
+    "graph": "runtime",
 }
 
 

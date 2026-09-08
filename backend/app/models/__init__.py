@@ -52,6 +52,7 @@ from app.models.organization_hierarchy import (
 )
 from app.models.permission import Permission
 from app.models.discovery import DiscoveryFinding, DiscoveryObservation, DiscoveryRun, DiscoverySource
+from app.models.graph import ControlGraphEdge
 from app.models.scheduler import JobDefinition, JobRun
 from app.models.security import InstallationBootstrap, KeyMaterialCanary
 from app.models.worker import WorkerRegistration
@@ -212,4 +213,5 @@ __all__ = [
     "DiscoveryRun",
     "DiscoveryObservation",
     "DiscoveryFinding",
+    "ControlGraphEdge",
 ]

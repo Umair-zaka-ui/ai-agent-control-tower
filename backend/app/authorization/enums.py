@@ -409,3 +409,13 @@ class AuthorizationAuditEvent(str, enum.Enum):
     DISCOVERY_AGENT_LINKED = "DISCOVERY_AGENT_LINKED"
     DISCOVERY_FINDING_RAISED = "DISCOVERY_FINDING_RAISED"
     DISCOVERY_FINDING_RESOLVED = "DISCOVERY_FINDING_RESOLVED"
+    # Identity, Delegation & Trust Graph (Phase 5.3 / M5.3). The graph
+    # represents relationships; it grants no authority. Reading a chain or an
+    # edge is not audited (it changes nothing); creating/revoking a
+    # delegation or trust edge is. Authority-chain reconstruction is audited
+    # only when a caller runs it against a specific sensitive action.
+    GRAPH_DELEGATION_EDGE_CREATED = "GRAPH_DELEGATION_EDGE_CREATED"
+    GRAPH_DELEGATION_EDGE_REVOKED = "GRAPH_DELEGATION_EDGE_REVOKED"
+    GRAPH_TRUST_EDGE_CREATED = "GRAPH_TRUST_EDGE_CREATED"
+    GRAPH_TRUST_EDGE_REVOKED = "GRAPH_TRUST_EDGE_REVOKED"
+    GRAPH_AUTHORITY_CHAIN_RECONSTRUCTED = "GRAPH_AUTHORITY_CHAIN_RECONSTRUCTED"

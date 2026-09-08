@@ -32,6 +32,10 @@ rejected*.
 | [0011](./0011-opentelemetry-export-as-a-fail-open-plane.md) | OpenTelemetry export is a fail-open plane behind a replaceable adapter | Accepted |
 | [0012](./0012-alerts-as-signal-creation-not-notification.md) | An alert is a durable signal; creation is not notification | Accepted |
 | [0013](./0013-trace-content-capture-and-access-policy.md) | Trace content is a governed, separately-stored, separately-permissioned data class | Accepted |
+| [0014](./0014-key-material-recovery-and-fail-loud-integrity.md) | Key material recovery and fail-loud integrity | Accepted |
+| [0015](./0015-universal-agent-asset-model-and-control-state.md) | The universal agent asset model and the control-state dimension | Accepted |
+| [0016](./0016-discovery-evidence-vs-canonical-truth.md) | Discovery observations are append-only evidence; only reconciliation derives canonical truth | Accepted |
+| [0017](./0017-relational-control-graph-no-graph-database.md) | The control graph is relational: typed edges + recursive CTEs, no graph database | Accepted |
 
 ## Status values
 
