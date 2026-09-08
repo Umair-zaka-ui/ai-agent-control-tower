@@ -44,6 +44,7 @@ from app.integration.routes import router as integration_router
 from app.scheduler.routes import router as scheduler_router
 from app.workers.routes import router as workers_router
 from app.discovery.routes import router as discovery_router
+from app.graph.routes import router as graph_router
 from app.observability.routes import router as observability_router
 from app.identity.errors import register_identity_exception_handlers
 
@@ -196,6 +197,13 @@ app.include_router(workers_router)
 # ReconciliationService, which write through the Phase 5.1
 # server-authoritative control-state path.
 app.include_router(discovery_router)
+# Phase 5.3 -- the Identity, Delegation & Trust Graph, under /api/v1/graph.
+# A relational control-graph substrate (typed edges + recursive CTEs, NO
+# graph database -- ADR-0017) plus authority-chain reconstruction. Read and
+# represent only: no route grants authority, every traversal is per-hop
+# tenant-bounded, and the graph never writes `delegations` (DelegationService
+# owns that) or the canonical `agents` registry.
+app.include_router(graph_router)
 # Phase 4.2 -- the governed-observability trace surface
 # (/api/v1/observability). Distinct from the legacy `analytics` dashboards,
 # which aggregate the Phase 3 agent_actions table and know nothing of

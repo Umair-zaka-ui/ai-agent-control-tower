@@ -13,7 +13,7 @@
 > | **Milestone 4 (ACT-SRS-M4)** | `Phase 4.1 – 4.10`, requirement ids `M4-4.1-FR-xxx` | Runtime Governance & Observability | Telemetry, tracing, governance engine, cost, SLOs, privacy, observability center | **Complete** |
 > | **Phase M4.11** | `M4.11-FR-xxx` | Production Integrity Closure | Key-material recovery & fail-loud integrity — the M5 prerequisite | **Complete** |
 > | **Phase M4.11a** | `M4.11a-FR-xxx` | Install-Mode Classification Hardening | The durable bootstrap marker + five-state key taxonomy — corrects M4.11's absence-inference | **Complete** |
-> | **Milestone 5 (ACT-SRS-M5)** | `M5.x-FR-xxx` / `ACT-*` | Universal Agent Control & Security Fabric | One canonical registry describing native + external + discovered agents; provenance; control state; discovery; graph; MCP; posture; threat/containment; external gateway; command center | **In progress — 5.1, 5.2 complete** |
+> | **Milestone 5 (ACT-SRS-M5)** | `M5.x-FR-xxx` / `ACT-*` | Universal Agent Control & Security Fabric | One canonical registry describing native + external + discovered agents; provenance; control state; discovery; graph; MCP; posture; threat/containment; external gateway; command center | **In progress — 5.1, 5.2, 5.3 complete** |
 >
 > **How to tell them apart at a glance.** The historical family always appears
 > under a `## Phase 4 —` or `## Phase 4.3 —` heading and is written as
@@ -2912,6 +2912,61 @@ untouched (all M5 UI deferred to 5.8). See
 [`docs/discovery/framework.md`](docs/discovery/framework.md),
 [`docs/discovery/reconciliation.md`](docs/discovery/reconciliation.md), and
 [ADR-0016](docs/architecture/adr/0016-discovery-evidence-vs-canonical-truth.md).
+
+### Phase 5.3 / M5.3 — Identity, Delegation & Trust Graph ✅ (2026-09-08)
+
+**The pivotal phase.** 5.1 built the canonical asset model; 5.2 built
+discovery; 5.3 builds the **relational control-graph substrate** — typed
+edges connecting existing node rows (humans, agents, identities, tools,
+credentials, resources, orgs) — plus **authority-chain reconstruction** (who
+authorized this action, under whose delegated authority, through which
+identity, down to which resource), generalizing the Phase 4.2
+human→agent→model→tool trace into a first-class recursive query. It delivers
+the edge substrate 5.4 (dependency graph), 5.6 (containment attribution) and
+5.7 (external identity) all build on.
+
+- **NO graph database — the graph is relational.** One typed edge table
+  (`control_graph_edges`) + `WITH RECURSIVE` CTEs + **no materialized
+  projection** (a recorded measurement shows assembly is well within budget
+  — ADR-0008 discipline). PostgreSQL, no Neo4j, no second datastore. This
+  phase proves the approved relational-graph decision holds; the
+  graph-at-scale benchmark is deferred to 5.4/5.10.
+- **Per-hop tenant-bounded traversal — the sharpest isolation property.**
+  Every recursion step re-applies `organization_id = :tenant`. Edge creation
+  validates both endpoints in-tenant, so that predicate is a complete bound
+  for service-created edges; a hostile direct-inserted row is caught by
+  truncating the walk at the first out-of-tenant node — it stops at the
+  tenant edge. Adversarially proven (a planted cross-tenant edge extends
+  neither a chain nor a reachability result).
+- **The graph represents; it never creates.** A `TRUSTS` edge (explicit,
+  between two in-tenant nodes) grants nothing — `AuthorizationGateway` stays
+  authoritative. A `DELEGATES_TO` edge mirrors a `delegations` row
+  `DelegationService` owns, `evidence` pointing back at it; the graph writes
+  `delegations` never. `AGENT_DELEGATES_TO` is a declared type with **no
+  producer** — the runtime has no agent→agent invocation, so 5.3 does not
+  invent it (recorded in the ADR as a runtime-never-knows boundary).
+- **Authority chain**: `origin → agent → (agent) → identity → tool → target`,
+  assembled from existing rows + edges (recursive delegation prefix over
+  edges, recursive replay prefix over `parent_execution_id`, bounded FK
+  spine). Deterministic; each hop names its evidence; missing evidence is
+  explicit ("chain incomplete"), never "no delegation occurred".
+- **Bounded/cycle-safe** (`MAX_TRAVERSAL_DEPTH = 32`, `'type:id'` path
+  guard); **fails open** (nothing under `app/runtime/` imports `app/graph/`);
+  concurrency-safe (idempotent create via a partial unique index, `FOR
+  UPDATE` revoke) with real separate Postgres sessions.
+
+Head `0055_agent_discovery` → `0056_control_graph`; **one new table**
+(`control_graph_edges`), **142 tables** total; routes **603 → 611** (+8, all
+under `/api/v1/graph`). 2 new permissions (`graph.view`/`.manage`), 7 error
+codes, 5 audit events. **34 new backend tests**
+(`tests/graph/test_control_graph.py` — AC-01..AC-18 + the §14 end-to-end
+proof); two pre-existing tests updated intent-preserving (M5.2's
+migration-head guard; M5.1's no-graph-machinery guard), no existing test
+weakened. Backend **2,419 passed**, 0 failed, 1 deselected (2,385 + 34);
+frontend **359**, untouched (all M5 UI deferred to 5.8). See
+[`docs/graph/control-graph.md`](docs/graph/control-graph.md),
+[`docs/graph/authority-chain.md`](docs/graph/authority-chain.md), and
+[ADR-0017](docs/architecture/adr/0017-relational-control-graph-no-graph-database.md).
 
 ## Future (Phase 3+)
 

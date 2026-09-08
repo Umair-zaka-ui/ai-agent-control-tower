@@ -277,6 +277,14 @@ PERMISSION_CATALOG: dict[str, str] = {
         "View discovery sources, run history, observations and reconciliation/staleness findings",
     "discovery.source.manage":
         "Configure discovery sources, trigger a manual sweep, and resolve or dismiss findings",
+    # Identity, Delegation & Trust Graph (Phase 5.3 / M5.3). Two codes: read
+    # the control graph (edges, authority chains, reachability) vs. manage a
+    # delegation/trust edge. The graph represents authority; neither code
+    # grants any -- enforcement stays with the AuthorizationGateway.
+    "graph.view":
+        "View the control graph: edges, authority-chain reconstruction and reachability",
+    "graph.manage":
+        "Create or revoke delegation and trust edges in the control graph",
 }
 
 _ALL = set(PERMISSION_CATALOG)
