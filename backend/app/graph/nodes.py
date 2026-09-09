@@ -43,14 +43,30 @@ _NODE_SOURCES: dict[str, str] = {
         "SELECT id, organization_id, COALESCE(client_name, '') AS label FROM external_clients"
     ),
     "TOOL": "SELECT id, organization_id, COALESCE(name, '') AS label FROM tools",
+    # Phase 5.4: a CREDENTIAL node is any of the platform's per-org encrypted
+    # credential rows -- an agent API key, a tool credential, a model-provider
+    # credential or a connector credential. The label is a non-secret hint
+    # (key prefix / secret hint / provider name / auth scheme); no decrypted
+    # value is ever read here. Every branch yields (id, organization_id, label).
     "CREDENTIAL": (
         "SELECT ak.id, a.organization_id, COALESCE(ak.key_prefix, '') AS label "
-        "FROM agent_api_keys ak JOIN agents a ON a.id = ak.agent_id"
+        "FROM agent_api_keys ak JOIN agents a ON a.id = ak.agent_id "
+        "UNION ALL "
+        "SELECT id, organization_id, COALESCE(secret_hint, '') AS label FROM tool_credentials "
+        "UNION ALL "
+        "SELECT id, organization_id, COALESCE(provider, '') AS label FROM provider_credentials "
+        "UNION ALL "
+        "SELECT id, organization_id, COALESCE(auth_scheme, '') AS label FROM connector_credentials"
     ),
     "RESOURCE": (
         "SELECT id, organization_id, COALESCE(name, resource_type) AS label FROM resources"
     ),
     "ORGANIZATION": "SELECT id, id AS organization_id, COALESCE(name, '') AS label FROM organizations",
+    # Phase 5.4 dependency-graph node types.
+    "MCP_SERVER": "SELECT id, organization_id, COALESCE(name, '') AS label FROM mcp_servers",
+    "CONNECTOR": (
+        "SELECT id, organization_id, COALESCE(name, '') AS label FROM connector_instances"
+    ),
 }
 
 assert set(_NODE_SOURCES) == set(NODE_TYPES), "node source map drifted from NODE_TYPES"

@@ -28,15 +28,30 @@ The sentences that govern every module here:
 Modules:
   * ``nodes.py``      - the ``(type, id)`` <-> table mapping + tenant-scoped
                         node resolution.
-  * ``edges.py``      - edge/derived-edge assembly helpers.
   * ``traversal.py``  - the recursive CTEs: bounded, cycle-safe, per-hop
                         tenant-bounded reachability + authority-chain
-                        reconstruction.
+                        reconstruction + the explainable ``traverse_with_edges``
+                        blast-radius walk (Phase 5.4).
   * ``service.py``    - ``ControlGraphService`` (edge management, through
                         ``AuthorizationGateway``; delegation edges mirror
                         ``DelegationService``) and ``AuthorityChainService``.
-  * ``schemas.py`` / ``routes.py`` - the minimal additive read/query surface.
+  * ``mcp.py``        - ``McpServerService`` (Phase 5.4): an MCP server as a
+                        first-class dependency, represented **via the existing
+                        ``Tool`` domain** (ADR-0018) - no second tool registry.
+  * ``dependencies.py`` - ``DependencyGraphService`` (Phase 5.4): dependency
+                        edges on the 5.3 substrate, derived from evidence
+                        (OBSERVED / DECLARED) or declared through the API.
+  * ``blast_radius.py`` - ``BlastRadiusService`` (Phase 5.4): "which agents can
+                        reach X", "what breaks if Y is revoked", "which agents
+                        depend on MCP Z", "which agents reach a resource of
+                        kind K" - deterministic, explainable, per-hop
+                        tenant-bounded, over the 5.3 CTE machinery.
+  * ``schemas.py`` / ``routes.py`` - the additive read/query + MCP-trust surface.
 
-No dependency graph (5.4), no posture (5.5), no threat/containment (5.6), no
-external gateway (5.7), no UI (5.8).
+Phase 5.4 adds the dependency graph. It still has NO graph database and NO
+materialised projection (the §V blast-radius benchmark measured assembly well
+inside budget - see docs/graph/blast-radius.md, ADR-0018). It represents and
+analyses dependencies + MCP trust; it does not raise posture findings (5.5),
+detect / contain threats (5.6), build the external gateway (5.7) or the UI
+(5.8), or change tool execution / schema validation / egress (M1 owns those).
 """

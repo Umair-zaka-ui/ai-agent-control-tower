@@ -68,8 +68,13 @@ relationships that already exist; it never creates authority.**
    assembling reachability from edges is well within budget, so "no
    projection" keeps being the right call. A projection is added *only* if a
    future measurement proves assembly too slow — and then as its own ADR.
-   The graph-at-scale (1M-edge) adversarial benchmark is deferred to
-   Phase 5.4 / 5.10.
+   ~~The graph-at-scale (1M-edge) adversarial benchmark is deferred to
+   Phase 5.4 / 5.10.~~ **Phase 5.4 ran the graph-at-scale benchmark** (a
+   single-busy-tenant fixture, ~128k dependency edges: blast-radius queries
+   40–274 ms). The "no projection" decision holds, now backed by a real
+   measurement at scale. See
+   [ADR-0018](./0018-mcp-representation-via-tool-domain.md) and
+   `docs/graph/blast-radius.md`.
 
 4. **Per-hop tenant-bounded traversal.** Every recursion step re-applies
    `organization_id = :tenant` on the joined edge. Because
@@ -154,9 +159,12 @@ relationships that already exist; it never creates authority.**
 
 - **A measurement shows assembly is too slow** — add a projection, as its own
   ADR, with the deterministic-and-reconstructable standard ADR-0008 sets.
-- **Phase 5.4 adds the dependency graph** — confirm the one-table +
+- ~~**Phase 5.4 adds the dependency graph** — confirm the one-table +
   recursive-CTE design still holds with dependency edges and the "what breaks
-  if X" queries, and run the graph-at-scale benchmark deferred here.
+  if X" queries, and run the graph-at-scale benchmark deferred here.~~
+  **Done (Phase 5.4 / ADR-0018):** the one-table + recursive-CTE design holds
+  for dependency edges (`traverse_with_edges` is `traverse` + an edge-id
+  array); the blast-radius benchmark ran; no projection.
 - **The runtime gains agent→agent invocation** — wire a producer for
   `AGENT_DELEGATES_TO` and confirm the authority chain's recursive delegation
   prefix already covers it (it does — the edge type is in the walk today).
