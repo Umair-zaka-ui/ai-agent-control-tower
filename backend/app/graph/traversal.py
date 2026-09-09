@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.graph.nodes import resolve_node
+from app.graph.nodes import node_source_sql, resolve_node
 
 # A hard ceiling no caller can exceed -- defence in depth against a
 # pathological request even if a caller passes a huge max_depth.
@@ -153,6 +153,189 @@ def traverse(
         )
     out.sort(key=lambda n: n.depth)
     return out
+
+
+# --------------------------------------------------------------------------- #
+# Phase 5.4 -- explainable blast-radius traversal
+# --------------------------------------------------------------------------- #
+@dataclass(frozen=True)
+class EdgeHop:
+    edge_id: str
+    edge_type: str
+    source_type: str
+    source_id: str
+    target_type: str
+    target_id: str
+    evidence: dict
+
+
+@dataclass(frozen=True)
+class DependencyPath:
+    """One reachable node plus the exact edge chain that reached it -- the
+    "deterministic + explainable" blast-radius answer (SRS §7.4). ``depth`` is
+    the shortest depth at which the node is reachable; ``edges`` is that
+    shortest path's edge chain, each hop naming the edge and its evidence."""
+
+    node_type: str
+    node_id: uuid.UUID
+    depth: int
+    label: str
+    node_path: list[str]
+    edges: list[EdgeHop]
+
+
+def traverse_with_edges(
+    db: Session,
+    organization_id: uuid.UUID,
+    *,
+    start_type: str,
+    start_id: uuid.UUID,
+    edge_types: list[str] | None = None,
+    direction: str = "out",
+    max_depth: int | None = None,
+) -> tuple[list[DependencyPath], bool]:
+    """Reachability that also returns the edge chain to each node.
+
+    Same machinery as :func:`traverse` -- one ``WITH RECURSIVE`` over
+    ``control_graph_edges``, per-hop ``organization_id = :org``, a path array
+    cycle guard, ``depth < :max_depth``. In addition to the node path it
+    carries the array of edge ids traversed, hydrated afterwards into
+    :class:`EdgeHop`s (with each edge's evidence) for the explanation.
+
+    Returns ``(paths, depth_capped)`` -- ``depth_capped`` is ``True`` if any
+    branch was cut at ``max_depth`` (so the caller can say the blast radius
+    "may be incomplete", never falsely "empty" -- SRS §11).
+
+    A node that does not resolve *within the tenant*, and everything reachable
+    only through it, is dropped (the 5.3 adversarial backstop, unchanged for
+    dependency edges).
+    """
+    depth = _clamp_depth(max_depth)
+    if direction not in ("out", "in"):
+        raise ValueError("direction must be 'out' or 'in'")
+
+    if direction == "out":
+        match_type, match_id = "e.source_type", "e.source_id"
+        step_type, step_id = "e.target_type", "e.target_id"
+    else:
+        match_type, match_id = "e.target_type", "e.target_id"
+        step_type, step_id = "e.source_type", "e.source_id"
+
+    all_types = not edge_types
+    # One recursive CTE. ``any_capped`` (a single scalar sub-select over the
+    # same CTE) tells the caller whether any branch was cut at ``:max_depth`` --
+    # so a blast radius is never falsely "empty" when it might be partial
+    # (SRS §11) -- without a second traversal.
+    sql = text(
+        f"""
+        WITH RECURSIVE reach(node_type, node_id, depth, node_path, edge_path, capped) AS (
+            SELECT CAST(:start_type AS varchar), CAST(:start_id AS uuid), 0,
+                   ARRAY[CAST(:start_key AS text)], ARRAY[]::uuid[], false
+          UNION ALL
+            SELECT {step_type}, {step_id}, r.depth + 1,
+                   r.node_path || ({step_type} || ':' || {step_id}),
+                   r.edge_path || e.id,
+                   (r.depth + 1 >= :max_depth)
+            FROM reach r
+            JOIN control_graph_edges e
+              ON {match_type} = r.node_type
+             AND {match_id} = r.node_id
+             AND e.organization_id = :org
+             AND e.revoked_at IS NULL
+             AND (e.valid_until IS NULL OR e.valid_until > now())
+             AND (:all_types OR e.edge_type = ANY(:edge_types))
+            WHERE r.depth < :max_depth
+              AND NOT (({step_type} || ':' || {step_id}) = ANY(r.node_path))
+        )
+        SELECT DISTINCT ON (node_type, node_id)
+               node_type, node_id, depth, node_path, edge_path,
+               (SELECT bool_or(capped) FROM reach) AS any_capped
+        FROM reach
+        WHERE depth > 0
+        ORDER BY node_type, node_id, depth
+        """
+    )
+    params = {
+        "start_type": start_type,
+        "start_id": str(start_id),
+        "start_key": _key(start_type, start_id),
+        "org": str(organization_id),
+        "all_types": all_types,
+        "edge_types": list(edge_types or []),
+        "max_depth": depth,
+    }
+    rows = db.execute(sql, params).all()
+    depth_capped = any(bool(r[5]) for r in rows)
+
+    # hydrate every traversed edge in one query
+    edge_ids: set[str] = set()
+    for r in rows:
+        edge_ids.update(str(e) for e in (r[4] or []))
+    edge_map: dict[str, EdgeHop] = {}
+    if edge_ids:
+        for er in db.execute(
+            text(
+                """
+                SELECT id, edge_type, source_type, source_id, target_type, target_id, evidence
+                FROM control_graph_edges
+                WHERE organization_id = :org AND id = ANY(CAST(:ids AS uuid[]))
+                """
+            ),
+            {"org": str(organization_id), "ids": list(edge_ids)},
+        ).all():
+            edge_map[str(er[0])] = EdgeHop(
+                edge_id=str(er[0]),
+                edge_type=er[1],
+                source_type=er[2],
+                source_id=str(er[3]),
+                target_type=er[4],
+                target_id=str(er[5]),
+                evidence=er[6] or {},
+            )
+
+    # resolve every node that appears in any path IN-TENANT, batched by type
+    # (one query per node type, not one per node) -- the 5.3 adversarial
+    # backstop: a node that does not resolve inside the tenant, and everything
+    # reachable only through it, is dropped.
+    by_type: dict[str, set[str]] = {}
+    for r in rows:
+        for k in list(r[3])[1:]:
+            nt, _, ni = k.partition(":")
+            by_type.setdefault(nt, set()).add(ni)
+    in_tenant: dict[str, str] = {}
+    for nt, ids in by_type.items():
+        try:
+            src = node_source_sql(nt)
+        except ValueError:
+            continue
+        for rid, lbl in db.execute(
+            text(
+                f"SELECT n.id, n.label FROM ({src}) AS n "
+                "WHERE n.organization_id = :org AND n.id = ANY(CAST(:ids AS uuid[]))"
+            ),
+            {"org": str(organization_id), "ids": list(ids)},
+        ).all():
+            in_tenant[f"{nt}:{rid}"] = lbl or ""
+
+    out: list[DependencyPath] = []
+    for node_type, node_id, node_depth, node_path, edge_path, _capped in rows:
+        tail = list(node_path)[1:]
+        if any(k not in in_tenant for k in tail):
+            continue  # truncate at the first out-of-tenant node
+        nid = node_id if isinstance(node_id, uuid.UUID) else uuid.UUID(str(node_id))
+        hops = [edge_map[str(e)] for e in (edge_path or []) if str(e) in edge_map]
+        out.append(
+            DependencyPath(
+                node_type=node_type,
+                node_id=nid,
+                depth=int(node_depth),
+                label=in_tenant.get(_key(node_type, nid), ""),
+                node_path=list(node_path),
+                edges=hops,
+            )
+        )
+    out.sort(key=lambda p: (p.depth, p.node_type, str(p.node_id)))
+    return out, depth_capped
 
 
 # --------------------------------------------------------------------------- #
@@ -526,6 +709,9 @@ __all__ = [
     "DEFAULT_TRAVERSAL_DEPTH",
     "ReachableNode",
     "traverse",
+    "EdgeHop",
+    "DependencyPath",
+    "traverse_with_edges",
     "ChainHop",
     "AuthorityChain",
     "reconstruct_authority_chain",

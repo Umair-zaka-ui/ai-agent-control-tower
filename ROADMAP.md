@@ -13,7 +13,7 @@
 > | **Milestone 4 (ACT-SRS-M4)** | `Phase 4.1 – 4.10`, requirement ids `M4-4.1-FR-xxx` | Runtime Governance & Observability | Telemetry, tracing, governance engine, cost, SLOs, privacy, observability center | **Complete** |
 > | **Phase M4.11** | `M4.11-FR-xxx` | Production Integrity Closure | Key-material recovery & fail-loud integrity — the M5 prerequisite | **Complete** |
 > | **Phase M4.11a** | `M4.11a-FR-xxx` | Install-Mode Classification Hardening | The durable bootstrap marker + five-state key taxonomy — corrects M4.11's absence-inference | **Complete** |
-> | **Milestone 5 (ACT-SRS-M5)** | `M5.x-FR-xxx` / `ACT-*` | Universal Agent Control & Security Fabric | One canonical registry describing native + external + discovered agents; provenance; control state; discovery; graph; MCP; posture; threat/containment; external gateway; command center | **In progress — 5.1, 5.2, 5.3 complete** |
+> | **Milestone 5 (ACT-SRS-M5)** | `M5.x-FR-xxx` / `ACT-*` | Universal Agent Control & Security Fabric | One canonical registry describing native + external + discovered agents; provenance; control state; discovery; graph; MCP; posture; threat/containment; external gateway; command center | **In progress — 5.1, 5.2, 5.3, 5.4 complete** |
 >
 > **How to tell them apart at a glance.** The historical family always appears
 > under a `## Phase 4 —` or `## Phase 4.3 —` heading and is written as
@@ -2967,6 +2967,62 @@ frontend **359**, untouched (all M5 UI deferred to 5.8). See
 [`docs/graph/control-graph.md`](docs/graph/control-graph.md),
 [`docs/graph/authority-chain.md`](docs/graph/authority-chain.md), and
 [ADR-0017](docs/architecture/adr/0017-relational-control-graph-no-graph-database.md).
+
+### Phase 5.4 / M5.4 — MCP / Tool / Credential / Resource Dependency Graph ✅ (2026-09-09)
+
+**Where the control graph becomes a security capability.** 5.3 built the
+relational edge substrate + authority-chain reconstruction; 5.4 extends it
+with **dependency edges** — agent→tool / →credential / →MCP-server /
+→connector / →resource, MCP→tool, tool→credential, tool→resource,
+credential→resource — and delivers the **blast-radius queries** the milestone
+points at: *which agents can reach payroll · what breaks if this credential
+is revoked · which agents depend on this MCP server · which agents can reach
+a resource of kind K.*
+
+- **MCP is represented via the existing `Tool` domain — NOT a second tool
+  registry** ([ADR-0018](docs/architecture/adr/0018-mcp-representation-via-tool-domain.md)).
+  New `mcp_servers` table (identity, provenance, `trust_status`, version,
+  endpoint ref) holds **no tools**; the tools it exposes are ordinary `tools`
+  rows linked by **one additive nullable column, `tools.mcp_server_id`**. One
+  registry, one M1 schema-validation path, one M1 gateway. `app/graph/`
+  imports no tool-execution / validation / egress code — it represents, it
+  does not enforce.
+- **Dependency edges are more `edge_type` values on the one
+  `control_graph_edges` table** — no new edge table. Each references two
+  existing rows and **grants no authority** (the 5.3 rule, extended).
+- **Observed vs declared dependency is distinguished** — `evidence.mode`
+  ∈ {OBSERVED (from `tool_calls`), DECLARED (from bindings/config)}. There is
+  **no `agent→model` edge** — a model is a `{provider, model}` string, not a
+  governed row (the `AGENT_DELEGATES_TO` restraint); the model-provider
+  dependency surfaces as `DEPENDS_ON_CREDENTIAL` against `provider_credentials`.
+- **Blast-radius reuses the 5.3 recursive-CTE machinery** (`traverse_with_edges`
+  = `traverse` + an accumulated edge-id array hydrated into an explainable
+  path). Same per-hop `organization_id = :org` bound (re-proven adversarially
+  for dependency edges), same path-array cycle guard, same
+  `MAX_TRAVERSAL_DEPTH = 32`, same out-of-tenant truncation. No new engine.
+  Every answer names its path; `incomplete` is explicit (never falsely
+  "empty"); a query failure fails open.
+- **MCP trust as evidence, not enforcement** — `trust_status` other than
+  `APPROVED` makes a dependency a surfaced finding-evidence
+  (`GET /graph/blast-radius/unapproved-mcp`). Unknown ≠ safe. The finding is
+  5.5's job.
+- **The §V graph-at-scale benchmark — NO materialised projection.**
+  Single-busy-tenant fixture (~12k agents, ~128k dependency edges), `ANALYZE`d,
+  the four blast-radius queries at **40–274 ms**. ADR-0017's "no projection"
+  call holds, now backed by a real measurement at scale.
+
+Head `0056_control_graph` → `0057_dependency_graph`; **one new table**
+(`mcp_servers`) **+ one additive column** (`tools.mcp_server_id`), **143
+tables** total; routes **611 → 630** (+19, all under `/api/v1/graph`). No new
+permission (MCP-trust reuses `graph.manage`); 3 error codes, 6 audit events.
+**34 new backend tests** (`tests/graph/test_dependency_graph.py` —
+AC-01..AC-18 + the §15 end-to-end proof + the §V scale benchmark); one
+pre-existing test updated intent-preserving (the migration-head guard), no
+existing test weakened. Backend **2,453 passed**, 0 failed, 1 deselected
+(2,419 + 34). Frontend **359**, untouched (all M5 UI deferred to 5.8). See [`docs/graph/dependency-graph.md`](docs/graph/dependency-graph.md),
+[`docs/graph/mcp-via-tool.md`](docs/graph/mcp-via-tool.md),
+[`docs/graph/blast-radius.md`](docs/graph/blast-radius.md), and
+[ADR-0018](docs/architecture/adr/0018-mcp-representation-via-tool-domain.md).
 
 ## Future (Phase 3+)
 

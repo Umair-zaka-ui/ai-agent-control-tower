@@ -36,6 +36,7 @@ rejected*.
 | [0015](./0015-universal-agent-asset-model-and-control-state.md) | The universal agent asset model and the control-state dimension | Accepted |
 | [0016](./0016-discovery-evidence-vs-canonical-truth.md) | Discovery observations are append-only evidence; only reconciliation derives canonical truth | Accepted |
 | [0017](./0017-relational-control-graph-no-graph-database.md) | The control graph is relational: typed edges + recursive CTEs, no graph database | Accepted |
+| [0018](./0018-mcp-representation-via-tool-domain.md) | An MCP server is represented via the existing Tool domain, not a second tool registry | Accepted |
 
 ## Status values
 

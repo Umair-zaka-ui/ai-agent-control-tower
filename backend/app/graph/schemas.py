@@ -16,9 +16,17 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.graph import NODE_TYPES
+from app.models.graph import (
+    DEPENDENCY_EDGE_TYPES,
+    MCP_PROVENANCE,
+    MCP_TRUST_STATUSES,
+    NODE_TYPES,
+)
 
 _NODE_PATTERN = "^(" + "|".join(NODE_TYPES) + ")$"
+_DEP_EDGE_PATTERN = "^(" + "|".join(DEPENDENCY_EDGE_TYPES) + ")$"
+_MCP_TRUST_PATTERN = "^(" + "|".join(MCP_TRUST_STATUSES) + ")$"
+_MCP_PROV_PATTERN = "^(" + "|".join(MCP_PROVENANCE) + ")$"
 
 
 class NodeRef(BaseModel):
@@ -82,6 +90,73 @@ class ReachabilityRead(BaseModel):
     reachable: list[ReachableNodeRead]
 
 
+# --------------------------------------------------------------------------- #
+# Phase 5.4 (M5.4) - MCP servers + dependency edges
+# --------------------------------------------------------------------------- #
+class McpServerCreate(BaseModel):
+    """Register an MCP server. It is represented via the existing ``Tool``
+    domain -- this creates no tool and no second registry. ``trust_status``
+    defaults to PENDING (un-reviewed); pass UNKNOWN for a server whose
+    provenance cannot be established. Anything other than APPROVED is surfaced
+    as evidence for a Phase 5.5 finding."""
+
+    name: str = Field(min_length=1, max_length=255)
+    description: str | None = Field(default=None, max_length=2000)
+    provenance: str = Field(default="EXPLICIT", pattern=_MCP_PROV_PATTERN)
+    trust_status: str = Field(default="PENDING", pattern=_MCP_TRUST_PATTERN)
+    version: str | None = Field(default=None, max_length=64)
+    endpoint_reference: str | None = Field(default=None, max_length=500)
+    declared_capabilities: dict = Field(default_factory=dict)
+    owner_id: uuid.UUID | None = None
+    owner_type: str | None = Field(default=None, max_length=30)
+
+
+class McpTrustUpdate(BaseModel):
+    trust_status: str = Field(pattern=_MCP_TRUST_PATTERN)
+    note: str | None = Field(default=None, max_length=500)
+
+
+class McpToolLink(BaseModel):
+    tool_id: uuid.UUID
+
+
+class McpServerRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    organization_id: uuid.UUID
+    name: str
+    description: str | None
+    provenance: str
+    trust_status: str
+    version: str | None
+    endpoint_reference: str | None
+    declared_capabilities: dict
+    owner_id: uuid.UUID | None
+    owner_type: str | None
+    last_probed_at: datetime | None
+    probe_status: str | None
+    created_at: datetime
+
+
+class DependencyEdgeCreate(BaseModel):
+    """An operator's explicit declaration that a dependency exists. Both
+    endpoints must resolve inside the caller's tenant; the edge grants no
+    authority and is audited. ``evidence.mode`` is DECLARED."""
+
+    source: NodeRef
+    edge_type: str = Field(pattern=_DEP_EDGE_PATTERN)
+    target: NodeRef
+    note: str | None = Field(default=None, max_length=500)
+
+
+class DependencyRebuildRead(BaseModel):
+    agent_id: str
+    edges_created: int
+    by_type: dict
+    note: str
+
+
 class ChainHopRead(BaseModel):
     from_: dict = Field(alias="from")
     edge: str
@@ -108,4 +183,10 @@ __all__ = [
     "ReachabilityRead",
     "ChainHopRead",
     "AuthorityChainRead",
+    "McpServerCreate",
+    "McpTrustUpdate",
+    "McpToolLink",
+    "McpServerRead",
+    "DependencyEdgeCreate",
+    "DependencyRebuildRead",
 ]

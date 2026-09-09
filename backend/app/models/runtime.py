@@ -1215,6 +1215,14 @@ class Tool(Base, UUIDPrimaryKeyMixin):
     # execution time (they read the frozen snapshot copy, never this live,
     # mutable row).
     http_config: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # Phase 5.4 (M5.4) -- the one additive MCP-via-Tool link (ADR-0018). NULL
+    # for a native tool; set for a tool exposed by an MCP server. An
+    # MCP-exposed tool is an ordinary Tool row (same schema validation, same
+    # gateway) that points at its provider -- there is no second tool table.
+    mcp_server_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("mcp_servers.id", ondelete="SET NULL"),
+        nullable=True, index=True,
+    )
     created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

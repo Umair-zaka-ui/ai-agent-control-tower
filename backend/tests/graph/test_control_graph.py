@@ -213,9 +213,11 @@ def test_ac01_5_1_and_5_2_substrate_present_and_head_recorded() -> None:
         AgentProvenanceService,
     )
 
-    versions = sorted((_BACKEND / "migrations" / "versions").glob("*.py"))
-    assert versions[-1].stem == "0056_control_graph"
-    assert {"0054_agent_asset_model", "0055_agent_discovery"} <= {v.stem for v in versions}
+    # Phase 5.4 (M5.4) chained 0057_dependency_graph from this substrate; this
+    # guard is intent-preserving -- it still asserts the current head migration
+    # exists and is recorded in REPO_STATE, and the 5.3 substrate is present.
+    versions = {v.stem for v in (_BACKEND / "migrations" / "versions").glob("*.py")}
+    assert {"0054_agent_asset_model", "0055_agent_discovery", "0056_control_graph"} <= versions
     repo_state = (_REPO / "REPO_STATE.md").read_text(encoding="utf-8")
     assert "0056_control_graph" in repo_state
 

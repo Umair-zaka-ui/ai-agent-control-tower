@@ -419,3 +419,15 @@ class AuthorizationAuditEvent(str, enum.Enum):
     GRAPH_TRUST_EDGE_CREATED = "GRAPH_TRUST_EDGE_CREATED"
     GRAPH_TRUST_EDGE_REVOKED = "GRAPH_TRUST_EDGE_REVOKED"
     GRAPH_AUTHORITY_CHAIN_RECONSTRUCTED = "GRAPH_AUTHORITY_CHAIN_RECONSTRUCTED"
+    # MCP / Tool / Credential / Resource Dependency Graph (Phase 5.4 / M5.4).
+    # Registering an MCP server and changing its trust/approval state are
+    # audited; so is creating/revoking a DECLARED dependency edge and rebuilding
+    # an agent's dependency edges from evidence. A blast-radius query is a read
+    # that changes nothing but is recorded (it can expose the shape of the
+    # tenant's dependency surface), mirroring GRAPH_AUTHORITY_CHAIN_RECONSTRUCTED.
+    GRAPH_MCP_SERVER_REGISTERED = "GRAPH_MCP_SERVER_REGISTERED"
+    GRAPH_MCP_TRUST_CHANGED = "GRAPH_MCP_TRUST_CHANGED"
+    GRAPH_DEPENDENCY_EDGE_CREATED = "GRAPH_DEPENDENCY_EDGE_CREATED"
+    GRAPH_DEPENDENCY_EDGE_REVOKED = "GRAPH_DEPENDENCY_EDGE_REVOKED"
+    GRAPH_DEPENDENCIES_REBUILT = "GRAPH_DEPENDENCIES_REBUILT"
+    GRAPH_BLAST_RADIUS_QUERIED = "GRAPH_BLAST_RADIUS_QUERIED"

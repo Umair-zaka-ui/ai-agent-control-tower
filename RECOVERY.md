@@ -1,6 +1,30 @@
 # Backup and system-migration guide
 
-**Last verified 2026-09-08** after Phase 5.3 / M5.3 (Identity, Delegation &
+**Last verified 2026-09-09** after Phase 5.4 / M5.4 (MCP / Tool / Credential /
+Resource Dependency Graph — where the control graph becomes a security
+capability). **One new table + one additive column** (migration
+`0057_dependency_graph`, additive, reversible, downgrade-tested — **143
+tables**): `mcp_servers` (an MCP server's identity, provenance, trust/approval
+state, version, endpoint reference — holds **no tools**; the tools it exposes
+are ordinary `tools` rows linked by the one additive nullable column
+`tools.mcp_server_id`), and the `control_graph_edges` type CHECK constraints
+widened in place for the dependency edge/node vocabulary. **Durable state**:
+the `mcp_servers` rows (an operator-reviewed trust state a restore must bring
+back intact) and the dependency edges on `control_graph_edges` (operator- and
+audit-relevant). They hold **no secret material** — a `CREDENTIAL` edge
+endpoint is `(type, id)` referencing an encrypted-credential row, never the
+secret; `evidence` is `{mode, source, ref}`, never a credential value.
+**Nothing derived is stored** — the blast-radius / reachability queries are
+recursive CTEs assembled at read time (ADR-0017/ADR-0018, **NO graph
+database, NO materialised projection** — the §V benchmark confirmed assembly
+is fast enough), so a restore of `mcp_servers` + `control_graph_edges` + the
+existing `tools`/`agents`/`resources`/credential rows is sufficient; there is
+no projection/cache to rebuild. Dependency edges derived from evidence are
+also re-derivable at any time (`POST /graph/agents/{id}/dependencies/rebuild`).
+No key material, no backup artifact and no restore step is touched by this
+phase. Migration head is now **`0057_dependency_graph`**.
+
+**Previously verified 2026-09-08** after Phase 5.3 / M5.3 (Identity, Delegation &
 Trust Graph — the pivotal Milestone 5 phase). **One new table** (migration
 `0056_control_graph`, additive, reversible, downgrade-tested — **142
 tables**): `control_graph_edges` — typed, directed, tenant-scoped edges
