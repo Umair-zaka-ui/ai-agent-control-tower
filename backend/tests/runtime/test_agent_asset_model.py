@@ -576,28 +576,37 @@ def test_ac12_model_represents_a_real_external_agent_with_no_discovery_code(clie
 
 def test_ac12_no_discovery_or_graph_machinery_shipped() -> None:
     """At M5.1's own time this asserted NO discovery/graph/posture machinery
-    existed anywhere. Phase 5.2 (Agent Discovery Framework) and Phase 5.3
-    (Identity, Delegation & Trust Graph) have since shipped legitimately,
-    each under its own sibling package (`app/discovery/`, `app/graph/`) --
-    never inside `app/runtime/`, preserving the invariant this test actually
-    cares about: no discovery/graph engine crept into the runtime, and no
-    parallel `agents` registry was introduced. So `discovery_runs` and
-    `control_graph_edges` are expected now, not a violation. Posture (5.5)
-    still does not exist, and the graph is one edge table, not a projection."""
+    existed anywhere. Phase 5.2 (Agent Discovery Framework), Phase 5.3
+    (Identity, Delegation & Trust Graph) and Phase 5.5 (Security Posture &
+    Shadow Findings) have since shipped legitimately, each under its own
+    sibling package (`app/discovery/`, `app/graph/`, `app/posture/`) -- never
+    inside `app/runtime/`, preserving the invariant this test actually cares
+    about: no discovery/graph/posture engine crept into the runtime, and no
+    parallel `agents` registry was introduced. So `discovery_runs`,
+    `control_graph_edges` and `posture_findings` are expected now, not a
+    violation. The graph is one edge table (not a projection), and **shadow is
+    a derived finding-state, never a boolean column or a `shadow_agents`
+    table** -- that is the 5.5 invariant this test still enforces."""
     from app.core.database import Base
 
     names = set(Base.metadata.tables)
-    for banned in ("agent_graph_edges", "agent_edges", "posture_findings",
+    for banned in ("agent_graph_edges", "agent_edges",
                    "reconciliation_runs", "shadow_agents", "graph_projection",
-                   "reachability_cache"):
+                   "reachability_cache", "posture_risk_scores"):
         assert banned not in names
     # 5.1's real invariant: no second canonical agent registry.
     for banned in ("agents_v2", "external_agents"):
         assert banned not in names
+    # 5.5's invariant: shadow is derived, not a stored flag.
+    for table in Base.metadata.tables.values():
+        for col in table.columns:
+            assert col.name not in ("shadow", "is_shadow"), (table.name, col.name)
     assert not (_BACKEND / "app" / "runtime" / "discovery").exists()
     assert not (_BACKEND / "app" / "runtime" / "graph").exists()
+    assert not (_BACKEND / "app" / "runtime" / "posture").exists()
     assert (_BACKEND / "app" / "discovery").exists()  # 5.2's own sibling package
     assert (_BACKEND / "app" / "graph").exists()  # 5.3's own sibling package
+    assert (_BACKEND / "app" / "posture").exists()  # 5.5's own sibling package
 
 
 # --------------------------------------------------------------------------- #

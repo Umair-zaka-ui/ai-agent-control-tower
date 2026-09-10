@@ -220,6 +220,29 @@ def discovery_sweep(ctx: HandlerContext) -> dict:
 
 
 # --------------------------------------------------------------------------- #
+# Handler: security-posture evaluation (Phase 5.5)
+# --------------------------------------------------------------------------- #
+@register("posture.evaluate")
+def posture_evaluate(ctx: HandlerContext) -> dict:
+    """Runs the deterministic posture rule set for every non-archived agent in
+    this organization (``PostureEvaluator.evaluate_tenant``).
+
+    Idempotent -- a re-run over unchanged evidence opens nothing new (the
+    DB-enforced dedup key does the work). Off every execution path: a posture
+    finding is a signal, never enforcement. One agent's rule failure does not
+    stop the sweep (``PostureEvaluator`` catches per rule and fails open)."""
+    from app.posture.evaluator import PostureEvaluator
+
+    if ctx.actor is None:
+        raise IdentityError(
+            ErrorCode.VALIDATION_ERROR,
+            "The posture-evaluation job is tenant-scoped and requires an organization.",
+        )
+    summary = PostureEvaluator(ctx.db).evaluate_tenant(ctx.actor)
+    return summary.as_dict()
+
+
+# --------------------------------------------------------------------------- #
 # Handler: retention / expired-state cleanup
 # --------------------------------------------------------------------------- #
 @register("platform.expired_state_cleanup")

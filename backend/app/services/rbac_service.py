@@ -285,6 +285,15 @@ PERMISSION_CATALOG: dict[str, str] = {
         "View the control graph: edges, authority-chain reconstruction and reachability",
     "graph.manage":
         "Create or revoke delegation and trust edges in the control graph",
+    # Security Posture & Shadow Findings (Phase 5.5 / M5.5). Two codes: read
+    # posture findings, the shadow-agent view and the deterministic summary vs.
+    # triage a finding (ack/resolve/suppress), run an evaluation, or tune a
+    # rule. A posture finding is a signal; neither code grants any enforcement
+    # authority -- the 4.3 engine + kill switch stay the sole enforcers.
+    "posture.view":
+        "View security-posture findings, the shadow-agent view and the deterministic posture summary",
+    "posture.manage":
+        "Triage posture findings (acknowledge/resolve/suppress), run evaluations, and tune posture rules",
 }
 
 _ALL = set(PERMISSION_CATALOG)

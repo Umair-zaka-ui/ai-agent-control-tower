@@ -45,6 +45,7 @@ from app.scheduler.routes import router as scheduler_router
 from app.workers.routes import router as workers_router
 from app.discovery.routes import router as discovery_router
 from app.graph.routes import router as graph_router
+from app.posture.routes import router as posture_router
 from app.observability.routes import router as observability_router
 from app.identity.errors import register_identity_exception_handlers
 
@@ -204,6 +205,13 @@ app.include_router(discovery_router)
 # tenant-bounded, and the graph never writes `delegations` (DelegationService
 # owns that) or the canonical `agents` registry.
 app.include_router(graph_router)
+# Phase 5.5 -- Security Posture & Shadow Findings, under /api/v1/posture. A
+# deterministic rule engine over the 5.1-5.4 evidence + credentials/policies/
+# SLOs, producing explainable findings via the 4.7 finding lifecycle. Shadow
+# is a derived finding-state (a query over rule_id), never a boolean; any
+# score is a deterministic, versioned function of the findings; findings are
+# signals -- app/posture has no enforcement path (ADR-0019).
+app.include_router(posture_router)
 # Phase 4.2 -- the governed-observability trace surface
 # (/api/v1/observability). Distinct from the legacy `analytics` dashboards,
 # which aggregate the Phase 3 agent_actions table and know nothing of

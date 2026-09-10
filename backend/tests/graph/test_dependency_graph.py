@@ -192,9 +192,11 @@ def test_ac01_substrate_present_and_head_recorded() -> None:
     from app.graph.mcp import McpServerService  # noqa: F401
     from app.graph.traversal import traverse_with_edges  # noqa: F401
 
-    versions = sorted((_BACKEND / "migrations" / "versions").glob("*.py"))
-    assert versions[-1].stem == "0057_dependency_graph"
-    assert {"0055_agent_discovery", "0056_control_graph"} <= {v.stem for v in versions}
+    # Intent-preserving (a later phase chains its own migration from here): the
+    # 5.4 migration exists and is recorded in REPO_STATE, and the 5.3 substrate
+    # is present. Not "0057 is the newest file" -- that moves.
+    versions = {v.stem for v in (_BACKEND / "migrations" / "versions").glob("*.py")}
+    assert {"0055_agent_discovery", "0056_control_graph", "0057_dependency_graph"} <= versions
     repo_state = (_REPO / "REPO_STATE.md").read_text(encoding="utf-8")
     assert "0057_dependency_graph" in repo_state
 
