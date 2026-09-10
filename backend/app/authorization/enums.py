@@ -431,3 +431,16 @@ class AuthorizationAuditEvent(str, enum.Enum):
     GRAPH_DEPENDENCY_EDGE_REVOKED = "GRAPH_DEPENDENCY_EDGE_REVOKED"
     GRAPH_DEPENDENCIES_REBUILT = "GRAPH_DEPENDENCIES_REBUILT"
     GRAPH_BLAST_RADIUS_QUERIED = "GRAPH_BLAST_RADIUS_QUERIED"
+    # Security Posture & Shadow Findings (Phase 5.5 / M5.5). A posture finding
+    # is a signal, not enforcement. Opening one and every lifecycle transition
+    # (ack/resolve/suppress/reopen) is audited; so is a per-tenant rule
+    # enable/disable/threshold change (the score-reconstructability chain).
+    # A whole-tenant evaluation sweep records a summary. Reading a finding is
+    # not a change and is not audited.
+    POSTURE_FINDING_OPENED = "POSTURE_FINDING_OPENED"
+    POSTURE_FINDING_REOPENED = "POSTURE_FINDING_REOPENED"
+    POSTURE_FINDING_ACKNOWLEDGED = "POSTURE_FINDING_ACKNOWLEDGED"
+    POSTURE_FINDING_RESOLVED = "POSTURE_FINDING_RESOLVED"
+    POSTURE_FINDING_SUPPRESSED = "POSTURE_FINDING_SUPPRESSED"
+    POSTURE_RULE_SETTING_CHANGED = "POSTURE_RULE_SETTING_CHANGED"
+    POSTURE_EVALUATED = "POSTURE_EVALUATED"

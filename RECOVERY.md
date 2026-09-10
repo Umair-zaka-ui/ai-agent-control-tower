@@ -1,8 +1,28 @@
 # Backup and system-migration guide
 
-**Last verified 2026-09-09** after Phase 5.4 / M5.4 (MCP / Tool / Credential /
-Resource Dependency Graph — where the control graph becomes a security
-capability). **One new table + one additive column** (migration
+**Last verified 2026-09-10** after Phase 5.5 / M5.5 (Security Posture &
+Shadow Findings — where the graph evidence becomes visible risk). **Two new
+tables** (migration `0058_security_posture`, additive, reversible,
+downgrade-tested — **145 tables**): `posture_findings` (a standing,
+explainable posture finding with the Phase 4.7 lifecycle) and
+`posture_rule_settings` (per-tenant rule enable/disable + parameter override,
+monotonic `revision`). **Durable state**: the `posture_findings` rows carry
+operator triage state (acknowledged / resolved / suppressed) a restore must
+bring back intact, and `posture_rule_settings` carries tuned thresholds a
+CISO set. They hold **no secret material** — a credential finding references
+the `agent_api_keys` row by id, never the hash; `evidence` is `{refs, …}`,
+never a secret value. **Nothing derived is stored** — the posture summary /
+score is recomputed from `posture_findings` on every call (ADR-0008/ADR-0019,
+**no opaque score, no stored aggregate**), and the findings themselves are
+re-derivable at any time (`POST /posture/evaluate`, or the `posture.evaluate`
+scheduler handler). A restore of `posture_findings` + `posture_rule_settings`
++ the existing 5.1–5.4 evidence rows is sufficient; there is no cache to
+rebuild. No key material, no backup artifact and no restore step is touched
+by this phase. Migration head is now **`0058_security_posture`**.
+
+**Previously verified 2026-09-09** after Phase 5.4 / M5.4 (MCP / Tool /
+Credential / Resource Dependency Graph — where the control graph becomes a
+security capability). **One new table + one additive column** (migration
 `0057_dependency_graph`, additive, reversible, downgrade-tested — **143
 tables**): `mcp_servers` (an MCP server's identity, provenance, trust/approval
 state, version, endpoint reference — holds **no tools**; the tools it exposes

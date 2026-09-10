@@ -13,7 +13,7 @@
 > | **Milestone 4 (ACT-SRS-M4)** | `Phase 4.1 – 4.10`, requirement ids `M4-4.1-FR-xxx` | Runtime Governance & Observability | Telemetry, tracing, governance engine, cost, SLOs, privacy, observability center | **Complete** |
 > | **Phase M4.11** | `M4.11-FR-xxx` | Production Integrity Closure | Key-material recovery & fail-loud integrity — the M5 prerequisite | **Complete** |
 > | **Phase M4.11a** | `M4.11a-FR-xxx` | Install-Mode Classification Hardening | The durable bootstrap marker + five-state key taxonomy — corrects M4.11's absence-inference | **Complete** |
-> | **Milestone 5 (ACT-SRS-M5)** | `M5.x-FR-xxx` / `ACT-*` | Universal Agent Control & Security Fabric | One canonical registry describing native + external + discovered agents; provenance; control state; discovery; graph; MCP; posture; threat/containment; external gateway; command center | **In progress — 5.1, 5.2, 5.3, 5.4 complete** |
+> | **Milestone 5 (ACT-SRS-M5)** | `M5.x-FR-xxx` / `ACT-*` | Universal Agent Control & Security Fabric | One canonical registry describing native + external + discovered agents; provenance; control state; discovery; graph; MCP; posture; threat/containment; external gateway; command center | **In progress — 5.1, 5.2, 5.3, 5.4, 5.5 complete** |
 >
 > **How to tell them apart at a glance.** The historical family always appears
 > under a `## Phase 4 —` or `## Phase 4.3 —` heading and is written as
@@ -3023,6 +3023,57 @@ existing test weakened. Backend **2,453 passed**, 0 failed, 1 deselected
 [`docs/graph/mcp-via-tool.md`](docs/graph/mcp-via-tool.md),
 [`docs/graph/blast-radius.md`](docs/graph/blast-radius.md), and
 [ADR-0018](docs/architecture/adr/0018-mcp-representation-via-tool-domain.md).
+
+### Phase 5.5 / M5.5 — Security Posture & Shadow Findings ✅ (2026-09-10)
+
+**Where the graph evidence becomes visible risk.** 5.1–5.4 built the
+canonical asset model, discovery, the authority graph and the dependency /
+blast-radius graph; 5.5 turns that evidence — plus credentials, governance
+policies and SLOs — into **deterministic, explainable posture findings**.
+
+- **A deterministic posture-rule engine** (~16 rules, each a pure function of
+  asset state + graph evidence + policy): no accountable owner,
+  discovered-outside-lifecycle, unmanaged external agent,
+  production-without-governance, missing policy / SLO, expired / stale
+  credential, dormant agent with active credential, unknown provenance,
+  unapproved MCP dependency, dangerous dependency (blast-radius to a sensitive
+  resource), prohibited model, unapproved tool, excessive tool scope.
+- **No opaque score.** Every finding self-explains (rule / control, evidence
+  rows, severity, reason, remediation). `GET /posture/summary` is a
+  **deterministic weighted sum** of the open findings, returning the formula,
+  weights, ruleset version and per-rule contributions — recomputable by hand,
+  and a diff shows why it moved. No ML (AST-asserted).
+- **Shadow is a derived finding-state, not a boolean.** No `shadow` column
+  anywhere (AST-asserted); "shadow agents" is a query over shadow-class
+  `rule_id`s. Each condition is disputable and self-clearing.
+- **Findings are signals — 5.5 does not enforce.** `app/posture` has no
+  enforcement vocabulary (AST); the 4.3 engine + kill switch stay the sole
+  enforcers (5.6 wires threat findings to them).
+- **Reuses the finding engine proved three times** (3.5 → 4.5 → 4.7): the 4.5
+  deterministic shape (`INSUFFICIENT_DATA` first-class — unknown ≠ safe) and
+  the 4.7 lifecycle (`app.slo.states` imported, not re-spelled — OPEN /
+  ACKNOWLEDGED / RESOLVED / SUPPRESSED, DB-enforced dedup, reopen-on-recurrence,
+  suppression ≠ resolution). A **dedicated `posture_findings` table**, not a
+  discriminator on `runtime_alerts` — the 4.5/4.7 call ([ADR-0019](docs/architecture/adr/0019-posture-findings-and-derived-shadow.md)).
+- **Idempotent + 3.8-schedulable** (`posture.evaluate` handler, no new
+  scheduler); per-rule auto-resolution; **fails open**.
+- **Evidence-gap honesty:** RBAC "excessive privilege" and "excessive
+  delegated authority" are not delivered — an agent holds no role assignments
+  and delegation edges are human↔human; the gap is recorded, not fabricated.
+
+Head `0057_dependency_graph` → `0058_security_posture`; **two new tables**
+(`posture_findings`, `posture_rule_settings`), **145 tables** total; routes
+**630 → 643** (+13, all under `/api/v1/posture`). Two permissions
+(`posture.view`/`.manage`); 4 error codes, 7 audit events. **31 new backend
+tests** (`tests/posture/test_security_posture.py` — AC-01..AC-18 + the §14
+end-to-end proof); two pre-existing tests updated intent-preserving (5.4's own
+migration-head guard → subset check; M5.1's "posture does not exist yet"
+time-capsule → accepts `app/posture/` while still enforcing no-runtime-engine
+/ no-parallel-registry / no-`shadow`-column). Backend **2,484 passed**, 0
+failed, 1 deselected (2,453 + 31). Frontend **359**, untouched (all M5 UI
+deferred to 5.8). See [`docs/posture/overview.md`](docs/posture/overview.md),
+[`docs/posture/rules.md`](docs/posture/rules.md), and
+[ADR-0019](docs/architecture/adr/0019-posture-findings-and-derived-shadow.md).
 
 ## Future (Phase 3+)
 

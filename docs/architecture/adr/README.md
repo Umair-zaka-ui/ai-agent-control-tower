@@ -37,6 +37,7 @@ rejected*.
 | [0016](./0016-discovery-evidence-vs-canonical-truth.md) | Discovery observations are append-only evidence; only reconciliation derives canonical truth | Accepted |
 | [0017](./0017-relational-control-graph-no-graph-database.md) | The control graph is relational: typed edges + recursive CTEs, no graph database | Accepted |
 | [0018](./0018-mcp-representation-via-tool-domain.md) | An MCP server is represented via the existing Tool domain, not a second tool registry | Accepted |
+| [0019](./0019-posture-findings-and-derived-shadow.md) | Security posture is a dedicated finding table on the reused 4.7 lifecycle; shadow is a derived finding-state, never a boolean | Accepted |
 
 ## Status values
 

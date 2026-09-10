@@ -59,6 +59,7 @@ _RESOURCE_GROUP: dict[str, str] = {
     "rbac": "authorization",
     "runtime": "runtime",
     "graph": "runtime",
+    "posture": "runtime",
 }
 
 
