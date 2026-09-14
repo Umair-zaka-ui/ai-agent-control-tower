@@ -13,7 +13,7 @@
 > | **Milestone 4 (ACT-SRS-M4)** | `Phase 4.1 – 4.10`, requirement ids `M4-4.1-FR-xxx` | Runtime Governance & Observability | Telemetry, tracing, governance engine, cost, SLOs, privacy, observability center | **Complete** |
 > | **Phase M4.11** | `M4.11-FR-xxx` | Production Integrity Closure | Key-material recovery & fail-loud integrity — the M5 prerequisite | **Complete** |
 > | **Phase M4.11a** | `M4.11a-FR-xxx` | Install-Mode Classification Hardening | The durable bootstrap marker + five-state key taxonomy — corrects M4.11's absence-inference | **Complete** |
-> | **Milestone 5 (ACT-SRS-M5)** | `M5.x-FR-xxx` / `ACT-*` | Universal Agent Control & Security Fabric | One canonical registry describing native + external + discovered agents; provenance; control state; discovery; graph; MCP; posture; threat/containment; external gateway; command center | **In progress — 5.1, 5.2, 5.3, 5.4, 5.5 complete** |
+> | **Milestone 5 (ACT-SRS-M5)** | `M5.x-FR-xxx` / `ACT-*` | Universal Agent Control & Security Fabric | One canonical registry describing native + external + discovered agents; provenance; control state; discovery; graph; MCP; posture; threat/containment; external gateway; command center | **In progress — 5.1, 5.2, 5.3, 5.4, 5.5, 5.6 complete** |
 >
 > **How to tell them apart at a glance.** The historical family always appears
 > under a `## Phase 4 —` or `## Phase 4.3 —` heading and is written as
@@ -3074,6 +3074,69 @@ failed, 1 deselected (2,453 + 31). Frontend **359**, untouched (all M5 UI
 deferred to 5.8). See [`docs/posture/overview.md`](docs/posture/overview.md),
 [`docs/posture/rules.md`](docs/posture/rules.md), and
 [ADR-0019](docs/architecture/adr/0019-posture-findings-and-derived-shadow.md).
+
+### Phase 5.6 / M5.6 — Runtime Threat Detection & Containment ✅ (2026-09-14)
+
+**The highest-risk phase in Milestone 5 — it touches the enforcement path.**
+5.5 made risk visible (signals only); 5.6 gives the milestone its **teeth**:
+deterministic runtime threat detection over M4 signals (4.5 behavioral
+findings, 4.3 governance decisions, `tool_calls`) + 5.4/5.5 evidence, and
+containment that routes **only** to enforcement authorities the platform
+already has.
+
+- **TRUTHFUL containment** — capability derives from exactly one signal,
+  `agents.control_state`. `GOVERNED` → every action routes to its real
+  authority, genuinely contains the agent. Anything else (`DISCOVERED`/
+  `CLAIMED`/`REGISTERED`) → every enforcement-requiring action is
+  **truthfully refused** (a real reason, `authority_ref`/`result` empty) —
+  never a fake success. Proven with real rows on both sides.
+- **Seven actions, six existing authorities, no eighth action, no new
+  enforcer.** `TERMINATE_EXECUTION`/`SUSPEND_AGENT` → `KillSwitchService`;
+  `DENY_TOOL` → `ToolRegistryService.revoke`; `REVOKE_CAPABILITY` →
+  `CapabilityService.revoke`; `ISOLATE_CREDENTIAL` →
+  `api_key_service.revoke_key`; `DISABLE_INTEGRATION` →
+  `ConnectorService.disable`; `REQUIRE_APPROVAL` →
+  `GovernancePolicyService.create` (a real, mandatory, agent-scoped policy
+  the 4.3 engine's own checkpoints read). `app/threat` implements no
+  enforcement itself (AST-asserted).
+- **A real bug caught mid-build**: the planned `DISABLE_INTEGRATION` revert
+  called `.activate()` directly, but the real connector lifecycle has no
+  direct `disabled → active` edge (only `disabled → configured → active`) —
+  fixed to match the actual state machine.
+- **Kill-switch dominance is structural** — `SUSPEND_AGENT`/
+  `TERMINATE_EXECUTION` are non-reversible by construction; nothing in
+  `app/threat` ever reactivates or clears a kill (AST-asserted). Automated
+  detection only ever *recommends* containment (a `RECOMMENDED` row) — it
+  never invokes an authority. Proven under a real race: an operator-confirmed
+  suspend survives a subsequent automated re-evaluation.
+- **A dedicated `threat_findings` table**, not a discriminator on
+  `posture_findings` — the same 4.5/4.7/ADR-0019 call, extended: a threat is
+  a runtime *event*, posture is a standing *state*
+  (`unapproved_mcp_tool_invoked` is the canonical example — the dependency is
+  posture, actually invoking the tool is a threat).
+- **Commit-before-dispatch holds by construction** (no authority performs
+  network/model I/O); **`containment.execute` is a distinct, stronger
+  permission**, never implied by view/manage.
+- **Evidence-gap honesty:** prompt-injection and cross-agent/delegation-abuse
+  rules are not delivered — no deterministic signal exists for either;
+  recorded, not fabricated.
+
+Head `0058_security_posture` → `0059_threat_containment`; **two new tables**
+(`threat_findings`, `containment_actions`), **147 tables** total; routes
+**643 → 655** (+12, all under `/api/v1/threat`). Three permissions
+(`threat.view`/`.manage`, `containment.execute`); 6 error codes, 12 audit
+events; `threat.evaluate` registered scheduler handler (no new scheduler).
+**37 new backend tests** (`tests/threat/test_runtime_threat_containment.py` —
+AC-01..AC-18 + the §14 end-to-end proof); no pre-existing test changed. One
+pre-existing test (`test_execution_tracing.py`'s `agent_id` filter case)
+failed in the full run and passed standalone — a pre-existing order-dependent
+flake unrelated to this phase, left as-is per the verify-and-leave
+discipline. Backend **2,521 passed**, 0 failed, 1 deselected (2,484 + 37).
+Frontend **359**, untouched (all M5 UI deferred to 5.8). See
+[`docs/threat/overview.md`](docs/threat/overview.md),
+[`docs/threat/rules.md`](docs/threat/rules.md),
+[`docs/threat/truthful-containment.md`](docs/threat/truthful-containment.md),
+and [ADR-0020](docs/architecture/adr/0020-truthful-containment-via-existing-authorities.md).
 
 ## Future (Phase 3+)
 

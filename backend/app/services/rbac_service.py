@@ -294,6 +294,20 @@ PERMISSION_CATALOG: dict[str, str] = {
         "View security-posture findings, the shadow-agent view and the deterministic posture summary",
     "posture.manage":
         "Triage posture findings (acknowledge/resolve/suppress), run evaluations, and tune posture rules",
+    # Runtime Threat Detection & Containment (Phase 5.6 / M5.6). Three codes:
+    # read threat findings/containment records vs. triage a finding
+    # (ack/resolve/suppress) or run an evaluation vs. actually invoke a
+    # containment authority. `containment.execute` is deliberately its own,
+    # stronger code -- it is the one permission in this platform that can
+    # reach the kill switch, revoke a grant, isolate a credential or disable
+    # an integration, and it must never be implied by a view or triage grant.
+    "threat.view":
+        "View runtime threat findings and containment action records",
+    "threat.manage":
+        "Triage threat findings (acknowledge/resolve/suppress) and run threat evaluations",
+    "containment.execute":
+        "Invoke a containment action against an agent (deny/suspend/terminate/revoke/isolate/disable/"
+        "require-approval) through its real enforcement authority, or revert a reversible one",
 }
 
 _ALL = set(PERMISSION_CATALOG)

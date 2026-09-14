@@ -38,6 +38,7 @@ rejected*.
 | [0017](./0017-relational-control-graph-no-graph-database.md) | The control graph is relational: typed edges + recursive CTEs, no graph database | Accepted |
 | [0018](./0018-mcp-representation-via-tool-domain.md) | An MCP server is represented via the existing Tool domain, not a second tool registry | Accepted |
 | [0019](./0019-posture-findings-and-derived-shadow.md) | Security posture is a dedicated finding table on the reused 4.7 lifecycle; shadow is a derived finding-state, never a boolean | Accepted |
+| [0020](./0020-truthful-containment-via-existing-authorities.md) | Containment orchestrates the existing enforcement authorities; capability is truthfully derived from control_state, never assumed | Accepted |
 
 ## Status values
 

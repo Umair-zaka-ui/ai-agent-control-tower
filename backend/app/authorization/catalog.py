@@ -60,6 +60,8 @@ _RESOURCE_GROUP: dict[str, str] = {
     "runtime": "runtime",
     "graph": "runtime",
     "posture": "runtime",
+    "threat": "runtime",
+    "containment": "runtime",
 }
 
 

@@ -243,6 +243,28 @@ def posture_evaluate(ctx: HandlerContext) -> dict:
 
 
 # --------------------------------------------------------------------------- #
+# Handler: runtime-threat evaluation (Phase 5.6)
+# --------------------------------------------------------------------------- #
+@register("threat.evaluate")
+def threat_evaluate(ctx: HandlerContext) -> dict:
+    """Runs the deterministic threat rule set for every non-archived agent in
+    this organization (``ThreatEvaluator.evaluate_tenant``).
+
+    Idempotent, fails open (one rule's failure does not stop the sweep), and
+    bounded: a HIGH/CRITICAL finding only ever creates a RECOMMENDED
+    containment action -- nothing here invokes an enforcement authority."""
+    from app.threat.evaluator import ThreatEvaluator
+
+    if ctx.actor is None:
+        raise IdentityError(
+            ErrorCode.VALIDATION_ERROR,
+            "The threat-evaluation job is tenant-scoped and requires an organization.",
+        )
+    summary = ThreatEvaluator(ctx.db).evaluate_tenant(ctx.actor)
+    return summary.as_dict()
+
+
+# --------------------------------------------------------------------------- #
 # Handler: retention / expired-state cleanup
 # --------------------------------------------------------------------------- #
 @register("platform.expired_state_cleanup")
