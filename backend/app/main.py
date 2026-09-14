@@ -46,6 +46,7 @@ from app.workers.routes import router as workers_router
 from app.discovery.routes import router as discovery_router
 from app.graph.routes import router as graph_router
 from app.posture.routes import router as posture_router
+from app.threat.routes import router as threat_router
 from app.observability.routes import router as observability_router
 from app.identity.errors import register_identity_exception_handlers
 
@@ -212,6 +213,16 @@ app.include_router(graph_router)
 # score is a deterministic, versioned function of the findings; findings are
 # signals -- app/posture has no enforcement path (ADR-0019).
 app.include_router(posture_router)
+# Phase 5.6 -- Runtime Threat Detection & Containment, under /api/v1/threat.
+# A deterministic threat-rule engine over M4 runtime signals + 5.4/5.5
+# evidence, producing runtime-event findings via the 4.7 lifecycle (distinct
+# from 5.5's standing posture). Containment routes ONLY to existing
+# enforcement authorities (KillSwitchService, the tool/capability/credential/
+# connector lifecycles, GovernancePolicyService) -- this package implements no
+# enforcement of its own. Capability is truthfully derived from
+# agents.control_state; an OBSERVED agent's containment is structurally
+# refused, never faked. Kill-switch dominance holds (ADR-0020).
+app.include_router(threat_router)
 # Phase 4.2 -- the governed-observability trace surface
 # (/api/v1/observability). Distinct from the legacy `analytics` dashboards,
 # which aggregate the Phase 3 agent_actions table and know nothing of

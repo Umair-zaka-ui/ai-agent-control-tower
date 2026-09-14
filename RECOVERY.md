@@ -1,6 +1,30 @@
 # Backup and system-migration guide
 
-**Last verified 2026-09-10** after Phase 5.5 / M5.5 (Security Posture &
+**Last verified 2026-09-14** after Phase 5.6 / M5.6 (Runtime Threat
+Detection & Containment — where the milestone gets its teeth). **Two new
+tables** (migration `0059_threat_containment`, additive, reversible,
+downgrade-tested — **147 tables**): `threat_findings` (a runtime-event
+finding with the Phase 4.7 lifecycle) and `containment_actions` (a record of
+one containment action — which authority was invoked or truthfully refused,
+the trigger, the agent's `control_state` at decision time, the result,
+reversibility). **Durable state**: both tables carry operator-relevant
+history (triage state on findings; what was actually done to an agent and by
+what authority on containment actions) that a restore must bring back
+intact. They hold **no secret material** — `authority_ref`/`result` name a
+row (a table + id) a real authority produced, never a credential value; a
+credential-isolating containment action references the `agent_api_keys` row
+by id, never its hash. **Nothing derived is stored, and nothing here is
+itself an authority** — `containment_actions` records what
+`KillSwitchService`/`ToolRegistryService`/`CapabilityService`/
+`ConnectorService`/`GovernancePolicyService`/`api_key_service` already did;
+a restore of `threat_findings` + `containment_actions` alongside those
+services' own tables (already covered by their own, pre-existing recovery
+discipline) is sufficient — there is no cache or projection to rebuild, and
+no new enforcement state exists outside what those services already own. No
+key material, no backup artifact and no restore step is touched by this
+phase. Migration head is now **`0059_threat_containment`**.
+
+**Previously verified 2026-09-10** after Phase 5.5 / M5.5 (Security Posture &
 Shadow Findings — where the graph evidence becomes visible risk). **Two new
 tables** (migration `0058_security_posture`, additive, reversible,
 downgrade-tested — **145 tables**): `posture_findings` (a standing,
