@@ -265,6 +265,34 @@ def threat_evaluate(ctx: HandlerContext) -> dict:
 
 
 # --------------------------------------------------------------------------- #
+# Handler: assurance evaluation (Phase 5.9)
+# --------------------------------------------------------------------------- #
+@register("assurance.evaluate")
+def assurance_evaluate(ctx: HandlerContext) -> dict:
+    """Re-evaluates every assurance control for this organization
+    (``AssuranceService.evaluate_tenant``).
+
+    Scheduling this matters more than it might look: assurance results carry a
+    freshness policy, and a control that would otherwise PASS on evidence older
+    than that policy is reported INSUFFICIENT_EVIDENCE instead. Left unrun, an
+    assurance view therefore decays toward "we cannot tell" rather than toward a
+    stale green -- which is the correct direction, but a scheduled sweep is what
+    keeps it answering with current evidence.
+
+    Idempotent: results replace the prior ones for the same subject, so a re-run
+    over unchanged evidence produces identical rows. Enforces nothing -- an
+    assurance result is a statement about evidence, never an action."""
+    from app.assurance.service import AssuranceService
+
+    if ctx.actor is None:
+        raise IdentityError(
+            ErrorCode.VALIDATION_ERROR,
+            "The assurance-evaluation job is tenant-scoped and requires an organization.",
+        )
+    return AssuranceService(ctx.db).evaluate_tenant(ctx.actor).as_dict()
+
+
+# --------------------------------------------------------------------------- #
 # Handler: retention / expired-state cleanup
 # --------------------------------------------------------------------------- #
 @register("platform.expired_state_cleanup")

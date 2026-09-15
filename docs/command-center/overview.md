@@ -108,10 +108,12 @@ AI Estate · Agent Inventory · Shadow AI · Ownership · Identity & Delegation 
 Control Graph · Tools & MCP · Security Posture · Threats & Incidents ·
 External Platforms · Governance Coverage · Cost Exposure · Assurance
 
-**Assurance is deliberately empty and says so.** Compliance mapping is Phase
-5.9; a placeholder framework grid would imply ACT produces evidence it does not
-yet produce, which is the same class of over-claim the rest of this center
-exists to avoid.
+**Assurance shipped in Phase 5.9.** At 5.8's own time this page said "not built
+yet", deliberately: a placeholder framework grid would have implied evidence ACT
+did not produce. It now renders real control evaluations, under the same
+discipline — `INSUFFICIENT_EVIDENCE` gets its own tile and its own colour rather
+than being folded into a pass, and there is no score or compliance badge
+anywhere. See [`docs/assurance/overview.md`](../assurance/overview.md).
 
 ## Which endpoint feeds which view
 
@@ -128,7 +130,7 @@ exists to avoid.
 | Identity & Delegation | `graph/edges` |
 | Tools & MCP | `graph/mcp-servers` |
 | Governance Coverage, Cost Exposure | `command-center/estate` |
-| Assurance | — (5.9) |
+| Assurance | `assurance/frameworks/{id}`, `assurance/evaluations` (+ evaluate/export) |
 
 Guarded actions dispatch to: `runtime/agents/{id}/claim` (5.1),
 `posture/findings/{id}/resolve|suppress` (5.5),

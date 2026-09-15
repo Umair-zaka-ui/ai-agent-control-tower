@@ -1,6 +1,48 @@
 # Backup and system-migration guide
 
-**Last verified 2026-09-16** after Phase 5.8 / M5.8 (Enterprise Agent Command
+**Last verified 2026-09-16** after Phase 5.9 / M5.9 (Assurance, Evidence &
+Compliance). **Two new tables** (migration `0061_assurance_evidence`, additive,
+reversible, downgrade-tested — **152 tables**): `assurance_evaluations` and
+`assurance_evidence_bundles`.
+
+**Neither table holds evidence, and that is what makes them cheap to restore.**
+An evaluation is a *conclusion about* evidence that lives elsewhere — in
+`agents`, `posture_findings`, `agent_executions`, `budgets`,
+`control_graph_edges`, `threat_findings` and the immutable audit trail — and it
+is fully recomputable by re-running `POST /api/v1/assurance/evaluate` (or the
+`assurance.evaluate` scheduler handler) against restored source data. A restore
+that loses `assurance_evaluations` entirely loses nothing that cannot be
+regenerated in one sweep.
+
+**Two things there are, however, worth restoring deliberately.**
+
+  * **Documented exceptions.** `exception_reason`/`exception_by`/`exception_at`
+    record a human decision to accept a risk, and re-evaluation deliberately
+    carries them forward rather than discarding them. They are **not**
+    recomputable — losing them silently drops an accountability record an
+    auditor would expect to find, and the control simply reads FAIL again with
+    no trace that anyone ever accepted it. Restore this table before telling an
+    auditor the exception history is complete.
+  * **`assurance_evidence_bundles`.** Each row records that evidence *left the
+    system* — scope, catalog and mapping versions, a content digest and the
+    DSSE signature. The bundle payload is deliberately not stored (it is
+    reconstructable from the evaluations it names), so this table is the only
+    record that an export happened and what it covered. For an auditor the
+    export event is itself evidence; `ASSURANCE_EVIDENCE_EXPORTED` in the audit
+    trail is the corroborating record.
+
+**Signing depends on M4.11 key material.** Bundle signatures are produced by the
+same signing provider and key service as version attestations, so the existing
+M4.11 key-restore discipline in this document already covers them. A restore
+without that key material does not break assurance — evaluations and exports
+still work — but new bundles export **unsigned and labelled unsigned**, and
+previously issued signatures can no longer be verified against a key ACT holds.
+
+**No secret material is stored here.** A bundle references and summarizes
+evidence; it carries no credential, token or key value, and a test asserts that
+over an exported document. Migration head is now **`0061_assurance_evidence`**.
+
+**Previously verified 2026-09-16** after Phase 5.8 / M5.8 (Enterprise Agent Command
 Center — the operator surface over Milestone 5). **No migration, no new table,
 no new column, and no new backup or restore step.** The phase is almost
 entirely frontend; its backend half is two read-only `GET` aggregations that

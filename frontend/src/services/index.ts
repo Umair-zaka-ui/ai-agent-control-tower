@@ -9,7 +9,14 @@ export { runtimeService } from './runtimeService'
 export { operationsService } from './operationsService'
 export { observabilityService } from './observabilityService'
 export { commandCenterService } from './commandCenterService'
+export { assuranceService } from './assuranceService'
 export type { AgentRegistrationPayload, AgentSearchFilters } from './runtimeService'
+// Phase 4.9's TraceDetailPage imports this type from the barrel, but the barrel
+// only ever re-exported the *value* `observabilityService` — so the build broke
+// while `vitest` stayed green, because vitest does not typecheck. Re-exported
+// here alongside the other service types rather than rewriting the import, so
+// the barrel stays the single place a consumer reaches for services.
+export type { TraceContentResponse } from './observabilityService'
 export { authorizationService } from './authorizationService'
 export { hierarchyService } from './hierarchyService'
 export { approvalService } from './approvalService'

@@ -475,3 +475,11 @@ class AuthorizationAuditEvent(str, enum.Enum):
     EXTERNAL_GATEWAY_CALL_ALLOWED = "EXTERNAL_GATEWAY_CALL_ALLOWED"
     EXTERNAL_GATEWAY_CALL_DENIED = "EXTERNAL_GATEWAY_CALL_DENIED"
     EXTERNAL_ADVISORY_RECOMMENDED = "EXTERNAL_ADVISORY_RECOMMENDED"
+    # Assurance, Evidence & Compliance (Phase 5.9 / M5.9). Evaluations are
+    # audited so a control result can be traced to the run that produced it;
+    # an exception is audited because accepting a risk is a decision someone
+    # made and an auditor must see who; and every export is audited because
+    # once evidence leaves ACT, ACT's own controls no longer protect it.
+    ASSURANCE_EVALUATED = "ASSURANCE_EVALUATED"
+    ASSURANCE_EXCEPTION_RECORDED = "ASSURANCE_EXCEPTION_RECORDED"
+    ASSURANCE_EVIDENCE_EXPORTED = "ASSURANCE_EVIDENCE_EXPORTED"

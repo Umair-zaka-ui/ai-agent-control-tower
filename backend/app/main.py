@@ -49,6 +49,7 @@ from app.posture.routes import router as posture_router
 from app.threat.routes import router as threat_router
 from app.bridge.routes import router as bridge_router
 from app.command_center.routes import router as command_center_router
+from app.assurance.routes import router as assurance_router
 from app.observability.routes import router as observability_router
 from app.identity.errors import register_identity_exception_handlers
 
@@ -247,6 +248,16 @@ app.include_router(bridge_router)
 # browser. Neither computes domain state: the posture score comes from 5.5,
 # shadow from 5.5, and the mode + reach from 5.7's own app.bridge.modes.
 app.include_router(command_center_router)
+# Phase 5.9 -- Assurance, Evidence & Compliance, under /api/v1/assurance.
+# Turns the evidence M1-5.8 already produce into control evaluations an
+# auditor can use. Every control returns PASS / FAIL / INSUFFICIENT_EVIDENCE,
+# and the distinction between the last two is the point: FAIL means the
+# evidence shows the control unmet, INSUFFICIENT_EVIDENCE means ACT cannot
+# tell. Missing or stale evidence is never a pass -- the database itself
+# refuses to store a stale PASS. ACT maps evidence to published control
+# references; it produces no compliance verdict, certification or score, and
+# there is no field anywhere in this domain that could render one (ADR-0022).
+app.include_router(assurance_router)
 # Phase 4.2 -- the governed-observability trace surface
 # (/api/v1/observability). Distinct from the legacy `analytics` dashboards,
 # which aggregate the Phase 3 agent_actions table and know nothing of

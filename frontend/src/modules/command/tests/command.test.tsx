@@ -49,8 +49,14 @@ const cc = {
   revokeGrant: vi.fn(),
   gatewayCalls: vi.fn(),
 }
+const assurance = {
+  controls: vi.fn(), frameworks: vi.fn(), frameworkReport: vi.fn(),
+  evaluations: vi.fn(), evaluateTenant: vi.fn(), evaluateAgent: vi.fn(),
+  recordException: vi.fn(), exportBundle: vi.fn(),
+}
 vi.mock('@/services', () => ({
-  commandCenterService: cc, observabilityService: {}, operationsService: {}, runtimeService: {},
+  commandCenterService: cc, assuranceService: assurance,
+  observabilityService: {}, operationsService: {}, runtimeService: {},
 }))
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), message: vi.fn() },
@@ -188,6 +194,9 @@ beforeEach(() => {
   cc.mcpServers.mockResolvedValue([])
   cc.edges.mockResolvedValue([])
   cc.unapprovedMcp.mockResolvedValue({})
+  assurance.frameworks.mockResolvedValue([])
+  assurance.evaluations.mockResolvedValue([])
+  assurance.frameworkReport.mockResolvedValue(null)
 })
 
 // --------------------------------------------------------------------------- //
@@ -474,13 +483,63 @@ describe('AC-14 truthful failure', () => {
 })
 
 // --------------------------------------------------------------------------- //
-// Assurance is honestly absent (5.9), not decorated
+// Assurance
+//
+// At 5.8's own time this asserted the page said "Not built yet" — the point
+// being that a placeholder framework grid would imply evidence ACT did not
+// produce. Phase 5.9 has since built it, so the assertion moves to the invariant
+// that placeholder was protecting: the page must still never imply evidence ACT
+// does not hold. That now means INSUFFICIENT_EVIDENCE is rendered as its own
+// state (not folded into a pass), and no compliance badge or score is shown.
 // --------------------------------------------------------------------------- //
-describe('assurance placeholder', () => {
-  it('says the capability does not exist yet instead of showing an empty scorecard', () => {
+describe('assurance', () => {
+  it('renders insufficient-evidence as its own state and shows no compliance verdict', async () => {
+    assurance.frameworks.mockResolvedValue([{
+      id: 'NIST_AI_RMF', name: 'NIST AI RMF', revision: '1.0',
+      scope_note: 'ACT makes no conformance claim.', mapped_controls: 5,
+      mapping_version: '1',
+    }])
+    assurance.evaluations.mockResolvedValue([
+      { id: 'e1', control_id: 'ACT.RUNTIME.TRACEABLE', catalog_version: '1', scope: 'AGENT',
+        subject_id: 'agent-1', result: 'INSUFFICIENT_EVIDENCE',
+        reason: 'No executions are recorded for this agent.', evidence: { executions: 0 },
+        evidence_as_of: null, stale: false, remediation: null, exception_reason: null,
+        exception_at: null, evaluated_at: '2026-09-16T00:00:00Z' },
+    ])
+    assurance.frameworkReport.mockResolvedValue({
+      framework: { id: 'NIST_AI_RMF', name: 'NIST AI RMF', revision: '1.0',
+                   scope_note: 'ACT makes no conformance claim.' },
+      mapping_version: '1', catalog_version: '1', generated_at: '2026-09-16T00:00:00Z',
+      controls: [{
+        control_ref: 'GOVERN-1.1', title: 'Accountability', rationale: 'Owners are evidenced.',
+        act_control_ids: ['ACT.OWNERSHIP.ACCOUNTABLE_OWNER'], evaluations: [],
+        counts: { evaluated: 0, passed: 0, failed: 0, insufficient_evidence: 0, stale: 0 },
+        evidence_available: false,
+      }],
+      disclaimer: 'This is not a compliance determination, a certification, or an audit opinion.',
+    })
+
     wrap(<AssurancePage />)
-    expect(screen.getByText('Not built yet.')).toBeInTheDocument()
-    expect(screen.getByText(/Phase 5.9/)).toBeInTheDocument()
+
+    // Insufficient evidence gets its own tile, with the caveat spelled out.
+    await waitFor(() =>
+      expect(screen.getByText('Insufficient evidence')).toBeInTheDocument())
+    expect(screen.getByText(/not the same as compliant/i)).toBeInTheDocument()
+
+    // The server's disclaimer is rendered verbatim, not paraphrased away.
+    await waitFor(() =>
+      expect(screen.getByText(/not a compliance determination/i)).toBeInTheDocument())
+
+    // A mapped control with no evidence says so rather than reading as satisfied.
+    expect(screen.getByText(/ACT holds no evidence for this control/i)).toBeInTheDocument()
+
+    // And no coverage score anywhere — a percentage would need a denominator
+    // ACT does not know (the full control set in the customer's audit scope).
+    expect(screen.queryByText(/\d+\s*%/)).not.toBeInTheDocument()
+    // The word "compliant" appears only inside a negation, never as a verdict.
+    for (const node of screen.queryAllByText(/compliant/i)) {
+      expect(node.textContent ?? '').toMatch(/not\b/i)
+    }
   })
 })
 

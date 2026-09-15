@@ -237,9 +237,16 @@ def test_ac01_substrate_and_migration_head_present() -> None:
     from app.runtime.registry.control import CONTROL_STATES
     from app.threat.containment import ContainmentOrchestrator
 
-    heads = ScriptDirectory.from_config(
-        Config(str(_BACKEND / "alembic.ini"))).get_heads()
-    assert list(heads) == ["0060_external_gov_bridge"]
+    # At 5.7's own time this pinned the global head to this phase's migration.
+    # Later phases legitimately move the head (5.9 added 0061_assurance_evidence),
+    # so the assertion is now the invariant it was actually protecting: 5.7's
+    # migration is present in the chain, and the chain is linear with a single
+    # head. Pinning a global head from inside one phase's tests is a
+    # moving target by construction.
+    script = ScriptDirectory.from_config(Config(str(_BACKEND / "alembic.ini")))
+    assert len(script.get_heads()) == 1, "the migration chain must stay linear"
+    revisions = {r.revision for r in script.walk_revisions()}
+    assert "0060_external_gov_bridge" in revisions
 
     # 5.1: the enforcement-mode anchor.
     assert CONTROL_STATES == ("DISCOVERED", "CLAIMED", "REGISTERED", "GOVERNED")
