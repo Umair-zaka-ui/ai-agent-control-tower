@@ -308,6 +308,21 @@ PERMISSION_CATALOG: dict[str, str] = {
     "containment.execute":
         "Invoke a containment action against an agent (deny/suspend/terminate/revoke/isolate/disable/"
         "require-approval) through its real enforcement authority, or revert a reversible one",
+    # External Agent Governance Bridge (Phase 5.7 / M5.7). Three codes, for
+    # the same reason 5.6 needed three: reading what ACT claims about an
+    # external agent is not the same act as changing that claim, and neither
+    # is the same act as handing an outside party a credential that reaches
+    # enterprise capability. `external_grant.issue` is deliberately its own,
+    # stronger code -- it is the one permission that creates an agent ACT does
+    # not run the ability to call through ACT's boundary at all, and it must
+    # never be implied by a view or a manage grant.
+    "external_governance.view":
+        "View external agents' enforcement modes, capability grants and gateway decision records",
+    "external_governance.manage":
+        "Set an external agent's enforcement mode and run advisory policy evaluations",
+    "external_grant.issue":
+        "Issue or revoke a scoped capability grant that lets an agent outside ACT call enterprise "
+        "capability through ACT's governed boundary",
 }
 
 _ALL = set(PERMISSION_CATALOG)

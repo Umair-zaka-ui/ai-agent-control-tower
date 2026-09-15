@@ -45,6 +45,15 @@ class Agent(Base, UUIDPrimaryKeyMixin, TimestampMixin):
             "origin_category IN ('NATIVE', 'EXTERNAL', 'UNKNOWN')",
             name="ck_agents_origin_category",
         ),
+        # Phase 5.7 (M5.7). Note what this CHECK omits: 'NATIVE_ENFORCED' is
+        # NOT a storable value. Full enforcement is derived from
+        # ``control_state = 'GOVERNED'`` and can therefore never be asserted
+        # by writing a column -- it has to be true. See app/bridge/modes.py.
+        CheckConstraint(
+            "external_enforcement_mode IS NULL OR external_enforcement_mode IN "
+            "('OBSERVED', 'ADVISORY', 'GATEWAY_ENFORCED')",
+            name="ck_agents_external_enforcement_mode",
+        ),
     )
 
     organization_id: Mapped[uuid.UUID] = mapped_column(
@@ -161,9 +170,16 @@ class Agent(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     #   DISCOVERED  — ACT knows it exists; no authority.
     #   CLAIMED     — an owner has taken responsibility; still not governed.
     #   REGISTERED  — brought under ACT's registry/policy scope.
-    #   GOVERNED    — ACT has real enforcement authority (every native agent;
-    #                 external agents reach this only at NATIVE/GATEWAY
-    #                 enforcement, which is Phase 5.7 — not M5.1).
+    #   GOVERNED    — ACT has real enforcement authority: it runs and enforces
+    #                 this agent (every native agent). M5.1 anticipated that
+    #                 external agents would reach GOVERNED at "NATIVE/GATEWAY
+    #                 enforcement" in Phase 5.7; building 5.7 showed the
+    #                 GATEWAY half of that would have been a false claim, so it
+    #                 is deliberately not done. A GATEWAY_ENFORCED external
+    #                 agent stays at REGISTERED: ACT authorizes the capability
+    #                 calls it routes through ACT, and genuinely cannot stop
+    #                 the agent — which is exactly what Phase 5.6's containment
+    #                 gate reads this column to decide. See ADR-0021.
     # Server-authoritative: never client-settable (absent from every write
     # schema). Native rows are GOVERNED and may be in *any* lifecycle_status.
     control_state: Mapped[str] = mapped_column(
@@ -184,6 +200,21 @@ class Agent(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     # a new value, never a schema change.
     origin_provider: Mapped[str] = mapped_column(
         String(50), nullable=False, default="ACT_NATIVE", server_default="ACT_NATIVE"
+    )
+    # --- Phase 5.7 (M5.7): External Agent Governance Bridge ---
+    # ``external_enforcement_mode`` — the *storable* half of the enforcement
+    # mode, and only ever OBSERVED / ADVISORY / GATEWAY_ENFORCED (the CHECK
+    # above). The effective mode is derived, never read straight off this
+    # column: ``control_state == 'GOVERNED'`` means NATIVE_ENFORCED, and
+    # anything else falls back to this column, with NULL meaning OBSERVED —
+    # the weakest truthful claim. That derivation is the reason a row cannot
+    # over-claim: the strongest mode is not writable anywhere in this schema.
+    # A GATEWAY_ENFORCED external agent deliberately stays below GOVERNED —
+    # ACT can refuse its boundary calls but cannot stop it, and Phase 5.6's
+    # containment gate must keep saying so. See ``app/bridge/modes.py`` and
+    # ADR-0021.
+    external_enforcement_mode: Mapped[str | None] = mapped_column(
+        String(20), nullable=True
     )
     # Discovery metadata — COLUMNS ONLY. Phase 5.2 populates these; M5.1
     # discovers/observes/reconciles nothing. Native rows leave them null.

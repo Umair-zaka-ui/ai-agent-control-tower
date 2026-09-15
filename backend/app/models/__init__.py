@@ -55,6 +55,11 @@ from app.models.discovery import DiscoveryFinding, DiscoveryObservation, Discove
 from app.models.graph import ControlGraphEdge, McpServer
 from app.models.posture import PostureFinding, PostureRuleSetting
 from app.models.threat import ContainmentAction, ThreatFinding
+from app.models.bridge import (
+    ExternalCapabilityGrant,
+    ExternalGatewayCall,
+    ExternalRequestNonce,
+)
 from app.models.scheduler import JobDefinition, JobRun
 from app.models.security import InstallationBootstrap, KeyMaterialCanary
 from app.models.worker import WorkerRegistration
@@ -221,4 +226,8 @@ __all__ = [
     "PostureRuleSetting",
     "ThreatFinding",
     "ContainmentAction",
+    # Phase 5.7 (M5.7) — External Agent Governance Bridge
+    "ExternalCapabilityGrant",
+    "ExternalRequestNonce",
+    "ExternalGatewayCall",
 ]

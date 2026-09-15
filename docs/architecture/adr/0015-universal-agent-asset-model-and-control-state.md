@@ -127,10 +127,17 @@ agent came from*; a native agent imported from a CSV is still `NATIVE`).
 
 ## Revisit when
 
-- **Phase 5.7 attaches enforcement modes.** `GOVERNED` will need to distinguish
-  *native* governance from *gateway* governance of an external agent; confirm the
-  `control_state` vocabulary still fits or gains a sibling `enforcement_mode`
-  column rather than more `control_state` values.
+- ~~**Phase 5.7 attaches enforcement modes.**~~ **Settled by
+  [ADR-0021](0021-truthful-external-enforcement-modes.md) (2026-09-15).** 5.7
+  added a sibling nullable column, `agents.external_enforcement_mode`, and added
+  no `control_state` values — the shape this ADR predicted. It did *not*
+  subdivide `GOVERNED` into native vs. gateway governance: `GOVERNED` keeps its
+  single meaning, "ACT runs and enforces this agent", and a GATEWAY_ENFORCED
+  external agent stays at `REGISTERED`, because ACT authorizing that agent's
+  boundary calls is not the same thing as ACT being able to stop it. The
+  strongest mode, `NATIVE_ENFORCED`, is excluded from the new column's CHECK
+  constraint and derived from `control_state == 'GOVERNED'` instead, so it
+  cannot be asserted — only be true.
 - **An agent legitimately needs multiple external identities.** `external_reference`
   is single-valued today; a satellite table (never a parallel registry) would be
   the move.

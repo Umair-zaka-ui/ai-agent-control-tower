@@ -1,6 +1,63 @@
 # Backup and system-migration guide
 
-**Last verified 2026-09-14** after Phase 5.6 / M5.6 (Runtime Threat
+**Last verified 2026-09-15** after Phase 5.7 / M5.7 (External Agent
+Governance Bridge — where ACT governs agents it does not run). **Three new
+tables and one new nullable `agents` column** (migration
+`0060_external_gov_bridge`, additive, reversible, downgrade-tested — **150
+tables**): `external_capability_grants`, `external_request_nonces` and
+`external_gateway_calls`, plus `agents.external_enforcement_mode`.
+
+**This phase introduces new secret material, and that changes the restore
+contract — read this part before restoring.**
+`external_capability_grants.secret_ciphertext` holds the HMAC signing secret
+an agent outside ACT uses to authenticate, encrypted with the **M4.11
+`credential_crypto` key** (the same `MODEL_CREDENTIAL_ENCRYPTION_KEY` keyring
+that protects provider and tool credentials). The consequences are concrete:
+
+  * **Restoring this table without the matching key material leaves every
+    external agent locked out.** The ciphertext is undecryptable, so every
+    signed request fails verification. This is not silent — it surfaces as
+    authentication failures on `/api/v1/bridge/capability` — but it *is*
+    unrecoverable: the plaintext secret was shown exactly once, at issue, and
+    is stored nowhere. The remedy is to issue new grants and redistribute the
+    secrets to the external agents' operators, **not** to attempt recovery of
+    the old ones. Restore key material first (the existing M4.11 discipline in
+    this document already covers how), and this problem does not arise.
+  * **A restore to an older point in time can resurrect a revoked grant.**
+    Revocation is a column on this table (`revoked_at`), so rolling back to a
+    snapshot taken before a revocation restores a credential an operator
+    deliberately killed — including one revoked because it was compromised.
+    **After any point-in-time restore, re-check `external_capability_grants`
+    for grants revoked after the snapshot and revoke them again.** Audit
+    (`EXTERNAL_GRANT_REVOKED`) is the record of which ones those were.
+
+**Durable state.** `external_capability_grants` is operator-managed
+configuration plus live credentials (scope, expiry, revocation, rate limit) a
+restore must bring back intact. `external_gateway_calls` is the audit-grade
+record of every boundary decision ACT made about an agent it does not run —
+what was allowed or denied, by which authority, under which enforcement mode
+at the time — and is exactly the evidence an incident review needs; it must be
+restored intact and is append-only in practice. `agents.external_enforcement_mode`
+carries the operator's classification of each external agent.
+
+**`external_request_nonces` is the one table safe to lose.** It is the replay
+ledger, and every row expires within the 300-second signing window, so a
+restore that drops it costs nothing beyond a theoretical replay of a request
+captured inside that window — and rows older than the window are reaped on the
+way past anyway. It needs no special restore ordering.
+
+**Nothing derived is stored, and nothing here is itself an authority.**
+`external_gateway_calls` records what `AuthorizationGateway`,
+`GovernancePolicyService` and `BudgetService` already decided; it recomputes
+nothing and grants nothing. The enforcement mode is **derived**, not stored:
+`NATIVE_ENFORCED` is computed from `agents.control_state`, is excluded from
+the new column's CHECK constraint, and therefore cannot be resurrected by a
+bad restore — a restored row can never claim full enforcement ACT lacks. No
+new backup artifact and no new restore *step* is introduced by this phase
+beyond the two warnings above. Migration head is now
+**`0060_external_gov_bridge`**.
+
+**Previously verified 2026-09-14** after Phase 5.6 / M5.6 (Runtime Threat
 Detection & Containment — where the milestone gets its teeth). **Two new
 tables** (migration `0059_threat_containment`, additive, reversible,
 downgrade-tested — **147 tables**): `threat_findings` (a runtime-event

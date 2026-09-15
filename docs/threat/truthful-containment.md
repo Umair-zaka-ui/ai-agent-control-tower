@@ -78,12 +78,28 @@ containment has to answer. Using `origin_category` instead would conflate
 externally-discovered agent an operator has since claimed and fully governed
 must get full containment — the gate has to track control, not origin.
 
-## The seam this phase leaves for 5.7
+## The seam this phase left for 5.7 — and what 5.7 actually did
 
-`control_state == GOVERNED` is a coarse binary. Phase 5.7 (the external
-governance gateway) introduces a richer enforcement-mode vocabulary
-(`GATEWAY_ENFORCED` / `ADVISORY` / …) that will refine *what kind* of
-containment is truthfully available for a gateway-mediated external agent —
-more than "none," less than full native containment. 5.6 does not
-anticipate that vocabulary; it uses the one signal that exists today and
-names the seam explicitly (ADR-0020) rather than guessing at 5.7's shape.
+`control_state == GOVERNED` is a coarse binary. 5.6 expected Phase 5.7 (the
+external governance bridge) to introduce a richer enforcement-mode vocabulary
+(`GATEWAY_ENFORCED` / `ADVISORY` / …) that would *refine* this gate — more than
+"none," less than full native containment — for a gateway-mediated external
+agent.
+
+**5.7 shipped that vocabulary and deliberately did not touch this gate.**
+Building it showed why refining the gate would have been the wrong move:
+`GATEWAY_ENFORCED` means ACT can refuse the capability calls an external agent
+routes *through ACT*. It does not mean ACT can suspend or terminate that agent
+— ACT does not run it. Widening this gate to admit `GATEWAY_ENFORCED` would
+have made `SUSPEND_AGENT` report success for an agent ACT cannot suspend: an
+over-claim manufactured inside the very mechanism built to prevent one.
+
+So the gate still reads exactly one signal, `control_state == GOVERNED`, and a
+`GATEWAY_ENFORCED` external agent is still truthfully refused here — correctly,
+because ACT genuinely cannot contain it. 5.7's own enforcement reach at the
+boundary is **revoking the grant**, which ends the agent's ability to use ACT's
+gateway and does not stop the agent; it lives in
+`ExternalGrantService.revoke`, not in this package's action set, which remains
+exhaustively seven. See
+[ADR-0021](../architecture/adr/0021-truthful-external-enforcement-modes.md) and
+[docs/bridge/enforcement-modes.md](../bridge/enforcement-modes.md).

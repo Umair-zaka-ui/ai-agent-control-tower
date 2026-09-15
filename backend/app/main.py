@@ -47,6 +47,7 @@ from app.discovery.routes import router as discovery_router
 from app.graph.routes import router as graph_router
 from app.posture.routes import router as posture_router
 from app.threat.routes import router as threat_router
+from app.bridge.routes import router as bridge_router
 from app.observability.routes import router as observability_router
 from app.identity.errors import register_identity_exception_handlers
 
@@ -223,6 +224,18 @@ app.include_router(posture_router)
 # agents.control_state; an OBSERVED agent's containment is structurally
 # refused, never faked. Kill-switch dominance holds (ADR-0020).
 app.include_router(threat_router)
+# Phase 5.7 -- the External Agent Governance Bridge, under /api/v1/bridge.
+# Where ACT governs agents it does not run, and says truthfully how far
+# that reaches. Four enforcement modes: OBSERVED sees, ADVISORY advises,
+# GATEWAY_ENFORCED authorizes the capability calls an external agent
+# routes THROUGH ACT (and nothing else it does), NATIVE_ENFORCED is the
+# M1-M4 platform. The strongest mode is not storable -- it is derived from
+# agents.control_state, the same signal 5.6's containment gate reads, so
+# no row can claim control ACT lacks. The boundary authorizes through the
+# existing AuthorizationGateway (it is not a second authz), applies the
+# existing 4.3 policies and 4.4 budgets, commits before dispatching, and
+# governs only declared capabilities -- it proxies nothing (ADR-0021).
+app.include_router(bridge_router)
 # Phase 4.2 -- the governed-observability trace surface
 # (/api/v1/observability). Distinct from the legacy `analytics` dashboards,
 # which aggregate the Phase 3 agent_actions table and know nothing of
