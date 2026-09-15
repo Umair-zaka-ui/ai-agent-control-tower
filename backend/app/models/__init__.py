@@ -55,6 +55,7 @@ from app.models.discovery import DiscoveryFinding, DiscoveryObservation, Discove
 from app.models.graph import ControlGraphEdge, McpServer
 from app.models.posture import PostureFinding, PostureRuleSetting
 from app.models.threat import ContainmentAction, ThreatFinding
+from app.models.assurance import AssuranceEvaluation, AssuranceEvidenceBundle
 from app.models.bridge import (
     ExternalCapabilityGrant,
     ExternalGatewayCall,
@@ -230,4 +231,7 @@ __all__ = [
     "ExternalCapabilityGrant",
     "ExternalRequestNonce",
     "ExternalGatewayCall",
+    # Phase 5.9 (M5.9) - Assurance, Evidence & Compliance
+    "AssuranceEvaluation",
+    "AssuranceEvidenceBundle",
 ]

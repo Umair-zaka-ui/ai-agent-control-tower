@@ -323,6 +323,19 @@ PERMISSION_CATALOG: dict[str, str] = {
     "external_grant.issue":
         "Issue or revoke a scoped capability grant that lets an agent outside ACT call enterprise "
         "capability through ACT's governed boundary",
+    # Assurance, Evidence & Compliance (Phase 5.9 / M5.9). Three codes.
+    # `assurance.export` is deliberately its own, stronger code -- reading a
+    # control result and extracting a portable bundle of the organization's
+    # control evidence are different acts with different blast radii: once a
+    # bundle leaves ACT, ACT's tenant isolation and audit no longer protect
+    # it. Never implied by view or manage, the same reasoning that made
+    # `containment.execute` and `external_grant.issue` their own codes.
+    "assurance.view":
+        "View assurance control evaluations, framework mappings and evidence references",
+    "assurance.manage":
+        "Run assurance evaluations and document accepted-risk exceptions against control results",
+    "assurance.export":
+        "Export a portable evidence bundle of this organization's control evidence outside ACT",
 }
 
 _ALL = set(PERMISSION_CATALOG)

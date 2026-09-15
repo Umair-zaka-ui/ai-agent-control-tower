@@ -61,10 +61,17 @@ def test_ac01_substrate_present_and_no_migration_needed() -> None:
     from app.posture.shadow import ShadowAgentService  # noqa: F401 — 5.5's shadow
     from app.posture.summary import PostureSummaryService  # noqa: F401 — 5.5's score
 
-    heads = ScriptDirectory.from_config(
-        Config(str(_BACKEND / "alembic.ini"))).get_heads()
-    # Unchanged from 5.7 — this phase introduced no migration.
-    assert list(heads) == ["0060_external_gov_bridge"]
+    # At 5.8's own time this pinned the head to 5.7's migration to show that
+    # 5.8 added none of its own. Phase 5.9 has since legitimately moved the head,
+    # so the assertion is now the invariant it was protecting directly: no
+    # migration in the chain belongs to the command center. That stays true
+    # however many later phases add migrations of their own.
+    script = ScriptDirectory.from_config(Config(str(_BACKEND / "alembic.ini")))
+    assert len(script.get_heads()) == 1, "the migration chain must stay linear"
+    versions = _BACKEND / "migrations" / "versions"
+    for path in versions.glob("*.py"):
+        text = path.read_text(encoding="utf-8").lower()
+        assert "command center" not in text and "command_center" not in text, path.name
 
 
 # --------------------------------------------------------------------------- #

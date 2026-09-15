@@ -13,7 +13,7 @@
 > | **Milestone 4 (ACT-SRS-M4)** | `Phase 4.1 – 4.10`, requirement ids `M4-4.1-FR-xxx` | Runtime Governance & Observability | Telemetry, tracing, governance engine, cost, SLOs, privacy, observability center | **Complete** |
 > | **Phase M4.11** | `M4.11-FR-xxx` | Production Integrity Closure | Key-material recovery & fail-loud integrity — the M5 prerequisite | **Complete** |
 > | **Phase M4.11a** | `M4.11a-FR-xxx` | Install-Mode Classification Hardening | The durable bootstrap marker + five-state key taxonomy — corrects M4.11's absence-inference | **Complete** |
-> | **Milestone 5 (ACT-SRS-M5)** | `M5.x-FR-xxx` / `ACT-*` | Universal Agent Control & Security Fabric | One canonical registry describing native + external + discovered agents; provenance; control state; discovery; graph; MCP; posture; threat/containment; external gateway; command center | **In progress — 5.1–5.8 complete** |
+> | **Milestone 5 (ACT-SRS-M5)** | `M5.x-FR-xxx` / `ACT-*` | Universal Agent Control & Security Fabric | One canonical registry describing native + external + discovered agents; provenance; control state; discovery; graph; MCP; posture; threat/containment; external gateway; command center | **In progress — 5.1–5.9 complete** |
 >
 > **How to tell them apart at a glance.** The historical family always appears
 > under a `## Phase 4 —` or `## Phase 4.3 —` heading and is written as
@@ -3312,6 +3312,97 @@ confirmed on clean `main` before any 5.8 code; vitest does not typecheck, so the
 359-suite was always green. Reported, not fixed: it belongs to 4.9.
 
 See [`docs/command-center/overview.md`](docs/command-center/overview.md).
+
+
+### Phase 5.9 / M5.9 — Assurance, Evidence & Compliance ✅ (2026-09-16)
+
+**Phase 0 first: the frontend build was restored.** `tsc -b` and `npm run build`
+had been failing on `main` since Phase 4.9 — `TraceContentResponse` is exported
+from `observabilityService.ts` but was never re-exported by the `@/services`
+barrel that `TraceDetailPage` imports it from. `vitest` transpiles without
+typechecking, so a green 383-test suite masked a broken production build for
+four phases. Fixed with one barrel re-export (the two `TS7006` errors were
+downstream of the same unresolved type and cleared with it). A
+`build-integrity.test.ts` now shells out to the real `tsc -b` **inside the suite
+that was doing the masking** — verified to *fail* when the fix is reverted, so
+it is a guard rather than a test that merely passes. The repo has no CI
+workflows at all, so a pipeline-only check would not have existed; when CI is
+added, `npm run build` belongs in it directly.
+
+Then the phase proper: the evidence M1–5.8 already produce, turned into control
+evaluations an auditor can use.
+
+- **Three results, and the line between the last two is the phase.** `PASS` /
+  `FAIL` / `INSUFFICIENT_EVIDENCE`. FAIL means the evidence exists **and shows
+  the control unmet**; INSUFFICIENT_EVIDENCE means ACT genuinely cannot tell.
+  Both directions of confusion are failures: calling absence a pass is the
+  false-green, and calling a conclusive negative "insufficient" hides a real
+  finding behind a shrug. So an agent with **no owner FAILs** (the row is the
+  evidence and it is conclusive), while an agent with **no executions is
+  INSUFFICIENT_EVIDENCE** for traceability (ACT cannot see what it does not run;
+  calling it FAIL would invent a violation).
+- **"Has anyone actually looked?" is asked first.** Posture-backed controls
+  check the `POSTURE_EVALUATED` **audit event** before reading
+  `posture_findings`, because zero open findings is indistinguishable from
+  "posture never ran". No evaluation on record → INSUFFICIENT_EVIDENCE, never
+  PASS. Proven in both directions: a fresh tenant reports 9 of 12 controls
+  insufficient, and running a real posture evaluation flips them to genuine
+  PASS/FAIL, each carrying an `as_of`.
+- **A stale pass is unrepresentable.** Evidence older than the freshness policy
+  downgrades a would-be PASS to INSUFFICIENT_EVIDENCE with `stale=true` — and
+  `CHECK (NOT (stale AND result = 'PASS'))` means the database refuses to store
+  one at all, not merely that the evaluator declines to write one.
+- **No verdict, enforced by absence.** There is no `compliant`, `status`,
+  `score`, `coverage`, `verdict`, `grade` or `rating` — not a column, not a
+  schema field, not a response key. A badge cannot be rendered from data that
+  does not exist. A percentage would additionally need a denominator ACT does
+  not know (the customer's full audit scope) and would compress
+  INSUFFICIENT_EVIDENCE into the same number as PASS. Three counts, reported
+  separately, instead.
+- **Mappings are relevance claims, in versioned code.** "ACT's evidence for
+  control X is *relevant to* NIST AI RMF GOVERN-1.1" — never "satisfying X means
+  you comply". 12 mappings across NIST AI RMF 1.0 / ISO 42001:2023 / SOC 2, each
+  with a rationale, each framework carrying a `scope_note` that travels **with
+  the data** rather than as a droppable UI label. **Partial on purpose**:
+  uncovered controls are absent, not stubbed, because an absent mapping honestly
+  means "ACT holds no evidence here" while a stub evaluating to PASS would be a
+  fabrication.
+- **Exceptions document; they never flip a result.** A FAIL with an accepted
+  risk still reads FAIL, records who accepted it and why, is audited, and
+  survives re-evaluation — a routine sweep must not discard a human decision.
+- **Bundles reuse M4.11's signing and say when they are unsigned.** DSSE over
+  the canonicalized document via M4.11's own `pae`, signing provider and key
+  service (verified signing live: `keyid default:3`). The asymmetry with M4.11
+  is deliberate — it fails *closed* on an unsigned agent version because that is
+  an integrity hole in something ACT executes; a bundle is a read-only report,
+  so it exports unsigned **and explicitly labelled unsigned** rather than not at
+  all. `assurance.export` is a distinct, stronger permission, never implied by
+  view or manage: once a bundle leaves ACT, ACT's isolation and audit no longer
+  protect it.
+- **The 5.8 Assurance placeholder became the real view**, under the same
+  discipline: INSUFFICIENT_EVIDENCE gets its own tile and colour rather than
+  being folded into a pass, and the server's disclaimer renders verbatim. 5.8's
+  "not built yet" test was updated intent-preservingly to assert the invariant
+  the placeholder protected.
+
+Head `0060_external_gov_bridge` → **`0061_assurance_evidence`**; **two new
+tables** (`assurance_evaluations`, `assurance_evidence_bundles`), **152 tables**;
+routes **668 → 676** (+8 under `/api/v1/assurance`). Three permissions
+(`assurance.view`/`.manage`/`.export`, group `audit`); 3 error codes, 3 audit
+events; `assurance.evaluate` registered scheduler handler (no new scheduler).
+**36 new backend tests** + **1 new frontend test** (the build guard); one 5.8
+test updated intent-preservingly. Backend **2,623 passed**, 0 failed, 1
+deselected (2,587 + 36). Frontend **384 passed**, and `npm run build` green for
+the first time since 4.9.
+
+**One process note, reported not hidden:** this phase's own baseline run failed
+`test_ac01_repo_state_is_regenerated_at_the_true_post_3_10_head` — caused by me
+copying the 5.9 migration into the tree *while the suite was running*, which is
+exactly the trap that guard exists to catch. Verified by stashing and re-running
+clean; the true baseline was 2,587/0.
+
+See [`docs/assurance/overview.md`](docs/assurance/overview.md) and
+[ADR-0022](docs/architecture/adr/0022-assurance-evidence-not-verdict.md).
 
 
 ## Future (Phase 3+)

@@ -64,6 +64,7 @@ _RESOURCE_GROUP: dict[str, str] = {
     "containment": "runtime",
     "external_governance": "runtime",
     "external_grant": "runtime",
+    "assurance": "audit",
 }
 
 

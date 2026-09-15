@@ -146,9 +146,14 @@ contains no enforcement path.**
   threat is a runtime *event* (distinct from standing posture), and that 5.6
   is the layer that wires findings to the 4.3 engine / kill switch. `app/posture`
   must still have no enforcement path.
-- **Phase 5.9 maps posture to compliance frameworks** — confirm `control_id`
-  on each finding + `evidence.refs` is what the mapping needs, and that 5.5
-  still only *produces* findings.
+- ~~**Phase 5.9 maps posture to compliance frameworks**~~ — **Settled by
+  [ADR-0022](0022-assurance-evidence-not-verdict.md) (2026-09-16).** `control_id`
+  was exactly what the mapping needed: 5.9's assurance controls read a rule's
+  `control_id` and its open findings, and 5.5 still only *produces* findings.
+  One thing this line did not anticipate: absence of findings cannot be read as
+  a pass, because it is indistinguishable from "posture never ran". 5.9
+  therefore checks the `POSTURE_EVALUATED` audit event before reading findings
+  at all, and reports INSUFFICIENT_EVIDENCE when no evaluation is on record.
 - **A posture score needs trend history** — add a snapshot table as its own
   ADR (still deterministic and reconstructable; the live summary stays the
   source of truth).

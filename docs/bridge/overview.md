@@ -65,7 +65,8 @@ A broad capability catalog and an external-agent SDK are deferred (§25A); the
 the command-center UI shipped in 5.8 — see
 [`docs/command-center/overview.md`](../command-center/overview.md), where an agent at
 GATEWAY_ENFORCED is labelled "authorize boundary calls" and offers no containment
-affordance; assurance mapping is 5.9.
+affordance; assurance mapping shipped in 5.9
+(`docs/assurance/overview.md`).
 
 ## The proof
 
