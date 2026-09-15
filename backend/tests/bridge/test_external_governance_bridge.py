@@ -1279,10 +1279,15 @@ def test_ac14_concurrent_calls_under_a_revocation_race(
 
         results: list[int] = []
 
+        # A bare TestClient, deliberately NOT entered as a context manager: that
+        # would run the app's lifespan per thread, and three concurrent startups
+        # race the M4.11 key-material canary's unique constraint -- a failure in
+        # the harness that has nothing to do with the revocation race under test.
+        # The suite's own `client` fixture is bare for the same reason.
         def _fire() -> int:
-            with TestClient(client.app) as c:
-                return _call(c, issued, {"capability": "http_tool.invoke",
-                                         "target_ref": tool_id}).status_code
+            c = TestClient(client.app)
+            return _call(c, issued, {"capability": "http_tool.invoke",
+                                     "target_ref": tool_id}).status_code
 
         with ThreadPoolExecutor(max_workers=4) as pool:
             futures = [pool.submit(_fire) for _ in range(3)]

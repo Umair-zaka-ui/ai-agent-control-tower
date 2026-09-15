@@ -40,6 +40,22 @@ import {
   TraceExplorerPage,
 } from '@/modules/observability'
 import {
+  AgentDrilldownPage,
+  AgentInventoryPage,
+  AssurancePage,
+  ControlGraphPage,
+  CostExposurePage,
+  EstateOverviewPage,
+  ExternalPlatformsPage,
+  GovernanceCoveragePage,
+  IdentityDelegationPage,
+  OwnershipPage,
+  PostureFindingsPage,
+  ShadowAgentsPage,
+  ThreatsPage,
+  ToolsMcpPage,
+} from '@/modules/command'
+import {
   AgentDetailsPage,
   AgentEditPage,
   AgentsListPage,
@@ -355,6 +371,22 @@ export function AppRoutes() {
           <Route path={ROUTES.OBS_SLOS} element={<SloDashboardPage />} />
           <Route path={ROUTES.OBS_ALERTS} element={<AlertCenterPage />} />
           <Route path={ROUTES.OBS_POLICY} element={<TelemetryPolicyPage />} />
+
+          {/* Phase 5.8 — the Enterprise Agent Command Center. */}
+          <Route path={ROUTES.CC_ESTATE} element={<EstateOverviewPage />} />
+          <Route path={ROUTES.CC_INVENTORY} element={<AgentInventoryPage />} />
+          <Route path={ROUTES.CC_AGENT_DETAIL} element={<AgentDrilldownPage />} />
+          <Route path={ROUTES.CC_SHADOW} element={<ShadowAgentsPage />} />
+          <Route path={ROUTES.CC_OWNERSHIP} element={<OwnershipPage />} />
+          <Route path={ROUTES.CC_IDENTITY} element={<IdentityDelegationPage />} />
+          <Route path={ROUTES.CC_GRAPH} element={<ControlGraphPage />} />
+          <Route path={ROUTES.CC_TOOLS} element={<ToolsMcpPage />} />
+          <Route path={ROUTES.CC_POSTURE} element={<PostureFindingsPage />} />
+          <Route path={ROUTES.CC_THREATS} element={<ThreatsPage />} />
+          <Route path={ROUTES.CC_EXTERNAL} element={<ExternalPlatformsPage />} />
+          <Route path={ROUTES.CC_COVERAGE} element={<GovernanceCoveragePage />} />
+          <Route path={ROUTES.CC_COST} element={<CostExposurePage />} />
+          <Route path={ROUTES.CC_ASSURANCE} element={<AssurancePage />} />
           {/* ABAC administration (Phase 4.3.5 §33) */}
           <Route path={ROUTES.ABAC_POLICIES} element={<ABACPoliciesPage />} />
           <Route path={`${ROUTES.ABAC_POLICIES}/new`} element={<CreateABACPolicyPage />} />

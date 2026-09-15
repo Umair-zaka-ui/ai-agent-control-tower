@@ -13,7 +13,7 @@
 > | **Milestone 4 (ACT-SRS-M4)** | `Phase 4.1 – 4.10`, requirement ids `M4-4.1-FR-xxx` | Runtime Governance & Observability | Telemetry, tracing, governance engine, cost, SLOs, privacy, observability center | **Complete** |
 > | **Phase M4.11** | `M4.11-FR-xxx` | Production Integrity Closure | Key-material recovery & fail-loud integrity — the M5 prerequisite | **Complete** |
 > | **Phase M4.11a** | `M4.11a-FR-xxx` | Install-Mode Classification Hardening | The durable bootstrap marker + five-state key taxonomy — corrects M4.11's absence-inference | **Complete** |
-> | **Milestone 5 (ACT-SRS-M5)** | `M5.x-FR-xxx` / `ACT-*` | Universal Agent Control & Security Fabric | One canonical registry describing native + external + discovered agents; provenance; control state; discovery; graph; MCP; posture; threat/containment; external gateway; command center | **In progress — 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7 complete** |
+> | **Milestone 5 (ACT-SRS-M5)** | `M5.x-FR-xxx` / `ACT-*` | Universal Agent Control & Security Fabric | One canonical registry describing native + external + discovered agents; provenance; control state; discovery; graph; MCP; posture; threat/containment; external gateway; command center | **In progress — 5.1–5.8 complete** |
 >
 > **How to tell them apart at a glance.** The historical family always appears
 > under a `## Phase 4 —` or `## Phase 4.3 —` heading and is written as
@@ -3239,6 +3239,79 @@ See [`docs/bridge/overview.md`](docs/bridge/overview.md),
 [`docs/bridge/gateway.md`](docs/bridge/gateway.md),
 [`docs/bridge/external-identity.md`](docs/bridge/external-identity.md),
 and [ADR-0021](docs/architecture/adr/0021-truthful-external-enforcement-modes.md).
+
+
+### Phase 5.8 / M5.8 — Enterprise Agent Command Center ✅ (2026-09-16)
+
+**The first M5 phase to touch the frontend.** All the UI deferred since 5.1
+lands here: the operator surface over everything 5.1–5.7 built — inventory,
+discovery, ownership, the authority graph, dependencies and blast radius,
+posture and shadow, threats and containment, external governance.
+
+- **Truthful affordances, and they are structural.** The UI derives nothing
+  about ACT's reach. `affordances.ts` contains **no mode name, no control-state
+  name and no mode→label map** — asserted over its own source — and reads three
+  server-computed fields: `reaches_agent_execution` (whether to offer
+  containment), `reaches_boundary_calls`, and the `display`/`limits` sentences,
+  rendered **verbatim**. A second test scans every file in the module and fails
+  on any `control_state ===` or `enforcement_mode ===` comparison, because
+  either would be a second opinion about what ACT can do. Proven per state: an
+  OBSERVED/DISCOVERED agent shows **no** containment affordance, a
+  GATEWAY_ENFORCED agent is labelled **"authorize boundary calls"** and never
+  "governed", a NATIVE agent shows full containment.
+- **An unavailable affordance says *why*.** Containment is absent, not greyed
+  out, and the server's own `limits` sentence explains the absence — a missing
+  control with no reason reads as a broken feature rather than as the truth.
+- **"Hidden" is never "zero".** Each estate section is probed against its own
+  domain permission through the real `AuthorizationGateway`; a section the
+  caller cannot read returns `visible: false` and renders as "hidden from you".
+  A `0` in a security dashboard reads as "all clear" and would be the most
+  comfortable possible lie.
+- **Shadow shows why** (5.5's conditions — rule, severity, reason — never a
+  bare badge); **unmeasurable cost is named, not summed** (5.7's
+  `NOT_MEASURABLE`, never folded into a total); **`INSUFFICIENT_DATA` and
+  `REFUSED` show as themselves** (a refused containment is surfaced *with* its
+  reason); **a failed read shows the failure**, never an empty state.
+- **Reuses 3.10/4.9 verbatim** — `ConfirmActionDialog` and `useGuardedAction`
+  imported from `@/modules/operations`, the persona vocabulary from
+  `@/modules/observability` (a second, subtly different persona list would mean
+  "Security" meant two things). Asserted: no second dialog or hook in the
+  module. Thirteen views, per-persona.
+- **Two read-only aggregation endpoints, no migration, no table, no column.**
+  `GET /command-center/estate` and `GET /command-center/agents` exist only
+  because an estate count over tens of thousands of agents, and a per-row
+  enforcement mode, cannot be assembled from a 500-row page without doing
+  arithmetic in the browser — the same narrow addition 4.9 made. Both are
+  GET-only (structurally asserted), tenant-scoped, and compute no domain state:
+  the posture score comes from 5.5's `PostureSummaryService`, shadow from 5.5's
+  `ShadowAgentService`, and the mode and reach from 5.7's `app.bridge.modes`,
+  **including its `NATIVE_CONTROL_STATE` constant rather than a re-typed
+  literal** (a test caught the literal and it was replaced with the import).
+  The agent drilldown needed **no** endpoint — it composes existing ones with
+  react-query, which is orchestration, not logic.
+- **Assurance is deliberately empty and says so** — compliance mapping is 5.9,
+  and a placeholder framework grid would imply evidence ACT does not produce.
+
+No migration (head stays `0060_external_gov_bridge`, **150 tables**); routes
+**666 → 668** (+2, both GET under `/api/v1/command-center`). No new permission,
+no new authz, no new engine. **13 new backend tests**
+(`tests/command_center/test_command_center.py`) + **24 new frontend tests**
+(`frontend/src/modules/command/tests/command.test.tsx`). Backend
+**2,587 passed**, 0 failed, 1 deselected (2,574 + 13). Frontend **383 passed**
+(359 + 24) — the first M5 phase to add any.
+
+**One 5.7 defect fixed, not left.** `test_ac14_concurrent_calls_under_a_revocation_race`
+failed this phase's baseline on a clean tree. Root cause was mine from 5.7:
+`with TestClient(...)` inside three threads runs the app lifespan per thread, and
+the concurrent M4.11 key-material-canary inserts race its unique constraint —
+the platform-singleton-row trap. The `with` was never needed (the suite's own
+`client` fixture is bare). Harness fixed, assertions untouched, stable over
+three runs. **Pre-existing and left as-is:** `tsc -b` fails on 4.9's
+`TraceDetailPage.tsx` (3 errors, `TraceContentResponse` not exported) —
+confirmed on clean `main` before any 5.8 code; vitest does not typecheck, so the
+359-suite was always green. Reported, not fixed: it belongs to 4.9.
+
+See [`docs/command-center/overview.md`](docs/command-center/overview.md).
 
 
 ## Future (Phase 3+)

@@ -137,6 +137,26 @@ export const ROUTES = {
   OBS_SLOS: '/observability/slos',
   OBS_ALERTS: '/observability/alerts',
   OBS_POLICY: '/observability/policy',
+
+  // Phase 5.8 — the Enterprise Agent Command Center. The operator surface over
+  // everything Milestone 5 built: inventory, discovery, ownership, the
+  // authority graph, dependencies and blast radius, posture and shadow,
+  // threats and containment, external governance. Sits alongside Observability
+  // because the two answer different questions about the same estate.
+  CC_ESTATE: '/command-center',
+  CC_INVENTORY: '/command-center/inventory',
+  CC_AGENT_DETAIL: '/command-center/agents/:agentId',
+  CC_SHADOW: '/command-center/shadow',
+  CC_OWNERSHIP: '/command-center/ownership',
+  CC_IDENTITY: '/command-center/identity',
+  CC_GRAPH: '/command-center/graph',
+  CC_TOOLS: '/command-center/tools',
+  CC_POSTURE: '/command-center/posture',
+  CC_THREATS: '/command-center/threats',
+  CC_EXTERNAL: '/command-center/external',
+  CC_COVERAGE: '/command-center/coverage',
+  CC_COST: '/command-center/cost',
+  CC_ASSURANCE: '/command-center/assurance',
   /** ABAC administration (Phase 4.3.5 §33). */
   ABAC_POLICIES: '/authorization/abac',
   ABAC_SIMULATOR: '/authorization/abac/simulator',

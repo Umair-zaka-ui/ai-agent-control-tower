@@ -1,6 +1,28 @@
 # Backup and system-migration guide
 
-**Last verified 2026-09-15** after Phase 5.7 / M5.7 (External Agent
+**Last verified 2026-09-16** after Phase 5.8 / M5.8 (Enterprise Agent Command
+Center — the operator surface over Milestone 5). **No migration, no new table,
+no new column, and no new backup or restore step.** The phase is almost
+entirely frontend; its backend half is two read-only `GET` aggregations that
+own no state, write nothing, and hold no authority — they count rows that
+already exist and call 5.5's and 5.7's own services for the answers those
+services own.
+
+**Nothing here needs restoring, and that is the point.** Both endpoints
+recompute from live rows on every request; there is no projection, no snapshot,
+no cache and no materialized estate table to rebuild (the ADR-0008
+measure-first discipline — a materialized read model was considered and not
+built). A restore that brings back the 5.1–5.7 tables brings the command center
+back with them, exactly as accurate as the data underneath it. Migration head is
+unchanged at **`0060_external_gov_bridge`** (**150 tables**).
+
+The only operational note: the estate view's per-section permission probes go
+through the real `AuthorizationGateway`, so a restore that loses role or
+permission assignments will show sections as *hidden* rather than empty — which
+is the honest failure mode, and a signal that authorization data, not agent
+data, is what needs attention.
+
+**Previously verified 2026-09-15** after Phase 5.7 / M5.7 (External Agent
 Governance Bridge — where ACT governs agents it does not run). **Three new
 tables and one new nullable `agents` column** (migration
 `0060_external_gov_bridge`, additive, reversible, downgrade-tested — **150

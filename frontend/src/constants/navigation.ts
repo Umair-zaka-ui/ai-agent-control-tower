@@ -11,6 +11,7 @@ import {
   ShieldAlert,
   Rocket,
   Gauge,
+  Radar,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -88,6 +89,32 @@ export const PRIMARY_NAV: NavItem[] = [
       { label: 'SLO Dashboard', path: ROUTES.OBS_SLOS },
       { label: 'Alert Center', path: ROUTES.OBS_ALERTS },
       { label: 'Telemetry Policy', path: ROUTES.OBS_POLICY },
+    ],
+  },
+  {
+    // Phase 5.8 — the Enterprise Agent Command Center. Where Milestone 5's
+    // whole estate becomes visible to an operator: every agent native and
+    // external, what ACT can truthfully do about each, shadow AI with the
+    // reason it is shadow, posture, threats and containment, and the external
+    // platforms ACT governs only at its boundary.
+    label: 'Command Center',
+    path: ROUTES.CC_ESTATE,
+    icon: Radar,
+    roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.REVIEWER],
+    children: [
+      { label: 'AI Estate', path: ROUTES.CC_ESTATE },
+      { label: 'Agent Inventory', path: ROUTES.CC_INVENTORY },
+      { label: 'Shadow AI', path: ROUTES.CC_SHADOW },
+      { label: 'Ownership', path: ROUTES.CC_OWNERSHIP },
+      { label: 'Identity & Delegation', path: ROUTES.CC_IDENTITY },
+      { label: 'Control Graph', path: ROUTES.CC_GRAPH },
+      { label: 'Tools & MCP', path: ROUTES.CC_TOOLS },
+      { label: 'Security Posture', path: ROUTES.CC_POSTURE },
+      { label: 'Threats & Incidents', path: ROUTES.CC_THREATS },
+      { label: 'External Platforms', path: ROUTES.CC_EXTERNAL },
+      { label: 'Governance Coverage', path: ROUTES.CC_COVERAGE },
+      { label: 'Cost Exposure', path: ROUTES.CC_COST },
+      { label: 'Assurance', path: ROUTES.CC_ASSURANCE },
     ],
   },
   {
