@@ -134,6 +134,8 @@ a live compromise. Unknown ≠ safe.
 - Not a second tool registry — MCP via `Tool`, one gateway, one validation.
 - Not a graph database — `control_graph_edges` + recursive CTEs.
 - Not a posture engine (5.5), not threat detection / containment (5.6), not
-  the external gateway (5.7), not the command-center UI (5.8).
+  the external gateway (5.7), not the command-center UI — which has since
+  shipped in 5.8 and *visualizes* this graph without adding traversal logic
+  of its own (`docs/command-center/overview.md`).
 - Not a change to tool execution / schema validation / egress — M1 owns
   those, reused unchanged.

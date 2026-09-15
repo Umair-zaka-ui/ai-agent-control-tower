@@ -62,7 +62,10 @@ Three tables (`external_capability_grants`, `external_request_nonces`,
 `http_tool.invoke`, dispatched through M1's egress guard to a real endpoint.
 
 A broad capability catalog and an external-agent SDK are deferred (§25A); the
-command-center UI is 5.8; assurance mapping is 5.9.
+the command-center UI shipped in 5.8 — see
+[`docs/command-center/overview.md`](../command-center/overview.md), where an agent at
+GATEWAY_ENFORCED is labelled "authorize boundary calls" and offers no containment
+affordance; assurance mapping is 5.9.
 
 ## The proof
 

@@ -48,6 +48,7 @@ from app.graph.routes import router as graph_router
 from app.posture.routes import router as posture_router
 from app.threat.routes import router as threat_router
 from app.bridge.routes import router as bridge_router
+from app.command_center.routes import router as command_center_router
 from app.observability.routes import router as observability_router
 from app.identity.errors import register_identity_exception_handlers
 
@@ -236,6 +237,16 @@ app.include_router(threat_router)
 # existing 4.3 policies and 4.4 budgets, commits before dispatching, and
 # governs only declared capabilities -- it proxies nothing (ADR-0021).
 app.include_router(bridge_router)
+# Phase 5.8 -- the Enterprise Agent Command Center's two read-model
+# aggregations, under /api/v1/command-center. Read-only by construction
+# (no POST/PUT/PATCH/DELETE, asserted structurally): the command center is
+# a frontend phase, and every action it offers dispatches to the 5.1-5.7
+# endpoint that already owns it. These two exist only because an estate
+# count over tens of thousands of agents, and a per-row enforcement mode,
+# cannot be assembled from a paginated list without doing arithmetic in the
+# browser. Neither computes domain state: the posture score comes from 5.5,
+# shadow from 5.5, and the mode + reach from 5.7's own app.bridge.modes.
+app.include_router(command_center_router)
 # Phase 4.2 -- the governed-observability trace surface
 # (/api/v1/observability). Distinct from the legacy `analytics` dashboards,
 # which aggregate the Phase 3 agent_actions table and know nothing of
