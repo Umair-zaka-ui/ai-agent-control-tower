@@ -140,6 +140,12 @@ and records the outcome. It implements no enforcement of its own.
   Phase 5.7's enforcement-mode vocabulary does not exist yet. This is
   explicit and named as the seam 5.7 will refine, not hidden behind a
   richer-looking capability model this phase cannot actually back.
+  **Update (2026-09-15, ADR-0021):** 5.7 shipped that vocabulary and the gate
+  stayed coarse *on purpose*. `GATEWAY_ENFORCED` means ACT can refuse an
+  external agent's calls through ACT's boundary, not that ACT can suspend or
+  terminate it — so admitting it here would have made `SUSPEND_AGENT` claim a
+  success ACT cannot deliver. The coarse gate turned out to be the correct one,
+  not a placeholder.
 - Two threat rules the SRS names — "prompt/indirect-injection" and
   "cross-agent/delegation abuse" — are not delivered: neither has a
   deterministic signal in the current schema (no reason-code taxonomy for
@@ -160,11 +166,21 @@ and records the outcome. It implements no enforcement of its own.
 
 ## Revisit when
 
-- **Phase 5.7 builds the external gateway and makes enforcement modes
-  real** — replace the coarse `control_state == GOVERNED` gate with the
-  richer mode vocabulary (`GATEWAY_ENFORCED`/`ADVISORY`/etc.), and confirm
-  every containment action's truthful-refusal reason still names exactly
-  what ACT can and cannot do.
+- ~~**Phase 5.7 builds the external gateway and makes enforcement modes
+  real**~~ — **Settled by
+  [ADR-0021](0021-truthful-external-enforcement-modes.md) (2026-09-15),
+  opposite to the way this line expected.** The coarse
+  `control_state == GOVERNED` gate was *not* replaced: `GATEWAY_ENFORCED`
+  reaches only calls routed through ACT's boundary, so widening the gate would
+  have let a containment action claim a reach ACT lacks. 5.7's own boundary
+  enforcement (revoking a grant) lives in `ExternalGrantService.revoke`, and no
+  eighth containment action was added — this ADR's action set is still
+  exhaustively seven.
+- **A containment action is proposed that acts at 5.7's boundary** — e.g.
+  routing `REVOKE_CAPABILITY` to `ExternalGrantService.revoke` for a
+  `GATEWAY_ENFORCED` agent. That is a legitimate eighth action, but it must
+  carry its own truthful-refusal reason naming the boundary as its limit, and
+  must not be mistaken for the ability to stop the agent.
 - **A narrowly-scoped automated execution path is proposed** — it must stay
   bounded (a fixed, reviewed action set, never "whatever the rule decides"),
   must never bypass confirmation for a genuinely dangerous action, and must

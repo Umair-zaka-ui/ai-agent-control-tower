@@ -462,3 +462,16 @@ class AuthorizationAuditEvent(str, enum.Enum):
     CONTAINMENT_ACTION_EXECUTED = "CONTAINMENT_ACTION_EXECUTED"
     CONTAINMENT_ACTION_FAILED = "CONTAINMENT_ACTION_FAILED"
     CONTAINMENT_ACTION_REVERTED = "CONTAINMENT_ACTION_REVERTED"
+    # External Agent Governance Bridge (Phase 5.7 / M5.7). Every enforcement
+    # claim ACT makes about an agent it does not run is auditable: the mode it
+    # asserts, the scoped credential that lets an outside agent reach the
+    # boundary at all, and every boundary decision -- allow and deny alike.
+    # A DENIED gateway call is audited exactly like an ALLOWED one; a truthful
+    # refusal is not a non-event. None of these events ever carries the
+    # grant's secret, its ciphertext or its hint -- only the public key_id.
+    EXTERNAL_ENFORCEMENT_MODE_CHANGED = "EXTERNAL_ENFORCEMENT_MODE_CHANGED"
+    EXTERNAL_GRANT_ISSUED = "EXTERNAL_GRANT_ISSUED"
+    EXTERNAL_GRANT_REVOKED = "EXTERNAL_GRANT_REVOKED"
+    EXTERNAL_GATEWAY_CALL_ALLOWED = "EXTERNAL_GATEWAY_CALL_ALLOWED"
+    EXTERNAL_GATEWAY_CALL_DENIED = "EXTERNAL_GATEWAY_CALL_DENIED"
+    EXTERNAL_ADVISORY_RECOMMENDED = "EXTERNAL_ADVISORY_RECOMMENDED"

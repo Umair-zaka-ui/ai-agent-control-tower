@@ -13,7 +13,7 @@
 > | **Milestone 4 (ACT-SRS-M4)** | `Phase 4.1 – 4.10`, requirement ids `M4-4.1-FR-xxx` | Runtime Governance & Observability | Telemetry, tracing, governance engine, cost, SLOs, privacy, observability center | **Complete** |
 > | **Phase M4.11** | `M4.11-FR-xxx` | Production Integrity Closure | Key-material recovery & fail-loud integrity — the M5 prerequisite | **Complete** |
 > | **Phase M4.11a** | `M4.11a-FR-xxx` | Install-Mode Classification Hardening | The durable bootstrap marker + five-state key taxonomy — corrects M4.11's absence-inference | **Complete** |
-> | **Milestone 5 (ACT-SRS-M5)** | `M5.x-FR-xxx` / `ACT-*` | Universal Agent Control & Security Fabric | One canonical registry describing native + external + discovered agents; provenance; control state; discovery; graph; MCP; posture; threat/containment; external gateway; command center | **In progress — 5.1, 5.2, 5.3, 5.4, 5.5, 5.6 complete** |
+> | **Milestone 5 (ACT-SRS-M5)** | `M5.x-FR-xxx` / `ACT-*` | Universal Agent Control & Security Fabric | One canonical registry describing native + external + discovered agents; provenance; control state; discovery; graph; MCP; posture; threat/containment; external gateway; command center | **In progress — 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7 complete** |
 >
 > **How to tell them apart at a glance.** The historical family always appears
 > under a `## Phase 4 —` or `## Phase 4.3 —` heading and is written as
@@ -3137,6 +3137,109 @@ Frontend **359**, untouched (all M5 UI deferred to 5.8). See
 [`docs/threat/rules.md`](docs/threat/rules.md),
 [`docs/threat/truthful-containment.md`](docs/threat/truthful-containment.md),
 and [ADR-0020](docs/architecture/adr/0020-truthful-containment-via-existing-authorities.md).
+
+### Phase 5.7 / M5.7 — External Agent Governance Bridge ✅ (2026-09-15)
+
+**The highest-risk phase in Milestone 5 — it is where ACT governs agents it
+does not run, and where the milestone's honesty requirement gets its real
+test.** 5.6 could *observe* that an external agent's containment was truthfully
+absent; 5.7 makes the enforcement modes real — and each one bounded to exactly
+what it can deliver.
+
+- **Four modes, each carrying its own limit.** `OBSERVED` sees (no
+  enforcement). `ADVISORY` evaluates the real 4.3 policies and recommends (no
+  enforcement). `GATEWAY_ENFORCED` authorizes/denies the capability calls an
+  external agent routes **through ACT** — and reaches nothing else it does.
+  `NATIVE_ENFORCED` is the M1–M4 platform. Every mode ships a `display` *and* a
+  `limits` string and both travel in every API response, so a client cannot
+  render ACT's claim without its bound. The sentence for GATEWAY is "ACT
+  authorizes this agent's capability calls that route through ACT's gateway",
+  never "ACT governs this agent" (asserted per mode).
+- **`NATIVE_ENFORCED` is not storable.** A CHECK constraint on the new
+  `agents.external_enforcement_mode` admits only OBSERVED/ADVISORY/
+  GATEWAY_ENFORCED; the strongest mode is *derived* from
+  `control_state == 'GOVERNED'` — the same signal 5.6's containment gate reads.
+  Full enforcement cannot be asserted by writing a column; it has to be true,
+  and the two phases cannot drift. **No backfill needed**: every pre-existing
+  row gets a truthful mode the instant the column exists.
+- **The design decision that mattered most: a GATEWAY_ENFORCED agent is NOT
+  `GOVERNED`.** M5.1's own comment anticipated external agents reaching
+  GOVERNED "at NATIVE/GATEWAY enforcement, which is Phase 5.7". Building 5.7
+  showed that would have been a **false claim** — it would have made 5.6's
+  `SUSPEND_AGENT` report success for an agent ACT cannot suspend. So a
+  GATEWAY_ENFORCED agent stays `REGISTERED`, 5.6's gate is untouched and still
+  refuses it, **no eighth containment action was added**, and the superseded
+  anticipations in ADR-0015/ADR-0020/`docs/threat/truthful-containment.md` were
+  corrected rather than left to mislead.
+- **Federation rejected for external identity** — `FederationService`
+  provisions a `User`, maps roles and issues a session, i.e. exactly the
+  internal principal this phase forbids. A bearer API key was rejected too: it
+  cannot be replay-protected. Identity is a **signed request**
+  (HMAC-SHA256 over method/path/timestamp/nonce/body-digest), secret stored
+  Fernet-encrypted via M4.11 `credential_crypto`, replay defeated by a
+  `(grant_id, nonce)` unique constraint — the database, not a cache.
+- **The boundary is not a second authz.** It calls the real
+  `AuthorizationGateway.authorize_agent`, resolves the real 4.3
+  `runtime_governance_policies` and prices against the real 4.4 budgets. All
+  three are proven behaviourally: a real published ABAC DENY policy stops a
+  call, a real agent-scoped `requires_approval` policy denies with
+  `APPROVAL_REQUIRED`, and a real `HARD_LIMIT` budget with no headroom denies
+  with `EXCEEDED`. The grant's scope only ever *narrows*; it grants nothing.
+- **Cost is metered honestly, not faked.** No reservation is taken —
+  `ReservationService.reserve` is keyed to an `AgentExecution` a boundary call
+  does not have, and fabricating one would corrupt the 4.4 ledger. ACT enforces
+  the ceiling it can read and records `NOT_MEASURABLE` where no budget applies.
+  Same reasoning for not invoking the 4.3 engine (it decides for an execution).
+- **Commit-before-dispatch, proven for real.** Unlike 5.6 (whose authorities did
+  no I/O), the reference capability makes a genuine outbound HTTP call through
+  M1's egress guard. No statement in `app/bridge` takes `FOR UPDATE` and
+  `dispatch.py` imports no session (both AST-asserted, scanned over the AST so
+  the modules' own prose about the rule cannot satisfy it) — and while a call is
+  in flight a **second real Postgres connection reads *and writes*** the
+  committed gateway row.
+- **Do-not-proxy-everything.** One governed capability ships
+  (`http_tool.invoke`); no catch-all route, no pass-through, no HTTP client
+  importable from the decision path. A broad catalog and an external-agent SDK
+  are deferred (§25A).
+- **Fail semantics by plane** — a governance decision fails **closed**
+  (`UNEVALUABLE` → DENY, recorded); telemetry ingest fails **open** (202 even
+  when every event drops). A downstream outage is recorded truthfully as
+  *allowed + dispatch failed*, never faked and never retroactively rewritten
+  into a denial. A DB CHECK makes "denied but dispatched" unrepresentable.
+- **`external_grant.issue` is a distinct, stronger permission**, never implied
+  by view/manage — the `containment.execute` precedent. Dropping an agent below
+  GATEWAY_ENFORCED revokes its live grants in the same transaction.
+
+Head `0059_threat_containment` → `0060_external_gov_bridge`; **three new
+tables** (`external_capability_grants`, `external_request_nonces`,
+`external_gateway_calls`) plus one nullable `agents` column, **150 tables**
+total; routes **655 → 666** (+11, all under `/api/v1/bridge`). Three
+permissions (`external_governance.view`/`.manage`, `external_grant.issue`);
+17 error codes, 6 audit events. **53 new backend tests**
+(`tests/bridge/test_external_governance_bridge.py` — AC-01..AC-20 + the §15
+end-to-end proof, which runs ACT under a **real uvicorn server on a real
+socket** driven by a **real external agent in a separate OS process** whose
+own AST is asserted to import nothing from ACT); no pre-existing test changed.
+Backend **2,574 passed**, 0 failed, 1 deselected (2,521 + 53). Frontend **359**,
+untouched (all M5 UI deferred to 5.8).
+
+**Pre-existing flake, verified and left as-is:** `test_agent_asset_model.py`'s
+`test_ac09_existing_agents_are_backfilled_native_and_governed` fails in a full
+run and passes standalone — confirmed on a **clean tree before any 5.7 code**.
+Cause: `tests/posture/test_security_posture.py`'s `_insert_agent(...,
+control_state="DISCOVERED")` uses the helper's default `origin_category="NATIVE"`,
+creating NATIVE+DISCOVERED rows that violate 5.1's invariant; the assertion
+samples `limit(500)` of 76k rows with **no `ORDER BY`**, so it fails only when
+one of the 7 such rows lands in the sample, and one more accumulates per full
+run. Left untouched per the verify-and-leave discipline — it is a 5.5/5.1 test
+interaction on a shared dev DB, unrelated to this phase.
+
+See [`docs/bridge/overview.md`](docs/bridge/overview.md),
+[`docs/bridge/enforcement-modes.md`](docs/bridge/enforcement-modes.md),
+[`docs/bridge/gateway.md`](docs/bridge/gateway.md),
+[`docs/bridge/external-identity.md`](docs/bridge/external-identity.md),
+and [ADR-0021](docs/architecture/adr/0021-truthful-external-enforcement-modes.md).
+
 
 ## Future (Phase 3+)
 
