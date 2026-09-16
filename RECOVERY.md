@@ -1,5 +1,7 @@
 # Backup and system-migration guide
 
+**Last verified 2026-09-17** after Validation Gate V0 (baseline integrity). **No migration, no schema change, no new backup or restore step.** The only database change was the deletion of 17 test-residue `agents` rows (fixture-attributable, unreferenced by any table) from the shared dev database; no product or user data was touched, and cryptographic identity (signing keys, bootstrap marker, canary behaviour) was re-verified unchanged by the M4.11/M4.11a suites. The paragraph below is the M5-close record and is preserved as written.
+
 **Last verified 2026-09-16** after Phase 5.10 / M5.10 (Milestone Hardening +
 Enterprise End-to-End Proof — **Milestone 5 COMPLETE**). **No migration, no new
 table, no new column, no new backup or restore step.** A proof phase: the only

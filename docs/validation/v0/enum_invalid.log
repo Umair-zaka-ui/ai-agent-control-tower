@@ -1,0 +1,51 @@
+V0 §9A ENUMERATION — captured 2026-09-17 ~00:15 (+05:00), BEFORE any modification, read-only.
+Script: enum_invalid.py (run from backend/). Transcribed verbatim from the session's tool output;
+user email local parts are redacted to 4 characters. The rows below no longer exist (deleted in §12).
+
+total agents: 100069
+distribution origin_category x control_state:
+   ('EXTERNAL', 'CLAIMED', 153)
+   ('EXTERNAL', 'DISCOVERED', 6366)
+   ('EXTERNAL', 'GOVERNED', 28)
+   ('EXTERNAL', 'REGISTERED', 106)
+   ('NATIVE', 'DISCOVERED', 16)
+   ('NATIVE', 'GOVERNED', 93335)
+   ('UNKNOWN', 'DISCOVERED', 50)
+   ('UNKNOWN', 'GOVERNED', 15)
+NATIVE rows with origin_provider <> ACT_NATIVE: 0
+INVALID rows: 16
+  id=df26eed3-469a-47cb-859d-e875a779a66e org=81eac718-7f32-43ca-aecd-ea9a63103ac0 org_name='Posture Org' name='agent-df26eed3' cat=NATIVE prov=ACT_NATIVE cs=DISCOVERED lc=ACTIVE owner=None/None dsr=None extref=None keyhash='x' created=2026-09-10 16:53:44.266161+05:00
+  id=d524b5e0-13a8-4640-82f5-8173808ca7ae org=cb2bbbd3-5f61-4dd7-8115-e92f48be627b org_name='Posture Org' name='agent-d524b5e0' cat=NATIVE prov=ACT_NATIVE cs=DISCOVERED lc=ACTIVE owner=None/None dsr=None extref=None keyhash='x' created=2026-09-10 16:57:07.953653+05:00
+  id=3a2d82f6-900e-4797-ba61-7aacdd718de6 org=e7177c92-6ed4-4096-a1cb-902883f16b81 org_name='Posture Org' name='agent-3a2d82f6' cat=NATIVE prov=ACT_NATIVE cs=DISCOVERED lc=ACTIVE owner=None/None dsr=None extref=None keyhash='x' created=2026-09-10 17:07:35.256209+05:00
+  id=b173543b-4cbc-47bf-ad80-c4e1a2636aa2 org=464d6991-ca79-46b1-a9f7-33a2d01f5467 org_name='Posture Org' name='agent-b173543b' cat=NATIVE prov=ACT_NATIVE cs=DISCOVERED lc=ACTIVE owner=None/None dsr=None extref=None keyhash='x' created=2026-09-10 17:31:37.134206+05:00
+  id=91ad55f0-18aa-4427-afec-27e1bec14217 org=68a43a01-38e6-4381-8b40-c9d57f5e84c1 org_name='Posture Org' name='agent-91ad55f0' cat=NATIVE prov=ACT_NATIVE cs=DISCOVERED lc=ACTIVE owner=None/None dsr=None extref=None keyhash='x' created=2026-09-11 22:12:46.625334+05:00
+  id=48e3cfcb-e53a-4320-a726-7963d572bf6f org=eb9dfdf9-316f-4faa-940b-5eff19492a74 org_name='Posture Org' name='agent-48e3cfcb' cat=NATIVE prov=ACT_NATIVE cs=DISCOVERED lc=ACTIVE owner=None/None dsr=None extref=None keyhash='x' created=2026-09-14 16:03:01.787477+05:00
+  id=6811d80b-3b51-45d8-bb14-6b74f326ff82 org=bc8a368b-e3db-4500-9c02-a24240a47fea org_name='Posture Org' name='agent-6811d80b' cat=NATIVE prov=ACT_NATIVE cs=DISCOVERED lc=ACTIVE owner=None/None dsr=None extref=None keyhash='x' created=2026-09-15 16:42:55.774559+05:00
+  id=b69a0ebe-baf2-4e46-b466-eb8ca0cf3ee1 org=2fbe5a7e-81a9-45db-af49-3948c2a4b02c org_name='Posture Org' name='agent-b69a0ebe' cat=NATIVE prov=ACT_NATIVE cs=DISCOVERED lc=ACTIVE owner=None/None dsr=None extref=None keyhash='x' created=2026-09-15 17:20:47.916297+05:00
+  id=06aae4ba-3af5-471c-adf7-717013bc1c17 org=68a4e37b-df06-43a2-879c-0ab3c11a8801 org_name='Posture Org' name='agent-06aae4ba' cat=NATIVE prov=ACT_NATIVE cs=DISCOVERED lc=ACTIVE owner=None/None dsr=None extref=None keyhash='x' created=2026-09-15 17:43:03.234623+05:00
+  id=62103ecf-9855-4169-a999-5d7d29ece89d org=8df5909f-b703-4428-a417-77b1cafb1685 org_name='Posture Org' name='agent-62103ecf' cat=NATIVE prov=ACT_NATIVE cs=DISCOVERED lc=ACTIVE owner=None/None dsr=None extref=None keyhash='x' created=2026-09-15 22:07:03.505294+05:00
+  id=9b51051e-e5d3-4fba-8149-c9a7811eef32 org=b84e43b9-f793-4266-b1dc-3da0ecb09cdb org_name='Posture Org' name='agent-9b51051e' cat=NATIVE prov=ACT_NATIVE cs=DISCOVERED lc=ACTIVE owner=None/None dsr=None extref=None keyhash='x' created=2026-09-16 02:16:57.032529+05:00
+  id=ec0b5a4d-f155-454c-b135-b14fd9debe2d org=5945eb61-76b3-488f-b0ac-5b3f1a60f477 org_name='Posture Org' name='agent-ec0b5a4d' cat=NATIVE prov=ACT_NATIVE cs=DISCOVERED lc=ACTIVE owner=None/None dsr=None extref=None keyhash='x' created=2026-09-16 02:54:04.080281+05:00
+  id=f2a2e3ef-3625-40df-a004-4ce05edaf1f7 org=e9492751-bf5e-4a59-a7fa-23d63f9965b2 org_name='Posture Org' name='agent-f2a2e3ef' cat=NATIVE prov=ACT_NATIVE cs=DISCOVERED lc=ACTIVE owner=None/None dsr=None extref=None keyhash='x' created=2026-09-16 03:30:53.003356+05:00
+  id=04be8f43-bab8-4e16-a135-46a487714c2c org=49c5cfdd-4368-4df4-bf69-9261d40a63ad org_name='Posture Org' name='agent-04be8f43' cat=NATIVE prov=ACT_NATIVE cs=DISCOVERED lc=ACTIVE owner=None/None dsr=None extref=None keyhash='x' created=2026-09-16 03:55:31.085923+05:00
+  id=ff3923df-d2b9-40f1-9fd3-b435417deac8 org=f0af319b-4bc0-4920-90d6-cd658d4b8386 org_name='Posture Org' name='agent-ff3923df' cat=NATIVE prov=ACT_NATIVE cs=DISCOVERED lc=ACTIVE owner=None/None dsr=None extref=None keyhash='x' created=2026-09-16 16:48:16.707898+05:00
+  id=ac20e946-cae3-4282-9c3e-4387ba3d7ae5 org=d2d71d7d-1ef3-40d8-a9ad-e0602660b31e org_name='Posture Org' name='agent-ac20e946' cat=NATIVE prov=ACT_NATIVE cs=DISCOVERED lc=ACTIVE owner=None/None dsr=None extref=None keyhash='x' created=2026-09-16 17:31:01.831495+05:00
+audit tables: ['audit_logs', 'authorization_audit']
+orgs of invalid rows: 16 distinct organizations, each with agents_in_org=1 and a single user post***@example.com
+invalid rows NOT matching fixture name pattern agent-<hex8>: 0
+fixture-shaped valid rows (name agent-<hex8>, api_key_hash='x', NATIVE, GOVERNED): 575
+count of api_key_hash='x' overall: 12704
+count NATIVE+DISCOVERED with api_key_hash='x': 16
+
+--- audit_link.py (same moment) ---
+audit_logs.entity_id type: uuid
+audit events referencing invalid ids: []
+audit events whose metadata mentions an invalid id: []
+audit event types on agent entities (sample): AGENT_ACTION_DECISION 5057, AGENT_CREATED 4305, API_KEY_ISSUED 1427, API_KEY_REVOKED 281, IDENTITY_IDENTITY_LIFECYCLE_CHANGED 258, AGENT_STATUS_CHANGED 250, AGENT_UPDATED 125, AGENT_DELETED 125
+created buckets (hour, count): 09-10 16h:2, 09-10 17h:2, 09-11 22h:1, 09-14 16h:1, 09-15 16h:1, 09-15 17h:2, 09-15 22h:1, 09-16 02h:2, 09-16 03h:2, 09-16 16h:1, 09-16 17h:1
+discovery tables: discovery_observations, discovery_sources, discovery_runs, discovery_findings; discovery_findings rows referencing invalid ids: 0
+Posture Org count: 354; agents in Posture Orgs by (cat, cs): EXTERNAL/DISCOVERED 32, NATIVE/DISCOVERED 16, NATIVE/GOVERNED 288, UNKNOWN/DISCOVERED 15, UNKNOWN/GOVERNED 15
+
+--- after the §8 baseline (00:46) ---
+NATIVE+non-GOVERNED: 17 — newest agent-452ea2da created 2026-09-17 00:31:20.608011+05:00 (inside the baseline window)
+total agents: 105330

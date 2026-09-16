@@ -1,0 +1,18 @@
+diff --git a/backend/tests/posture/test_security_posture.py b/backend/tests/posture/test_security_posture.py
+index f2cda16..612a693 100644
+--- a/backend/tests/posture/test_security_posture.py
++++ b/backend/tests/posture/test_security_posture.py
+@@ -279,7 +279,12 @@ def test_ac02_reuses_the_47_lifecycle_not_a_parallel_one() -> None:
+ def test_ac02_rules_are_deterministic(client: TestClient, admin: dict) -> None:
+     db = SessionLocal()
+     try:
+-        aid = _insert_agent(db, admin, owned=False, control_state="DISCOVERED")
++        # A discovered agent whose provenance this test never establishes:
++        # UNKNOWN is the truthful category (M5.1 "seen but not yet
++        # classified"), as at test_ac06 below. The helper's NATIVE default
++        # would assert an origin a DISCOVERED row cannot have (5.1 AC-09).
++        aid = _insert_agent(db, admin, owned=False, control_state="DISCOVERED",
++                            origin_category="UNKNOWN", origin_provider="UNKNOWN")
+     finally:
+         db.close()
+     a = _evaluate(client, admin, aid)

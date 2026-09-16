@@ -1,0 +1,32 @@
+PRE-FIX FAILURE TRACEBACK CAPTURE (bounded 30 attempts), commit 9667707, start 2026-09-17T01:05:57+05:00
+attempt 1 rc=0
+attempt 2 rc=1
+F                                                                        [100%]
+================================== FAILURES ===================================
+________ test_ac09_existing_agents_are_backfilled_native_and_governed _________
+
+client = <starlette.testclient.TestClient object at 0x00000258A8F5BE00>
+
+    def test_ac09_existing_agents_are_backfilled_native_and_governed(client: TestClient) -> None:
+        """Every pre-existing agent row is native + governed. The suite has
+        thousands of them from prior phases; sample the live table."""
+        db = SessionLocal()
+        try:
+            rows = db.query(Agent).limit(500).all()
+            assert rows, "expected pre-existing agent rows on the shared dev DB"
+            for a in rows:
+                assert a.control_state in ("DISCOVERED", "CLAIMED", "REGISTERED", "GOVERNED")
+                assert a.origin_category in ("NATIVE", "EXTERNAL", "UNKNOWN")
+                # Anything that isn't an M5.1-created external record is native+governed.
+                if a.origin_category == "NATIVE":
+>                   assert a.control_state == "GOVERNED"
+E                   AssertionError: assert 'DISCOVERED' == 'GOVERNED'
+E                     
+E                     - GOVERNED
+E                     + DISCOVERED
+
+tests\runtime\test_agent_asset_model.py:429: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/runtime/test_agent_asset_model.py::test_ac09_existing_agents_are_backfilled_native_and_governed
+1 failed in 18.84s
+end 2026-09-17T01:06:44+05:00

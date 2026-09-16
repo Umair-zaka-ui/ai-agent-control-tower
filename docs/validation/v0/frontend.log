@@ -1,0 +1,178 @@
+V0 FRONTEND start 2026-09-17T01:37:40+05:00 node v24.18.0 npm 11.16.0
+=== npm test (vitest run) ===
+
+> frontend@0.0.0 test
+> vitest run
+
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mC:/Users/PHS/Desktop/ai-agent-control-tower/frontend[39m
+
+[90mstderr[2m | src/authorization/middleware/tests/middleware.test.tsx[2m > [22m[2mAuthorizationErrorBoundary[2m > [22m[2mrenders the access-denied state for authorization errors
+[22m[39m{
+  code: [32m'ABAC_DENIED'[39m,
+  message: [32m'Access denied by policy.'[39m,
+  status: [33m403[39m
+}
+
+The above error occurred in the <Boom> component.
+
+React will try to recreate this component tree from scratch using the error boundary you provided, AuthorizationErrorBoundary.
+
+
+ [32m✓[39m src/authorization/middleware/tests/middleware.test.tsx [2m([22m[2m10 tests[22m[2m)[22m[33m 881[2mms[22m[39m
+   [33m[2m✓[22m[39m ObligationDialog[2m > [22mdisables submit until a justification is entered, then hands it back [33m380[2mms[22m[39m
+ [32m✓[39m src/modules/resources/tests/resources.test.tsx [2m([22m[2m7 tests[22m[2m)[22m[33m 2132[2mms[22m[39m
+   [33m[2m✓[22m[39m ResourcePermissionsPage[2m > [22mlists resources and registers a new one [33m404[2mms[22m[39m
+   [33m[2m✓[22m[39m ResourceACLPage[2m > [22madds an ACL entry for the selected resource [33m458[2mms[22m[39m
+   [33m[2m✓[22m[39m OwnershipTransferPage[2m > [22mshows the current owner and transfers ownership [33m332[2mms[22m[39m
+   [33m[2m✓[22m[39m AuthorizationInspectorPage[2m > [22msimulates a decision and renders the result panel [33m468[2mms[22m[39m
+ [32m✓[39m src/modules/abac/tests/abac.test.tsx [2m([22m[2m7 tests[22m[2m)[22m[33m 3248[2mms[22m[39m
+   [33m[2m✓[22m[39m CreateABACPolicyPage (visual builder §34)[2m > [22mbuilds a typed nested condition and shows a human-readable preview [33m1353[2mms[22m[39m
+   [33m[2m✓[22m[39m AttributeCatalogPage[2m > [22mlists the catalog and registers a custom attribute [33m754[2mms[22m[39m
+   [33m[2m✓[22m[39m PolicyExceptionsPage[2m > [22mgrants a time-boxed exception [33m471[2mms[22m[39m
+ [32m✓[39m src/modules/runtime/tests/AgentDetailPage.versioning.test.tsx [2m([22m[2m7 tests[22m[2m)[22m[33m 1827[2mms[22m[39m
+   [33m[2m✓[22m[39m AgentDetailPage — Versions (Phase 5.2 Part 1)[2m > [22mexpands the details panel and shows lineage, snapshot and status history [33m350[2mms[22m[39m
+   [33m[2m✓[22m[39m AgentDetailPage — Versions (Phase 5.2 Part 1)[2m > [22madds a release artifact and a release note from the details panel [33m522[2mms[22m[39m
+[90mstderr[2m | src/modules/runtime/registry/tests/registry.test.tsx[2m > [22m[2mRegistrationWizardPage (§22, §23)[2m > [22m[2mwalks the wizard to completion and registers the agent, clearing the draft
+[22m[39mNo routes matched location "/runtime/agents/agent-new" 
+
+ [32m✓[39m src/modules/identity/tests/InvitationsPanel.test.tsx [2m([22m[2m13 tests[22m[2m)[22m[33m 1376[2mms[22m[39m
+   [33m[2m✓[22m[39m InvitationsPanel — manage (§15)[2m > [22mcreates an invitation and clears the field [33m494[2mms[22m[39m
+   [33m[2m✓[22m[39m InvitationsPanel — manage (§15)[2m > [22mreports an existing user clearly instead of a generic failure [33m369[2mms[22m[39m
+ [32m✓[39m src/modules/security/tests/SecuritySessionsPage.test.tsx [2m([22m[2m15 tests[22m[2m)[22m[33m 2712[2mms[22m[39m
+   [33m[2m✓[22m[39m SecuritySessionsPage — self-service (SRS §19, §24)[2m > [22mconfirms before revoking another device, then calls the API [33m523[2mms[22m[39m
+   [33m[2m✓[22m[39m SecuritySessionsPage — admin panel (SRS §17, §32)[2m > [22mlets an admin pick a member and force-logout one of their sessions [33m345[2mms[22m[39m
+ [32m✓[39m src/modules/command/tests/command.test.tsx [2m([22m[2m24 tests[22m[2m)[22m[33m 2405[2mms[22m[39m
+   [33m[2m✓[22m[39m AC-06 guarded actions[2m > [22mconfirmation-gates containment and dispatches to the 5.6 endpoint [33m844[2mms[22m[39m
+   [33m[2m✓[22m[39m AC-06 guarded actions[2m > [22mconfirmation-gates suppression and calls the 5.5 endpoint [33m497[2mms[22m[39m
+ [32m✓[39m src/modules/runtime/registry/tests/registry.test.tsx [2m([22m[2m8 tests[22m[2m)[22m[33m 3973[2mms[22m[39m
+   [33m[2m✓[22m[39m RegistrationWizardPage (§22, §23)[2m > [22mautosaves the draft to localStorage and restores it after remount [33m428[2mms[22m[39m
+   [33m[2m✓[22m[39m RegistrationWizardPage (§22, §23)[2m > [22mwalks the wizard to completion and registers the agent, clearing the draft [33m2285[2mms[22m[39m
+   [33m[2m✓[22m[39m DuplicateReviewPage (§32, §33, §64)[2m > [22msubmits a review decision with a reason [33m617[2mms[22m[39m
+ [32m✓[39m src/modules/observability/tests/observability.test.tsx [2m([22m[2m32 tests[22m[2m)[22m[33m 3074[2mms[22m[39m
+   [33m[2m✓[22m[39m AC-01 — the nine views[2m > [22mRuntime Overview renders from GET /runtime/overview [33m328[2mms[22m[39m
+   [33m[2m✓[22m[39m AC-10 / AC-12 — SLO dashboard and guarded alert actions[2m > [22msuppress is confirmation-gated with a required reason [33m532[2mms[22m[39m
+   [33m[2m✓[22m[39m AC-11 / AC-12 — Telemetry Policy dangerous actions[2m > [22mraising capture to FULL_CONTENT is type-to-confirm and does not fire until confirmed [33m578[2mms[22m[39m
+ [32m✓[39m src/modules/runtime/tests/runtime.test.tsx [2m([22m[2m9 tests[22m[2m)[22m[33m 1240[2mms[22m[39m
+   [33m[2m✓[22m[39m ExecutionsPage (§26)[2m > [22mruns the selected agent with the given input payload [33m625[2mms[22m[39m
+ [32m✓[39m src/modules/security/tests/utils.test.ts [2m([22m[2m15 tests[22m[2m)[22m[90m 9[2mms[22m[39m
+ [32m✓[39m src/modules/authorization/tests/authorization.test.tsx [2m([22m[2m7 tests[22m[2m)[22m[33m 1678[2mms[22m[39m
+   [33m[2m✓[22m[39m RolesPage[2m > [22mcreates a role with selected permissions [33m449[2mms[22m[39m
+   [33m[2m✓[22m[39m RoleAssignmentsPage[2m > [22massigns a scoped role to a user [33m439[2mms[22m[39m
+ [32m✓[39m src/modules/identity/tests/passwordStrength.test.ts [2m([22m[2m22 tests[22m[2m)[22m[90m 8[2mms[22m[39m
+ [32m✓[39m src/modules/security/tests/SessionCard.test.tsx [2m([22m[2m10 tests[22m[2m)[22m[33m 400[2mms[22m[39m
+ [32m✓[39m src/modules/identity/tests/AcceptInvitationPage.test.tsx [2m([22m[2m19 tests[22m[2m)[22m[33m 7771[2mms[22m[39m
+   [33m[2m✓[22m[39m AcceptInvitationPage — what am I accepting? (SRS §17)[2m > [22msends the invitation token, never an email address, on submit [33m1042[2mms[22m[39m
+   [33m[2m✓[22m[39m AcceptInvitationPage — validation (§11, §17)[2m > [22mkeeps submit disabled until every requirement is met [33m878[2mms[22m[39m
+   [33m[2m✓[22m[39m AcceptInvitationPage — validation (§11, §17)[2m > [22mrefuses a weak password that clears the length floor [33m1051[2mms[22m[39m
+   [33m[2m✓[22m[39m AcceptInvitationPage — validation (§11, §17)[2m > [22mshows a mismatch error on the confirmation field [33m675[2mms[22m[39m
+   [33m[2m✓[22m[39m AcceptInvitationPage — validation (§11, §17)[2m > [22mrejects a password containing the invitee's own email local-part [33m320[2mms[22m[39m
+   [33m[2m✓[22m[39m AcceptInvitationPage — validation (§11, §17)[2m > [22msurfaces a server-side policy rejection instead of insisting the password is fine [33m1027[2mms[22m[39m
+   [33m[2m✓[22m[39m AcceptInvitationPage — accessibility (§17, §21)[2m > [22mmarks invalid fields with aria-invalid and links their error text [33m481[2mms[22m[39m
+   [33m[2m✓[22m[39m AcceptInvitationPage — accessibility (§17, §21)[2m > [22mexposes the strength meter as a labelled progressbar [33m353[2mms[22m[39m
+   [33m[2m✓[22m[39m AcceptInvitationPage — accessibility (§17, §21)[2m > [22mannounces the strength politely rather than stealing focus [33m442[2mms[22m[39m
+   [33m[2m✓[22m[39m AcceptInvitationPage — accessibility (§17, §21)[2m > [22mannounces server errors as an alert [33m1103[2mms[22m[39m
+ [32m✓[39m src/modules/operations/tests/operations.test.tsx [2m([22m[2m30 tests[22m[2m)[22m[33m 5507[2mms[22m[39m
+   [33m[2m✓[22m[39m AC-09 — dangerous actions are confirmation-gated[2m > [22mkeeps the confirm button disabled until the environment name is typed [33m820[2mms[22m[39m
+   [33m[2m✓[22m[39m AC-12 — a conflict is explained, not retried[2m > [22msurfaces ROLLOUT_CONFLICT without re-dispatching the stale intent [33m830[2mms[22m[39m
+   [33m[2m✓[22m[39m AC-12 — a conflict is explained, not retried[2m > [22mpasses a safety refusal through verbatim so the operator sees which rule fired [33m745[2mms[22m[39m
+   [33m[2m✓[22m[39m AC-04..06 — traffic, gates and the wizards[2m > [22mpromotes only along a configured path, with production type-to-confirm [33m359[2mms[22m[39m
+ [32m✓[39m src/modules/identity/tests/VerifyEmailPage.test.tsx [2m([22m[2m7 tests[22m[2m)[22m[33m 1171[2mms[22m[39m
+   [33m[2m✓[22m[39m VerifyEmailPage (§12, §16)[2m > [22moffers a resend on an expired link, and says how long links last [33m394[2mms[22m[39m
+   [33m[2m✓[22m[39m VerifyEmailPage (§12, §16)[2m > [22mgives the same non-committal acknowledgement after a resend (§14) [33m415[2mms[22m[39m
+ [32m✓[39m src/modules/security/tests/eventLabels.test.ts [2m([22m[2m10 tests[22m[2m)[22m[90m 6[2mms[22m[39m
+ [32m✓[39m src/modules/hierarchy/tests/hierarchy.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[33m 1214[2mms[22m[39m
+   [33m[2m✓[22m[39m HierarchyExplorerPage[2m > [22mrenders the org tree and filters by search [33m463[2mms[22m[39m
+   [33m[2m✓[22m[39m BusinessUnitsPage[2m > [22mlists and creates a business unit [33m334[2mms[22m[39m
+   [33m[2m✓[22m[39m DepartmentsPage[2m > [22mcreates a department under a business unit [33m416[2mms[22m[39m
+ [32m✓[39m src/modules/identity/tests/recovery.test.tsx [2m([22m[2m8 tests[22m[2m)[22m[33m 3609[2mms[22m[39m
+   [33m[2m✓[22m[39m ForgotPasswordPage[2m > [22mshows the same confirmation whether or not the account exists [33m793[2mms[22m[39m
+   [33m[2m✓[22m[39m ForgotPasswordPage[2m > [22mstill shows the neutral confirmation when the request errors (no oracle) [33m421[2mms[22m[39m
+   [33m[2m✓[22m[39m ResetPasswordPage[2m > [22mkeeps submit disabled until the policy is met and passwords match [33m687[2mms[22m[39m
+   [33m[2m✓[22m[39m ResetPasswordPage[2m > [22msubmits the token from the URL and navigates to success [33m749[2mms[22m[39m
+   [33m[2m✓[22m[39m ResetPasswordPage[2m > [22mshows a dead-link message and a way to request a new link when the token is expired [33m886[2mms[22m[39m
+ [32m✓[39m src/services/tests/apiClient.test.ts [2m([22m[2m6 tests[22m[2m)[22m[90m 4[2mms[22m[39m
+ [32m✓[39m src/modules/protection/tests/protection.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[33m 2294[2mms[22m[39m
+   [33m[2m✓[22m[39m AccountLocksPage[2m > [22mlists locked accounts and unlocks one with a reason [33m677[2mms[22m[39m
+   [33m[2m✓[22m[39m BlockedIpsPage[2m > [22mblocks an IP [33m404[2mms[22m[39m
+   [33m[2m✓[22m[39m IdentityProtectionRulesPage[2m > [22mcreates a rule with JSON conditions [33m522[2mms[22m[39m
+   [33m[2m✓[22m[39m IdentityProtectionRulesPage[2m > [22mdisables create when the conditions JSON is invalid [33m592[2mms[22m[39m
+ [32m✓[39m src/modules/identity/tests/SecurityPasswordDashboard.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[33m 419[2mms[22m[39m
+   [33m[2m✓[22m[39m SecurityPasswordDashboard[2m > [22mreveals the temporary password exactly once after a reset [33m304[2mms[22m[39m
+ [32m✓[39m src/authorization/tests/permissions.test.tsx [2m([22m[2m8 tests[22m[2m)[22m[90m 236[2mms[22m[39m
+ [32m✓[39m src/modules/runtime/tests/utils.test.ts [2m([22m[2m6 tests[22m[2m)[22m[90m 25[2mms[22m[39m
+ [32m✓[39m src/modules/agents/tests/agentService.test.ts [2m([22m[2m6 tests[22m[2m)[22m[90m 7[2mms[22m[39m
+(node:37344) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ [32m✓[39m src/modules/approvals/tests/ApprovalTable.test.tsx [2m([22m[2m4 tests[22m[2m)[22m[33m 984[2mms[22m[39m
+   [33m[2m✓[22m[39m ApprovalTable[2m > [22mshows reviewer actions (Approve/Reject) for reviewers [33m565[2mms[22m[39m
+ [32m✓[39m src/modules/analytics/tests/utils.test.ts [2m([22m[2m5 tests[22m[2m)[22m[90m 24[2mms[22m[39m
+ [32m✓[39m src/modules/analytics/tests/panels.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[90m 128[2mms[22m[39m
+ [32m✓[39m src/services/tests/envelope.test.ts [2m([22m[2m6 tests[22m[2m)[22m[90m 3[2mms[22m[39m
+ [32m✓[39m src/modules/agents/tests/AgentTable.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[33m 351[2mms[22m[39m
+ [32m✓[39m src/modules/approvals/tests/formatters.test.ts [2m([22m[2m5 tests[22m[2m)[22m[90m 5[2mms[22m[39m
+ [32m✓[39m src/modules/policies/tests/PolicyTable.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[33m 612[2mms[22m[39m
+   [33m[2m✓[22m[39m PolicyTable[2m > [22mshows manage actions (Edit/Delete) for managers [33m368[2mms[22m[39m
+ [32m✓[39m src/modules/analytics/tests/KpiGrid.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[90m 158[2mms[22m[39m
+ [32m✓[39m src/services/dashboardService.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 5[2mms[22m[39m
+ [32m✓[39m src/modules/audit/tests/AuditTable.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[33m 397[2mms[22m[39m
+ [32m✓[39m src/modules/audit/tests/utils.test.ts [2m([22m[2m5 tests[22m[2m)[22m[90m 24[2mms[22m[39m
+ [32m✓[39m src/modules/identity/tests/ChangePasswordForm.test.tsx [2m([22m[2m4 tests[22m[2m)[22m[33m 5545[2mms[22m[39m
+   [33m[2m✓[22m[39m ChangePasswordForm[2m > [22mkeeps submit disabled until the policy is met and passwords match [33m1833[2mms[22m[39m
+   [33m[2m✓[22m[39m ChangePasswordForm[2m > [22msubmits and calls onSuccess [33m1239[2mms[22m[39m
+   [33m[2m✓[22m[39m ChangePasswordForm[2m > [22mrenders a wrong-current-password error from the server [33m1227[2mms[22m[39m
+   [33m[2m✓[22m[39m ChangePasswordForm[2m > [22mrefuses a new password equal to the current one [33m1245[2mms[22m[39m
+ [32m✓[39m src/components/dashboard/WidgetCard.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[90m 279[2mms[22m[39m
+ [32m✓[39m src/modules/audit/tests/ExportDialog.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[33m 670[2mms[22m[39m
+   [33m[2m✓[22m[39m ExportDialog[2m > [22mexports as CSV by default and reports the matching count [33m379[2mms[22m[39m
+ [32m✓[39m src/modules/policies/tests/policyFormatters.test.ts [2m([22m[2m6 tests[22m[2m)[22m[90m 4[2mms[22m[39m
+ [32m✓[39m src/modules/admin/tests/admin.test.tsx [2m([22m[2m8 tests[22m[2m)[22m[33m 1614[2mms[22m[39m
+   [33m[2m✓[22m[39m DecisionExplorerPage (§13)[2m > [22mapplies filters through the service [33m465[2mms[22m[39m
+   [33m[2m✓[22m[39m AccessReviewsPage (§14)[2m > [22mcreates a campaign [33m332[2mms[22m[39m
+ [32m✓[39m src/modules/identity/tests/identity.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[90m 44[2mms[22m[39m
+ [32m✓[39m src/components/dashboard/KpiCard.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[90m 298[2mms[22m[39m
+ [32m✓[39m src/modules/identity/tests/linkContract.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 3[2mms[22m[39m
+ [32m✓[39m src/modules/approvals/tests/RejectDialog.test.tsx [2m([22m[2m1 test[22m[2m)[22m[33m 1202[2mms[22m[39m
+   [33m[2m✓[22m[39m RejectDialog[2m > [22mrequires a reason of at least the minimum length before confirming [33m1201[2mms[22m[39m
+ [32m✓[39m src/modules/audit/tests/AuditTimeline.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[90m 181[2mms[22m[39m
+ [32m✓[39m src/modules/agents/tests/useDebouncedValue.test.ts [2m([22m[2m1 test[22m[2m)[22m[90m 16[2mms[22m[39m
+ [32m✓[39m src/modules/policies/tests/PolicyBuilder.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[33m 1326[2mms[22m[39m
+   [33m[2m✓[22m[39m PolicyBuilder[2m > [22mblocks step 1 with validation errors when required fields are empty [33m374[2mms[22m[39m
+   [33m[2m✓[22m[39m PolicyBuilder[2m > [22madvances past step 1 once name and description are provided [33m950[2mms[22m[39m
+ [32m✓[39m src/modules/policies/tests/DeleteConfirmModal.test.tsx [2m([22m[2m1 test[22m[2m)[22m[33m 418[2mms[22m[39m
+   [33m[2m✓[22m[39m DeleteConfirmModal[2m > [22mkeeps the delete button disabled until DELETE is typed [33m416[2mms[22m[39m
+ [32m✓[39m src/utils/risk.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 2[2mms[22m[39m
+ [32m✓[39m src/test/build-integrity.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 16719[2mms[22m[39m
+   [33m[2m✓[22m[39m build integrity[2m > [22mtypechecks the whole frontend — vitest does not, and a broken build once hid behind it [33m16718[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m52 passed[39m[22m[90m (52)[39m
+[2m      Tests [22m [1m[32m384 passed[39m[22m[90m (384)[39m
+[2m   Start at [22m 01:37:42
+[2m   Duration [22m 54.53s[2m (transform 7.39s, setup 44.77s, collect 61.95s, tests 78.24s, environment 212.20s, prepare 10.23s)[22m
+
+vitest exit: 0
+=== npx tsc -b --noEmit ===
+tsc exit: 0
+=== npm run build ===
+
+> frontend@0.0.0 build
+> tsc -b && vite build
+
+[36mvite v8.1.0 [32mbuilding client environment for production...[36m[39m
+[2Ktransforming...✓ 1313 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                                 0.87 kB │ gzip:   0.46 kB
+dist/assets/index-BSmFJRuJ.css                 38.56 kB │ gzip:   7.74 kB
+dist/assets/AgentActivityChart-TIMg9eCY.js      1.23 kB │ gzip:   0.71 kB
+dist/assets/RiskTrendChart-C6yL0X5G.js          1.63 kB │ gzip:   0.89 kB
+dist/assets/index-1bsIuPNt.js               1,826.56 kB │ gzip: 467.61 kB
+
+[32m✓ built in 2.54s[39m
+[33m[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.[39m
+build exit: 0
+end 2026-09-17T01:38:56+05:00

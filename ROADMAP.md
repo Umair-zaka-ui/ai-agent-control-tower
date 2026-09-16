@@ -3472,6 +3472,8 @@ was designed to make possible without architectural rework. No new milestone
 begun. See [`docs/milestone-5/proof.md`](docs/milestone-5/proof.md) and
 [`docs/milestone-5/summary.md`](docs/milestone-5/summary.md).
 
+**Post-M5 Validation Gate — V0 (Baseline Integrity, Fixture Cleanup & Reproducibility): COMPLETE 2026-09-17, verdict CONDITIONAL — REVIEW REQUIRED.** Live truth re-derived (head `0061`, 152 tables, 676 routes, 2,641 collected). Pre-fix frozen baseline **2,640 passed / 0 failed / 1 deselected**; the posture-seed flake characterized at **3/50 (6%)** on the frozen state and its root cause independently verified (all 17 invalid rows fixture residue; no production path can create `NATIVE`+`DISCOVERED`). Fixture corrected to the truthful `UNKNOWN`, residue deleted, **50 consecutive** posture+guard runs with **0 failures**. Full post-fix backend **2,639 / 1 / 1** — the one failure a *different*, newly found ~5% test-naming flake in `test_idempotency_is_scoped_per_agent_not_shared` (proposal recorded, not applied). Frontend 384, `tsc -b` clean, build green, build guard proven live. Awaiting review of: the W-7 flake fix, the W-2 native-agent demotion gap, the deterministic-guard proposal, the minimal-CI proposal. **V1 not begun.** See `docs/validation/v0/`.
+
 
 ## Future (Phase 3+)
 

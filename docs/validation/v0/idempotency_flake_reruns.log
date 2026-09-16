@@ -1,0 +1,16 @@
+IDEMPOTENCY FLAKE RE-RUNS start 2026-09-17T01:37:30+05:00
+--- current tree (fixture change present) x5 ---
+run 1: 1 passed, 30 warnings in 22.78s
+run 2: 1 passed, 30 warnings in 31.03s
+run 3: 1 passed, 30 warnings in 22.94s
+run 4: 1 passed, 30 warnings in 21.90s
+run 5: 1 passed, 30 warnings in 21.59s
+--- stashed, unmodified tree x5 ---
+stashed: 0 dirty
+run 1: 1 passed, 30 warnings in 22.54s
+run 2: 1 passed, 30 warnings in 21.90s
+run 3: 1 passed, 30 warnings in 20.67s
+run 4: 1 passed, 30 warnings in 22.12s
+run 5: 1 passed, 30 warnings in 22.21s
+restored:  M backend/tests/posture/test_security_posture.py
+end 2026-09-17T01:42:07+05:00

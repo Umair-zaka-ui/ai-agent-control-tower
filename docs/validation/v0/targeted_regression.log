@@ -1,0 +1,20 @@
+V0 TARGETED REGRESSION start 2026-09-17T01:07:30+05:00 commit 9667707 branch validation/v0-baseline
+ M backend/tests/posture/test_security_posture.py
+........................................................................ [ 54%]
+.............................................................            [100%]
+============================== warnings summary ===============================
+tests/posture/test_security_posture.py::test_ac02_rules_are_deterministic
+  C:\Users\PHS\Desktop\ai-agent-control-tower\backend\.venv\Lib\site-packages\passlib\handlers\argon2.py:716: DeprecationWarning: Accessing argon2.__version__ is deprecated and will be removed in a future release. Use importlib.metadata directly to query for structlog's packaging metadata.
+    _argon2_cffi.__version__, max_version)
+
+tests/posture/test_security_posture.py: 114 warnings
+tests/runtime/test_agent_asset_model.py: 100 warnings
+tests/discovery/test_discovery_framework.py: 94 warnings
+tests/graph/test_control_graph.py: 457 warnings
+  C:\Users\PHS\Desktop\ai-agent-control-tower\backend\.venv\Lib\site-packages\jose\jwt.py:311: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = timegm(datetime.utcnow().utctimetuple())
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+133 passed, 766 warnings in 139.21s (0:02:19)
+exit: 0
+end 2026-09-17T01:09:53+05:00

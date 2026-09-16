@@ -4,7 +4,21 @@ All notable changes to the AI Agent Control Tower are documented here. The forma
 based on [Keep a Changelog](https://keepachangelog.com/); the project is pre-1.0 and
 versions track the roadmap phases rather than semver guarantees.
 
-## [Unreleased] — Phase 5.10 / M5.10 · Milestone Hardening + Enterprise End-to-End Proof — MILESTONE 5 COMPLETE
+
+
+## [Unreleased] — Validation Gate V0 · Baseline Integrity, Fixture Cleanup & Reproducibility
+
+**A verification phase, not a feature phase.** No product code, no migration, no schema change. Branch `validation/v0-baseline`; evidence in `docs/validation/v0/`.
+
+- **Live truth re-derived, not read:** head `0061_assurance_evidence`, 152 live tables / 151 metadata, 676 routes, 2,641 collected; README's Phase-5.2-era summary figures identified as stale (README defers to REPO_STATE; left for a documentation pass).
+- **Pre-fix baseline on a frozen tree and frozen database:** 2,640 passed, 0 failed, 1 deselected (26:52). The known posture-seed failure did not occur, so it was measured instead of assumed: 3 failures in 50 consecutive runs of the 5.1 guard on the same frozen state, exact traceback preserved. The baseline run itself added the 17th invalid row.
+- **The 5.5 fixture defect verified with evidence before touching it:** all 17 `NATIVE`+`DISCOVERED` rows classified fixture residue by name formula, org shape, timestamps, audit absence and a negative control; every production writer traced — none can produce the combination. Corrected `tests/posture/test_security_posture.py:282` to `origin_category="UNKNOWN", origin_provider="UNKNOWN"` (the truthful value; the test establishes no provenance). 17 residue rows deleted under a full-signature guard; 0 remain.
+- **Post-fix:** targeted regression 133 passed; full backend 2,639 passed / 1 failed / 1 deselected (24:42) — the failure is a **second, newly discovered** ~5.4%-per-run flake in `test_idempotency_is_scoped_per_agent_not_shared` (5.1 duplicate detection vs the helper's `Agent <6 hex>` naming; failing pair scored 0.875 ≥ 0.85). Not re-rolled; not fixed (a proposal is recorded — V0 authorizes one fixture change). Repeatability: 50 consecutive posture+guard runs, 0 failures.
+- **Frontend:** 384 passed, `tsc -b` clean, build green; the 5.9 build-integrity guard proven to fail when the fix is reverted.
+- **Findings for review:** W-2 — the generic control-state transition does not consult `origin_category`, so a privileged actor could move a NATIVE agent out of GOVERNED (no such row exists; not fixed in V0). Proposals only: deterministic full-population invariant guard (and a later DB CHECK), minimal GitHub Actions CI with a Postgres 17 service container.
+- **Verdict: V0 CONDITIONAL — REVIEW REQUIRED.** The M5 close record (2,639 / 1 / 1) is preserved unchanged.
+
+## [Phase 5.10 / M5.10] — Milestone Hardening + Enterprise End-to-End Proof — MILESTONE 5 COMPLETE
 
 **A proof phase, not a feature phase.** No new capability. One reported bug fix. The Milestone 5 thesis — *govern the AI you didn't build* — demonstrated across a real process boundary, and all eighteen §44 gates closed by a named proof.
 

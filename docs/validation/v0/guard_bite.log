@@ -1,0 +1,21 @@
+GUARD-BITE CHECK start 2026-09-17T01:42:26+05:00
+19:export type { TraceContentResponse } from './observabilityService'
+after revert, grep:
+0
+warning: in the working copy of 'frontend/src/services/index.ts', LF will be replaced by CRLF the next time Git touches it
+ backend/tests/posture/test_security_posture.py | 7 ++++++-
+ frontend/src/services/index.ts                 | 1 -
+ 2 files changed, 6 insertions(+), 2 deletions(-)
+[31m   [31m×[31m build integrity[2m > [22mtypechecks the whole frontend — vitest does not, and a broken build once hid behind it[33m 7667[2mms[22m[31m[39m
+src/modules/observability/TraceDetailPage.tsx(14,37): error TS2305: Module '"@/services"' has no exported member 'TraceContentResponse'.
+src/modules/observability/TraceDetailPage.tsx(204,25): error TS7006: Parameter 'view' implicitly has an 'any' type.
+src/modules/observability/TraceDetailPage.tsx(232,36): error TS7006: Parameter 'item' implicitly has an 'any' type.[39m
+[31m⎯⎯⎯⎯⎯⎯⎯[1m[7m Failed Tests 1 [27m[22m⎯⎯⎯⎯⎯⎯⎯[39m
+[31m[1m[7m FAIL [27m[22m[39m src/test/build-integrity.test.ts[2m > [22mbuild integrity[2m > [22mtypechecks the whole frontend — vitest does not, and a broken build once hid behind it
+src/modules/observability/TraceDetailPage.tsx(14,37): error TS2305: Module '"@/services"' has no exported member 'TraceContentResponse'.
+src/modules/observability/TraceDetailPage.tsx(204,25): error TS7006: Parameter 'view' implicitly has an 'any' type.
+vitest exit (expected non-zero): 1
+restored:
+ M backend/tests/posture/test_security_posture.py
+1
+end 2026-09-17T01:42:37+05:00
