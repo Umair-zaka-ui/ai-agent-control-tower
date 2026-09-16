@@ -13,7 +13,7 @@
 > | **Milestone 4 (ACT-SRS-M4)** | `Phase 4.1 – 4.10`, requirement ids `M4-4.1-FR-xxx` | Runtime Governance & Observability | Telemetry, tracing, governance engine, cost, SLOs, privacy, observability center | **Complete** |
 > | **Phase M4.11** | `M4.11-FR-xxx` | Production Integrity Closure | Key-material recovery & fail-loud integrity — the M5 prerequisite | **Complete** |
 > | **Phase M4.11a** | `M4.11a-FR-xxx` | Install-Mode Classification Hardening | The durable bootstrap marker + five-state key taxonomy — corrects M4.11's absence-inference | **Complete** |
-> | **Milestone 5 (ACT-SRS-M5)** | `M5.x-FR-xxx` / `ACT-*` | Universal Agent Control & Security Fabric | One canonical registry describing native + external + discovered agents; provenance; control state; discovery; graph; MCP; posture; threat/containment; external gateway; command center | **In progress — 5.1–5.9 complete** |
+> | **Milestone 5 (ACT-SRS-M5)** | `M5.x-FR-xxx` / `ACT-*` | Universal Agent Control & Security Fabric | One canonical registry describing native + external + discovered agents; provenance; control state; discovery; graph; MCP; posture; threat/containment; external gateway; command center | **✅ COMPLETE (2026-09-16) — 5.1–5.10 shipped; §44 gates A–R all closed by a named proof** |
 >
 > **How to tell them apart at a glance.** The historical family always appears
 > under a `## Phase 4 —` or `## Phase 4.3 —` heading and is written as
@@ -3403,6 +3403,74 @@ clean; the true baseline was 2,587/0.
 
 See [`docs/assurance/overview.md`](docs/assurance/overview.md) and
 [ADR-0022](docs/architecture/adr/0022-assurance-evidence-not-verdict.md).
+
+
+### Phase 5.10 / M5.10 — Milestone Hardening + Enterprise End-to-End Proof ✅ (2026-09-16)
+
+**Milestone 5 is COMPLETE.** A proof phase, not a feature phase: no new
+capability, one reported bug fix, and the milestone gate demonstrated across a
+**real process boundary**.
+
+- **The E2E proof crosses the OS process boundary twice, in both directions.**
+  Inbound: ACT discovers an agent it did not build through a real HTTP registry
+  on a real socket, holding no DB lock across the fetch. Outbound: the agent
+  calls ACT's gateway from a **separate OS process** over a **real uvicorn
+  socket** — its own AST asserted to import nothing from `app`. Fourteen steps,
+  each a real cause producing a real effect through a real authority: discovery
+  → reconciliation (0 duplicates) → truthful `DISCOVERED` → shadow with
+  conditions → blast-radius to payroll via an unapproved MCP → claim → governance
+  enrolment at `GATEWAY_ENFORCED` (labelled "authorize boundary calls", never
+  "govern") → allowed call dispatched / forbidden call denied → threat → truthful
+  containment → authority chain → assurance → command center → full tenant-
+  isolated audit.
+- **The assertion that matters most: the kill is REFUSED.** ACT does not run
+  the external agent, so 5.6 refuses to fake a suspend it cannot perform. The
+  proof asserts that refusal, then asserts the containment ACT *genuinely* holds
+  — grant revocation — takes effect by re-running the external process and
+  watching the call refused with nothing reaching the capability. A draft that
+  asserted a successful `SUSPEND_AGENT` would have passed only if the platform
+  lied.
+- **§44 gates A–R: all eighteen closed by a named proof.** 5.10 owns N
+  (adversarial per-hop tenant isolation), O (measured scale), Q (full
+  regression), R (the cross-process E2E); the rest compose their owning phase's
+  proofs rather than duplicating them. The SRS §44 consolidated table is not in
+  the repo — the mapping is reconstructed from per-phase gate references and
+  said so, the same gap 4.10 reported for §41.
+- **Scale, measured: `agents-reaching` in 98.9 ms / 119.9 ms** over 4,400
+  edges in one busy tenant (4,000 real agent rows). The relational recursive
+  CTE meets the target — **no projection, no graph database** (ADR-0017), and
+  the proof asserts no graph-DB dependency has appeared.
+- **One real defect found and fixed (5.2), never a weakened proof.** Two
+  overlapping sweeps of one source: the loser's `UPDATE … WHERE row_version = N`
+  matched zero rows and SQLAlchemy raised `StaleDataError` — the optimistic lock
+  working, which is why **no duplicate ever resulted**. But `app/models/agent.py`
+  states that exception is "caught at the service layer"; the registry service
+  does, `DiscoveryRunService.run_source` did not, so the loser escaped as an
+  unhandled 500 with its run row dangling at `STARTED`. Fixed: the run finishes
+  as a truthful `FAILED` record naming `AGENT_CONCURRENT_MODIFICATION` — this
+  service's own convention for every failure, because discovery is the fail-open
+  plane and a sweep must never surface a 5xx to its scheduler. Proven
+  deterministically by raising the real exception from the collaborator
+  (`test_ac13`); the race proof additionally rejects any raised outcome. The
+  full 5.2 suite passes unchanged with the fix.
+- **A fixture lesson kept, not hidden.** A first scale draft inserted edges from
+  phantom agent ids and the traversal returned nothing — the graph's per-hop
+  existence guard working (Gate N). The fixture was corrected; the guard was not.
+- **Failure semantics proven together:** discovery fails open (a source outage
+  never deletes estate), assurance fails to `INSUFFICIENT_EVIDENCE`, containment
+  fails closed and loud (`REFUSED` with a reason, never a silent pass).
+
+No migration; head unchanged at `0061_assurance_evidence`; **152 tables**;
+routes unchanged at **676**. **17 new proofs**
+(`backend/tests/milestone/test_milestone_5_proof.py`). One product file changed
+(`app/discovery/service.py`, the reported bug fix). Backend **2,639 passed**, 1 failed, 1 deselected — **2,640 collected** (2,623 + 17). The one failure is the known pre-existing posture-seed flake (`test_ac09_existing_agents_are_backfilled_native_and_governed`), which failed this phase's clean-tree baseline, the final run, **and a standalone re-run afterwards** — so it is reported as a live flake, not as "passes standalone". Query-verified root cause: 16 `agents` rows (of ~100k) are `origin_category='NATIVE'` yet `control_state='DISCOVERED'`, every one named `agent-<hex8>` by `tests/posture/test_security_posture.py::_insert_agent`, whose line-282 call passes `control_state="DISCOVERED"` on the helper's default `origin_category="NATIVE"` — an internally inconsistent fixture (a NATIVE agent cannot be DISCOVERED). Two of the 16 were created at 16:48 and 17:31, exactly this phase's two full runs; **none by 5.10** (its inserts take invariant-satisfying defaults, and its hostile-source proof asserts the created row is *not* NATIVE). 5.1's `test_ac09` samples `limit(500)` with no `ORDER BY`, so each full run raises the hit probability (~8% per attempt now). Left untouched per verify-and-leave; the recommended fix belongs to 5.5's fixture (pass `origin_category="EXTERNAL"` at line 282), not to 5.1's guard, run isolated with no mid-run tree edits.
+Frontend **384 passed**, `npm run build` green. 
+
+**Next:** the post-M5 **Enterprise Validation Lab & Red-Team Gate** — a
+release-candidate validation against real infrastructure, which this milestone
+was designed to make possible without architectural rework. No new milestone
+begun. See [`docs/milestone-5/proof.md`](docs/milestone-5/proof.md) and
+[`docs/milestone-5/summary.md`](docs/milestone-5/summary.md).
 
 
 ## Future (Phase 3+)
