@@ -33,6 +33,7 @@ import uuid
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.exc import StaleDataError
 
 from app.authorization.enums import AuthorizationAuditEvent
 from app.discovery.adapters import registry as adapter_registry
@@ -241,15 +242,42 @@ class DiscoveryRunService:
         persisted = self._persist_observations(run, normalized)
         run.observations_count = len(persisted)
 
-        recon = ReconciliationService(self.db).reconcile(actor, run, source, persisted)
-        run.agents_created = recon["created"]
-        run.agents_linked = recon["linked"]
-        run.findings_created = recon["flagged"]
+        try:
+            recon = ReconciliationService(self.db).reconcile(actor, run, source, persisted)
+            run.agents_created = recon["created"]
+            run.agents_linked = recon["linked"]
+            run.findings_created = recon["flagged"]
 
-        stale = ReconciliationService(self.db).check_staleness(
-            actor, source, observed_external_ids={o.external_identifier for o in persisted})
-        run.findings_created += stale["raised"]
-        self.db.commit()
+            stale = ReconciliationService(self.db).check_staleness(
+                actor, source, observed_external_ids={o.external_identifier for o in persisted})
+            run.findings_created += stale["raised"]
+            self.db.commit()
+        except StaleDataError:
+            # Phase 5.10 bug fix. Two sweeps of the same source can overlap (a
+            # manual trigger during a scheduled one). Both load an agent row
+            # at row_version N; the first commits N -> N+1; the loser's UPDATE
+            # then matches zero rows and SQLAlchemy raises ``StaleDataError`` -
+            # the optimistic lock doing exactly its job, which is why no
+            # duplicate can result. ``app.models.agent`` states this is caught
+            # at the service layer; the registry service does, this one did
+            # not, so the loser escaped as an unhandled error.
+            #
+            # It is finished as a FAILED run rather than raised, following this
+            # service's own convention for every other failure: discovery is the
+            # fail-open plane, a sweep must never surface a 5xx to the scheduler
+            # that drove it, and the run row is the durable, audited record of
+            # what happened. The observations WERE persisted (their own commit
+            # above), nothing was duplicated, and the winning sweep's result
+            # stands - the recorded reason says so.
+            self.db.rollback()
+            run.observations_count = len(persisted)
+            return self._finish(
+                actor, run, source, status="FAILED",
+                error=("AGENT_CONCURRENT_MODIFICATION: a concurrent sweep reconciled this "
+                       "source's agents first. Observations were recorded, nothing was "
+                       "duplicated, and the other sweep's result stands; re-run to "
+                       "reconcile against the current state."),
+            )
 
         final_status = "SUCCEEDED"
         if fetch_result.degraded:

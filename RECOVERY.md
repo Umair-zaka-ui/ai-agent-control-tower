@@ -1,6 +1,32 @@
 # Backup and system-migration guide
 
-**Last verified 2026-09-16** after Phase 5.9 / M5.9 (Assurance, Evidence &
+**Last verified 2026-09-16** after Phase 5.10 / M5.10 (Milestone Hardening +
+Enterprise End-to-End Proof — **Milestone 5 COMPLETE**). **No migration, no new
+table, no new column, no new backup or restore step.** A proof phase: the only
+product change is a reported bug fix in `app/discovery/service.py` (a losing
+concurrent sweep now finishes its run as a truthful `FAILED` record instead of
+escaping as an unhandled error and leaving the run dangling at `STARTED`) —
+which if anything *improves* recovery hygiene, since no `discovery_runs` row is
+left in a non-terminal state by that path.
+
+**What 5.10 verified about recovery, at milestone level.** M4.11 key continuity
+is intact — its 14 existing proofs stand, and the milestone proof adds that an
+external-grant secret is stored only as Fernet ciphertext, decrypts under the
+live key, and that the durable M5 state a restore must bring back (inventory,
+ownership, `control_state`, enforcement mode, edges, findings, grants,
+evaluations) is **real rows, not cache**: re-reading in a fresh session returns
+the same canonical truth. The two proof harnesses (a real registry on a real
+socket; a real external agent in its own process) leave no durable state of
+their own — they are fixtures, torn down by the test.
+
+The M5 restore guidance accumulated across 5.1–5.9 in this document is complete
+and unchanged: restore key material first (M4.11), then re-check
+`external_capability_grants` for post-snapshot revocations (5.7), and treat
+`assurance_evaluations` exceptions and `assurance_evidence_bundles` as the two
+non-recomputable M5 artefacts (5.9). Migration head is unchanged at
+**`0061_assurance_evidence`** (**152 tables**).
+
+**Previously verified 2026-09-16** after Phase 5.9 / M5.9 (Assurance, Evidence &
 Compliance). **Two new tables** (migration `0061_assurance_evidence`, additive,
 reversible, downgrade-tested — **152 tables**): `assurance_evaluations` and
 `assurance_evidence_bundles`.
