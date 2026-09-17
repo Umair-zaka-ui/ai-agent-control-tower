@@ -1,0 +1,45 @@
+V0.1 NEGATIVE CONTROLS + W-7 REPEAT start 2026-09-17T18:22:10+05:00 commit ad06bcf
+ M backend/tests/authorization/test_runtime.py
+ M backend/tests/runtime/test_agent_asset_model.py
+=== 1. W-7 negative control (broken scoping must FAIL the corrected test; real scoping must PASS) ===
+2 passed, 59 warnings in 6.58s
+=== 2. guard negative control (planted row must fail the deterministic guard) ===
+WITH one planted violating row: rc=1 (expected 1) guard names the row=True :: 1 failed in 20.47s
+planted row deleted: 1
+AFTER deletion: rc=0 (expected 0) :: 1 passed in 20.08s
+invariant violations now: 0
+=== 3. corrected idempotency test x30 ===
+run 1 rc=0 dur=26s
+run 2 rc=0 dur=25s
+run 3 rc=0 dur=25s
+run 4 rc=0 dur=24s
+run 5 rc=0 dur=26s
+run 6 rc=0 dur=24s
+run 7 rc=0 dur=25s
+run 8 rc=0 dur=24s
+run 9 rc=0 dur=24s
+run 10 rc=0 dur=24s
+run 11 rc=0 dur=24s
+run 12 rc=0 dur=25s
+run 13 rc=0 dur=24s
+run 14 rc=0 dur=25s
+run 15 rc=0 dur=24s
+run 16 rc=0 dur=25s
+run 17 rc=0 dur=25s
+run 18 rc=0 dur=27s
+run 19 rc=0 dur=28s
+run 20 rc=0 dur=28s
+run 21 rc=0 dur=28s
+run 22 rc=0 dur=28s
+run 23 rc=0 dur=24s
+run 24 rc=0 dur=26s
+run 25 rc=0 dur=24s
+run 26 rc=0 dur=24s
+run 27 rc=0 dur=25s
+run 28 rc=0 dur=26s
+run 29 rc=0 dur=25s
+run 30 rc=0 dur=25s
+w7 repeat fails=0/30
+=== 4. whole tests/authorization/test_runtime.py once ===
+49 passed, 687 warnings in 58.53s
+end 2026-09-17T18:36:51+05:00

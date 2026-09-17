@@ -415,19 +415,39 @@ def test_ac09_migration_is_additive_reversible_and_id_within_ceiling() -> None:
 
 
 def test_ac09_existing_agents_are_backfilled_native_and_governed(client: TestClient) -> None:
-    """Every pre-existing agent row is native + governed. The suite has
-    thousands of them from prior phases; sample the live table."""
+    """Every pre-existing agent row is native + governed, and the WHOLE
+    population - not a sample - satisfies the asset-model invariant.
+
+    Until V0.1 this read ``limit(500)`` with no ORDER BY: which 500 rows it saw
+    was a heap-order accident, so a violation that existed was reported only
+    sometimes (measured 3/50 runs at 17 bad rows in ~100k). It now asks the
+    database for the *violating* rows only - one sequential scan, ~70 ms at
+    116k rows - so the assertion is deterministic and strictly stronger:
+    a single bad row anywhere in the table fails it, every run."""
+    from sqlalchemy import and_, func, or_, select
+
+    from app.runtime.registry.control import CONTROL_STATES, ORIGIN_CATEGORIES
+
+    violates = or_(
+        Agent.control_state.not_in(CONTROL_STATES),
+        Agent.origin_category.not_in(ORIGIN_CATEGORIES),
+        # Anything that isn't an M5.1-created external record is native+governed.
+        and_(Agent.origin_category == "NATIVE",
+             or_(Agent.control_state != "GOVERNED", Agent.origin_provider != "ACT_NATIVE")),
+    )
     db = SessionLocal()
     try:
-        rows = db.query(Agent).limit(500).all()
-        assert rows, "expected pre-existing agent rows on the shared dev DB"
-        for a in rows:
-            assert a.control_state in ("DISCOVERED", "CLAIMED", "REGISTERED", "GOVERNED")
-            assert a.origin_category in ("NATIVE", "EXTERNAL", "UNKNOWN")
-            # Anything that isn't an M5.1-created external record is native+governed.
-            if a.origin_category == "NATIVE":
-                assert a.control_state == "GOVERNED"
-                assert a.origin_provider == "ACT_NATIVE"
+        assert db.execute(select(func.count()).select_from(Agent)).scalar() > 0, \
+            "expected pre-existing agent rows on the shared dev DB"
+        bad = db.execute(select(func.count()).select_from(Agent).where(violates)).scalar()
+        if bad:
+            sample = db.execute(
+                select(Agent.id, Agent.name, Agent.origin_category, Agent.origin_provider,
+                       Agent.control_state).where(violates).order_by(Agent.created_at).limit(10)
+            ).all()
+            raise AssertionError(
+                f"{bad} agents row(s) violate the M5.1 origin/control-state invariant "
+                f"(NATIVE must be GOVERNED/ACT_NATIVE; enums must be legal). Oldest: {sample}")
     finally:
         db.close()
 

@@ -43,10 +43,13 @@ def _invite_member(client: TestClient, admin: dict, *, role: str = "VIEWER") -> 
     return {"headers": h, "user_id": me["user"]["id"], "email": email}
 
 
-def _register_agent(client: TestClient, admin: dict, *, criticality: str = "MEDIUM") -> dict:
+def _register_agent(client: TestClient, admin: dict, *, criticality: str = "MEDIUM",
+                    name: str | None = None, description: str = "A test agent.",
+                    business_purpose: str = "Exercise the runtime in tests.") -> dict:
     r = client.post(f"{RT}/agents", headers=admin["headers"], json={
-        "name": f"Agent {uuid.uuid4().hex[:6]}", "agent_type": "ASSISTANT", "criticality": criticality,
-        "description": "A test agent.", "business_purpose": "Exercise the runtime in tests.",
+        "name": name or f"Agent {uuid.uuid4().hex[:6]}", "agent_type": "ASSISTANT",
+        "criticality": criticality,
+        "description": description, "business_purpose": business_purpose,
         "owner_type": "USER", "owner_id": admin["user_id"], "technical_owner_id": admin["user_id"],
         "compliance_owner_id": admin["user_id"],
         "definition": {
@@ -123,10 +126,11 @@ def _deploy(client: TestClient, admin: dict, agent_id: str, version_id: str, *,
 
 def _ready_agent(client: TestClient, admin: dict, *, criticality: str = "MEDIUM",
                  environment: str = "DEVELOPMENT", runtime_limits: dict | None = None,
-                 policy_snapshot: dict | None = None) -> dict:
+                 policy_snapshot: dict | None = None, **agent_fields) -> dict:
     """Registers, activates, publishes and deploys one agent — the common
-    setup shared by most execution tests."""
-    agent = _register_agent(client, admin, criticality=criticality)
+    setup shared by most execution tests. ``agent_fields`` (name /
+    description / business_purpose) reach ``_register_agent`` unchanged."""
+    agent = _register_agent(client, admin, criticality=criticality, **agent_fields)
     _activate_agent(client, admin, agent["id"])
     version = _publish_version(client, admin, agent["id"], policy_snapshot=policy_snapshot)
     deployment = _deploy(client, admin, agent["id"], version["id"], environment=environment,
@@ -963,8 +967,20 @@ def test_approval_decision_cannot_be_replayed(client: TestClient) -> None:
 
 def test_idempotency_is_scoped_per_agent_not_shared(client: TestClient) -> None:
     org = _register_org(client)
-    setup_a = _ready_agent(client, org)
-    setup_b = _ready_agent(client, org)
+    # Two agents in ONE organization, so 5.1's duplicate detector scores them
+    # against each other at register time (0.5*name + 0.25*description +
+    # 0.25*purpose, difflib ratios; >= 0.85 blocks registration). The helper
+    # default - "Agent <6 hex>" with identical description/purpose - scored
+    # 0.5*name + 0.5 and blocked whenever the random names hit >= 0.70 (~5.4%
+    # of pairs; the V0 failure scored 0.875). These fixed, deliberately
+    # unrelated fields score 0.2548 - below even the 0.72 "possible" floor -
+    # and the same value on every run.
+    setup_a = _ready_agent(client, org, name="Ledger reconciliation agent",
+                           description="Reconciles nightly ledger batches.",
+                           business_purpose="Prove idempotency keys are scoped to one agent.")
+    setup_b = _ready_agent(client, org, name="Payroll notifier",
+                           description="Sends payroll run notices to staff.",
+                           business_purpose="Show a shared key never crosses to another agent.")
     shared_key = f"shared-{uuid.uuid4().hex[:8]}"
 
     r1 = client.post(f"{RT}/executions", headers=org["headers"], json={

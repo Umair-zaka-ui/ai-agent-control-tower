@@ -1,0 +1,8 @@
+V0.1 TARGETED REGRESSION start 2026-09-17T18:37:11+05:00 commit ad06bcf
+ M backend/tests/authorization/test_runtime.py
+ M backend/tests/runtime/test_agent_asset_model.py
+=== A. idempotency + M5.1 asset model + M5.5 posture + ownership/claim (control graph) + M5.7 bridge + M5.10 milestone + registry/audit ===
+268 passed, 1776 warnings in 282.23s (0:04:42)
+=== B. tenant isolation (-k) ===
+112 passed, 2529 deselected, 1266 warnings in 328.61s (0:05:28)
+end 2026-09-17T18:47:29+05:00

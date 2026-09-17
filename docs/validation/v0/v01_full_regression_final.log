@@ -1,0 +1,173 @@
+V0.1 FULL BACKEND REGRESSION (final clean baseline candidate; frozen tree)
+start: 2026-09-17T18:47:43+05:00
+commit: ad06bcfdcc8ef8e1917795b4ca89692defadf217 branch: validation/v0-baseline
+worktree:
+ M backend/tests/authorization/test_runtime.py
+ M backend/tests/runtime/test_agent_asset_model.py
+cmd: .venv/Scripts/python.exe -m pytest -q -ra
+........................................................................ [  2%]
+........................................................................ [  5%]
+........................................................................ [  8%]
+........................................................................ [ 10%]
+........................................................................ [ 13%]
+........................................................................ [ 16%]
+........................................................................ [ 19%]
+........................................................................ [ 21%]
+........................................................................ [ 24%]
+........................................................................ [ 27%]
+........................................................................ [ 30%]
+........................................................................ [ 32%]
+........................................................................ [ 35%]
+........................................................................ [ 38%]
+........................................................................ [ 40%]
+........................................................................ [ 43%]
+........................................................................ [ 46%]
+........................................................................ [ 49%]
+........................................................................ [ 51%]
+........................................................................ [ 54%]
+........................................................................ [ 57%]
+........................................................................ [ 60%]
+........................................................................ [ 62%]
+........................................................................ [ 65%]
+........................................................................ [ 68%]
+........................................................................ [ 70%]
+........................................................................ [ 73%]
+........................................................................ [ 76%]
+........................................................................ [ 79%]
+........................................................................ [ 81%]
+........................................................................ [ 84%]
+........................................................................ [ 87%]
+........................................................................ [ 90%]
+........................................................................ [ 92%]
+........................................................................ [ 95%]
+........................................................................ [ 98%]
+................................................                         [100%]
+============================== warnings summary ===============================
+tests/assurance/test_assurance.py::test_ac06_evaluation_is_deterministic_and_names_its_evidence
+  C:\Users\PHS\Desktop\ai-agent-control-tower\backend\.venv\Lib\site-packages\passlib\handlers\argon2.py:716: DeprecationWarning: Accessing argon2.__version__ is deprecated and will be removed in a future release. Use importlib.metadata directly to query for structlog's packaging metadata.
+    _argon2_cffi.__version__, max_version)
+
+tests/assurance/test_assurance.py: 76 warnings
+tests/authorization/test_abac.py: 127 warnings
+tests/authorization/test_abac_perf.py: 174 warnings
+tests/authorization/test_admin_portal.py: 73 warnings
+tests/authorization/test_agent_registry.py: 199 warnings
+tests/authorization/test_agent_registry_perf.py: 108 warnings
+tests/authorization/test_agent_versioning.py: 164 warnings
+tests/authorization/test_governance.py: 124 warnings
+tests/authorization/test_hierarchy.py: 36 warnings
+tests/authorization/test_middleware.py: 85 warnings
+tests/authorization/test_middleware_perf.py: 104 warnings
+tests/authorization/test_permission_engine.py: 27 warnings
+tests/authorization/test_permission_engine_perf.py: 109 warnings
+tests/authorization/test_rbac_endpoints.py: 41 warnings
+tests/authorization/test_resource_authorization.py: 168 warnings
+tests/authorization/test_resource_authorization_perf.py: 257 warnings
+tests/authorization/test_runtime.py: 686 warnings
+tests/bridge/test_external_governance_bridge.py: 127 warnings
+tests/command_center/test_command_center.py: 22 warnings
+tests/discovery/test_discovery_framework.py: 94 warnings
+tests/graph/test_control_graph.py: 457 warnings
+tests/graph/test_dependency_graph.py: 408 warnings
+tests/identity/auth/test_authentication_flow.py: 6 warnings
+tests/identity/auth/test_human_auth_endpoints.py: 12 warnings
+tests/identity/auth/test_security_event_audit.py: 15 warnings
+tests/identity/auth/test_session_admin_and_events.py: 30 warnings
+tests/identity/auth/test_session_lifecycle.py: 40 warnings
+tests/identity/auth/test_token_and_context.py: 3 warnings
+tests/identity/auth/test_token_interop.py: 25 warnings
+tests/identity/credentials/test_credential_endpoints.py: 21 warnings
+tests/identity/federation/test_federation_config_crud.py: 40 warnings
+tests/identity/federation/test_federation_login_flow.py: 28 warnings
+tests/identity/federation/test_oidc_bypass_prevention.py: 7 warnings
+tests/identity/integration/test_identity_api.py: 36 warnings
+tests/identity/protection/test_protection_flow.py: 7 warnings
+tests/identity/protection/test_rules_and_reachability.py: 6 warnings
+tests/identity/recovery/test_email_change_flow.py: 3 warnings
+tests/identity/recovery/test_password_reset_flow.py: 2 warnings
+tests/identity/recovery/test_recovery_events_and_reachability.py: 1 warning
+tests/identity/registration/test_email_delivery.py: 4 warnings
+tests/identity/registration/test_invitation_flow.py: 36 warnings
+tests/identity/registration/test_provisioning_and_maintenance.py: 5 warnings
+tests/identity/registration/test_rate_limiting.py: 8 warnings
+tests/identity/unit/test_repositories.py: 4 warnings
+tests/integration/test_connector_auth.py: 67 warnings
+tests/integration/test_connector_core.py: 67 warnings
+tests/integration/test_connector_health.py: 91 warnings
+tests/integration/test_connector_sdk.py: 3 warnings
+tests/integration/test_database_connector_invocation.py: 7 warnings
+tests/integration/test_queue_connector_invocation.py: 12 warnings
+tests/integration/test_rest_connector_invocation.py: 10 warnings
+tests/integration/test_storage_connector_invocation.py: 11 warnings
+tests/milestone/test_milestone_5_proof.py: 75 warnings
+tests/posture/test_security_posture.py: 114 warnings
+tests/runtime/test_agent_asset_model.py: 100 warnings
+tests/runtime/test_attestation.py: 37 warnings
+tests/runtime/test_automated_rollback.py: 1082 warnings
+tests/runtime/test_behavioral_signals.py: 424 warnings
+tests/runtime/test_canary_rollout.py: 1309 warnings
+tests/runtime/test_cost_governance.py: 584 warnings
+tests/runtime/test_deployment_lifecycle.py: 217 warnings
+tests/runtime/test_distributed_scheduler.py: 41 warnings
+tests/runtime/test_environment_promotion.py: 294 warnings
+tests/runtime/test_error_taxonomy_and_resilience.py: 62 warnings
+tests/runtime/test_execution_tracing.py: 555 warnings
+tests/runtime/test_http_tool_execution.py: 188 warnings
+tests/runtime/test_key_material_integrity.py: 15 warnings
+tests/runtime/test_milestone_4_proof.py: 213 warnings
+tests/runtime/test_observability_center.py: 79 warnings
+tests/runtime/test_openai_compatible_provider.py: 15 warnings
+tests/runtime/test_operations_center.py: 482 warnings
+tests/runtime/test_otel_interop.py: 196 warnings
+tests/runtime/test_provider_abstraction.py: 61 warnings
+tests/runtime/test_provider_credentials.py: 174 warnings
+tests/runtime/test_release_gate.py: 400 warnings
+tests/runtime/test_runtime_governance.py: 872 warnings
+tests/runtime/test_slos_and_alerts.py: 419 warnings
+tests/runtime/test_strategies.py: 712 warnings
+tests/runtime/test_streaming_and_accounting.py: 210 warnings
+tests/runtime/test_telemetry_foundation.py: 209 warnings
+tests/runtime/test_telemetry_privacy.py: 512 warnings
+tests/runtime/test_tool_loop.py: 284 warnings
+tests/runtime/test_tool_resilience.py: 272 warnings
+tests/runtime/test_traffic_resolver_gate.py: 931 warnings
+tests/runtime/test_version_compatibility.py: 108 warnings
+tests/runtime/test_version_signing.py: 188 warnings
+tests/runtime/test_worker_fleet_rolling.py: 660 warnings
+tests/test_agents_part32.py: 15 warnings
+tests/test_analytics_part36.py: 48 warnings
+tests/test_approvals_part34.py: 46 warnings
+tests/test_audit_part35.py: 56 warnings
+tests/test_dashboard_part3.py: 13 warnings
+tests/test_integration.py: 15 warnings
+tests/test_policies_part33.py: 14 warnings
+tests/test_response_envelope.py: 3 warnings
+tests/threat/test_runtime_threat_containment.py: 83 warnings
+  C:\Users\PHS\Desktop\ai-agent-control-tower\backend\.venv\Lib\site-packages\jose\jwt.py:311: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = timegm(datetime.utcnow().utctimetuple())
+
+tests/bridge/test_external_governance_bridge.py::test_ac15_e2e_a_real_external_agent_calls_a_reference_capability
+  C:\Users\PHS\Desktop\ai-agent-control-tower\backend\.venv\Lib\site-packages\websockets\legacy\__init__.py:6: DeprecationWarning: websockets.legacy is deprecated; see https://websockets.readthedocs.io/en/stable/howto/upgrade.html for upgrade instructions
+    warnings.warn(  # deprecated in 14.0 - 2024-11-09
+
+tests/bridge/test_external_governance_bridge.py::test_ac15_e2e_a_real_external_agent_calls_a_reference_capability
+  C:\Users\PHS\Desktop\ai-agent-control-tower\backend\.venv\Lib\site-packages\uvicorn\protocols\websockets\websockets_impl.py:17: DeprecationWarning: websockets.server.WebSocketServerProtocol is deprecated
+    from websockets.server import WebSocketServerProtocol
+
+tests/identity/federation/test_federation_login_flow.py: 4 warnings
+tests/identity/federation/test_saml_bypass_prevention.py: 16 warnings
+  C:\Users\PHS\Desktop\ai-agent-control-tower\backend\.venv\Lib\site-packages\onelogin\saml2\utils.py:428: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    return calendar.timegm(datetime.utcnow().utctimetuple())
+
+tests/identity/federation/test_federation_login_flow.py::test_ac19_saml_login_end_to_end_jit_provisions_a_new_user
+  C:\Users\PHS\Desktop\ai-agent-control-tower\backend\.venv\Lib\site-packages\onelogin\saml2\utils.py:394: DeprecationWarning: datetime.datetime.utcfromtimestamp() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.fromtimestamp(timestamp, datetime.UTC).
+    data = datetime.utcfromtimestamp(float(time))
+
+tests/test_response_envelope.py::test_openapi_schema_is_not_enveloped
+  C:\Users\PHS\Desktop\ai-agent-control-tower\backend\.venv\Lib\site-packages\fastapi\openapi\utils.py:225: UserWarning: Duplicate Operation ID update_policy_policies__policy_id__patch for function update_policy at C:\Users\PHS\Desktop\ai-agent-control-tower\backend\app\api\routes\policies.py
+    warnings.warn(message, stacklevel=1)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+2640 passed, 1 deselected, 16685 warnings in 1478.14s (0:24:38)
+exit: 0
+end: 2026-09-17T19:12:24+05:00
