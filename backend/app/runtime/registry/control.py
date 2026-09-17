@@ -45,6 +45,8 @@ __all__ = [
     "ORIGIN_CATEGORIES",
     "ORIGIN_PROVIDERS",
     "CONTROL_TRANSITIONS",
+    "LEGAL_CONTROL_STATES_BY_ORIGIN",
+    "is_origin_compatible",
     "AgentProvenanceService",
     "AgentControlStateService",
 ]
@@ -70,15 +72,48 @@ ORIGIN_PROVIDERS: tuple[str, ...] = (
     "UNKNOWN",
 )
 
+# The origin x control-state invariant (V0.2 / ADR-0023): which control
+# states are *truthful* for an agent of a given provenance.
+#
+#   GOVERNED  <=>  NATIVE
+#
+# ``GOVERNED`` is not a label an operator assigns; it is the consequence of a
+# fact - ACT executes the agent, therefore holds full 4.3 / kill-switch
+# authority over it - and it is the one column Phase 5.6's containment gate and
+# Phase 5.7's ``effective_mode()`` read to decide whether enforcement is real.
+# A non-native agent at GOVERNED would be the same over-claim 5.7 made
+# unstorable for ``external_enforcement_mode`` (``NATIVE_ENFORCED``), in the
+# column that matters more. Conversely a native agent is GOVERNED in *every*
+# lifecycle_status (DRAFT, ACTIVE, SUSPENDED, RETIRED ...): lifecycle is an
+# orthogonal axis, and demoting a native agent would make 5.6 refuse to stop an
+# agent ACT is actually running - an under-claim, but a lie all the same.
+LEGAL_CONTROL_STATES_BY_ORIGIN: dict[str, frozenset[str]] = {
+    "NATIVE": frozenset({"GOVERNED"}),
+    "EXTERNAL": frozenset({"DISCOVERED", "CLAIMED", "REGISTERED"}),
+    "UNKNOWN": frozenset({"DISCOVERED", "CLAIMED", "REGISTERED"}),
+}
+
+
+def is_origin_compatible(origin_category: str, control_state: str) -> bool:
+    """The single yes/no the invariant reduces to. Used by the service, and
+    by the M5.1 full-population guard's SQL predicate (kept in step by
+    ``test_ac09``)."""
+    return control_state in LEGAL_CONTROL_STATES_BY_ORIGIN.get(origin_category, frozenset())
+
+
 # Server-authoritative transition matrix for the *generic* transition
 # endpoint. DISCOVERED is left ONLY via ``claim()`` (which needs owner
 # context the generic endpoint does not carry), so DISCOVERED has no generic
-# successors here.
+# successors here. GOVERNED has no edges in either direction: under the
+# invariant above only NATIVE agents are GOVERNED, a NATIVE agent never
+# leaves it, and no other agent can reach it - the "safe reverses"
+# M5.1 anticipated (GOVERNED -> REGISTERED) and the external "enrolment"
+# (REGISTERED -> GOVERNED) were both removed by V0.2 / ADR-0023.
 CONTROL_TRANSITIONS: dict[str, frozenset[str]] = {
     "DISCOVERED": frozenset(),
     "CLAIMED": frozenset({"REGISTERED"}),
-    "REGISTERED": frozenset({"GOVERNED", "CLAIMED"}),
-    "GOVERNED": frozenset({"REGISTERED"}),
+    "REGISTERED": frozenset({"CLAIMED"}),
+    "GOVERNED": frozenset(),
 }
 
 
@@ -204,6 +239,57 @@ class AgentControlStateService:
             self.db.expunge(stale)
         return self.db.get(Agent, agent_id, with_for_update=True)
 
+    def _reject(self, actor: User, locked: Agent, target_state: str, code: ErrorCode,
+                message: str, *, reason: str | None) -> IdentityError:
+        """A refused control-state move is a security-relevant event in its own
+        right (V0.2 / ADR-0023). Record it and **commit before raising** - the
+        same discipline as 5.6's ``CONTAINMENT_ACTION_REFUSED`` - so the
+        rejection survives the request's rollback. Nothing on the agent row
+        was changed, so the commit releases the ``FOR UPDATE`` lock cleanly."""
+        _record_event(
+            self.db,
+            AuthorizationAuditEvent.RUNTIME_AGENT_CONTROL_STATE_REJECTED,
+            actor,
+            organization_id=locked.organization_id,
+            agent_id=locked.id,
+            severity="WARNING",
+            meta={
+                "agent_id": str(locked.id),
+                "origin_category": locked.origin_category,
+                "control_state": locked.control_state,
+                "target_state": target_state,
+                "code": str(code),
+                "reason": reason,
+            },
+        )
+        self.db.commit()
+        return IdentityError(code, message)
+
+    def _require_origin_compatible(self, actor: User, locked: Agent, target_state: str,
+                                   *, reason: str | None) -> None:
+        """The invariant, applied at the writer: the *target* must be a truthful
+        control state for this agent's provenance. Evaluated before the
+        transition matrix, because "would be an over-claim" is a more
+        fundamental refusal than "no such edge"."""
+        if is_origin_compatible(locked.origin_category, target_state):
+            return
+        if target_state == "GOVERNED":
+            message = (
+                f"A {locked.origin_category} agent cannot be GOVERNED. GOVERNED means ACT runs "
+                "and enforces the agent (it is what Phase 5.6 containment and Phase 5.7's "
+                "NATIVE_ENFORCED are derived from); it is true of NATIVE agents only and cannot "
+                "be granted by request. Use Phase 5.7's enforcement modes for the reach ACT "
+                "genuinely has at the boundary."
+            )
+        else:
+            message = (
+                f"A NATIVE agent is GOVERNED in every lifecycle state and cannot be moved to "
+                f"{target_state}: ACT runs and enforces it, and recording a weaker control "
+                "state would make containment refuse an agent ACT can actually stop."
+            )
+        raise self._reject(actor, locked, target_state,
+                           ErrorCode.CONTROL_STATE_ORIGIN_INCOMPATIBLE, message, reason=reason)
+
     def claim(
         self,
         actor: User,
@@ -224,6 +310,9 @@ class AgentControlStateService:
                 ErrorCode.AGENT_CLAIM_CONFLICT,
                 f"Only a DISCOVERED agent can be claimed; this agent is {locked.control_state}.",
             )
+        # Unreachable for a NATIVE agent (it is never DISCOVERED), asserted
+        # anyway: the invariant is checked at every writer, not remembered.
+        self._require_origin_compatible(actor, locked, "CLAIMED", reason=reason)
         if owner_type == "USER":
             new_owner = self.db.get(User, owner_id)
             if new_owner is None or new_owner.organization_id != locked.organization_id:
@@ -278,9 +367,10 @@ class AgentControlStateService:
         reason: str | None = None,
     ) -> Agent:
         """SRS M5.1 §8 - a server-authoritative control-state move
-        (CLAIMED -> REGISTERED -> GOVERNED and the safe reverses). Illegal or
-        unauthorized moves are rejected; a client can never reach GOVERNED
-        by any path other than this method's own validation.
+        (CLAIMED <-> REGISTERED). Illegal or unauthorized moves are rejected
+        and audited. Since V0.2 / ADR-0023 no move reaches GOVERNED: it is
+        true of NATIVE agents only (``LEGAL_CONTROL_STATES_BY_ORIGIN``), and a
+        NATIVE agent never leaves it.
         """
         if target_state not in CONTROL_STATES:
             raise IdentityError(
@@ -288,20 +378,27 @@ class AgentControlStateService:
                 f"{target_state!r} is not a control state.",
             )
         locked = self._lock(agent.id)
+        # 1. The invariant (V0.2 / ADR-0023): is the target a truthful state
+        #    for this agent's provenance at all? Rejected and audited here for
+        #    a NATIVE demotion and for any non-native request for GOVERNED.
+        self._require_origin_compatible(actor, locked, target_state, reason=reason)
+        # 2. The matrix: is there an edge from the current state?
         allowed = CONTROL_TRANSITIONS.get(locked.control_state, frozenset())
         if target_state not in allowed:
             hint = ""
             if locked.control_state == "DISCOVERED":
                 hint = " Claim the agent first (POST .../claim)."
-            raise IdentityError(
-                ErrorCode.CONTROL_STATE_TRANSITION_INVALID,
+            raise self._reject(
+                actor, locked, target_state, ErrorCode.CONTROL_STATE_TRANSITION_INVALID,
                 f"Cannot move control_state from {locked.control_state} to {target_state}.{hint}",
-            )
+                reason=reason)
+        # 3. Preconditions. Unreachable by construction since V0.2 (no edge
+        #    leads to GOVERNED), retained as defence in depth.
         if target_state == "GOVERNED" and locked.owner_id is None:
-            raise IdentityError(
-                ErrorCode.CONTROL_STATE_TRANSITION_FORBIDDEN,
+            raise self._reject(
+                actor, locked, target_state, ErrorCode.CONTROL_STATE_TRANSITION_FORBIDDEN,
                 "An agent cannot be enrolled into governance without an accountable owner.",
-            )
+                reason=reason)
 
         previous = locked.control_state
         locked.control_state = target_state

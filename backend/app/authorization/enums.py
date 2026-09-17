@@ -354,6 +354,10 @@ class AuthorizationAuditEvent(str, enum.Enum):
     # Universal Agent Asset Model + Ownership (Phase 5.1 / M5.1 §8, §11, §18).
     RUNTIME_AGENT_CLAIMED = "RUNTIME_AGENT_CLAIMED"
     RUNTIME_AGENT_CONTROL_STATE_CHANGED = "RUNTIME_AGENT_CONTROL_STATE_CHANGED"
+    # V0.2 / ADR-0023: a control-state move the service refused (matrix,
+    # origin invariant or precondition). Recorded and committed before the
+    # domain error is raised, as CONTAINMENT_ACTION_REFUSED is for 5.6.
+    RUNTIME_AGENT_CONTROL_STATE_REJECTED = "RUNTIME_AGENT_CONTROL_STATE_REJECTED"
     # Enterprise Versioning & Release Management (Phase 5.2 Part 1).
     RUNTIME_VERSION_RETIRED = "RUNTIME_VERSION_RETIRED"
     RUNTIME_VERSION_ARTIFACT_ADDED = "RUNTIME_VERSION_ARTIFACT_ADDED"

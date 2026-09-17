@@ -1,0 +1,9 @@
+run at 2026-09-17T22:07:54.008936
+invariant-violating rows: 103; TEST RESIDUE m51-proof: 33; TEST RESIDUE posture:761: 70; unexplained (negative control): 0
+ids (first/last): c3d60373-b42a-4410-b038-66a85105e05e 0b0d71f3-e819-4640-ab4d-d12126aeff15
+cascade dependents: runtime_events=164 agent_ownership_history=33 (both FK ON DELETE CASCADE, test-generated for these rows)
+deleted agents: 103
+post-cleanup invariant-violating rows: 0
+post-cleanup NATIVE non-GOVERNED: 0
+agents total: 125728
+distribution: [('EXTERNAL', 'CLAIMED', 182), ('EXTERNAL', 'DISCOVERED', 7590), ('EXTERNAL', 'REGISTERED', 140), ('NATIVE', 'GOVERNED', 117649), ('UNKNOWN', 'DISCOVERED', 167)]

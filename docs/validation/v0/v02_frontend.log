@@ -1,0 +1,10 @@
+V0.2 FRONTEND start 2026-09-17T23:01:22+05:00 node v24.18.0
+ Test Files  52 passed (52)
+      Tests  384 passed (384)
+   Duration  29.39s (transform 7.34s, setup 15.44s, collect 25.66s, tests 85.58s, environment 75.54s, prepare 6.33s)
+vitest exit: 0
+tsc exit: 0
+✓ built in 2.94s
+(!) Some chunks are larger than 500 kB after minification. Consider:
+build exit: 0
+end 2026-09-17T23:02:18+05:00

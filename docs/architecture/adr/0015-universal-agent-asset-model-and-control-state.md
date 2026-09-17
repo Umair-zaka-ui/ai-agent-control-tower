@@ -77,8 +77,12 @@ ledger and the existing audit trail, and are tenant-scoped by the caller's
 - `POST /agents/{id}/claim` — an authorized user takes **responsibility** for a
   `DISCOVERED` agent. Advances to `CLAIMED`, **never** `GOVERNED`. Idempotent via
   `Idempotency-Key`.
-- `POST /agents/{id}/control-state` — `CLAIMED → REGISTERED → GOVERNED` and the
-  safe reverses. Enrolling into `GOVERNED` requires an accountable owner.
+- `POST /agents/{id}/control-state` — `CLAIMED ↔ REGISTERED` for non-native
+  agents. *(As written in M5.1 this read "`CLAIMED → REGISTERED → GOVERNED` and
+  the safe reverses. Enrolling into `GOVERNED` requires an accountable owner."
+  Both edges touching `GOVERNED` were removed by
+  [ADR-0023](0023-governed-requires-native.md): `GOVERNED` is true of `NATIVE`
+  agents only and is never reached or left by request.)*
 
 `DISCOVERED` / `CLAIMED` never imply ACT can govern or stop the agent — the
 enforcement mode that would make an external agent genuinely governable is Phase

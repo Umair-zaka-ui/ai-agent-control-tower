@@ -33,21 +33,31 @@ governance, the kill switch, cost, SLOs) are **unchanged** by M5.1.
 ### `control_state` progression
 
 ```
-DISCOVERED ──claim──▶ CLAIMED ──▶ REGISTERED ──▶ GOVERNED
-                          ◀────────────┘   (safe reverses:
-                                            GOVERNED→REGISTERED,
-                                            REGISTERED→CLAIMED)
+non-native (EXTERNAL / UNKNOWN):
+DISCOVERED ──claim──▶ CLAIMED ◀──▶ REGISTERED          (never GOVERNED)
+
+native (NATIVE):
+GOVERNED                                                (always; no transitions)
 ```
 
 - **DISCOVERED** — ACT knows the agent exists. **No authority.** No governance
   or enforcement affordance.
 - **CLAIMED** — an authorized user has taken *responsibility*. Still **not**
   governed.
-- **REGISTERED** — brought under ACT's registry / policy scope.
-- **GOVERNED** — ACT has real enforcement authority. Every native agent; an
-  external agent reaches this only once Phase 5.7 attaches a `NATIVE` or
-  `GATEWAY` enforcement mode. Enrolling into `GOVERNED` requires an accountable
-  owner.
+- **REGISTERED** — brought under ACT's registry / policy scope. The terminal
+  control state for an agent ACT does not run; Phase 5.7's enforcement modes
+  describe ACT's reach from here (a GATEWAY_ENFORCED agent lives at REGISTERED).
+- **GOVERNED** — ACT runs and enforces the agent. **True of `NATIVE` agents
+  only, in every lifecycle state, and never reachable by request** (ADR-0023,
+  Validation Gate V0.2). It is the column Phase 5.6's containment gate and
+  Phase 5.7's `NATIVE_ENFORCED` are derived from, so it must be a fact, not a
+  declaration. A request for it on a non-native agent — or a request to move a
+  native agent anywhere else — is refused with
+  `CONTROL_STATE_ORIGIN_INCOMPATIBLE` (409) and audited as
+  `RUNTIME_AGENT_CONTROL_STATE_REJECTED`. *(Until V0.2 this document said an
+  external agent reaches GOVERNED "once 5.7 attaches a NATIVE or GATEWAY
+  enforcement mode"; 5.7 built no such operation, and ADR-0021 had already
+  refused the GATEWAY half.)*
 
 `DISCOVERED` / `CLAIMED` never imply ACT can govern or stop the agent.
 
@@ -61,7 +71,7 @@ never reaches the row. `control_state` moves only through:
 | Endpoint | Permission | What it does |
 |---|---|---|
 | `POST /agents/{id}/claim` | `runtime.agent.claim` | `DISCOVERED → CLAIMED`; sets the business owner; writes `agent_ownership_history`; idempotent via `Idempotency-Key`. |
-| `POST /agents/{id}/control-state` | `runtime.agent.control.manage` | `CLAIMED → REGISTERED → GOVERNED` and the safe reverses. |
+| `POST /agents/{id}/control-state` | `runtime.agent.control.manage` | `CLAIMED ↔ REGISTERED` for non-native agents; never to or from `GOVERNED` (ADR-0023). Refusals are audited. |
 | `GET /agents/{id}/control-state` | `runtime.agent.view` | Read the asset-model snapshot. |
 
 Both mutations authorize through the existing `AuthorizationGateway`, lock the

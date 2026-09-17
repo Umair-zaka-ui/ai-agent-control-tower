@@ -1,0 +1,675 @@
+diff --git a/backend/app/authorization/enums.py b/backend/app/authorization/enums.py
+index d263a28..a9e66b1 100644
+--- a/backend/app/authorization/enums.py
++++ b/backend/app/authorization/enums.py
+@@ -354,6 +354,10 @@ class AuthorizationAuditEvent(str, enum.Enum):
+     # Universal Agent Asset Model + Ownership (Phase 5.1 / M5.1 §8, §11, §18).
+     RUNTIME_AGENT_CLAIMED = "RUNTIME_AGENT_CLAIMED"
+     RUNTIME_AGENT_CONTROL_STATE_CHANGED = "RUNTIME_AGENT_CONTROL_STATE_CHANGED"
++    # V0.2 / ADR-0023: a control-state move the service refused (matrix,
++    # origin invariant or precondition). Recorded and committed before the
++    # domain error is raised, as CONTAINMENT_ACTION_REFUSED is for 5.6.
++    RUNTIME_AGENT_CONTROL_STATE_REJECTED = "RUNTIME_AGENT_CONTROL_STATE_REJECTED"
+     # Enterprise Versioning & Release Management (Phase 5.2 Part 1).
+     RUNTIME_VERSION_RETIRED = "RUNTIME_VERSION_RETIRED"
+     RUNTIME_VERSION_ARTIFACT_ADDED = "RUNTIME_VERSION_ARTIFACT_ADDED"
+diff --git a/backend/app/identity/errors.py b/backend/app/identity/errors.py
+index 29ce6dc..2f1349d 100644
+--- a/backend/app/identity/errors.py
++++ b/backend/app/identity/errors.py
+@@ -448,6 +448,11 @@ class ErrorCode:
+     AGENT_CLAIM_CONFLICT = "AGENT_CLAIM_CONFLICT"
+     CONTROL_STATE_TRANSITION_INVALID = "CONTROL_STATE_TRANSITION_INVALID"
+     CONTROL_STATE_TRANSITION_FORBIDDEN = "CONTROL_STATE_TRANSITION_FORBIDDEN"
++    # V0.2 / ADR-0023: the requested control_state is not a truthful state for
++    # this agent's origin_category (GOVERNED <=> NATIVE). Distinct from
++    # TRANSITION_INVALID (a move the matrix has no edge for) so audits and
++    # clients can tell "wrong path" from "would be an over-claim".
++    CONTROL_STATE_ORIGIN_INCOMPATIBLE = "CONTROL_STATE_ORIGIN_INCOMPATIBLE"
+     AGENT_IMPORT_INVALID = "AGENT_IMPORT_INVALID"
+     AGENT_IMPORT_PARTIAL_FAILURE = "AGENT_IMPORT_PARTIAL_FAILURE"
+     AGENT_EXPORT_DENIED = "AGENT_EXPORT_DENIED"
+@@ -916,6 +921,7 @@ _STATUS: dict[str, int] = {
+     ErrorCode.AGENT_CLAIM_CONFLICT: status.HTTP_409_CONFLICT,
+     ErrorCode.CONTROL_STATE_TRANSITION_INVALID: status.HTTP_409_CONFLICT,
+     ErrorCode.CONTROL_STATE_TRANSITION_FORBIDDEN: status.HTTP_403_FORBIDDEN,
++    ErrorCode.CONTROL_STATE_ORIGIN_INCOMPATIBLE: status.HTTP_409_CONFLICT,
+     ErrorCode.AGENT_IMPORT_INVALID: status.HTTP_422_UNPROCESSABLE_ENTITY,
+     ErrorCode.AGENT_IMPORT_PARTIAL_FAILURE: status.HTTP_207_MULTI_STATUS,
+     ErrorCode.AGENT_EXPORT_DENIED: status.HTTP_403_FORBIDDEN,
+diff --git a/backend/app/runtime/registry/control.py b/backend/app/runtime/registry/control.py
+index 0420232..10ecfe2 100644
+--- a/backend/app/runtime/registry/control.py
++++ b/backend/app/runtime/registry/control.py
+@@ -45,6 +45,8 @@ __all__ = [
+     "ORIGIN_CATEGORIES",
+     "ORIGIN_PROVIDERS",
+     "CONTROL_TRANSITIONS",
++    "LEGAL_CONTROL_STATES_BY_ORIGIN",
++    "is_origin_compatible",
+     "AgentProvenanceService",
+     "AgentControlStateService",
+ ]
+@@ -70,15 +72,48 @@ ORIGIN_PROVIDERS: tuple[str, ...] = (
+     "UNKNOWN",
+ )
+ 
++# The origin x control-state invariant (V0.2 / ADR-0023): which control
++# states are *truthful* for an agent of a given provenance.
++#
++#   GOVERNED  <=>  NATIVE
++#
++# ``GOVERNED`` is not a label an operator assigns; it is the consequence of a
++# fact - ACT executes the agent, therefore holds full 4.3 / kill-switch
++# authority over it - and it is the one column Phase 5.6's containment gate and
++# Phase 5.7's ``effective_mode()`` read to decide whether enforcement is real.
++# A non-native agent at GOVERNED would be the same over-claim 5.7 made
++# unstorable for ``external_enforcement_mode`` (``NATIVE_ENFORCED``), in the
++# column that matters more. Conversely a native agent is GOVERNED in *every*
++# lifecycle_status (DRAFT, ACTIVE, SUSPENDED, RETIRED ...): lifecycle is an
++# orthogonal axis, and demoting a native agent would make 5.6 refuse to stop an
++# agent ACT is actually running - an under-claim, but a lie all the same.
++LEGAL_CONTROL_STATES_BY_ORIGIN: dict[str, frozenset[str]] = {
++    "NATIVE": frozenset({"GOVERNED"}),
++    "EXTERNAL": frozenset({"DISCOVERED", "CLAIMED", "REGISTERED"}),
++    "UNKNOWN": frozenset({"DISCOVERED", "CLAIMED", "REGISTERED"}),
++}
++
++
++def is_origin_compatible(origin_category: str, control_state: str) -> bool:
++    """The single yes/no the invariant reduces to. Used by the service, and
++    by the M5.1 full-population guard's SQL predicate (kept in step by
++    ``test_ac09``)."""
++    return control_state in LEGAL_CONTROL_STATES_BY_ORIGIN.get(origin_category, frozenset())
++
++
+ # Server-authoritative transition matrix for the *generic* transition
+ # endpoint. DISCOVERED is left ONLY via ``claim()`` (which needs owner
+ # context the generic endpoint does not carry), so DISCOVERED has no generic
+-# successors here.
++# successors here. GOVERNED has no edges in either direction: under the
++# invariant above only NATIVE agents are GOVERNED, a NATIVE agent never
++# leaves it, and no other agent can reach it - the "safe reverses"
++# M5.1 anticipated (GOVERNED -> REGISTERED) and the external "enrolment"
++# (REGISTERED -> GOVERNED) were both removed by V0.2 / ADR-0023.
+ CONTROL_TRANSITIONS: dict[str, frozenset[str]] = {
+     "DISCOVERED": frozenset(),
+     "CLAIMED": frozenset({"REGISTERED"}),
+-    "REGISTERED": frozenset({"GOVERNED", "CLAIMED"}),
+-    "GOVERNED": frozenset({"REGISTERED"}),
++    "REGISTERED": frozenset({"CLAIMED"}),
++    "GOVERNED": frozenset(),
+ }
+ 
+ 
+@@ -204,6 +239,57 @@ class AgentControlStateService:
+             self.db.expunge(stale)
+         return self.db.get(Agent, agent_id, with_for_update=True)
+ 
++    def _reject(self, actor: User, locked: Agent, target_state: str, code: ErrorCode,
++                message: str, *, reason: str | None) -> IdentityError:
++        """A refused control-state move is a security-relevant event in its own
++        right (V0.2 / ADR-0023). Record it and **commit before raising** - the
++        same discipline as 5.6's ``CONTAINMENT_ACTION_REFUSED`` - so the
++        rejection survives the request's rollback. Nothing on the agent row
++        was changed, so the commit releases the ``FOR UPDATE`` lock cleanly."""
++        _record_event(
++            self.db,
++            AuthorizationAuditEvent.RUNTIME_AGENT_CONTROL_STATE_REJECTED,
++            actor,
++            organization_id=locked.organization_id,
++            agent_id=locked.id,
++            severity="WARNING",
++            meta={
++                "agent_id": str(locked.id),
++                "origin_category": locked.origin_category,
++                "control_state": locked.control_state,
++                "target_state": target_state,
++                "code": str(code),
++                "reason": reason,
++            },
++        )
++        self.db.commit()
++        return IdentityError(code, message)
++
++    def _require_origin_compatible(self, actor: User, locked: Agent, target_state: str,
++                                   *, reason: str | None) -> None:
++        """The invariant, applied at the writer: the *target* must be a truthful
++        control state for this agent's provenance. Evaluated before the
++        transition matrix, because "would be an over-claim" is a more
++        fundamental refusal than "no such edge"."""
++        if is_origin_compatible(locked.origin_category, target_state):
++            return
++        if target_state == "GOVERNED":
++            message = (
++                f"A {locked.origin_category} agent cannot be GOVERNED. GOVERNED means ACT runs "
++                "and enforces the agent (it is what Phase 5.6 containment and Phase 5.7's "
++                "NATIVE_ENFORCED are derived from); it is true of NATIVE agents only and cannot "
++                "be granted by request. Use Phase 5.7's enforcement modes for the reach ACT "
++                "genuinely has at the boundary."
++            )
++        else:
++            message = (
++                f"A NATIVE agent is GOVERNED in every lifecycle state and cannot be moved to "
++                f"{target_state}: ACT runs and enforces it, and recording a weaker control "
++                "state would make containment refuse an agent ACT can actually stop."
++            )
++        raise self._reject(actor, locked, target_state,
++                           ErrorCode.CONTROL_STATE_ORIGIN_INCOMPATIBLE, message, reason=reason)
++
+     def claim(
+         self,
+         actor: User,
+@@ -224,6 +310,9 @@ class AgentControlStateService:
+                 ErrorCode.AGENT_CLAIM_CONFLICT,
+                 f"Only a DISCOVERED agent can be claimed; this agent is {locked.control_state}.",
+             )
++        # Unreachable for a NATIVE agent (it is never DISCOVERED), asserted
++        # anyway: the invariant is checked at every writer, not remembered.
++        self._require_origin_compatible(actor, locked, "CLAIMED", reason=reason)
+         if owner_type == "USER":
+             new_owner = self.db.get(User, owner_id)
+             if new_owner is None or new_owner.organization_id != locked.organization_id:
+@@ -278,9 +367,10 @@ class AgentControlStateService:
+         reason: str | None = None,
+     ) -> Agent:
+         """SRS M5.1 §8 - a server-authoritative control-state move
+-        (CLAIMED -> REGISTERED -> GOVERNED and the safe reverses). Illegal or
+-        unauthorized moves are rejected; a client can never reach GOVERNED
+-        by any path other than this method's own validation.
++        (CLAIMED <-> REGISTERED). Illegal or unauthorized moves are rejected
++        and audited. Since V0.2 / ADR-0023 no move reaches GOVERNED: it is
++        true of NATIVE agents only (``LEGAL_CONTROL_STATES_BY_ORIGIN``), and a
++        NATIVE agent never leaves it.
+         """
+         if target_state not in CONTROL_STATES:
+             raise IdentityError(
+@@ -288,20 +378,27 @@ class AgentControlStateService:
+                 f"{target_state!r} is not a control state.",
+             )
+         locked = self._lock(agent.id)
++        # 1. The invariant (V0.2 / ADR-0023): is the target a truthful state
++        #    for this agent's provenance at all? Rejected and audited here for
++        #    a NATIVE demotion and for any non-native request for GOVERNED.
++        self._require_origin_compatible(actor, locked, target_state, reason=reason)
++        # 2. The matrix: is there an edge from the current state?
+         allowed = CONTROL_TRANSITIONS.get(locked.control_state, frozenset())
+         if target_state not in allowed:
+             hint = ""
+             if locked.control_state == "DISCOVERED":
+                 hint = " Claim the agent first (POST .../claim)."
+-            raise IdentityError(
+-                ErrorCode.CONTROL_STATE_TRANSITION_INVALID,
++            raise self._reject(
++                actor, locked, target_state, ErrorCode.CONTROL_STATE_TRANSITION_INVALID,
+                 f"Cannot move control_state from {locked.control_state} to {target_state}.{hint}",
+-            )
++                reason=reason)
++        # 3. Preconditions. Unreachable by construction since V0.2 (no edge
++        #    leads to GOVERNED), retained as defence in depth.
+         if target_state == "GOVERNED" and locked.owner_id is None:
+-            raise IdentityError(
+-                ErrorCode.CONTROL_STATE_TRANSITION_FORBIDDEN,
++            raise self._reject(
++                actor, locked, target_state, ErrorCode.CONTROL_STATE_TRANSITION_FORBIDDEN,
+                 "An agent cannot be enrolled into governance without an accountable owner.",
+-            )
++                reason=reason)
+ 
+         previous = locked.control_state
+         locked.control_state = target_state
+diff --git a/backend/tests/posture/test_security_posture.py b/backend/tests/posture/test_security_posture.py
+index 612a693..a6e4084 100644
+--- a/backend/tests/posture/test_security_posture.py
++++ b/backend/tests/posture/test_security_posture.py
+@@ -763,7 +763,11 @@ def test_ac14_a_rule_that_raises_fails_open(client: TestClient, admin: dict, mon
+ 
+     db = SessionLocal()
+     try:
+-        aid = _insert_agent(db, admin, owned=False, origin_category="UNKNOWN", origin_provider="UNKNOWN")
++        # An UNKNOWN-provenance agent cannot be GOVERNED (V0.2 / ADR-0023:
++        # GOVERNED <=> NATIVE); DISCOVERED is its truthful control state, and
++        # this test only needs the unknown_provenance rule to be reached.
++        aid = _insert_agent(db, admin, owned=False, control_state="DISCOVERED",
++                            origin_category="UNKNOWN", origin_provider="UNKNOWN")
+     finally:
+         db.close()
+     summary = _evaluate(client, admin, aid)
+diff --git a/backend/tests/runtime/test_agent_asset_model.py b/backend/tests/runtime/test_agent_asset_model.py
+index f7fd5c6..4cbbee9 100644
+--- a/backend/tests/runtime/test_agent_asset_model.py
++++ b/backend/tests/runtime/test_agent_asset_model.py
+@@ -336,16 +336,31 @@ def test_ac07_client_cannot_set_control_state_via_update(client: TestClient) ->
+ def test_ac07_transition_endpoint_enforces_the_matrix(client: TestClient) -> None:
+     admin = _org(client)
+     ext_id = _make_external(admin)
+-    # DISCOVERED -> GOVERNED directly is illegal (must claim, register, then enroll).
++    # DISCOVERED -> REGISTERED skips the claim: no such edge (must claim first).
+     r = client.post(f"{RT}/agents/{ext_id}/control-state", headers=admin["headers"], json={
+-        "target_state": "GOVERNED"})
++        "target_state": "REGISTERED"})
+     assert r.status_code == 409
+     assert r.json()["error"]["code"] == "CONTROL_STATE_TRANSITION_INVALID"
++    # DISCOVERED -> GOVERNED is refused *before* the matrix is consulted: for a
++    # non-native agent GOVERNED is not a truthful state at all (V0.2/ADR-0023),
++    # which is a more fundamental refusal than "wrong path". Until V0.2 this
++    # asserted TRANSITION_INVALID ("must claim, register, then enroll").
++    r = client.post(f"{RT}/agents/{ext_id}/control-state", headers=admin["headers"], json={
++        "target_state": "GOVERNED"})
++    assert r.status_code == 409
++    assert r.json()["error"]["code"] == "CONTROL_STATE_ORIGIN_INCOMPATIBLE"
++
+ 
++def test_ac07_govern_is_unreachable_for_a_non_native_agent_owner_or_not(client: TestClient) -> None:
++    """Until V0.2 this test ("govern requires an owner") drove an external agent
++    to REGISTERED, stripped its owner, and expected TRANSITION_FORBIDDEN on
++    GOVERNED - implying an *owned* external agent could be enrolled. Under
++    ADR-0023 GOVERNED is true of NATIVE agents only, so the proof is now
++    stronger: the request is refused with the origin code whether or not an
++    accountable owner exists, and the owner precondition (kept in the service
++    as defence in depth) is never the reason."""
++    from app.identity.errors import ErrorCode, IdentityError
+ 
+-def test_ac07_govern_requires_an_owner(client: TestClient) -> None:
+-    """Reaching GOVERNED needs an accountable owner - proven by driving an
+-    external agent through the states via the service with owner cleared."""
+     admin = _org(client)
+     ext_id = _make_external(admin)
+     db = SessionLocal()
+@@ -356,16 +371,20 @@ def test_ac07_govern_requires_an_owner(client: TestClient) -> None:
+         svc.claim(actor, agent, owner_type="USER", owner_id=actor.id, reason="mine")
+         agent = db.get(Agent, uuid.UUID(ext_id))
+         svc.transition(actor, agent, "REGISTERED", reason="in scope")
+-        # now forcibly strip the owner and try to enroll into governance
++        # owned
++        agent = db.get(Agent, uuid.UUID(ext_id))
++        with pytest.raises(IdentityError) as exc:
++            svc.transition(actor, agent, "GOVERNED", reason="try, owned")
++        assert exc.value.code == ErrorCode.CONTROL_STATE_ORIGIN_INCOMPATIBLE
++        # owner forcibly stripped: same refusal, same reason
+         agent = db.get(Agent, uuid.UUID(ext_id))
+         agent.owner_id = None
+         db.commit()
+         agent = db.get(Agent, uuid.UUID(ext_id))
+-        with pytest.raises(Exception) as exc:
+-            svc.transition(actor, agent, "GOVERNED", reason="try")
+-        from app.identity.errors import ErrorCode, IdentityError
+-        assert isinstance(exc.value, IdentityError)
+-        assert exc.value.code == ErrorCode.CONTROL_STATE_TRANSITION_FORBIDDEN
++        with pytest.raises(IdentityError) as exc:
++            svc.transition(actor, agent, "GOVERNED", reason="try, unowned")
++        assert exc.value.code == ErrorCode.CONTROL_STATE_ORIGIN_INCOMPATIBLE
++        assert db.get(Agent, uuid.UUID(ext_id)).control_state == "REGISTERED"
+     finally:
+         db.close()
+ 
+@@ -426,14 +445,21 @@ def test_ac09_existing_agents_are_backfilled_native_and_governed(client: TestCli
+     a single bad row anywhere in the table fails it, every run."""
+     from sqlalchemy import and_, func, or_, select
+ 
+-    from app.runtime.registry.control import CONTROL_STATES, ORIGIN_CATEGORIES
++    from app.runtime.registry.control import (
++        CONTROL_STATES, LEGAL_CONTROL_STATES_BY_ORIGIN, ORIGIN_CATEGORIES,
++    )
+ 
+     violates = or_(
+         Agent.control_state.not_in(CONTROL_STATES),
+         Agent.origin_category.not_in(ORIGIN_CATEGORIES),
+-        # Anything that isn't an M5.1-created external record is native+governed.
+-        and_(Agent.origin_category == "NATIVE",
+-             or_(Agent.control_state != "GOVERNED", Agent.origin_provider != "ACT_NATIVE")),
++        # A NATIVE row is ACT_NATIVE (soft provider, asserted since M5.1).
++        and_(Agent.origin_category == "NATIVE", Agent.origin_provider != "ACT_NATIVE"),
++        # V0.2 / ADR-0023: the full origin x control-state matrix, built from
++        # the same mapping the service enforces, so the two cannot drift.
++        # Covers both directions: a NATIVE row anywhere but GOVERNED, and any
++        # non-native row at GOVERNED.
++        *[and_(Agent.origin_category == origin, Agent.control_state.not_in(legal))
++          for origin, legal in LEGAL_CONTROL_STATES_BY_ORIGIN.items()],
+     )
+     db = SessionLocal()
+     try:
+@@ -749,11 +775,22 @@ def test_m51_end_to_end_proof(client: TestClient) -> None:
+     snap = client.get(f"{RT}/agents/{ext_id}/control-state", headers=admin["headers"]).json()
+     assert snap["control_state"] == "CLAIMED"  # mass-assignment did nothing
+ 
+-    # 6. deliberate forward path: CLAIMED -> REGISTERED -> GOVERNED
++    # 6. deliberate forward path: CLAIMED -> REGISTERED, and no further.
++    #    Until V0.2 this step asserted a second 200 on "target_state":
++    #    "GOVERNED" ("enrolled"). GOVERNED means ACT runs and enforces the
++    #    agent - it is the column 5.6's containment gate and 5.7's
++    #    NATIVE_ENFORCED are derived from - so an external agent reaching it
++    #    by request was an over-claim (ADR-0023). REGISTERED is the truthful
++    #    terminal control state for an agent ACT does not run; 5.7's
++    #    enforcement modes describe the reach ACT has from there.
+     assert client.post(f"{RT}/agents/{ext_id}/control-state", headers=admin["headers"],
+                        json={"target_state": "REGISTERED", "reason": "in scope"}).status_code == 200
+-    assert client.post(f"{RT}/agents/{ext_id}/control-state", headers=admin["headers"],
+-                       json={"target_state": "GOVERNED", "reason": "enrolled"}).status_code == 200
++    r6 = client.post(f"{RT}/agents/{ext_id}/control-state", headers=admin["headers"],
++                     json={"target_state": "GOVERNED", "reason": "enrolled"})
++    assert r6.status_code == 409, r6.text
++    assert r6.json()["error"]["code"] == "CONTROL_STATE_ORIGIN_INCOMPATIBLE"
++    snap = client.get(f"{RT}/agents/{ext_id}/control-state", headers=admin["headers"]).json()
++    assert snap["control_state"] == "REGISTERED"  # the refusal changed nothing
+ 
+     # 7. the native agent's lifecycle is untouched throughout
+     again = client.get(f"{RT}/agents/{native['id']}", headers=admin["headers"]).json()
+@@ -764,3 +801,216 @@ def test_m51_end_to_end_proof(client: TestClient) -> None:
+     other = _org(client, "Outsider")
+     assert client.get(f"{RT}/agents/{ext_id}/control-state",
+                       headers=other["headers"]).status_code == 404
++
++
++# --------------------------------------------------------------------------- #
++# V0.2 / ADR-0023 - the origin x control-state invariant (GOVERNED <=> NATIVE)
++# --------------------------------------------------------------------------- #
++_REJECTED = "RUNTIME_AGENT_CONTROL_STATE_REJECTED"
++
++
++def _rejections_for(agent_id: str) -> list[dict]:
++    from sqlalchemy import text
++
++    db = SessionLocal()
++    try:
++        rows = db.execute(text(
++            "SELECT meta::text AS meta FROM authorization_audit "
++            "WHERE event_type = :ev AND meta::text LIKE :needle ORDER BY created_at"),
++            {"ev": _REJECTED, "needle": f"%{agent_id}%"}).mappings().all()
++        return [dict(r) for r in rows]
++    finally:
++        db.close()
++
++
++def _snapshot(client: TestClient, admin: dict, agent_id: str) -> dict:
++    return client.get(f"{RT}/agents/{agent_id}/control-state", headers=admin["headers"]).json()
++
++
++def test_v02_native_agent_is_governed_in_every_lifecycle_state(client: TestClient) -> None:
++    admin = _org(client)
++    native = _register_native(client, admin)
++    assert (native["origin_category"], native["control_state"], native["lifecycle_status"]) == \
++        ("NATIVE", "GOVERNED", "DRAFT")
++    native = _activate_native(client, admin, native["id"])          # DRAFT -> ... -> ACTIVE
++    assert native["control_state"] == "GOVERNED"
++    r = client.post(f"{RT}/agents/{native['id']}/suspend", headers=admin["headers"],
++                    json={"reason": "maintenance"})
++    if r.status_code == 200:                                          # lifecycle moved; control did not
++        assert r.json()["lifecycle_status"] == "SUSPENDED"
++        assert r.json()["control_state"] == "GOVERNED"
++    assert _snapshot(client, admin, native["id"])["control_state"] == "GOVERNED"
++
++
++def test_v02_native_demotion_is_rejected_and_audited(client: TestClient) -> None:
++    """The original W-2: GOVERNED -> REGISTERED (then CLAIMED) on a NATIVE agent
++    was an allowed matrix edge that ignored origin. Now refused with the stable
++    origin code, the row untouched, and the refusal committed to the audit
++    trail even though the request failed."""
++    admin = _org(client)
++    native = _register_native(client, admin)
++    for target in ("REGISTERED", "CLAIMED"):
++        r = client.post(f"{RT}/agents/{native['id']}/control-state", headers=admin["headers"],
++                        json={"target_state": target, "reason": "demote"})
++        assert r.status_code == 409, r.text
++        assert r.json()["error"]["code"] == "CONTROL_STATE_ORIGIN_INCOMPATIBLE"
++    snap = _snapshot(client, admin, native["id"])
++    assert (snap["origin_category"], snap["control_state"]) == ("NATIVE", "GOVERNED")
++    rejections = _rejections_for(native["id"])
++    assert len(rejections) == 2
++    assert all("CONTROL_STATE_ORIGIN_INCOMPATIBLE" in r["meta"] for r in rejections)
++    assert any('"target_state": "REGISTERED"' in r["meta"] for r in rejections)
++
++
++@pytest.mark.parametrize("origin", ["EXTERNAL", "UNKNOWN"])
++def test_v02_non_native_agent_cannot_reach_governed_by_request(client: TestClient, origin: str) -> None:
++    """The decision: GOVERNED cannot be granted; only a NATIVE agent holds it."""
++    admin = _org(client)
++    ext_id = _make_external(admin, origin_category=origin, origin_provider="CUSTOM")
++    # legal progression, and a legal reverse
++    assert client.post(f"{RT}/agents/{ext_id}/claim", headers=admin["headers"], json={
++        "owner_type": "USER", "owner_id": admin["user_id"], "reason": "adopt"}).status_code == 200
++    assert client.post(f"{RT}/agents/{ext_id}/control-state", headers=admin["headers"],
++                       json={"target_state": "REGISTERED"}).status_code == 200
++    assert client.post(f"{RT}/agents/{ext_id}/control-state", headers=admin["headers"],
++                       json={"target_state": "CLAIMED"}).status_code == 200
++    assert client.post(f"{RT}/agents/{ext_id}/control-state", headers=admin["headers"],
++                       json={"target_state": "REGISTERED"}).status_code == 200
++    # escalation without real authority: refused, audited, nothing changed
++    r = client.post(f"{RT}/agents/{ext_id}/control-state", headers=admin["headers"],
++                    json={"target_state": "GOVERNED", "reason": "enrol"})
++    assert r.status_code == 409, r.text
++    assert r.json()["error"]["code"] == "CONTROL_STATE_ORIGIN_INCOMPATIBLE"
++    snap = _snapshot(client, admin, ext_id)
++    assert (snap["origin_category"], snap["control_state"]) == (origin, "REGISTERED")
++    assert any('"target_state": "GOVERNED"' in x["meta"] for x in _rejections_for(ext_id))
++    # 5.7 consistency: at REGISTERED the effective mode is the stored external
++    # mode (weakest truthful claim), never NATIVE_ENFORCED.
++    from app.bridge.modes import effective_mode
++
++    db = SessionLocal()
++    try:
++        assert effective_mode(db.get(Agent, uuid.UUID(ext_id))) == "OBSERVED"
++    finally:
++        db.close()
++
++
++def test_v02_cross_tenant_transition_is_404(client: TestClient) -> None:
++    admin = _org(client)
++    other = _org(client, "Other Tenant")
++    ext_id = _make_external(admin)
++    native = _register_native(client, admin)
++    for aid in (ext_id, native["id"]):
++        r = client.post(f"{RT}/agents/{aid}/control-state", headers=other["headers"],
++                        json={"target_state": "REGISTERED"})
++        assert r.status_code == 404, r.text
++    assert _rejections_for(ext_id) == [] and _rejections_for(native["id"]) == []
++
++
++def test_v02_concurrent_conflicting_transitions_preserve_the_invariant(client: TestClient) -> None:
++    """Real separate Postgres sessions racing on the same rows: a native
++    demotion against a native demotion, and on an external agent a forbidden
++    escalation (GOVERNED) against a legal move (CLAIMED). Whatever the
++    interleaving, no row ends outside the matrix."""
++    admin = _org(client)
++    native = _register_native(client, admin)
++    ext_id = _make_external(admin)
++    assert client.post(f"{RT}/agents/{ext_id}/claim", headers=admin["headers"], json={
++        "owner_type": "USER", "owner_id": admin["user_id"], "reason": "adopt"}).status_code == 200
++    assert client.post(f"{RT}/agents/{ext_id}/control-state", headers=admin["headers"],
++                       json={"target_state": "REGISTERED"}).status_code == 200
++
++    from app.identity.errors import ErrorCode, IdentityError
++
++    outcomes: dict[str, list[str]] = {"native": [], "external": []}
++    lock = threading.Lock()
++    barrier = threading.Barrier(4)
++
++    def worker(kind: str, agent_id: str, target: str) -> None:
++        db = SessionLocal()
++        try:
++            actor = db.get(User, uuid.UUID(admin["user_id"]))
++            agent = db.get(Agent, uuid.UUID(agent_id))
++            barrier.wait(timeout=10)
++            try:
++                AgentControlStateService(db).transition(actor, agent, target, reason="race")
++                result = f"OK:{target}"
++            except IdentityError as exc:
++                result = f"{exc.code}:{target}"
++            with lock:
++                outcomes[kind].append(result)
++        finally:
++            db.close()
++
++    with ThreadPoolExecutor(max_workers=4) as pool:
++        futures = [
++            pool.submit(worker, "native", native["id"], "REGISTERED"),
++            pool.submit(worker, "native", native["id"], "REGISTERED"),
++            pool.submit(worker, "external", ext_id, "GOVERNED"),
++            pool.submit(worker, "external", ext_id, "CLAIMED"),
++        ]
++        for f in futures:
++            f.result(timeout=30)
++
++    assert sorted(outcomes["native"]) == [
++        f"{ErrorCode.CONTROL_STATE_ORIGIN_INCOMPATIBLE}:REGISTERED"] * 2
++    assert f"{ErrorCode.CONTROL_STATE_ORIGIN_INCOMPATIBLE}:GOVERNED" in outcomes["external"]
++    assert "OK:CLAIMED" in outcomes["external"]
++    db = SessionLocal()
++    try:
++        n = db.get(Agent, uuid.UUID(native["id"]))
++        e = db.get(Agent, uuid.UUID(ext_id))
++        assert (n.origin_category, n.control_state) == ("NATIVE", "GOVERNED")
++        assert (e.origin_category, e.control_state) == ("EXTERNAL", "CLAIMED")
++    finally:
++        db.close()
++
++
++def test_v02_api_cannot_mass_assign_origin_or_control_state(client: TestClient) -> None:
++    admin = _org(client)
++    # registration: a client-supplied provenance/control never reaches the row
++    created = _register_native(client, admin, origin_category="EXTERNAL",
++                               origin_provider="LANGGRAPH", control_state="DISCOVERED")
++    snap = _snapshot(client, admin, created["id"])
++    assert (snap["origin_category"], snap["origin_provider"], snap["control_state"]) == \
++        ("NATIVE", "ACT_NATIVE", "GOVERNED")
++    # update: neither field moves on PATCH, on an external agent either
++    ext_id = _make_external(admin)
++    current = client.get(f"{RT}/agents/{ext_id}", headers=admin["headers"]).json()
++    r = client.patch(f"{RT}/agents/{ext_id}", headers=admin["headers"], json={
++        "row_version": current["row_version"], "origin_category": "NATIVE",
++        "origin_provider": "ACT_NATIVE", "control_state": "GOVERNED",
++        "description": "an ordinary edit"})
++    assert r.status_code == 200, r.text
++    snap = _snapshot(client, admin, ext_id)
++    assert (snap["origin_category"], snap["control_state"]) == ("EXTERNAL", "DISCOVERED")
++
++
++def test_v02_full_population_guard_bites_in_both_directions(client: TestClient) -> None:
++    """Plant one violating row per direction by raw SQL (the only way such a
++    row can now exist), prove test_ac09 fails naming them, remove them in a
++    finally, prove it passes again."""
++    from sqlalchemy import text
++
++    admin = _org(client)
++    planted = {uuid.uuid4(): ("NATIVE", "ACT_NATIVE", "DISCOVERED"),
++               uuid.uuid4(): ("EXTERNAL", "CUSTOM", "GOVERNED")}
++    db = SessionLocal()
++    try:
++        for aid, (cat, prov, state) in planted.items():
++            db.execute(text(
++                "INSERT INTO agents (id, organization_id, name, agent_type, api_key_hash, status, "
++                "origin_category, origin_provider, control_state) VALUES "
++                "(:id, :org, :name, 'ASSISTANT', 'x', 'ACTIVE', :cat, :prov, :state)"),
++                {"id": str(aid), "org": admin["organization_id"],
++                 "name": f"v02-guard-plant-{aid.hex[:8]}", "cat": cat, "prov": prov, "state": state})
++        db.commit()
++        with pytest.raises(AssertionError) as exc:
++            test_ac09_existing_agents_are_backfilled_native_and_governed(client)
++        assert "violate the M5.1 origin/control-state invariant" in str(exc.value)
++    finally:
++        db.execute(text("DELETE FROM agents WHERE id = ANY(CAST(:ids AS uuid[]))"),
++                   {"ids": [str(a) for a in planted]})
++        db.commit()
++        db.close()
++    test_ac09_existing_agents_are_backfilled_native_and_governed(client)
+diff --git a/docs/architecture/adr/0015-universal-agent-asset-model-and-control-state.md b/docs/architecture/adr/0015-universal-agent-asset-model-and-control-state.md
+index 7aaadeb..6a596ca 100644
+--- a/docs/architecture/adr/0015-universal-agent-asset-model-and-control-state.md
++++ b/docs/architecture/adr/0015-universal-agent-asset-model-and-control-state.md
+@@ -77,8 +77,12 @@ ledger and the existing audit trail, and are tenant-scoped by the caller's
+ - `POST /agents/{id}/claim` — an authorized user takes **responsibility** for a
+   `DISCOVERED` agent. Advances to `CLAIMED`, **never** `GOVERNED`. Idempotent via
+   `Idempotency-Key`.
+-- `POST /agents/{id}/control-state` — `CLAIMED → REGISTERED → GOVERNED` and the
+-  safe reverses. Enrolling into `GOVERNED` requires an accountable owner.
++- `POST /agents/{id}/control-state` — `CLAIMED ↔ REGISTERED` for non-native
++  agents. *(As written in M5.1 this read "`CLAIMED → REGISTERED → GOVERNED` and
++  the safe reverses. Enrolling into `GOVERNED` requires an accountable owner."
++  Both edges touching `GOVERNED` were removed by
++  [ADR-0023](0023-governed-requires-native.md): `GOVERNED` is true of `NATIVE`
++  agents only and is never reached or left by request.)*
+ 
+ `DISCOVERED` / `CLAIMED` never imply ACT can govern or stop the agent — the
+ enforcement mode that would make an external agent genuinely governable is Phase
+diff --git a/docs/architecture/adr/README.md b/docs/architecture/adr/README.md
+index fb9ca05..0881634 100644
+--- a/docs/architecture/adr/README.md
++++ b/docs/architecture/adr/README.md
+@@ -41,6 +41,7 @@ rejected*.
+ | [0020](./0020-truthful-containment-via-existing-authorities.md) | Containment orchestrates the existing enforcement authorities; capability is truthfully derived from control_state, never assumed | Accepted |
+ | [0021](./0021-truthful-external-enforcement-modes.md) | Four enforcement modes, each truthfully bounded; the strongest is derived from control_state and is not storable | Accepted |
+ | [0022](./0022-assurance-evidence-not-verdict.md) | Assurance produces evidence and control mappings, never a compliance verdict; insufficient evidence is a first-class result | Accepted |
++| [0023](./0023-governed-requires-native.md) | `control_state = GOVERNED` requires `origin_category = NATIVE`; the origin × control-state matrix is enforced in the one control-state service and asserted over the whole table | Accepted |
+ 
+ ## Status values
+ 
+diff --git a/docs/runtime/registry/api.md b/docs/runtime/registry/api.md
+index f54eccd..928216f 100644
+--- a/docs/runtime/registry/api.md
++++ b/docs/runtime/registry/api.md
+@@ -51,8 +51,9 @@ GET  /agents/{agentId}/control-state          asset-model snapshot (control_stat
+ POST /agents/{agentId}/claim                   DISCOVERED -> CLAIMED; sets owner; writes
+                                                ownership history; Idempotency-Key aware
+                                                                                  [runtime.agent.claim]
+-POST /agents/{agentId}/control-state           server-authoritative CLAIMED -> REGISTERED ->
+-                                               GOVERNED (+ safe reverses); {target_state, reason}
++POST /agents/{agentId}/control-state           server-authoritative CLAIMED <-> REGISTERED
++                                               (non-native only; GOVERNED is NATIVE-only and
++                                               never by request, ADR-0023); {target_state, reason}
+                                                                         [runtime.agent.control.manage]
+ ```
+ 
+diff --git a/docs/runtime/registry/asset-model.md b/docs/runtime/registry/asset-model.md
+index f05d786..45c3647 100644
+--- a/docs/runtime/registry/asset-model.md
++++ b/docs/runtime/registry/asset-model.md
+@@ -33,21 +33,31 @@ governance, the kill switch, cost, SLOs) are **unchanged** by M5.1.
+ ### `control_state` progression
+ 
+ ```
+-DISCOVERED ──claim──▶ CLAIMED ──▶ REGISTERED ──▶ GOVERNED
+-                          ◀────────────┘   (safe reverses:
+-                                            GOVERNED→REGISTERED,
+-                                            REGISTERED→CLAIMED)
++non-native (EXTERNAL / UNKNOWN):
++DISCOVERED ──claim──▶ CLAIMED ◀──▶ REGISTERED          (never GOVERNED)
++
++native (NATIVE):
++GOVERNED                                                (always; no transitions)
+ ```
+ 
+ - **DISCOVERED** — ACT knows the agent exists. **No authority.** No governance
+   or enforcement affordance.
+ - **CLAIMED** — an authorized user has taken *responsibility*. Still **not**
+   governed.
+-- **REGISTERED** — brought under ACT's registry / policy scope.
+-- **GOVERNED** — ACT has real enforcement authority. Every native agent; an
+-  external agent reaches this only once Phase 5.7 attaches a `NATIVE` or
+-  `GATEWAY` enforcement mode. Enrolling into `GOVERNED` requires an accountable
+-  owner.
++- **REGISTERED** — brought under ACT's registry / policy scope. The terminal
++  control state for an agent ACT does not run; Phase 5.7's enforcement modes
++  describe ACT's reach from here (a GATEWAY_ENFORCED agent lives at REGISTERED).
++- **GOVERNED** — ACT runs and enforces the agent. **True of `NATIVE` agents
++  only, in every lifecycle state, and never reachable by request** (ADR-0023,
++  Validation Gate V0.2). It is the column Phase 5.6's containment gate and
++  Phase 5.7's `NATIVE_ENFORCED` are derived from, so it must be a fact, not a
++  declaration. A request for it on a non-native agent — or a request to move a
++  native agent anywhere else — is refused with
++  `CONTROL_STATE_ORIGIN_INCOMPATIBLE` (409) and audited as
++  `RUNTIME_AGENT_CONTROL_STATE_REJECTED`. *(Until V0.2 this document said an
++  external agent reaches GOVERNED "once 5.7 attaches a NATIVE or GATEWAY
++  enforcement mode"; 5.7 built no such operation, and ADR-0021 had already
++  refused the GATEWAY half.)*
+ 
+ `DISCOVERED` / `CLAIMED` never imply ACT can govern or stop the agent.
+ 
+@@ -61,7 +71,7 @@ never reaches the row. `control_state` moves only through:
+ | Endpoint | Permission | What it does |
+ |---|---|---|
+ | `POST /agents/{id}/claim` | `runtime.agent.claim` | `DISCOVERED → CLAIMED`; sets the business owner; writes `agent_ownership_history`; idempotent via `Idempotency-Key`. |
+-| `POST /agents/{id}/control-state` | `runtime.agent.control.manage` | `CLAIMED → REGISTERED → GOVERNED` and the safe reverses. |
++| `POST /agents/{id}/control-state` | `runtime.agent.control.manage` | `CLAIMED ↔ REGISTERED` for non-native agents; never to or from `GOVERNED` (ADR-0023). Refusals are audited. |
+ | `GET /agents/{id}/control-state` | `runtime.agent.view` | Read the asset-model snapshot. |
+ 
+ Both mutations authorize through the existing `AuthorizationGateway`, lock the

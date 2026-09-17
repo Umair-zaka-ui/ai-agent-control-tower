@@ -41,6 +41,7 @@ rejected*.
 | [0020](./0020-truthful-containment-via-existing-authorities.md) | Containment orchestrates the existing enforcement authorities; capability is truthfully derived from control_state, never assumed | Accepted |
 | [0021](./0021-truthful-external-enforcement-modes.md) | Four enforcement modes, each truthfully bounded; the strongest is derived from control_state and is not storable | Accepted |
 | [0022](./0022-assurance-evidence-not-verdict.md) | Assurance produces evidence and control mappings, never a compliance verdict; insufficient evidence is a first-class result | Accepted |
+| [0023](./0023-governed-requires-native.md) | `control_state = GOVERNED` requires `origin_category = NATIVE`; the origin × control-state matrix is enforced in the one control-state service and asserted over the whole table | Accepted |
 
 ## Status values
 

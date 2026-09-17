@@ -51,8 +51,9 @@ GET  /agents/{agentId}/control-state          asset-model snapshot (control_stat
 POST /agents/{agentId}/claim                   DISCOVERED -> CLAIMED; sets owner; writes
                                                ownership history; Idempotency-Key aware
                                                                                  [runtime.agent.claim]
-POST /agents/{agentId}/control-state           server-authoritative CLAIMED -> REGISTERED ->
-                                               GOVERNED (+ safe reverses); {target_state, reason}
+POST /agents/{agentId}/control-state           server-authoritative CLAIMED <-> REGISTERED
+                                               (non-native only; GOVERNED is NATIVE-only and
+                                               never by request, ADR-0023); {target_state, reason}
                                                                         [runtime.agent.control.manage]
 ```
 

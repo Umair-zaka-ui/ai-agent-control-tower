@@ -1,0 +1,16 @@
+V0.2 TARGETED REGRESSION start 2026-09-17T23:01:14+05:00 commit bbc159e
+ M backend/app/authorization/enums.py
+ M backend/app/identity/errors.py
+ M backend/app/runtime/registry/control.py
+ M backend/tests/posture/test_security_posture.py
+ M backend/tests/runtime/test_agent_asset_model.py
+ M docs/architecture/adr/0015-universal-agent-asset-model-and-control-state.md
+ M docs/architecture/adr/README.md
+ M docs/runtime/registry/api.md
+ M docs/runtime/registry/asset-model.md
+?? docs/architecture/adr/0023-governed-requires-native.md
+=== A. asset model (incl. V0.2 tests) + idempotency + posture + control graph + bridge + threat + milestone + registry/audit ===
+348 passed, 2000 warnings in 446.20s (0:07:26)
+=== B. tenant isolation (-k) ===
+113 passed, 2536 deselected, 1271 warnings in 316.38s (0:05:16)
+end 2026-09-17T23:14:03+05:00

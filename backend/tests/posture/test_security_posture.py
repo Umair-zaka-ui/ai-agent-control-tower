@@ -763,7 +763,11 @@ def test_ac14_a_rule_that_raises_fails_open(client: TestClient, admin: dict, mon
 
     db = SessionLocal()
     try:
-        aid = _insert_agent(db, admin, owned=False, origin_category="UNKNOWN", origin_provider="UNKNOWN")
+        # An UNKNOWN-provenance agent cannot be GOVERNED (V0.2 / ADR-0023:
+        # GOVERNED <=> NATIVE); DISCOVERED is its truthful control state, and
+        # this test only needs the unknown_provenance rule to be reached.
+        aid = _insert_agent(db, admin, owned=False, control_state="DISCOVERED",
+                            origin_category="UNKNOWN", origin_provider="UNKNOWN")
     finally:
         db.close()
     summary = _evaluate(client, admin, aid)
