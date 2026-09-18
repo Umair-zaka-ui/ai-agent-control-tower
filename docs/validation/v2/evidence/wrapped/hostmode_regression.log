@@ -1,0 +1,12 @@
+=== WRAPPED DOWN 2026-09-19T03:44:08+05:00 ===
+  "containers_left": [],
+  "networks_left": [],
+  "volumes_left": [],
+  "lab_keys_exists": false,
+  "lab_run_exists": false
+=== HOST-MODE REGRESSION 2026-09-19T03:44:22+05:00 ===
+[  3.87s] readiness: {'canary_zone': True, 'registry': True, 'mcp_trusted': True, 'act': True, 'otlp_collector': True}
+LAB UP in 17.73s -> http://127.0.0.1:8802
+DONE: 0 finding(s). Results -> C:\Users\PHS\Desktop\ai-agent-control-tower\lab\run\results\v2_baseline.json
+host-mode lab listeners after down: 0
+=== END 2026-09-19T03:45:06+05:00 ===

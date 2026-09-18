@@ -107,9 +107,10 @@ def main() -> int:
             print("refusing: adversarial phase not authorized in V2", file=sys.stderr)
             return 2
     port = VARIANTS[variant]["port"]
-    srv = ThreadingHTTPServer(("127.0.0.1", port), make_handler(variant, phase))
+    bind = os.environ.get("LAB_BIND", "127.0.0.1")  # 0.0.0.0 inside the V2.1 egress-deny network
+    srv = ThreadingHTTPServer((bind, port), make_handler(variant, phase))
     (RUN / f"mcp_{variant}.ready").write_text(str(os.getpid()), encoding="utf-8")
-    print(f"mcp {variant} listening on 127.0.0.1:{port} (phase={phase})", flush=True)
+    print(f"mcp {variant} listening on {bind}:{port} (phase={phase})", flush=True)
     srv.serve_forever()
     return 0
 

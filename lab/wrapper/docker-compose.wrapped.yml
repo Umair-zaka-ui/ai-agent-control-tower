@@ -1,0 +1,153 @@
+# V2.1 ISOLATION WRAPPER -- the whole V2 lab inside ONE Docker network with
+# `internal: true`: Docker installs no masquerade/NAT and no default route for it,
+# so nothing on this network can reach the host, the LAN, the internet or a
+# cloud-metadata address. That denial is enforced by the Docker Desktop Linux VM's
+# netfilter, entirely outside ACT. No service publishes a port to the host: the host
+# talks to the lab only through `docker compose exec` (control plane) and reads
+# results through the bind-mounted lab/ directory (filesystem, not network).
+#
+# Production separation: the ACT source tree is bind-mounted READ-ONLY, with
+# /app/.keys masked by an empty tmpfs and /app/.env masked by an empty file. The
+# only key material that exists inside is bootstrapped fresh into /lab/.keys.
+name: actlab-wrapped
+
+networks:
+  lab_net:
+    internal: true
+
+x-lab-common: &lab_common
+  image: actlab-act:v21
+  networks: [lab_net]
+  environment:
+    LAB_BIND: "0.0.0.0"
+    LAB_DB_HOST: lab_db
+    LAB_DB_PORT: "5432"
+    PYTHONUNBUFFERED: "1"
+  volumes:
+    - ../:/lab
+
+services:
+  lab_db:
+    image: postgres:17-alpine
+    networks: [lab_net]
+    environment:
+      POSTGRES_USER: actlab
+      POSTGRES_PASSWORD: actlab-synthetic-pw
+      POSTGRES_DB: act_lab
+    volumes:
+      - ../initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U actlab -d act_lab"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  canaries:
+    <<: *lab_common
+    command: ["python", "/lab/canaries.py"]
+    restart: "no"
+
+  act:
+    build:
+      context: ../../backend
+      dockerfile: ../lab/wrapper/Dockerfile.act
+    image: actlab-act:v21
+    networks: [lab_net]
+    working_dir: /app
+    env_file: act-lab-wrapped.env
+    environment:
+      PYTHONUNBUFFERED: "1"
+    volumes:
+      - ../../backend:/app:ro
+      - ./empty.env:/app/.env:ro
+      - ../:/lab
+    tmpfs:
+      - /app/.keys
+    entrypoint: ["bash", "/lab/wrapper/act-entrypoint.sh"]
+    depends_on:
+      lab_db: { condition: service_healthy }
+      canaries: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8802/docs',timeout=3)"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+      start_period: 15s
+
+  canary:
+    <<: *lab_common
+    command: ["python", "/lab/services/canary_zone.py"]
+    depends_on:
+      lab_db: { condition: service_healthy }
+      canaries: { condition: service_completed_successfully }
+
+  registry:
+    <<: *lab_common
+    command: ["python", "/lab/services/registry.py"]
+    depends_on:
+      canaries: { condition: service_completed_successfully }
+
+  otlp:
+    <<: *lab_common
+    command: ["python", "/lab/services/otlp_collector.py"]
+
+  mcp_trusted:
+    <<: *lab_common
+    command: ["python", "/lab/mcp/mcp_server.py", "trusted"]
+    depends_on: { canaries: { condition: service_completed_successfully } }
+  mcp_unknown:
+    <<: *lab_common
+    command: ["python", "/lab/mcp/mcp_server.py", "unknown"]
+    depends_on: { canaries: { condition: service_completed_successfully } }
+  mcp_risky:
+    <<: *lab_common
+    command: ["python", "/lab/mcp/mcp_server.py", "risky"]
+    depends_on: { canaries: { condition: service_completed_successfully } }
+  mcp_impersonator:
+    <<: *lab_common
+    command: ["python", "/lab/mcp/mcp_server.py", "impersonator"]
+    depends_on: { canaries: { condition: service_completed_successfully } }
+  mcp_rugpull:
+    <<: *lab_common
+    command: ["python", "/lab/mcp/mcp_server.py", "rugpull"]
+    depends_on: { canaries: { condition: service_completed_successfully } }
+
+  # The harness runner: same image + Node, no ports, same read-only ACT mount and masks
+  # (it runs `python -m app.security.keys verify` for the M4.11 observation).
+  runner:
+    build:
+      context: .
+      dockerfile: Dockerfile.runner
+      args: { ACT_IMAGE: actlab-act:v21 }
+    image: actlab-runner:v21
+    networks: [lab_net]
+    working_dir: /lab
+    env_file: act-lab-wrapped.env
+    environment:
+      LAB_MODE: wrapped
+      ACT_BASE: http://act:8802
+      LAB_DB_HOST: lab_db
+      LAB_DB_PORT: "5432"
+      LAB_REGISTRY_HOST: registry
+      LAB_CANARY_HOST: canary
+      LAB_MCP_HOST: mcp_trusted
+      LAB_BACKEND_DIR: /app
+      LAB_ENV_FILE: /lab/wrapper/act-lab-wrapped.env
+      PYTHONUNBUFFERED: "1"
+    volumes:
+      - ../../backend:/app:ro
+      - ./empty.env:/app/.env:ro
+      - ../:/lab
+    tmpfs:
+      - /app/.keys
+    command: ["sleep", "infinity"]
+    depends_on:
+      act: { condition: service_healthy }
+
+  # The boundary-proof probe: a stock Alpine with NO ACT code, no Python, nothing of ours.
+  proof:
+    image: alpine:3.20
+    networks: [lab_net]
+    volumes:
+      - ../:/lab
+    command: ["sleep", "infinity"]

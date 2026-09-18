@@ -1,0 +1,12 @@
+# ACT-under-test image for the V2.1 wrapped lab.
+# Deliberately NOT `COPY . .` (backend/Dockerfile does that and backend/.dockerignore
+# does not exclude .keys/, so the production dev keys would be copied into the image).
+# Only requirements.txt enters the build context copy; the source tree is bind-mounted
+# read-only at run time with /app/.keys masked by an empty tmpfs and /app/.env masked
+# by an empty file (see docker-compose.wrapped.yml). Production separation by construction.
+FROM python:3.12-slim
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends libpq5 && rm -rf /var/lib/apt/lists/*
+COPY requirements.txt /tmp/requirements.txt
+RUN pip install -r /tmp/requirements.txt

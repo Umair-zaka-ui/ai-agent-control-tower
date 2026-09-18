@@ -21,6 +21,13 @@ KINDS = ("agent_config_py", "agent_config_node", "agent_config_mcp", "mcp_config
 
 def main() -> int:
     RUN.mkdir(parents=True, exist_ok=True)
+    # Idempotent per lab build: services read the token set at start-up, so a second
+    # invocation during the same build (e.g. compose re-running this one-shot when a
+    # dependent service is restarted) must NOT rotate the tokens. Teardown deletes
+    # lab/run, which is what makes the next build generate a fresh set.
+    if (RUN / "canaries.json").exists() and "--force" not in sys.argv:
+        print("canaries already generated for this build (use --force to regenerate)")
+        return 0
     build = secrets.token_hex(4)
     tokens = {k: f"ACTLAB-CANARY-{k.upper()}-{build}-{secrets.token_hex(6)}" for k in KINDS}
     pii = [

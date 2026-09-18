@@ -1,0 +1,184 @@
+act-1  | [act] /app/.env size: 110 bytes (masked); /app/.keys entries: 0 (masked tmpfs)
+act-1  | [act] alembic upgrade head
+act-1  | INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+act-1  | INFO  [alembic.runtime.migration] Will assume transactional DDL.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade  -> 0001_initial, Initial schema: organizations, users, agents, permissions, agent_actions,
+act-1  | approvals and audit_logs.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0001_initial -> 0002_phase2, Phase 2 schema: agent API keys, policies, advanced RBAC, approval
+act-1  | priority/SLA/comments and audit log forensic fields.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0002_phase2 -> 0003_agent_mgmt, Phase 3 Part 3.2 - enterprise agent management fields + statuses.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0003_agent_mgmt -> 0004_policy_mgmt, Phase 3 Part 3.3 - policy management metadata.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0004_policy_mgmt -> 0005_approval_workbench, Phase 3 Part 3.4 - approval queue & human review workbench.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0005_approval_workbench -> 0006_identity_foundation, Phase 4 Part 4.1 - Enterprise Identity Platform foundation.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0006_identity_foundation -> 0007_identity_lifecycle, Phase 4 Part 4.1a - unify the identity lifecycle across all identity types.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0007_identity_lifecycle -> 0008_auth_login_history, Phase 4 Part 4.2.2.1 - human authentication: login history + lockout window.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0008_auth_login_history -> 0009_session_lifecycle, Phase 4 Part 4.2.2.2 - login, logout & session lifecycle.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0009_session_lifecycle -> 0010_session_admin_permissions, Phase 4 Part 4.2.2.2 - administrative session-management permissions.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0010_session_admin_permissions -> 0011_security_event_read_indexes, Phase 4 Part 4.2.2.2 - indexes for the security-event read path.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0011_security_event_read_indexes -> 0012_registration_invites, Phase 4 Part 4.2.2.3.1 - enterprise registration, invitations & email verification.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0012_registration_invites -> 0013_credential_management, Phase 4 Part 4.2.2.3.2 - enterprise password policy & credential management.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0013_credential_management -> 0014_password_reset_recovery, Phase 4 Part 4.2.2.3.3 - password reset, account recovery & email change.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0014_password_reset_recovery -> 0015_account_protection, Phase 4 Part 4.2.2.3.4 - enterprise account protection & risk-based auth.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0015_account_protection -> 0016_rbac_foundation, Phase 4.3.1 - Enterprise RBAC foundation.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0016_rbac_foundation -> 0017_permission_engine, Phase 4.3.2 - Enterprise Permission Engine.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0017_permission_engine -> 0018_org_hierarchy, Phase 4.3.3 - Enterprise organization authorization hierarchy.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0018_org_hierarchy -> 0019_resource_authorization, Phase 4.3.4 - Enterprise resource-based authorization (RBAC + Resource ACL).
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0019_resource_authorization -> 0020_abac_engine, Phase 4.3.5 - Attribute-Based Access Control engine.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0020_abac_engine -> 0021_access_reviews, Phase 4.3.7 - Enterprise authorization administration portal.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0021_access_reviews -> 0022_governance_iga, Phase 4.3.8 - Identity Governance & Administration (IGA).
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0022_governance_iga -> 0023_agent_runtime, Phase 5.0 - Enterprise AI Agent Runtime & Lifecycle Management.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0023_agent_runtime -> 0024_agent_registry, Phase 5.1 - Enterprise Agent Registry, Definitions & Lifecycle.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0024_agent_registry -> 0025_agent_versioning, Phase 5.2 Part 1 - Enterprise Immutable Agent Versioning & Release Management.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0025_agent_versioning -> 0026_version_compatibility, Phase 5.2.6 - Compatibility & Breaking-Change Detection.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0026_version_compatibility -> 0027_version_signing, Phase 5.2.4 - Cryptographic Signing, Provenance & Portable Attestation.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0027_version_signing -> 0028_streaming_and_pricing, Phase 5.7a.3 - Streaming & Token Accounting.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0028_streaming_and_pricing -> 0029_provider_credentials, Phase 5.7a.5 - Per-Organization Provider Credentials.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0029_provider_credentials -> 0030_http_tool_egress, Phase 5.6a.1 - HTTP Tool Execution & Egress Control.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0030_http_tool_egress -> 0031_tool_resilience, Phase 5.6a.2 - Tool Schema Validation & Resilience.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0031_tool_resilience -> 0032_tool_loop, Phase 5.6a.3 - Model-Driven Tool Invocation Loop.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0032_tool_loop -> 0033_connector_core, Phase 2.1.1 - Connector Abstraction & Lifecycle.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0033_connector_core -> 0034_connector_auth, Phase 2.1.2 - Connector Authentication Framework.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0034_connector_auth -> 0035_connector_health, Phase 2.1.3 - Connector Registry & Health.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0035_connector_health -> 0036_identity_federation, Phase 2.3.1 - External Identity Federation.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0036_identity_federation -> 0037_deployment_lifecycle, Phase 3.1 - Enterprise Deployment Core.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0037_deployment_lifecycle -> 0038_environments_promotion, Phase 3.2 - Environment & Promotion Model.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0038_environments_promotion -> 0039_deployment_preflight, Phase 3.3 - Deployment Preflight & Release Gate Engine.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0039_deployment_preflight -> 0040_traffic_allocation, Phase 3.4 - Traffic Allocation, Version Resolver & Execution Gate.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0040_traffic_allocation -> 0041_canary_rollout, Phase 3.5 - Canary Deployment Engine.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0041_canary_rollout -> 0042_automated_rollback, Phase 3.7 - Automated Rollback & Release Safety.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0042_automated_rollback -> 0043_distributed_scheduler, Phase 3.8 - Distributed Scheduler.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0043_distributed_scheduler -> 0044_worker_fleet_rolling, Phase 3.9 - Distributed Execution Worker Fleet & Rolling Deployment.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0044_worker_fleet_rolling -> 0045_runtime_telemetry_context, Phase 4.1 - Runtime Telemetry & Trace Context Foundation.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0045_runtime_telemetry_context -> 0046_trace_explorer_index, Phase 4.2 - Unified AI Execution Trace (Trace Explorer & Timeline).
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0046_trace_explorer_index -> 0047_runtime_governance, Phase 4.3 - Runtime Governance Enforcement Engine.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0047_runtime_governance -> 0048_cost_governance, Phase 4.4 - Enterprise AI Cost Governance & FinOps.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0048_cost_governance -> 0049_behavioral_signals, Phase 4.5 - Behavioral Signals & Runtime Anomaly Detection.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0049_behavioral_signals -> 0050_slos_and_alerts, Phase 4.7 - SLOs, alert rules & incident signals.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0050_slos_and_alerts -> 0051_telemetry_privacy, Phase 4.8 - telemetry privacy, retention & access governance.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0051_telemetry_privacy -> 0052_key_material_canary, Phase M4.11 - key-material recovery & fail-loud integrity.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0052_key_material_canary -> 0053_installation_bootstrap, Phase M4.11a - the durable bootstrap marker.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0053_installation_bootstrap -> 0054_agent_asset_model, Phase 5.1 (M5.1) - Universal Agent Asset Model + Ownership.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0054_agent_asset_model -> 0055_agent_discovery, Phase 5.2 (M5.2) - Agent Discovery Framework.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0055_agent_discovery -> 0056_control_graph, Phase 5.3 (M5.3) - Identity, Delegation & Trust Graph.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0056_control_graph -> 0057_dependency_graph, Phase 5.4 (M5.4) - MCP / Tool / Credential / Resource Dependency Graph.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0057_dependency_graph -> 0058_security_posture, Phase 5.5 (M5.5) - Security Posture & Shadow Findings.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0058_security_posture -> 0059_threat_containment, Phase 5.6 (M5.6) - Runtime Threat Detection & Containment.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0059_threat_containment -> 0060_external_gov_bridge, Phase 5.7 (M5.7) - External Agent Governance Bridge.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0060_external_gov_bridge -> 0061_assurance_evidence, Phase 5.9 (M5.9) - Assurance, Evidence & Compliance.
+act-1  | [act] keys bootstrap (fresh lab identity)
+act-1  | Generating a new local Ed25519 signing keypair for 'lab' at /lab/.keys -- this is a development convenience, NOT production-grade key management. Production deployments must configure Azure Key Vault (SIGNING_PROVIDER=AZURE_KEY_VAULT).
+act-1  | provisioned fresh key material and recorded the bootstrap marker:
+act-1  |   encryption: provider=LOCAL fingerprint=f56a3f0edc1a5912
+act-1  |   signing:    key_id=lab v1 public_fingerprint=c9c3595060376f7c
+act-1  | back this up now: python -m app.security.keys backup <recovery-target>
+act-1  | install mode:            EXISTING_INSTALL  (bootstrap marker present)
+act-1  | bootstrap marker:        present
+act-1  | encrypted-state tables:  (none)
+act-1  | signed-state tables:     signing_keys
+act-1  | encryption provider:     {'provider': 'LOCAL', 'present': True, 'active_fingerprint': 'f56a3f0edc1a5912', 'fallback_fingerprints': []}
+act-1  | OK    key-material integrity OK â€” install=EXISTING_INSTALL encryption[provider=LOCAL fp=f56a3f0edc1a5912 state=OK validation=CANARY_MATCH] signing[keys=1 validation=OK]
+act-1  | [act] serving on 0.0.0.0:8802 (internal network only)
+act-1  | INFO:     Started server process [1]
+act-1  | INFO:     Waiting for application startup.
+act-1  | INFO:     Application startup complete.
+act-1  | INFO:     Uvicorn running on http://0.0.0.0:8802 (Press CTRL+C to quit)
+act-1  | INFO:     127.0.0.1:51266 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:34912 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:34918 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:34924 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:38408 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:38410 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:38418 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:41182 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:41184 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.5:60866 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     Shutting down
+act-1  | INFO:     Waiting for application shutdown.
+act-1  | INFO:     Application shutdown complete.
+act-1  | INFO:     Finished server process [1]
+act-1  | [act] /app/.env size: 110 bytes (masked); /app/.keys entries: 0 (masked tmpfs)
+act-1  | [act] alembic upgrade head
+act-1  | INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+act-1  | INFO  [alembic.runtime.migration] Will assume transactional DDL.
+act-1  | [act] keys bootstrap (fresh lab identity)
+act-1  | FAIL  BOOTSTRAP_REFUSED_MARKER_PRESENT: this installation is already established (bootstrap marker present) â€” it is not a new one â€” restore the original key material from the recovery archive (see docs/security/key-management.md); bootstrapping here would orphan every existing secret and signature
+act-1  | [act] bootstrap returned non-zero (see status below)
+act-1  | install mode:            EXISTING_INSTALL  (bootstrap marker present)
+act-1  | bootstrap marker:        present
+act-1  | encrypted-state tables:  (none)
+act-1  | signed-state tables:     signing_keys
+act-1  | encryption provider:     {'provider': 'LOCAL', 'present': True, 'active_fingerprint': 'f56a3f0edc1a5912', 'fallback_fingerprints': []}
+act-1  | OK    key-material integrity OK â€” install=EXISTING_INSTALL encryption[provider=LOCAL fp=f56a3f0edc1a5912 state=OK validation=CANARY_MATCH] signing[keys=1 validation=OK]
+act-1  | [act] serving on 0.0.0.0:8802 (internal network only)
+act-1  | INFO:     Started server process [1]
+act-1  | INFO:     Waiting for application startup.
+act-1  | INFO:     Application startup complete.
+act-1  | INFO:     Uvicorn running on http://0.0.0.0:8802 (Press CTRL+C to quit)
+act-1  | INFO:     127.0.0.1:56134 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.13:55276 - "POST /auth/register HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.13:55286 - "POST /api/v1/auth/login HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.13:55298 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.13:55314 - "POST /auth/register HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.13:55318 - "POST /api/v1/auth/login HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.13:55322 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.13:55326 - "POST /api/v1/discovery/sources HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.13:55340 - "POST /api/v1/discovery/sources/96649851-2953-4d0b-8845-c6db4197e8a8/runs HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.13:55346 - "POST /api/v1/discovery/sources/96649851-2953-4d0b-8845-c6db4197e8a8/runs HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.13:55350 - "GET /api/v1/runtime/agents/47fa4115-0b62-44c3-b911-f9c27b64547b/control-state HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.13:55366 - "POST /api/v1/runtime/agents/47fa4115-0b62-44c3-b911-f9c27b64547b/control-state HTTP/1.1" 409 Conflict
+act-1  | INFO:     172.20.0.13:55374 - "GET /api/v1/runtime/agents/76a65e76-273d-423c-9aab-200f2e4ff5d8/control-state HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.13:55390 - "POST /api/v1/runtime/agents/76a65e76-273d-423c-9aab-200f2e4ff5d8/control-state HTTP/1.1" 409 Conflict
+act-1  | INFO:     172.20.0.13:55402 - "GET /api/v1/runtime/agents/00a49573-f5bb-4ec7-847e-babc194d847c/control-state HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.13:55412 - "POST /api/v1/runtime/agents/00a49573-f5bb-4ec7-847e-babc194d847c/control-state HTTP/1.1" 409 Conflict
+act-1  | INFO:     172.20.0.13:55420 - "POST /api/v1/posture/evaluate HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.13:55436 - "GET /api/v1/posture/agents/47fa4115-0b62-44c3-b911-f9c27b64547b/shadow HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.13:55446 - "GET /api/v1/posture/agents/47fa4115-0b62-44c3-b911-f9c27b64547b/findings?status=OPEN HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.13:55458 - "GET /api/v1/posture/agents/76a65e76-273d-423c-9aab-200f2e4ff5d8/shadow HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.13:55474 - "GET /api/v1/posture/agents/76a65e76-273d-423c-9aab-200f2e4ff5d8/findings?status=OPEN HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.13:55490 - "GET /api/v1/posture/agents/00a49573-f5bb-4ec7-847e-babc194d847c/shadow HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.13:55496 - "GET /api/v1/posture/agents/00a49573-f5bb-4ec7-847e-babc194d847c/findings?status=OPEN HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.13:55498 - "POST /api/v1/graph/mcp-servers HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.13:55510 - "POST /api/v1/runtime/tools HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.13:55522 - "POST /api/v1/graph/mcp-servers/960d9754-04e6-48ef-9856-da4a5152085b/tools HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.13:55524 - "POST /api/v1/graph/dependency-edges HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.13:55528 - "POST /api/v1/graph/dependency-edges HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.13:55534 - "POST /api/v1/graph/dependency-edges HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.13:55546 - "GET /api/v1/graph/blast-radius/agents-reaching?node_type=RESOURCE&node_id=93419e22-3f83-407f-9ab6-d26e687e548c HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.13:55548 - "GET /api/v1/graph/mcp-servers/960d9754-04e6-48ef-9856-da4a5152085b HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.13:55560 - "GET /api/v1/graph/mcp-servers HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.13:55562 - "POST /api/v1/runtime/tools HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.13:55576 - "POST /api/v1/runtime/tools HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.13:55580 - "POST /api/v1/runtime/agents/47fa4115-0b62-44c3-b911-f9c27b64547b/claim HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.13:55586 - "POST /api/v1/runtime/agents/47fa4115-0b62-44c3-b911-f9c27b64547b/control-state HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.13:55588 - "POST /api/v1/runtime/agents/47fa4115-0b62-44c3-b911-f9c27b64547b/control-state HTTP/1.1" 409 Conflict
+act-1  | INFO:     172.20.0.13:55604 - "PUT /api/v1/bridge/agents/47fa4115-0b62-44c3-b911-f9c27b64547b/enforcement-mode HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.13:55608 - "POST /api/v1/bridge/agents/47fa4115-0b62-44c3-b911-f9c27b64547b/grants HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.13:55616 - "POST /api/v1/runtime/agents/76a65e76-273d-423c-9aab-200f2e4ff5d8/claim HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.13:55622 - "POST /api/v1/runtime/agents/76a65e76-273d-423c-9aab-200f2e4ff5d8/control-state HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.13:55638 - "POST /api/v1/runtime/agents/76a65e76-273d-423c-9aab-200f2e4ff5d8/control-state HTTP/1.1" 409 Conflict
+act-1  | INFO:     172.20.0.13:55648 - "PUT /api/v1/bridge/agents/76a65e76-273d-423c-9aab-200f2e4ff5d8/enforcement-mode HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.13:55654 - "POST /api/v1/bridge/agents/76a65e76-273d-423c-9aab-200f2e4ff5d8/grants HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.13:55664 - "POST /api/v1/runtime/agents/00a49573-f5bb-4ec7-847e-babc194d847c/claim HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.13:55678 - "POST /api/v1/runtime/agents/00a49573-f5bb-4ec7-847e-babc194d847c/control-state HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.13:55690 - "POST /api/v1/runtime/agents/00a49573-f5bb-4ec7-847e-babc194d847c/control-state HTTP/1.1" 409 Conflict
+act-1  | INFO:     172.20.0.13:55696 - "PUT /api/v1/bridge/agents/00a49573-f5bb-4ec7-847e-babc194d847c/enforcement-mode HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.13:55712 - "POST /api/v1/bridge/agents/00a49573-f5bb-4ec7-847e-babc194d847c/grants HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.13:55718 - "POST /api/v1/bridge/capability HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:56142 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.13:55728 - "POST /api/v1/bridge/capability HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.13:55728 - "POST /api/v1/bridge/capability HTTP/1.1" 403 Forbidden
+act-1  | INFO:     172.20.0.13:55740 - "POST /api/v1/bridge/capability HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.13:55746 - "POST /api/v1/bridge/capability HTTP/1.1" 403 Forbidden
+act-1  | INFO:     172.20.0.13:55756 - "POST /api/v1/threat/agents/00a49573-f5bb-4ec7-847e-babc194d847c/evaluate HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.13:55760 - "POST /api/v1/threat/agents/00a49573-f5bb-4ec7-847e-babc194d847c/containment HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.13:55772 - "POST /api/v1/bridge/grants/e0364578-8ccc-46ca-a5a4-6c4a6b2a4c11/revoke HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.13:55780 - "POST /api/v1/bridge/capability HTTP/1.1" 403 Forbidden
+act-1  | INFO:     172.20.0.13:55794 - "POST /api/v1/bridge/capability HTTP/1.1" 403 Forbidden
+act-1  | INFO:     172.20.0.13:55810 - "POST /api/v1/assurance/agents/00a49573-f5bb-4ec7-847e-babc194d847c/evaluate HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.13:55814 - "GET /api/v1/command-center/agents?page_size=200 HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.13:55824 - "GET /api/v1/command-center/agents?page_size=200 HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.13:55838 - "GET /api/v1/bridge/agents/47fa4115-0b62-44c3-b911-f9c27b64547b/enforcement-mode HTTP/1.1" 404 Not Found
+act-1  | INFO:     172.20.0.13:55854 - "GET /api/v1/bridge/agents/76a65e76-273d-423c-9aab-200f2e4ff5d8/enforcement-mode HTTP/1.1" 404 Not Found
+act-1  | INFO:     172.20.0.13:55860 - "GET /api/v1/bridge/agents/00a49573-f5bb-4ec7-847e-babc194d847c/enforcement-mode HTTP/1.1" 404 Not Found
+act-1  | INFO:     127.0.0.1:56158 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:33234 - "GET /docs HTTP/1.1" 200 OK

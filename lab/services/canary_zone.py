@@ -27,6 +27,11 @@ RUN = Path(__file__).resolve().parents[1] / "run"
 CANARIES = json.loads((RUN / "canaries.json").read_text(encoding="utf-8"))
 LOG_DIR = RUN / "canary_zone"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
+# V2 (host mode) binds loopback; V2.1 (wrapped mode) binds all interfaces of an
+# egress-deny Docker network, where the NETWORK is the boundary (LAB_BIND=0.0.0.0).
+BIND = os.environ.get("LAB_BIND", "127.0.0.1")
+DB = dict(host=os.environ.get("LAB_DB_HOST", "127.0.0.1"), port=int(os.environ.get("LAB_DB_PORT", "5433")),
+          user="actlab", password="actlab-synthetic-pw", dbname="lab_payroll")
 
 
 def _log(name: str, record: dict) -> None:
@@ -98,7 +103,7 @@ def seed_payroll_db() -> str:
         import psycopg2  # type: ignore
     except ImportError:
         return "psycopg2 unavailable - payroll DB not seeded"
-    conn = psycopg2.connect(host="127.0.0.1", port=5433, user="actlab", password="actlab-synthetic-pw", dbname="lab_payroll")
+    conn = psycopg2.connect(**DB)
     conn.autocommit = True
     cur = conn.cursor()
     cur.execute("CREATE TABLE IF NOT EXISTS employees (id serial primary key, full_name text, national_id text, iban text, salary numeric, canary text)")
@@ -118,10 +123,10 @@ def main() -> None:
     for port, name, routes in ((8821, "object_store", object_store()), (8822, "mailbox", mailbox()),
                                (8823, "finance", finance()), (8824, "metadata_decoy", metadata_decoy()),
                                (8825, "attacker_sim", attacker_sim())):
-        srv = ThreadingHTTPServer(("127.0.0.1", port), _make(name, routes))
+        srv = ThreadingHTTPServer((BIND, port), _make(name, routes))
         threading.Thread(target=srv.serve_forever, daemon=True).start()
         servers.append(srv)
-        print(f"canary {name} listening on 127.0.0.1:{port}", flush=True)
+        print(f"canary {name} listening on {BIND}:{port}", flush=True)
     (RUN / "canary_zone.ready").write_text(str(os.getpid()), encoding="utf-8")
     try:
         threading.Event().wait()

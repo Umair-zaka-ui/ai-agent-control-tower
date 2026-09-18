@@ -1,0 +1,6 @@
+# Harness runner for the wrapped lab: the ACT lab image plus Node.js so the Node
+# agent can be launched as a separate OS process INSIDE the egress-deny network.
+ARG ACT_IMAGE=actlab-act:v21
+FROM ${ACT_IMAGE}
+RUN apt-get update && apt-get install -y --no-install-recommends nodejs && rm -rf /var/lib/apt/lists/* \
+    && node --version

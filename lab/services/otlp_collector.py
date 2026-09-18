@@ -44,9 +44,10 @@ def main() -> int:
         (RUN / "otlp_collector.down").write_text("collector deliberately not started", encoding="utf-8")
         print("otlp collector in DOWN mode (not listening)", flush=True)
         return 0
-    srv = ThreadingHTTPServer(("127.0.0.1", 8812), Handler)
+    bind = os.environ.get("LAB_BIND", "127.0.0.1")  # 0.0.0.0 inside the V2.1 egress-deny network
+    srv = ThreadingHTTPServer((bind, 8812), Handler)
     (RUN / "otlp_collector.ready").write_text(str(os.getpid()), encoding="utf-8")
-    print("otlp collector listening on 127.0.0.1:8812", flush=True)
+    print(f"otlp collector listening on {bind}:8812", flush=True)
     srv.serve_forever()
     return 0
 

@@ -1,0 +1,81 @@
+{
+  "total_seconds": 113.79,
+  "steps": [
+    {
+      "step": "docker compose build (act image from requirements only; runner = act + node)",
+      "seconds": 1.33,
+      "result": [
+        "#19 DONE 0.0s"
+      ]
+    },
+    {
+      "step": "docker compose up -d --wait (internal network, no published ports)",
+      "seconds": 26.12,
+      "result": "up"
+    },
+    {
+      "step": "network is internal",
+      "seconds": 0.04,
+      "result": "internal=true driver=bridge"
+    },
+    {
+      "step": "no published ports",
+      "seconds": 0.19,
+      "result": "actlab-wrapped-act-1  | actlab-wrapped-canary-1  | actlab-wrapped-lab_db-1 5432/tcp | actlab-wrapped-mcp_impersonator-1  | actlab-wrapped-mcp_risky-1  | actlab-wrapped-mcp_rugpull-1  | actlab-wrapped-mcp_trusted-1  | actlab-wrapped-mcp_unknown-1  | actlab-wrapped-otlp-1  | actlab-wrapped-proof-1  | actlab-wrapped-registry-1  | actlab-wrapped-runner-1"
+    },
+    {
+      "step": "act entrypoint log (masking + bootstrap)",
+      "seconds": 0.14,
+      "result": [
+        "act-1  | [act] /app/.env size: 110 bytes (masked); /app/.keys entries: 0 (masked tmpfs)",
+        "act-1  | [act] alembic upgrade head",
+        "act-1  | [act] keys bootstrap (fresh lab identity)",
+        "act-1  |   encryption: provider=LOCAL fingerprint=f56a3f0edc1a5912",
+        "act-1  |   signing:    key_id=lab v1 public_fingerprint=c9c3595060376f7c",
+        "act-1  | encryption provider:     {'provider': 'LOCAL', 'present': True, 'active_fingerprint': 'f56a3f0edc1a5912', 'fallback_fingerprints': []}",
+        "act-1  | [act] serving on 0.0.0.0:8802 (internal network only)"
+      ]
+    },
+    {
+      "step": "boundary proof with ACT running",
+      "seconds": 25.51,
+      "result": 22
+    },
+    {
+      "step": "stop ACT",
+      "seconds": 0.87,
+      "result": 0
+    },
+    {
+      "step": "boundary proof with ACT STOPPED (independence)",
+      "seconds": 30.51,
+      "result": 22
+    },
+    {
+      "step": "start ACT",
+      "seconds": 0.95,
+      "result": 0
+    },
+    {
+      "step": "act healthy again",
+      "seconds": 16.44,
+      "result": "healthy"
+    },
+    {
+      "step": "V2 baseline inside the runner",
+      "seconds": 11.54,
+      "result": [
+        "DONE: 0 finding(s). Results -> /lab/run/results/v2_baseline.json"
+      ]
+    },
+    {
+      "step": "ACT container log captured + canary grep",
+      "seconds": 0.14,
+      "result": {
+        "lines": 184,
+        "canary_marker_hits": 0,
+        "tracebacks": 0
+      }
+    }
+  ]
+}

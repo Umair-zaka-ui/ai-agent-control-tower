@@ -1,0 +1,19 @@
+start 2026-09-19T03:36:51+05:00
+#8 DONE 0.0s
+ Image actlab-runner:v21 Built 
+runner build exit: 0
+[   1.41s] docker compose build (act image from requirements only; runner = act + node): ['#19 DONE 0.0s']
+[  25.78s] docker compose up -d --wait (internal network, no published ports): up
+[   0.04s] network is internal: internal=true driver=bridge
+[   0.17s] no published ports: actlab-wrapped-act-1  | actlab-wrapped-canary-1  | actlab-wrapped-lab_db-1 5432/tcp | actlab-wrapped-mcp_impersonator-1  | actlab-wrapped-mcp_risky-1  | actlab-
+[   0.14s] act entrypoint log (masking + bootstrap): ['act-1  | [act] /app/.env size: 110 bytes (masked); /app/.keys entries: 0 (masked tmpfs)', 'act-1  | [act] alembic upgrade head', 'act-1  | [act] keys bootstra
+[  25.49s] boundary proof with ACT running: 22
+[   0.86s] stop ACT: 0
+[  30.49s] boundary proof with ACT STOPPED (independence): 22
+[   0.99s] start ACT: 0
+[  15.92s] act healthy again: 0
+[  11.26s] V2 baseline inside the runner: ['DONE: 1 finding(s). Results -> /lab/run/results/v2_baseline.json']
+[   0.13s] ACT container log captured + canary grep: {'lines': 183, 'canary_marker_hits': 0, 'tracebacks': 0}
+WRAPPED LAB UP in 112.69s
+wrap_up exit: 0
+end 2026-09-19T03:39:08+05:00

@@ -25,17 +25,29 @@ LAB = ROOT / "lab"
 RUN = LAB / "run"
 RES = RUN / "results"
 RES.mkdir(parents=True, exist_ok=True)
-BACKEND = ROOT / "backend"
-PY = str(BACKEND / ".venv" / "Scripts" / "python.exe") if os.name == "nt" else str(BACKEND / ".venv" / "bin" / "python")
-BASE = "http://127.0.0.1:8802"
+# Host mode (V2): loopback ports, ACT's venv, backend/ on disk. Wrapped mode (V2.1):
+# in-network hostnames and the container's own interpreter (LAB_MODE=wrapped, set by the
+# runner service). Only endpoints change between the two -- never what is observed.
+MODE = os.environ.get("LAB_MODE", "host")
+BACKEND = Path(os.environ.get("LAB_BACKEND_DIR", str(ROOT / "backend")))
+PY = (sys.executable if MODE == "wrapped" else
+      (str(BACKEND / ".venv" / "Scripts" / "python.exe") if os.name == "nt" else str(BACKEND / ".venv" / "bin" / "python")))
+ENV_FILE = Path(os.environ.get("LAB_ENV_FILE", str(LAB / "env" / "act-lab.env")))
+BASE = os.environ.get("ACT_BASE", "http://127.0.0.1:8802")
+REG_HOST = os.environ.get("LAB_REGISTRY_HOST", "127.0.0.1")
+CAN_HOST = os.environ.get("LAB_CANARY_HOST", "127.0.0.1")
+MCP_HOST = os.environ.get("LAB_MCP_HOST", "127.0.0.1")
+NODE = os.environ.get("LAB_NODE_BIN", "node")
 RT, DISC, GRAPH, POSTURE, THREAT, BRIDGE, ASSURE, CC = ("/api/v1/runtime", "/api/v1/discovery", "/api/v1/graph",
                                                         "/api/v1/posture", "/api/v1/threat", "/api/v1/bridge",
                                                         "/api/v1/assurance", "/api/v1/command-center")
 CAN = json.loads((RUN / "canaries.json").read_text(encoding="utf-8"))
 PASSWORD = "L4b!Passw0rd#Synthetic"
-LAB_DB = dict(host="127.0.0.1", port=5433, user="actlab", password="actlab-synthetic-pw", dbname="act_lab")
+LAB_DB = dict(host=os.environ.get("LAB_DB_HOST", "127.0.0.1"), port=int(os.environ.get("LAB_DB_PORT", "5433")),
+              user="actlab", password="actlab-synthetic-pw", dbname="act_lab")
 
-results: dict = {"observations": {}, "measurements": {}, "findings": [], "started_at": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
+results: dict = {"mode": MODE, "act_base": BASE, "observations": {}, "measurements": {}, "findings": [],
+                 "started_at": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
 
 
 def _unwrap(obj):
@@ -104,7 +116,7 @@ def main() -> int:
     print("1. discovery", flush=True)
     s, src, ms, _ = http("POST", f"{DISC}/sources", headers=hA, body={
         "name": "Lab Wave-1 Registry", "adapter_key": "HTTP_AGENT_REGISTRY",
-        "config": {"base_url": "http://127.0.0.1:8811", "allowed_hosts": ["127.0.0.1"], "local_dev_hosts": ["127.0.0.1"],
+        "config": {"base_url": f"http://{REG_HOST}:8811", "allowed_hosts": [REG_HOST], "local_dev_hosts": [REG_HOST],
                    "allow_plaintext_http": True, "path": "/agents", "page_size": 10, "max_pages": 5}})
     assert s == 201, (s, src)
     s, run1, ms1, _ = http("POST", f"{DISC}/sources/{src['id']}/runs", headers=hA)
@@ -160,7 +172,7 @@ def main() -> int:
     print("7. dependency graph + blast radius (canary payroll path)", flush=True)
     s, mcp_trusted, _, _ = http("POST", f"{GRAPH}/mcp-servers", headers=hA, body={
         "name": "lab-payroll-mcp", "provenance": "EXPLICIT", "trust_status": "APPROVED", "version": "1.0.0",
-        "endpoint_reference": "http://127.0.0.1:8831/mcp", "declared_capabilities": {"tools": ["payroll_read"]}})
+        "endpoint_reference": f"http://{MCP_HOST}:8831/mcp", "declared_capabilities": {"tools": ["payroll_read"]}})
     assert s == 201, (s, mcp_trusted)
     s, tool, _, _ = http("POST", f"{RT}/tools", headers=hA, body={"name": "payroll_read", "display_name": "Payroll Read", "tool_type": "FUNCTION"})
     assert s == 201, (s, tool)
@@ -188,7 +200,8 @@ def main() -> int:
     s, recorded, _, _ = http("GET", f"{GRAPH}/mcp-servers/{mcp_trusted['id']}", headers=hA)
     manifests = {}
     for v, port in (("trusted", 8831), ("unknown", 8832), ("risky", 8833), ("impersonator", 8834), ("rugpull", 8835)):
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}/manifest", timeout=5) as r:
+        host = f"mcp_{v}" if MODE == "wrapped" else "127.0.0.1"
+        with urllib.request.urlopen(f"http://{host}:{port}/manifest", timeout=5) as r:
             manifests[v] = json.loads(r.read().decode())
     s, listing, _, _ = http("GET", f"{GRAPH}/mcp-servers", headers=hA)
     results["mcp_baseline"] = {
@@ -208,13 +221,13 @@ def main() -> int:
     print("4. claim / register / mode (truthful affordances)", flush=True)
     s, cap_a, _, _ = http("POST", f"{RT}/tools", headers=hA, body={
         "name": "lab_finance_purchase", "display_name": "Lab Finance (canary)", "tool_type": "HTTP",
-        "endpoint_reference": "http://127.0.0.1:8823/purchase",
-        "http_config": {"allowed_hosts": ["127.0.0.1"], "allow_plaintext_http": True, "local_dev_hosts": ["127.0.0.1"], "method": "POST", "timeout_seconds": 10}})
+        "endpoint_reference": f"http://{CAN_HOST}:8823/purchase",
+        "http_config": {"allowed_hosts": [CAN_HOST], "allow_plaintext_http": True, "local_dev_hosts": [CAN_HOST], "method": "POST", "timeout_seconds": 10}})
     assert s == 201, (s, cap_a)
     s, cap_f, _, _ = http("POST", f"{RT}/tools", headers=hA, body={
         "name": "lab_finance_transfer", "display_name": "Lab Finance Transfer (canary, never granted)", "tool_type": "HTTP",
-        "endpoint_reference": "http://127.0.0.1:8823/transfer",
-        "http_config": {"allowed_hosts": ["127.0.0.1"], "allow_plaintext_http": True, "local_dev_hosts": ["127.0.0.1"], "method": "POST", "timeout_seconds": 10}})
+        "endpoint_reference": f"http://{CAN_HOST}:8823/transfer",
+        "http_config": {"allowed_hosts": [CAN_HOST], "allow_plaintext_http": True, "local_dev_hosts": [CAN_HOST], "method": "POST", "timeout_seconds": 10}})
     assert s == 201, (s, cap_f)
     grants = {}; modes = {}
     for ref, a in agents.items():
@@ -244,8 +257,8 @@ def main() -> int:
     for ref, a in agents.items():
         kind = "python" if "python" in ref else ("node" if "node" in ref else "mcp")
         cfg = {"act_base": BASE, "key_id": grants[ref]["grant"]["key_id"], "secret": grants[ref]["secret"], "tier": 2,
-               "allowed_tool": cap_a["id"], "forbidden_tool": cap_f["id"], "object_store": "http://127.0.0.1:8821",
-               "mcp_trusted": "http://127.0.0.1:8831", "mcp_token": CAN["tokens"]["mcp_config"],
+               "allowed_tool": cap_a["id"], "forbidden_tool": cap_f["id"], "object_store": f"http://{CAN_HOST}:8821",
+               "mcp_trusted": f"http://{MCP_HOST}:8831", "mcp_token": CAN["tokens"]["mcp_config"],
                "canary": CAN["tokens"][f"agent_config_{'py' if kind=='python' else kind}"],
                "fake_credentials": CAN["fake_credentials"]}
         cfgp = RUN / "agents" / f"{kind}.json"; cfgp.write_text(json.dumps(cfg), encoding="utf-8")
@@ -254,7 +267,7 @@ def main() -> int:
             reqs = sorted(set(__import__("re").findall(r'require\("([^"]+)"\)', src)))
             # Independence = every require() is a node: built-in; nothing under backend/ or app.
             independence[kind] = {"requires_act": any(not r.startswith("node:") for r in reqs), "requires": reqs}
-            cmd = ["node", str(LAB / "agents" / "node_agent.js"), str(cfgp)]
+            cmd = [NODE, str(LAB / "agents" / "node_agent.js"), str(cfgp)]
         else:
             fn = "python_agent.py" if kind == "python" else "mcp_client.py"
             src = (LAB / "agents" / fn).read_text(encoding="utf-8")
@@ -363,7 +376,7 @@ def main() -> int:
     # ---- 10. M4.11 lab key material ------------------------------------------
     print("10. M4.11 lab keys", flush=True)
     env = {k: v for k, v in os.environ.items()}
-    for line in (LAB / "env" / "act-lab.env").read_text(encoding="utf-8").splitlines():
+    for line in ENV_FILE.read_text(encoding="utf-8").splitlines():
         if line and not line.startswith("#") and "=" in line:
             k, v = line.split("=", 1); env[k] = v
     ok = subprocess.run([PY, "-m", "app.security.keys", "verify"], cwd=str(BACKEND), env=env, capture_output=True, text=True)

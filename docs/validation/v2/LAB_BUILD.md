@@ -64,6 +64,22 @@ deletes `lab/.keys/` and `lab/run/`. Never touches `backend/.keys/`, `backend/.e
 - `NOTIFICATIONS_ENABLED=false`, `MODEL_DEFAULT_PROVIDER=MOCK` — hermetic (no SMTP, no live model).
 - `ENCRYPTION_KEY_ALLOW_BOOTSTRAP` is `false` in the env file and only overridden for the bootstrap command.
 
+## V2.1 — wrapped mode (the isolation boundary; use this for anything adversarial)
+
+```
+python lab/wrapper/wrap_up.py --proof --baseline   # build images (first time ~3 min), start inside the
+                                                    # internal network, run the 6 boundary proofs with and
+                                                    # without ACT, run the V2 baseline in the runner
+python lab/wrapper/wrap_down.py                     # remove containers, network, keys, run dir; verify no residue
+```
+On a completely clean host run `docker compose -f lab/wrapper/docker-compose.wrapped.yml build act`
+before `build runner` (DG-7: the runner image is FROM the ACT image and compose builds in parallel).
+Host mode (`lab/harness/lab_up.py`) is unchanged and was regression-run after V2.1
+(`evidence/wrapped/hostmode_regression.log`: 17.7 s, 0 findings). Services choose their bind address
+from `LAB_BIND` (loopback in host mode, all interfaces of the internal network in wrapped mode); the
+harness reads endpoints from `LAB_MODE`, `ACT_BASE`, `LAB_DB_HOST/PORT`, `LAB_REGISTRY_HOST`,
+`LAB_CANARY_HOST`, `LAB_MCP_HOST`, `LAB_BACKEND_DIR`, `LAB_ENV_FILE` (defaults = host mode).
+
 ## Known documentation gaps found while building (each is a manual/undocumented step made explicit)
 
 - DG-1 host-level outbound isolation is not enforced by the lab (loopback binding + allowlists only).

@@ -51,9 +51,10 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> int:
-    srv = ThreadingHTTPServer(("127.0.0.1", 8811), Handler)
+    bind = os.environ.get("LAB_BIND", "127.0.0.1")  # 0.0.0.0 inside the V2.1 egress-deny network
+    srv = ThreadingHTTPServer((bind, 8811), Handler)
     (RUN / "registry.ready").write_text(str(os.getpid()), encoding="utf-8")
-    print("lab registry listening on 127.0.0.1:8811", flush=True)
+    print(f"lab registry listening on {bind}:8811", flush=True)
     srv.serve_forever()
     return 0
 

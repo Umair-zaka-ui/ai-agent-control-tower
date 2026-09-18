@@ -1,0 +1,46 @@
+=== DOWN #1 2026-09-19T03:40:30+05:00 ===
+{
+  "compose_down": " Container actlab-wrapped-canaries-1 Stopping \n Container actlab-wrapped-canaries-1 Stopped \n Container actlab-wrapped-canaries-1 Removing \n Container actlab-wrapped-canaries-1 Removed \n Container actlab-wrapped-lab_db-1 Stopped \n Container actlab-wrapped-lab_db-1 Removing \n Container actlab-wrapped-lab_db-1 Removed \n Network actlab-wrapped_lab_net Removing \n Network actlab-wrapped_lab_net Removed",
+  "containers_left": [],
+  "networks_left": [],
+  "volumes_left": [],
+  "lab_keys_exists": false,
+  "lab_run_exists": false
+}
+down exit: 0
+=== REBUILD A (proof + baseline) 2026-09-19T03:40:44+05:00 ===
+[   1.33s] docker compose build (act image from requirements only; runner = act + node): ['#19 DONE 0.0s']
+[  26.12s] docker compose up -d --wait (internal network, no published ports): up
+[   0.04s] network is internal: internal=true driver=bridge
+[   0.19s] no published ports: actlab-wrapped-act-1  | actlab-wrapped-canary-1  | actlab-wrapped-lab_db-1 5432/tcp | actlab-wrapped-mcp_impersonator-1  | actlab-wrapped-mcp_risky-1  | actlab-
+[   0.14s] act entrypoint log (masking + bootstrap): ['act-1  | [act] /app/.env size: 110 bytes (masked); /app/.keys entries: 0 (masked tmpfs)', 'act-1  | [act] alembic upgrade head', 'act-1  | [act] keys bootstra
+[  25.51s] boundary proof with ACT running: 22
+[   0.87s] stop ACT: 0
+[  30.51s] boundary proof with ACT STOPPED (independence): 22
+[   0.95s] start ACT: 0
+[  16.44s] act healthy again: healthy
+[  11.54s] V2 baseline inside the runner: ['DONE: 0 finding(s). Results -> /lab/run/results/v2_baseline.json']
+[   0.14s] ACT container log captured + canary grep: {'lines': 184, 'canary_marker_hits': 0, 'tracebacks': 0}
+WRAPPED LAB UP in 113.79s
+up exit: 0
+=== DOWN #2 2026-09-19T03:42:38+05:00 ===
+{
+  "compose_down": " \n Container actlab-wrapped-lab_db-1 Stopping \n Container actlab-wrapped-canaries-1 Stopped \n Container actlab-wrapped-canaries-1 Removing \n Container actlab-wrapped-canaries-1 Removed \n Container actlab-wrapped-lab_db-1 Stopped \n Container actlab-wrapped-lab_db-1 Removing \n Container actlab-wrapped-lab_db-1 Removed \n Network actlab-wrapped_lab_net Removing \n Network actlab-wrapped_lab_net Removed",
+  "containers_left": [],
+  "networks_left": [],
+  "volumes_left": [],
+  "lab_keys_exists": false,
+  "lab_run_exists": false
+}
+down exit: 0
+=== REBUILD B (baseline) 2026-09-19T03:42:52+05:00 ===
+[   1.52s] docker compose build (act image from requirements only; runner = act + node): ['#19 DONE 0.0s']
+[  28.62s] docker compose up -d --wait (internal network, no published ports): up
+[   0.04s] network is internal: internal=true driver=bridge
+[   0.19s] no published ports: actlab-wrapped-act-1  | actlab-wrapped-canary-1  | actlab-wrapped-lab_db-1 5432/tcp | actlab-wrapped-mcp_impersonator-1  | actlab-wrapped-mcp_risky-1  | actlab-
+[   0.14s] act entrypoint log (masking + bootstrap): ['act-1  | [act] /app/.env size: 110 bytes (masked); /app/.keys entries: 0 (masked tmpfs)', 'act-1  | [act] alembic upgrade head', 'act-1  | [act] keys bootstra
+[  12.24s] V2 baseline inside the runner: ['DONE: 0 finding(s). Results -> /lab/run/results/v2_baseline.json']
+[   0.13s] ACT container log captured + canary grep: {'lines': 153, 'canary_marker_hits': 0, 'tracebacks': 0}
+WRAPPED LAB UP in 42.89s
+up exit: 0
+=== END 2026-09-19T03:43:35+05:00 ===
