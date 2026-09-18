@@ -1,0 +1,8 @@
+[ 56.03s] docker compose up lab_db: lab_db up (127.0.0.1:5433)
+[  0.06s] generate canaries: canaries generated: build b54de795, 11 tokens, 5 fake PII rows
+[  4.80s] alembic upgrade head (act_lab): ok
+[  2.78s] bootstrap LAB key material: {'bootstrap_rc': 0, 'bootstrap_out': "ngerprint=9e8de1975277336c\n  signing:    key_id=lab v1 public_fingerprint=fbab17c074e34b72\nback this up now: python -m app.security.keys backup <recovery-target>\nGenerating a new local Ed25519 signing keypair for 'lab' at ..\\lab\\.keys -- this is a development convenience, NOT production-grade key management. Production deployments must configure Azure Key Vault (SIGNING_PROVIDER=AZURE_KEY_VAULT).", 'status': "install mode:            EXISTING_INSTALL  (bootstrap marker present)\nbootstrap marker:        present\nencrypted-state tables:  (none)\nsigned-state tables:     signing_keys\nencryption provider:     {'provider': 'LOCAL', 'present': True, 'active_fingerprint': '9e8de1975277336c', 'fallback_fingerprints': []}"}
+[  0.07s] start lab processes: {'canary_zone': 38208, 'registry': 36908, 'otlp_collector': 40200, 'mcp_trusted': 40956, 'mcp_unknown': 21912, 'mcp_risky': 8644, 'mcp_impersonator': 41356, 'mcp_rugpull': 11352, 'act': 33788}
+[  4.38s] readiness: {'canary_zone': True, 'registry': True, 'mcp_trusted': True, 'act': True, 'otlp_collector': True}
+LAB UP in 68.13s -> http://127.0.0.1:8802
+exit: 0

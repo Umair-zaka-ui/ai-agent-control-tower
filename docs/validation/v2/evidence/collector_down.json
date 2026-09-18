@@ -1,0 +1,14 @@
+{
+  "before_pids": [
+    40128
+  ],
+  "listeners_after_kill": [],
+  "node_t2_allowed_with_collector_down": [
+    200,
+    "ALLOWED",
+    "DISPATCHED"
+  ],
+  "act_tracebacks_during_outage": 0,
+  "collector_restarted": true,
+  "otlp_batches_received_after_restart_delta": 0
+}

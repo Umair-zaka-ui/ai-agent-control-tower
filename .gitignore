@@ -39,3 +39,7 @@ backend/.keys/
 # IDE
 .idea/
 .vscode/
+
+# V2 validation lab -- disposable state (never committed)
+lab/run/
+lab/.keys/

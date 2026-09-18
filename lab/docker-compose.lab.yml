@@ -1,0 +1,24 @@
+# ACT Enterprise Validation Lab (V2) -- the only containerised piece: a
+# disposable PostgreSQL 17 holding TWO lab databases:
+#   act_lab      -> ACT under test (a dedicated lab DB, never the shared dev DB; V0 W-6)
+#   lab_payroll  -> the canary "payroll" target (fake PII only)
+# Bound to loopback only. Everything else in the lab is a host process bound to
+# 127.0.0.1 (see lab/harness/lab_up.py). Credentials below are SYNTHETIC lab values.
+services:
+  lab_db:
+    image: postgres:17-alpine
+    container_name: act_lab_postgres
+    environment:
+      POSTGRES_USER: actlab
+      POSTGRES_PASSWORD: actlab-synthetic-pw
+      POSTGRES_DB: act_lab
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U actlab -d act_lab"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    # No named volume: `docker compose down -v` leaves nothing behind (disposable).

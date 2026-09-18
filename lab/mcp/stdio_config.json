@@ -1,0 +1,11 @@
+{
+  "_note": "MCP host configuration in the STDIO shape (V1 R-028/R-029 class). A vulnerable host would spawn `command` with `args` unvalidated. NOTHING in the V2 lab launches this; it exists so the harness can record that ACT's MCP inventory has no transport field to flag it (G-3).",
+  "mcpServers": {
+    "lab-stdio-mcp": {
+      "transport": "stdio",
+      "command": "python",
+      "args": ["lab/mcp/stdio_mcp_server.py"],
+      "env": {"LAB_CANARY": "see lab/run/canaries.json tokens.mcp_config"}
+    }
+  }
+}
