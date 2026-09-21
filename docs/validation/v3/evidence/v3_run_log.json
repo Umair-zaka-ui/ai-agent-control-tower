@@ -1,0 +1,78 @@
+{
+  "total_seconds": 214.0,
+  "steps": [
+    {
+      "step": "build",
+      "seconds": 1.95,
+      "result": 0
+    },
+    {
+      "step": "up -d --wait",
+      "seconds": 26.27,
+      "result": 0
+    },
+    {
+      "step": "boundary proof (ACT running)",
+      "seconds": 25.52,
+      "result": {
+        "denies": 0,
+        "allows": 0
+      }
+    },
+    {
+      "step": "stop ACT",
+      "seconds": 0.9,
+      "result": 0
+    },
+    {
+      "step": "boundary proof (ACT STOPPED)",
+      "seconds": 30.51,
+      "result": {
+        "denies": 0,
+        "allows": 0
+      }
+    },
+    {
+      "step": "start ACT",
+      "seconds": 0.96,
+      "result": 0
+    },
+    {
+      "step": "ACT healthy again",
+      "seconds": 16.42,
+      "result": "healthy"
+    },
+    {
+      "step": "pre-flight (runner)",
+      "seconds": 41.43,
+      "result": [
+        "PRE-FLIGHT PASS: ledger=True zero_scan_clean=True positive_control=True boundary_present=True"
+      ]
+    },
+    {
+      "step": "V3 batches (runner)",
+      "seconds": 69.0,
+      "result": [
+        "anchored 6 file(s); head=0693372898ae53a1",
+        "",
+        "V3 DONE. escapes=0 containment=11/11 detected=0 -> results in /lab/run/results"
+      ]
+    },
+    {
+      "step": "capture + anchor ACT log",
+      "seconds": 0.41,
+      "result": {
+        "lines": 199,
+        "unexpected_canary_hits": 0,
+        "tracebacks": 0
+      }
+    },
+    {
+      "step": "final ledger verify",
+      "seconds": 0.31,
+      "result": [
+        "VERIFY OK: 9 entries, head=ccba41885c095692, chain intact, all present files match"
+      ]
+    }
+  ]
+}

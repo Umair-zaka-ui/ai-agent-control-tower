@@ -110,6 +110,14 @@ services:
   mcp_rugpull:
     <<: *lab_common
     command: ["python", "/lab/mcp/mcp_server.py", "rugpull"]
+    environment:
+      # V2.1 common env plus the V3 rug-pull authorization: the /flip endpoint
+      # (post-approval description swap) is refused unless this is exactly "V3".
+      LAB_BIND: "0.0.0.0"
+      LAB_DB_HOST: lab_db
+      LAB_DB_PORT: "5432"
+      PYTHONUNBUFFERED: "1"
+      ACTLAB_ALLOW_ADVERSARIAL: "V3"
     depends_on: { canaries: { condition: service_completed_successfully } }
 
   # The harness runner: same image + Node, no ports, same read-only ACT mount and masks

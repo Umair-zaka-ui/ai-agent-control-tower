@@ -1,0 +1,15 @@
+{
+  "mode": "wrapped",
+  "act_base": "http://act:8802",
+  "started_at": "2026-09-21T17:13:54+0000",
+  "finished_at": "2026-09-21T17:15:02+0000",
+  "agent_id": "64a5ec0e-f6bf-4ab5-b757-a82a9dd143b9",
+  "enforcement_mode": "GATEWAY_ENFORCED",
+  "reaches_agent_execution": false,
+  "zero_scan": {
+    "db_unexpected": {},
+    "act_log_unexpected_token_hits": 0
+  },
+  "escapes": 0,
+  "positive_control": "grant_label token is expected in ACT (operator input); every other token asserted absent"
+}
