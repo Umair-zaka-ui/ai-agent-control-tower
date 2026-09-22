@@ -1,0 +1,155 @@
+{
+  "batch": "T20",
+  "tenant_a": "cfc23445-ed73-441e-8f94-4e5c6e144f2b",
+  "tenant_b": "8004627a-ec09-4079-a60b-f25587d0dcbe",
+  "ground_truth_graph": {
+    "payroll_resource": "b3e63040-07ed-4edb-b30f-193677221b80",
+    "agents_that_truly_reach_payroll": [
+      "884f2989-8b0d-4136-aa42-bbea13b8ed65"
+    ],
+    "agents_that_truly_reach_unrelated": [],
+    "true_path": "AGENT(python) -> TOOL -> RESOURCE(payroll)"
+  },
+  "underestimation_count": 0,
+  "blast_radius_accuracy": "1/1 true paths found",
+  "tenant_bound_holds": true,
+  "traversal_bounded": true,
+  "scenarios": [
+    {
+      "test_id": "V5-G1",
+      "scenario": "blast-radius accuracy",
+      "attack": "query the true dangerous path",
+      "expected": "exactly the agents that truly reach the resource; a missed real path (false 'safe') is a BLOCKER",
+      "observed": {
+        "status": 200,
+        "reported": [
+          "884f2989-8b0d-4136-aa42-bbea13b8ed65"
+        ],
+        "true": [
+          "884f2989-8b0d-4136-aa42-bbea13b8ed65"
+        ],
+        "under_estimated": [],
+        "over_estimated": [],
+        "incomplete": false
+      },
+      "verdict": "PASS (matches ground truth)",
+      "authority": "5.4 evidence-based reachability"
+    },
+    {
+      "test_id": "V5-G2",
+      "scenario": "false dependency injection",
+      "attack": "assert a dependency edge the agent has no basis for, to distort blast radius",
+      "expected": "an edge is only created by an authorized operator and is recorded WITH its evidence; blast radius then reflects the recorded evidence \u2014 it must not silently invent or drop a path",
+      "observed": {
+        "edge_create_status": 201,
+        "reaching_after": [
+          "4dc6f6af-6a95-40ac-b86f-77c7cc25886e",
+          "884f2989-8b0d-4136-aa42-bbea13b8ed65"
+        ],
+        "changed_picture": true,
+        "evidence_recorded": true,
+        "note": "the edge required an authorized MANAGE principal; an external agent cannot create one"
+      },
+      "verdict": "PASS (evidence-based, operator-authored)",
+      "authority": "5.4 edges carry evidence; creation needs an authorized principal"
+    },
+    {
+      "test_id": "V5-G3",
+      "scenario": "missing dependency (unknown != safe)",
+      "attack": "query a resource whose dependencies were never recorded",
+      "expected": "an empty answer must carry its completeness flags rather than implying 'safe': the response reports `incomplete` and an `incomplete_reason` when the walk was cut",
+      "observed": {
+        "status": 200,
+        "agents": [],
+        "incomplete": false,
+        "incomplete_reason": null,
+        "interpretation": "empty here is a true 'no recorded path', and the flag distinguishes it from a truncated walk"
+      },
+      "verdict": "PASS (truthful incompleteness)",
+      "authority": "5.4 incomplete + incomplete_reason on every answer"
+    },
+    {
+      "test_id": "V5-G4",
+      "scenario": "cross-tenant traversal",
+      "attack": "plant a cross-tenant dependency edge, then run blast radius across the boundary in both directions",
+      "expected": "the edge must not materialise and neither tenant may traverse into the other \u2014 per-hop organization_id is re-applied at EVERY step, not just the start. Any crossing is a BLOCKER",
+      "observed": {
+        "cross_tenant_edge_status": 404,
+        "edge_error": "GRAPH_CROSS_TENANT_ENDPOINT",
+        "A_querying_B_resource_status": 404,
+        "A_saw_agents": false,
+        "B_querying_A_resource_status": 404,
+        "B_saw_agents": false
+      },
+      "verdict": "PASS (tenant bound held at every hop)",
+      "authority": "5.3/5.4 per-hop tenant bounding"
+    },
+    {
+      "test_id": "V5-G5",
+      "scenario": "cycle attack",
+      "attack": "close a tool->tool cycle and traverse at maximum depth",
+      "expected": "the path-array cycle guard makes a revisit impossible; the query terminates and does not run away",
+      "observed": {
+        "cycle_edge_status": 422,
+        "query_status": 200,
+        "elapsed_ms": 11.9,
+        "agents": 2,
+        "incomplete": false
+      },
+      "verdict": "PASS (bounded, terminated)",
+      "authority": "5.3 path-array cycle guard + depth cap"
+    },
+    {
+      "test_id": "V5-G6",
+      "scenario": "unbounded traversal",
+      "attack": "request a traversal depth far above the hard ceiling (32)",
+      "expected": "rejected or clamped \u2014 a caller cannot exceed MAX_TRAVERSAL_DEPTH",
+      "observed": {
+        "status": 422,
+        "code": "GRAPH_TRAVERSAL_DEPTH_EXCEEDED",
+        "clamped_or_rejected": true
+      },
+      "verdict": "PASS (bounded)",
+      "authority": "MAX_TRAVERSAL_DEPTH = 32"
+    },
+    {
+      "test_id": "V5-G7",
+      "scenario": "high-degree node (graph DoS)",
+      "attack": "a hub tool with 60 resource edges, then query through it",
+      "expected": "the query stays bounded and responsive; no graph DoS",
+      "observed": {
+        "fan_out": 60,
+        "status": 200,
+        "elapsed_ms": 13.8,
+        "agents": 1
+      },
+      "verdict": "PASS (bounded)",
+      "authority": "bounded recursive CTE"
+    },
+    {
+      "test_id": "V5-G8",
+      "scenario": "poisoned edge granting authority",
+      "attack": "give an agent a graph path to a resource, then try to use a capability it is not granted",
+      "expected": "the graph REPRESENTS, it never GRANTS: a dependency path confers no capability; the gateway still denies an out-of-scope target",
+      "observed": {
+        "gateway_status": 403,
+        "authority_granted_by_graph": false
+      },
+      "verdict": "PASS (graph grants nothing)",
+      "authority": "graph is a derived plane; AuthorizationGateway decides"
+    },
+    {
+      "test_id": "V5-G9",
+      "scenario": "authority-chain forgery via edges",
+      "attack": "forge an authority edge from a fabricated delegation, and author an edge over another tenant's nodes",
+      "expected": "both rejected: a delegation edge only mirrors a live in-tenant delegation row, and a node outside the caller's tenant is 404-shaped",
+      "observed": {
+        "forged_delegation_edge_status": 422,
+        "cross_tenant_dependency_edge_status": 404,
+        "cross_tenant_code": "GRAPH_CROSS_TENANT_ENDPOINT"
+      },
+      "verdict": "PASS (rejected)",
+      "authority": "producer-backed edges + tenant-scoped node resolution"
+    }
+  ]
+}

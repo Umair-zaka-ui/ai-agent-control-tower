@@ -87,6 +87,21 @@ services:
     depends_on:
       canaries: { condition: service_completed_successfully }
 
+  # V5: the hostile discovery source. Same wire shape as `registry`, but the
+  # payload is attacker-chosen via a lab-only /_control plane that is refused
+  # unless ACTLAB_ALLOW_ADVERSARIAL is exactly "V5".
+  hostile_registry:
+    <<: *lab_common
+    command: ["python", "/lab/services/hostile_registry.py"]
+    environment:
+      LAB_BIND: "0.0.0.0"
+      LAB_DB_HOST: lab_db
+      LAB_DB_PORT: "5432"
+      PYTHONUNBUFFERED: "1"
+      ACTLAB_ALLOW_ADVERSARIAL: "V5"
+    depends_on:
+      canaries: { condition: service_completed_successfully }
+
   otlp:
     <<: *lab_common
     command: ["python", "/lab/services/otlp_collector.py"]

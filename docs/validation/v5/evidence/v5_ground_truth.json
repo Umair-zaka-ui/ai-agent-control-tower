@@ -1,0 +1,55 @@
+{
+  "tenant": "6f4ac8d8-cd75-46ab-a05f-cae141e4f087",
+  "true_agent_count": 3,
+  "true_external_references": [
+    "lab://wave1/mcp-client/99664726",
+    "lab://wave1/node-agent/99664726",
+    "lab://wave1/python-agent/99664726"
+  ],
+  "observed_inventory": [
+    {
+      "id": "99cfb3f5-be55-423c-97a6-b3870ec8e0b0",
+      "name": "Lab MCP Client Agent",
+      "external_reference": "lab://wave1/mcp-client/99664726",
+      "origin_category": "EXTERNAL",
+      "origin_provider": "CUSTOM",
+      "control_state": "DISCOVERED",
+      "owner_id": null,
+      "lifecycle_status": "DRAFT"
+    },
+    {
+      "id": "134386ff-8a14-4f4c-b3fc-accea4dd27d9",
+      "name": "Lab Node Agent",
+      "external_reference": "lab://wave1/node-agent/99664726",
+      "origin_category": "EXTERNAL",
+      "origin_provider": "CUSTOM",
+      "control_state": "DISCOVERED",
+      "owner_id": null,
+      "lifecycle_status": "DRAFT"
+    },
+    {
+      "id": "4bc41cd3-195b-4e7e-885a-3d4856dc72f1",
+      "name": "Lab Python Agent",
+      "external_reference": "lab://wave1/python-agent/99664726",
+      "origin_category": "EXTERNAL",
+      "origin_provider": "CUSTOM",
+      "control_state": "DISCOVERED",
+      "owner_id": null,
+      "lifecycle_status": "DRAFT"
+    }
+  ],
+  "run": {
+    "status": 201,
+    "created": 3,
+    "linked": 0,
+    "flagged": null
+  },
+  "landing_state": [
+    [
+      "DISCOVERED",
+      "EXTERNAL",
+      true
+    ]
+  ],
+  "note": "the hostile source's `baseline` scenario serves exactly the three REAL lab agents; this is the known-correct picture every later result is scored against"
+}

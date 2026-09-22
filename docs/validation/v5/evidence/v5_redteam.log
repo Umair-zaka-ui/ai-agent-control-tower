@@ -1,0 +1,38 @@
+GROUND TRUTH
+  ground truth: 3 agents, states=[('DISCOVERED', 'EXTERNAL', True)]
+BATCH T19a: discovery poisoning
+  V5-D1     false-asset injection            -> PASS (evidence-not-trusted)
+  V5-D2     source impersonation             -> PASS (rejected)
+  V5-D3     malformed / oversized metadata   -> PASS (bounded)
+  V5-D4     observation replay               -> PASS (idempotent)
+  V5-D5     forced disappearance (tombstone) -> PASS (non-destructive)
+  V5-D6     ownership / trust poisoning      -> PASS (payload authority ignored)
+  V5-D7     confidence manipulation          -> PASS (not attacker-controllable)
+BATCH T19b: reconciliation corruption
+  V5-R1     identifier collision (over-merge probe) -> PASS (deterministic, nothing hidden)
+  V5-R2     split identity (under-merge probe) -> PASS (no hidden split; truthful limitation)
+  V5-R3     NATIVE collision                 -> PASS (flagged finding)
+  V5-R4     weak-signal high-confidence forgery -> PASS (not forgeable)
+  V5-R5     concurrent reconciliation race   -> PASS (one canonical effect)
+  anchored #2 lab/run/results/v5_ground_truth.json sha=0906a248fc916c6a entry=14a67df68fce32cc
+  anchored #3 lab/run/results/v5_discovery_results.json sha=9bbcba20e0961a5f entry=32c721f292d1b5c9
+  anchored #4 lab/run/results/v5_reconciliation_results.json sha=f62259f9cb428a15 entry=277a3e800947cca9
+anchored 3 file(s); head=277a3e800947cca9
+BATCH T20: control-graph attacks
+  V5-G1     blast-radius accuracy            -> PASS (matches ground truth)
+  V5-G2     false dependency injection       -> PASS (evidence-based, operator-authored)
+  V5-G3     missing dependency (unknown != safe) -> PASS (truthful incompleteness)
+  V5-G4     cross-tenant traversal           -> PASS (tenant bound held at every hop)
+  V5-G5     cycle attack                     -> PASS (bounded, terminated)
+  V5-G6     unbounded traversal              -> PASS (bounded)
+  V5-G7     high-degree node (graph DoS)     -> PASS (bounded)
+  V5-G8     poisoned edge granting authority -> PASS (graph grants nothing)
+  V5-G9     authority-chain forgery via edges -> PASS (rejected)
+  anchored #5 lab/run/results/v5_graph_results.json sha=fd4b5ffd791db1da entry=41faad338ef0be64
+anchored 1 file(s); head=41faad338ef0be64
+  anchored #6 lab/run/results/v5_measurements.json sha=acaee1e2e6d42a66 entry=b9fb88000115e8f5
+anchored 1 file(s); head=b9fb88000115e8f5
+
+V5 DONE: 21/21 pass, blockers=False, canary_escapes=0, tenant_bound=True
+
+--- stderr ---

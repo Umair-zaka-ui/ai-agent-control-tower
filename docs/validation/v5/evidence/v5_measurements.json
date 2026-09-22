@@ -1,0 +1,39 @@
+{
+  "measurements": {
+    "false_merge_rate": "0/1",
+    "false_split_rate": "0/1",
+    "false_asset_promotion_rate": "0",
+    "weak_signal_auto_link_rate": "0",
+    "per_hop_tenant_bound_holds": true,
+    "traversal_bounded_under_attack": true,
+    "blast_radius_underestimation_count": 0,
+    "blast_radius_accuracy_vs_ground_truth": "1/1 true paths found",
+    "canary_escapes": 0,
+    "discovery_pass": 7,
+    "discovery_total": 7,
+    "reconciliation_pass": 5,
+    "reconciliation_total": 5,
+    "graph_pass": 9,
+    "graph_total": 9,
+    "blockers": {
+      "silent_over_merge": false,
+      "silent_under_merge": false,
+      "cross_tenant_traversal": false,
+      "false_asset_trusted": false,
+      "forged_confidence_auto_link": false,
+      "poisoned_edge_granted_authority": false,
+      "blast_radius_false_safe": false
+    },
+    "any_blocker": false
+  },
+  "canary_zero_scan": {},
+  "blockers": {
+    "silent_over_merge": false,
+    "silent_under_merge": false,
+    "cross_tenant_traversal": false,
+    "false_asset_trusted": false,
+    "forged_confidence_auto_link": false,
+    "poisoned_edge_granted_authority": false,
+    "blast_radius_false_safe": false
+  }
+}

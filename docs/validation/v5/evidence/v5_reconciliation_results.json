@@ -1,0 +1,164 @@
+{
+  "batch": "T19b",
+  "ground_truth": {
+    "tenant": "6f4ac8d8-cd75-46ab-a05f-cae141e4f087",
+    "true_agent_count": 3,
+    "true_external_references": [
+      "lab://wave1/mcp-client/99664726",
+      "lab://wave1/node-agent/99664726",
+      "lab://wave1/python-agent/99664726"
+    ],
+    "observed_inventory": [
+      {
+        "id": "99cfb3f5-be55-423c-97a6-b3870ec8e0b0",
+        "name": "Lab MCP Client Agent",
+        "external_reference": "lab://wave1/mcp-client/99664726",
+        "origin_category": "EXTERNAL",
+        "origin_provider": "CUSTOM",
+        "control_state": "DISCOVERED",
+        "owner_id": null,
+        "lifecycle_status": "DRAFT"
+      },
+      {
+        "id": "134386ff-8a14-4f4c-b3fc-accea4dd27d9",
+        "name": "Lab Node Agent",
+        "external_reference": "lab://wave1/node-agent/99664726",
+        "origin_category": "EXTERNAL",
+        "origin_provider": "CUSTOM",
+        "control_state": "DISCOVERED",
+        "owner_id": null,
+        "lifecycle_status": "DRAFT"
+      },
+      {
+        "id": "4bc41cd3-195b-4e7e-885a-3d4856dc72f1",
+        "name": "Lab Python Agent",
+        "external_reference": "lab://wave1/python-agent/99664726",
+        "origin_category": "EXTERNAL",
+        "origin_provider": "CUSTOM",
+        "control_state": "DISCOVERED",
+        "owner_id": null,
+        "lifecycle_status": "DRAFT"
+      }
+    ],
+    "run": {
+      "status": 201,
+      "created": 3,
+      "linked": 0,
+      "flagged": null
+    },
+    "landing_state": [
+      [
+        "DISCOVERED",
+        "EXTERNAL",
+        true
+      ]
+    ],
+    "note": "the hostile source's `baseline` scenario serves exactly the three REAL lab agents; this is the known-correct picture every later result is scored against"
+  },
+  "scenarios": [
+    {
+      "test_id": "V5-R1",
+      "scenario": "identifier collision (over-merge probe)",
+      "attack": "two DIFFERENT agents advertised under ONE external identifier",
+      "expected": "deterministic derivation: exactly one canonical row for one identifier, and BOTH observations retained as append-only evidence so nothing is hidden. A fusion that hides an agent is a BLOCKER",
+      "observed": {
+        "canonical_rows": 1,
+        "observation_rows_for_identifier": 2,
+        "both_observations_retained": true,
+        "run": {
+          "created": 1,
+          "linked": 1
+        },
+        "note": "the identifier is ACT's documented identity signal; a source claiming one identifier for two agents is the source asserting they are one asset"
+      },
+      "verdict": "PASS (deterministic, nothing hidden)",
+      "authority": "5.2 exact-identifier matching + append-only observations"
+    },
+    {
+      "test_id": "V5-R2",
+      "scenario": "split identity (under-merge probe)",
+      "attack": "ONE real agent advertised under TWO different identifiers to evade correlation",
+      "expected": "ACT matches on the exact identifier only (no fuzzy/name matching \u2014 a documented non-goal), so it creates TWO VISIBLE unowned rows rather than silently collapsing or hiding either",
+      "observed": {
+        "canonical_rows": 2,
+        "both_visible": true,
+        "names": [
+          "Lab Python Agent"
+        ],
+        "states": [
+          [
+            "DISCOVERED",
+            true
+          ]
+        ],
+        "note": "correlating a renamed/re-identified agent is a documented future extension, not a silent split; both rows are visible and unowned"
+      },
+      "verdict": "PASS (no hidden split; truthful limitation)",
+      "authority": "5.2 deterministic exact-identifier matching"
+    },
+    {
+      "test_id": "V5-R3",
+      "scenario": "NATIVE collision",
+      "attack": "a hostile external observation contrives the identifier of a NATIVE, ACT-governed agent",
+      "expected": "ALWAYS flags \u2014 never merges an external observation into a native agent, and never alters the native agent's origin_category or control_state",
+      "observed": {
+        "native_reference": "lab://v5/native-target/3737d988",
+        "native_origin_after": "NATIVE",
+        "native_control_state_after": "GOVERNED",
+        "findings_raised": null,
+        "flag_for_identifier": 1,
+        "flag_reason": "external_identifier 'lab://v5/native-target/3737d988' matches native, ACT-governed agent d9a6aceb-e52e-43c4-8398-8daee23a7e69 - a conflict, not a discovery targ",
+        "agents_created": 0
+      },
+      "verdict": "PASS (flagged finding)",
+      "authority": "5.2 NATIVE collision always flags (W-2 / GOVERNED-iff-NATIVE lineage)"
+    },
+    {
+      "test_id": "V5-R4",
+      "scenario": "weak-signal high-confidence forgery",
+      "attack": "a hostile source forges signals to exceed the 0.75 link/create threshold and auto-own",
+      "expected": "structurally impossible from the payload: confidence is an adapter-class constant, and even a high-confidence create lands unowned/DISCOVERED \u2014 auto-OWN never happens",
+      "observed": {
+        "payload_confidence_honoured": false,
+        "threshold": "0.75 (LINK_CREATE_CONFIDENCE_THRESHOLD)",
+        "auto_ownership_possible": false,
+        "evidence": "every persisted observation carries the adapter constant, not a payload value"
+      },
+      "verdict": "PASS (not forgeable)",
+      "authority": "5.2 adapter-class confidence + unowned landing state"
+    },
+    {
+      "test_id": "V5-R5",
+      "scenario": "concurrent reconciliation race",
+      "attack": "three concurrent sweeps of one source on real separate Postgres sessions",
+      "expected": "one canonical effect: exactly 3 agents, 0 duplicate external references; a losing race falls back to LINK, and any failed run is reported truthfully rather than as a 500",
+      "observed": {
+        "sweeps": [
+          {
+            "status": 201,
+            "created": 0,
+            "linked": 0,
+            "run_status": "FAILED"
+          },
+          {
+            "status": 201,
+            "created": 3,
+            "linked": 0,
+            "run_status": "SUCCEEDED"
+          },
+          {
+            "status": 201,
+            "created": 0,
+            "linked": 3,
+            "run_status": "SUCCEEDED"
+          }
+        ],
+        "canonical_agents": 3,
+        "duplicate_references": 0,
+        "all_runs_non_5xx": true
+      },
+      "verdict": "PASS (one canonical effect)",
+      "authority": "5.2 create-race falls back to LINK (M5.2-AC-10)"
+    }
+  ]
+}

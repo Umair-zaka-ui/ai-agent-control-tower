@@ -1,0 +1,190 @@
+{
+  "batch": "T19a",
+  "ground_truth": {
+    "tenant": "6f4ac8d8-cd75-46ab-a05f-cae141e4f087",
+    "true_agent_count": 3,
+    "true_external_references": [
+      "lab://wave1/mcp-client/99664726",
+      "lab://wave1/node-agent/99664726",
+      "lab://wave1/python-agent/99664726"
+    ],
+    "observed_inventory": [
+      {
+        "id": "99cfb3f5-be55-423c-97a6-b3870ec8e0b0",
+        "name": "Lab MCP Client Agent",
+        "external_reference": "lab://wave1/mcp-client/99664726",
+        "origin_category": "EXTERNAL",
+        "origin_provider": "CUSTOM",
+        "control_state": "DISCOVERED",
+        "owner_id": null,
+        "lifecycle_status": "DRAFT"
+      },
+      {
+        "id": "134386ff-8a14-4f4c-b3fc-accea4dd27d9",
+        "name": "Lab Node Agent",
+        "external_reference": "lab://wave1/node-agent/99664726",
+        "origin_category": "EXTERNAL",
+        "origin_provider": "CUSTOM",
+        "control_state": "DISCOVERED",
+        "owner_id": null,
+        "lifecycle_status": "DRAFT"
+      },
+      {
+        "id": "4bc41cd3-195b-4e7e-885a-3d4856dc72f1",
+        "name": "Lab Python Agent",
+        "external_reference": "lab://wave1/python-agent/99664726",
+        "origin_category": "EXTERNAL",
+        "origin_provider": "CUSTOM",
+        "control_state": "DISCOVERED",
+        "owner_id": null,
+        "lifecycle_status": "DRAFT"
+      }
+    ],
+    "run": {
+      "status": 201,
+      "created": 3,
+      "linked": 0,
+      "flagged": null
+    },
+    "landing_state": [
+      [
+        "DISCOVERED",
+        "EXTERNAL",
+        true
+      ]
+    ],
+    "note": "the hostile source's `baseline` scenario serves exactly the three REAL lab agents; this is the known-correct picture every later result is scored against"
+  },
+  "scenarios": [
+    {
+      "test_id": "V5-D1",
+      "scenario": "false-asset injection",
+      "attack": "a hostile source reports agents that do not exist",
+      "expected": "recorded as observation/evidence and created only as unowned EXTERNAL/DISCOVERED rows; never promoted to trusted inventory",
+      "observed": {
+        "agents_total": 5,
+        "ghost_rows": 2,
+        "ghost_states": [
+          [
+            "DISCOVERED",
+            "EXTERNAL",
+            true
+          ]
+        ],
+        "promoted_to_trusted": 0,
+        "observations": 5
+      },
+      "verdict": "PASS (evidence-not-trusted)",
+      "authority": "5.2 observations are evidence; creation lands DISCOVERED/EXTERNAL/unowned"
+    },
+    {
+      "test_id": "V5-D2",
+      "scenario": "source impersonation",
+      "attack": "an unregistered source poses as trusted; another tenant drives a victim's source",
+      "expected": "both rejected: a sweep requires a registered, tenant-scoped source and an authorized actor",
+      "observed": {
+        "unregistered_source_run": 404,
+        "cross_tenant_source_run": 404
+      },
+      "verdict": "PASS (rejected)",
+      "authority": "5.2 source registration + tenant scoping"
+    },
+    {
+      "test_id": "V5-D3",
+      "scenario": "malformed / oversized metadata",
+      "attack": "giant name (5k), description (200k), origin_provider (500), identifier (5k)",
+      "expected": "bounded before persist (name<=255, origin_provider<=50, description<=4000, identifier bounded); the run completes and nothing crashes or stores unbounded",
+      "observed": {
+        "run_status": 201,
+        "agents": 1,
+        "name_len": 255,
+        "origin_provider_len": 50,
+        "external_reference_len": 255,
+        "observations": 1
+      },
+      "verdict": "PASS (bounded)",
+      "authority": "5.2 _bounded() + persist-time identifier cap"
+    },
+    {
+      "test_id": "V5-D4",
+      "scenario": "observation replay",
+      "attack": "replay the identical observation set three times",
+      "expected": "idempotent canonical effect: 3 created on the first sweep, 0 created / 3 linked after; observations accumulate as append-only evidence",
+      "observed": {
+        "runs": [
+          {
+            "status": 201,
+            "created": 3,
+            "linked": 0
+          },
+          {
+            "status": 201,
+            "created": 0,
+            "linked": 3
+          },
+          {
+            "status": 201,
+            "created": 0,
+            "linked": 3
+          }
+        ],
+        "canonical_agents": 3,
+        "observation_rows": 9
+      },
+      "verdict": "PASS (idempotent)",
+      "authority": "5.2 exact-identifier reconciliation"
+    },
+    {
+      "test_id": "V5-D5",
+      "scenario": "forced disappearance (tombstone)",
+      "attack": "two real agents vanish from the source to force a false deletion",
+      "expected": "non-destructive: no agent row is deleted and no control_state changes; staleness becomes a finding only after the configured missed-sweep threshold",
+      "observed": {
+        "agents_before": 3,
+        "agents_after": 3,
+        "any_deleted": false,
+        "control_states": [
+          "DISCOVERED"
+        ],
+        "stale_findings": 2
+      },
+      "verdict": "PASS (non-destructive)",
+      "authority": "5.2 staleness is a finding, never a deletion"
+    },
+    {
+      "test_id": "V5-D6",
+      "scenario": "ownership / trust poisoning",
+      "attack": "payload asserts owner_id, owner_type, control_state=GOVERNED, origin_category=NATIVE, trust_status=APPROVED, is_trusted",
+      "expected": "every authority field is ignored: creation goes through AgentProvenanceService as EXTERNAL/DISCOVERED/unowned; ownership requires an authorized claim",
+      "observed": {
+        "rows": 1,
+        "observed": [
+          {
+            "control_state": "DISCOVERED",
+            "origin_category": "EXTERNAL",
+            "owner_id": null,
+            "lifecycle_status": "DRAFT"
+          }
+        ],
+        "authority_injected": 0
+      },
+      "verdict": "PASS (payload authority ignored)",
+      "authority": "5.2 AgentProvenanceService owns creation; payload never sets authority"
+    },
+    {
+      "test_id": "V5-D7",
+      "scenario": "confidence manipulation",
+      "attack": "payload carries discovery_confidence/confidence = 1.00 to inflate match confidence",
+      "expected": "confidence is an adapter-CLASS constant (1.00 for HTTP_AGENT_REGISTRY), never read from the payload \u2014 a hostile source cannot forge or inflate it",
+      "observed": {
+        "persisted_confidences": [
+          "1.00"
+        ],
+        "payload_supplied_confidence_honoured": false,
+        "source_of_confidence": "HttpAgentRegistryAdapter.normalize() hard-codes Decimal('1.00')"
+      },
+      "verdict": "PASS (not attacker-controllable)",
+      "authority": "5.2 adapter-class confidence"
+    }
+  ]
+}
