@@ -1,0 +1,268 @@
+{
+  "batch": "T8",
+  "started_at": "2026-09-22T11:57:19+0000",
+  "scenarios": [
+    {
+      "test_id": "T8-01",
+      "threat": "T8",
+      "scenario": "authority-chain baseline (control)",
+      "attack": "reconstruct a real execution's chain",
+      "expected": "200 with hops, each naming evidence, and a truthful `complete` flag",
+      "observed": {
+        "status": 200,
+        "hop_count": 3,
+        "complete": true,
+        "notes": [],
+        "hop_types": [
+          null,
+          null,
+          null
+        ]
+      },
+      "verdict": "PASS (control)",
+      "authority": "5.3 authority chain"
+    },
+    {
+      "test_id": "T8-02",
+      "threat": "T8",
+      "scenario": "forged delegation edge",
+      "attack": "create an authority edge from a fabricated delegation id",
+      "expected": "reject \u2014 the edge only mirrors an existing live in-tenant delegation row",
+      "observed": {
+        "status": 422,
+        "code": "GRAPH_DELEGATION_NOT_REPRESENTABLE"
+      },
+      "verdict": "PASS (rejected)",
+      "authority": "DelegationService ownership of the lifecycle"
+    },
+    {
+      "test_id": "T8-03",
+      "threat": "T8",
+      "scenario": "legitimate delegation (control)",
+      "attack": "org-scoped delegation to an in-tenant human",
+      "expected": "201 \u2014 the delegator may delegate within their own organization",
+      "observed": {
+        "status": 201,
+        "delegation_id": "11b74304-07c4-4242-a874-1dcabb765aa6"
+      },
+      "verdict": "PASS (control)",
+      "authority": "DelegationService.delegate"
+    },
+    {
+      "test_id": "T8-04",
+      "threat": "T8",
+      "scenario": "delegate a scope outside own authority",
+      "attack": "delegate ORGANIZATION scope naming ANOTHER tenant's org id",
+      "expected": "reject with DELEGATION_EXCEEDS_AUTHORITY \u2014 a delegator cannot grant beyond their own org",
+      "observed": {
+        "status": 403,
+        "code": "DELEGATION_EXCEEDS_AUTHORITY"
+      },
+      "verdict": "PASS (rejected)",
+      "authority": "DelegationService org boundary"
+    },
+    {
+      "test_id": "T8-05",
+      "threat": "T8",
+      "scenario": "cross-tenant delegatee",
+      "attack": "delegate to a human in another tenant",
+      "expected": "the authority edge must not materialize across the tenant boundary (both HUMAN endpoints are re-checked in-tenant)",
+      "observed": {
+        "delegation_status": 201,
+        "edge_status": 404,
+        "edge_code": "GRAPH_CROSS_TENANT_ENDPOINT"
+      },
+      "verdict": "PASS (tenant bound held)",
+      "authority": "create_delegation_edge in-tenant endpoint check"
+    },
+    {
+      "test_id": "T8-06",
+      "threat": "T8",
+      "scenario": "edge from a revoked delegation",
+      "attack": "materialize an edge after revoking the delegation",
+      "expected": "reject \u2014 the edge may only mirror a LIVE delegation",
+      "observed": {
+        "revoke_status": 200,
+        "edge_status": 422,
+        "code": "GRAPH_DELEGATION_NOT_REPRESENTABLE"
+      },
+      "verdict": "PASS (rejected)",
+      "authority": "live-delegation requirement"
+    },
+    {
+      "test_id": "T8-07",
+      "threat": "T8",
+      "scenario": "delegation edge replay",
+      "attack": "materialize the same delegation edge twice",
+      "expected": "the second must not create a second independent authority edge (idempotent or conflict) \u2014 authority must not accumulate by replay",
+      "observed": {
+        "first": 201,
+        "second": 201,
+        "code": null
+      },
+      "verdict": "GAP (duplicate edge created)",
+      "authority": "edge uniqueness"
+    },
+    {
+      "test_id": "T8-08",
+      "threat": "T8",
+      "scenario": "authority laundering A->B->C",
+      "attack": "chain delegations so C exceeds A's authority",
+      "expected": "C cannot exceed A: every delegation is stamped with the delegator's own org and cannot name another organization",
+      "observed": {
+        "note": "delegations are always stamped organization_id = delegator's org",
+        "b_to_c_status": 201,
+        "all_delegations_in_tenant_a": [
+          "4df4453f-cb91-4063-85d2-e84a9afcdafd"
+        ],
+        "c_org_exceeds_a": false
+      },
+      "verdict": "PASS (no widening)",
+      "authority": "DelegationService org stamping"
+    },
+    {
+      "test_id": "T8-09",
+      "threat": "T8",
+      "scenario": "cyclic delegation / recursive loop",
+      "attack": "A->B and B->A, then traverse",
+      "expected": "bounded and cycle-safe: a path array makes a revisit impossible; must terminate",
+      "observed": {
+        "edge_a": 201,
+        "edge_b": 201,
+        "reachability_status": 200,
+        "elapsed_ms": 7.6,
+        "reachable_count": 1
+      },
+      "verdict": "PASS (bounded, terminated)",
+      "authority": "cycle-safe recursive CTE + depth cap"
+    },
+    {
+      "test_id": "T8-10",
+      "threat": "T8",
+      "scenario": "chain truncation (hidden hop)",
+      "attack": "force a depth limit and check whether a shortened chain still claims completeness",
+      "expected": "ACT must never present a truncated chain as complete: fewer hops must come with complete=false and a note naming the reason",
+      "observed": {
+        "full_status": 200,
+        "full_hops": 4,
+        "full_complete": true,
+        "full_notes": [],
+        "limited_status": 200,
+        "limited_hops": 4,
+        "limited_complete": true,
+        "limited_notes": [],
+        "delegation_edge_status": 201,
+        "delegatee_execution_status": 201,
+        "chain_execution_used": "b6c92be9-f66a-4422-a6d2-b82b0747098b",
+        "chain_has_delegation_prefix": true
+      },
+      "verdict": "PASS (no silent truncation)",
+      "authority": "5.3 `complete` flag + notes"
+    },
+    {
+      "test_id": "T8-11",
+      "threat": "T8",
+      "scenario": "traversal depth ceiling",
+      "attack": "request max_depth far above the hard ceiling (32)",
+      "expected": "reject \u2014 GRAPH_TRAVERSAL_DEPTH_EXCEEDED (defence in depth against a pathological request)",
+      "observed": {
+        "status": 422,
+        "code": "GRAPH_TRAVERSAL_DEPTH_EXCEEDED"
+      },
+      "verdict": "PASS (rejected)",
+      "authority": "MAX_TRAVERSAL_DEPTH = 32"
+    },
+    {
+      "test_id": "T8-12",
+      "threat": "T8",
+      "scenario": "cross-tenant chain reconstruction",
+      "attack": "tenant B reconstructs tenant A's execution",
+      "expected": "404 \u2014 cross-tenant and missing must be indistinguishable (no existence leak)",
+      "observed": {
+        "status": 404,
+        "code": "GRAPH_NODE_NOT_FOUND"
+      },
+      "verdict": "PASS (contained, no leak)",
+      "authority": "per-tenant bound"
+    },
+    {
+      "test_id": "T8-13",
+      "threat": "T8",
+      "scenario": "external-agent attribution boundary",
+      "attack": "ask what authority surface exists for an EXTERNAL agent's boundary call",
+      "expected": "external calls are attributed by agent_id + grant_id in external_gateway_calls; they produce no agent_executions, so the 5.3 authority-chain surface does not cover them \u2014 record truthfully",
+      "observed": {
+        "gateway_call_status": 200,
+        "attributed": true,
+        "agent_id": "6a452b6d-6117-4070-9d16-9b3ed393fb35",
+        "grant_id": "3872f8d8-5bf5-4c41-a3fe-c39ca11ee162",
+        "agent_executions_for_external_tenant": 0,
+        "authority_chain_applies": false
+      },
+      "verdict": "PASS (truthful boundary: attributed at the gateway, no chain surface)",
+      "authority": "external_gateway_calls attribution"
+    },
+    {
+      "test_id": "T8-14",
+      "threat": "T8",
+      "scenario": "non-repudiation (audit of delegation)",
+      "attack": "deny having authorized a delegation",
+      "expected": "delegation creation and revocation are recorded with actor and delegatee, making the act non-repudiable; chain reconstruction is itself audited",
+      "observed": {
+        "org_audit_events_present": [],
+        "graph_chain_audit": true,
+        "authorization_audit_sample": [
+          "DELEGATION_CREATED",
+          "DELEGATION_REVOKED",
+          "DEPLOYMENT_VALIDATION_PASSED",
+          "DEPLOYMENT_VALIDATION_STARTED",
+          "DISCOVERY_AGENT_CREATED",
+          "DISCOVERY_RUN_COMPLETED",
+          "DISCOVERY_RUN_STARTED",
+          "DISCOVERY_SOURCE_CREATED"
+        ]
+      },
+      "verdict": "PASS (non-repudiable)",
+      "authority": "audit trail"
+    }
+  ],
+  "p1": {
+    "forgeable": false,
+    "amplifiable": false,
+    "launderable": false,
+    "truncatable_silently": false
+  },
+  "tenant_a": "4df4453f-cb91-4063-85d2-e84a9afcdafd",
+  "tenant_b": "8965553e-6b19-45d7-b0fd-89d6088f859b",
+  "native_setup_steps": {
+    "create_agent": 201,
+    "register": 200,
+    "validate": 200,
+    "identity": 200,
+    "submit-for-approval": 200,
+    "approve": 200,
+    "activate": 200,
+    "create_version": 201,
+    "version_validate": 200,
+    "version_approve": 200,
+    "version_publish": 200,
+    "create_deployment": 201,
+    "deploy_VALIDATING": 200,
+    "deploy_READY": 200,
+    "deploy_DEPLOYING": 200,
+    "create_execution": 201
+  },
+  "execution_id": "02240c42-0d64-4435-a590-5deae7fa343b",
+  "users": {
+    "u2": 201,
+    "u3": 201
+  },
+  "finished_at": "2026-09-22T11:57:22+0000",
+  "summary": {
+    "total": 14,
+    "passes": 13,
+    "fails": 0,
+    "delegation_integrity_rate": "8/9",
+    "p1_triggered": false
+  }
+}

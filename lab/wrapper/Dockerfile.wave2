@@ -1,0 +1,47 @@
+# WAVE-2 FRAMEWORK IMAGE (V4) — real multi-agent frameworks ACT did not build.
+#
+# Deliberately built from a clean python base rather than FROM the ACT image, so
+# the frameworks' dependency trees cannot conflict with (or silently alter) ACT's
+# own pinned requirements. This container holds NO ACT source: it runs the lab's
+# Wave-2 agents and the V4 multi-agent harness, which speak to ACT only over HTTP
+# and read the LAB database read-only.
+#
+# Framework versions are PINNED so the run is reproducible, and are recorded in
+# /wave2_versions.json at build time (the V4 report cites them). The frameworks
+# are installed at their current releases; the RCE-class vectors in the V1
+# register (CrewAI VU#221883 / CVE-2026-2275 code-interpreter fallback,
+# deserialization issues) are NOT exercised anywhere in this lab: no
+# code-interpreter tool, no shell tool, and no model provider is configured, and
+# T12 is out of V4 scope. Egress is denied by the wrapper regardless.
+FROM python:3.12-slim
+
+ARG LANGGRAPH_VERSION=1.2.12
+ARG CREWAI_VERSION=1.15.22
+
+RUN apt-get update && apt-get install -y --no-install-recommends libpq5 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir \
+        "psycopg2-binary==2.9.10" \
+        "langgraph==${LANGGRAPH_VERSION}" \
+        "crewai==${CREWAI_VERSION}" \
+ && python - <<'PY' > /wave2_versions.json
+import json
+v = {}
+for mod in ("langgraph", "crewai", "langchain_core", "pydantic"):
+    try:
+        m = __import__(mod)
+        v[mod] = getattr(m, "__version__", "unknown")
+    except Exception as e:
+        v[mod] = f"import-failed: {type(e).__name__}"
+print(json.dumps(v, indent=2))
+PY
+
+# Telemetry off: these frameworks phone home by default. The egress-deny network
+# already blocks it; this makes the intent explicit and avoids noisy retries.
+ENV CREWAI_DISABLE_TELEMETRY=true \
+    CREWAI_TELEMETRY_OPT_OUT=true \
+    OTEL_SDK_DISABLED=true \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /lab

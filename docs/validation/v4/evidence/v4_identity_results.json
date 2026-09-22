@@ -1,0 +1,300 @@
+{
+  "batch": "T6",
+  "started_at": "2026-09-22T11:54:28+0000",
+  "scenarios": [
+    {
+      "test_id": "T6-01",
+      "threat": "T6",
+      "scenario": "valid signed call (control)",
+      "attack": "correctly signed, in-scope",
+      "expected": "200 ALLOWED \u2014 the control proving the rejections below are meaningful",
+      "observed": {
+        "status": 200,
+        "outcome": "ALLOWED"
+      },
+      "verdict": "PASS (control)",
+      "authority": "grant scope + gateway"
+    },
+    {
+      "test_id": "T6-02",
+      "threat": "T6",
+      "scenario": "signed-request replay (nonce reuse)",
+      "attack": "resend identical signed request",
+      "expected": "second must be rejected \u2014 (grant_id,nonce) unique constraint",
+      "observed": {
+        "first": 200,
+        "second": 409,
+        "code": "EXTERNAL_REPLAY_DETECTED"
+      },
+      "verdict": "PASS (contained)",
+      "authority": "5.7 nonce replay defense"
+    },
+    {
+      "test_id": "T6-03",
+      "threat": "T6",
+      "scenario": "stale timestamp",
+      "attack": "timestamp an hour outside the signing window",
+      "expected": "reject \u2014 outside the signing window",
+      "observed": {
+        "status": 401,
+        "code": "EXTERNAL_SIGNATURE_EXPIRED"
+      },
+      "verdict": "PASS (contained)",
+      "authority": "5.7 timestamp window"
+    },
+    {
+      "test_id": "T6-04",
+      "threat": "T6",
+      "scenario": "forged signature (wrong key)",
+      "attack": "sign with an attacker-chosen secret",
+      "expected": "reject \u2014 HMAC mismatch (constant-time compare)",
+      "observed": {
+        "status": 401,
+        "code": "EXTERNAL_SIGNATURE_INVALID"
+      },
+      "verdict": "PASS (contained)",
+      "authority": "5.7 HMAC verification"
+    },
+    {
+      "test_id": "T6-05",
+      "threat": "T6",
+      "scenario": "stripped signature",
+      "attack": "empty X-ACT-Signature",
+      "expected": "reject \u2014 no signature is not a valid signature",
+      "observed": {
+        "status": 401,
+        "code": "EXTERNAL_SIGNATURE_MISSING"
+      },
+      "verdict": "PASS (contained)",
+      "authority": "5.7 HMAC verification"
+    },
+    {
+      "test_id": "T6-06",
+      "threat": "T6",
+      "scenario": "algorithm/scheme confusion",
+      "attack": "sign with a different scheme line (e.g. 'none')",
+      "expected": "reject \u2014 the scheme is part of the signing string; there is no algorithm negotiation",
+      "observed": {
+        "status": 401,
+        "code": "EXTERNAL_SIGNATURE_INVALID"
+      },
+      "verdict": "PASS (contained)",
+      "authority": "5.7 fixed single scheme in the signing string"
+    },
+    {
+      "test_id": "T6-07",
+      "threat": "T6",
+      "scenario": "body tampering after signing",
+      "attack": "swap the body for a forbidden target after signing",
+      "expected": "reject \u2014 the body digest is inside the signature",
+      "observed": {
+        "status": 401,
+        "code": "EXTERNAL_SIGNATURE_INVALID"
+      },
+      "verdict": "PASS (contained)",
+      "authority": "5.7 body digest binding"
+    },
+    {
+      "test_id": "T6-08",
+      "threat": "T6",
+      "scenario": "path tampering",
+      "attack": "sign for one path, send to another",
+      "expected": "reject \u2014 method and path are inside the signature",
+      "observed": {
+        "status": 401,
+        "code": "EXTERNAL_SIGNATURE_INVALID"
+      },
+      "verdict": "PASS (contained)",
+      "authority": "5.7 method/path binding"
+    },
+    {
+      "test_id": "T6-09",
+      "threat": "T6",
+      "scenario": "unknown key id",
+      "attack": "present a key id ACT never issued",
+      "expected": "reject \u2014 no grant resolves",
+      "observed": {
+        "status": 401,
+        "code": "EXTERNAL_SIGNATURE_INVALID"
+      },
+      "verdict": "PASS (contained)",
+      "authority": "5.7 grant lookup"
+    },
+    {
+      "test_id": "T6-10",
+      "threat": "T6",
+      "scenario": "expired grant",
+      "attack": "present a grant past its expiry",
+      "expected": "reject \u2014 expiry checked before HMAC",
+      "observed": {
+        "status": 403,
+        "code": "EXTERNAL_GRANT_EXPIRED",
+        "documented_mapping": "EXTERNAL_GRANT_EXPIRED -> 403"
+      },
+      "verdict": "PASS (contained)",
+      "authority": "5.7 grant expiry"
+    },
+    {
+      "test_id": "T6-11",
+      "threat": "T6",
+      "scenario": "revoked grant",
+      "attack": "act on a revoked grant",
+      "expected": "reject immediately \u2014 every call re-reads the grant; nothing cached",
+      "observed": {
+        "status": 403,
+        "code": "EXTERNAL_GRANT_REVOKED",
+        "documented_mapping": "EXTERNAL_GRANT_REVOKED -> 403"
+      },
+      "verdict": "PASS (contained)",
+      "authority": "5.7 revocation (uncached)"
+    },
+    {
+      "test_id": "T6-12",
+      "threat": "T6",
+      "scenario": "identity substitution",
+      "attack": "agent B signs for a target scoped to agent A",
+      "expected": "reject (outside B's scope); the call is attributed to B, never to A",
+      "observed": {
+        "status": 403,
+        "outcome": "DENIED",
+        "attributed_to_agent": "c12216a9-4eb7-4602-800d-110f8fc4b329",
+        "is_agent_b": true
+      },
+      "verdict": "PASS (contained + correctly attributed)",
+      "authority": "grant scope + per-grant attribution"
+    },
+    {
+      "test_id": "T6-13",
+      "threat": "T6",
+      "scenario": "P0: external -> internal escalation",
+      "attack": "present the signed external identity at internal (user-principal) endpoints",
+      "expected": "every internal endpoint must reject: the signed identity is accepted ONLY at the gateway capability endpoint and mints no session, role or internal principal",
+      "observed": {
+        "probes": [
+          {
+            "method": "GET",
+            "path": "/api/v1/auth/me",
+            "status": 401,
+            "authenticated": false
+          },
+          {
+            "method": "GET",
+            "path": "/api/v1/delegations",
+            "status": 403,
+            "authenticated": false
+          },
+          {
+            "method": "POST",
+            "path": "/api/v1/graph/trust-edges",
+            "status": 403,
+            "authenticated": false
+          },
+          {
+            "method": "GET",
+            "path": "/api/v1/command-center/agents",
+            "status": 403,
+            "authenticated": false
+          },
+          {
+            "method": "GET",
+            "path": "/api/v1/runtime/tools",
+            "status": 403,
+            "authenticated": false
+          }
+        ],
+        "any_authenticated": false
+      },
+      "verdict": "PASS (no escalation path)",
+      "authority": "5.7: grant names an agents row, never a users row"
+    },
+    {
+      "test_id": "T6-14",
+      "threat": "T6",
+      "scenario": "P0: gateway bypass",
+      "attack": "invoke the capability without a valid signed identity",
+      "expected": "reject \u2014 there is no unsigned path and the secret is not a bearer credential",
+      "observed": {
+        "variants": [
+          {
+            "variant": "unsigned",
+            "status": 401,
+            "accepted": false
+          },
+          {
+            "variant": "grant-secret-as-bearer",
+            "status": 401,
+            "accepted": false
+          },
+          {
+            "variant": "key-id-without-signature",
+            "status": 401,
+            "accepted": false
+          }
+        ],
+        "any_accepted": false
+      },
+      "verdict": "PASS (no bypass)",
+      "authority": "5.7 signed-request-only boundary"
+    },
+    {
+      "test_id": "T6-15",
+      "threat": "T6",
+      "scenario": "machine-identity collision",
+      "attack": "two agents contrive the same name/identity strings",
+      "expected": "ACT keys on the agent row + grant, not the advertised name; B never gains A's authority",
+      "observed": {
+        "same_display_name": true,
+        "distinct_agent_rows": 2,
+        "b_used_a_scoped_target_status": 403,
+        "b_cannot_use_a_authority": true
+      },
+      "verdict": "PASS (distinguished)",
+      "authority": "per-agent grant identity"
+    },
+    {
+      "test_id": "T6-16",
+      "threat": "T6",
+      "scenario": "weak-signal reconciliation",
+      "attack": "a hostile discovery source forges a near-identical identity to force a merge",
+      "expected": "must not auto-merge on weak signals \u2014 a distinct external_reference stays a distinct row",
+      "observed": {
+        "agents_before": 3,
+        "agents_after": 3,
+        "second_source_created": 0,
+        "second_source_linked": 3,
+        "duplicate_external_references": 0,
+        "no_false_merge": true
+      },
+      "verdict": "PASS (no auto-merge)",
+      "authority": "5.2 deterministic reconciliation + duplicate review"
+    },
+    {
+      "test_id": "T6-17",
+      "threat": "T6",
+      "scenario": "credential/token theft via config",
+      "attack": "exfiltrate a canary credential found in an agent config",
+      "expected": "the forbidden exfil capability is denied by grant scope; no canary reaches ACT's records",
+      "observed": {
+        "exfil_status": 403,
+        "exfil_denied": true,
+        "credential_kind": "synthetic bearer_like canary"
+      },
+      "verdict": "PASS (contained)",
+      "authority": "grant scope + canary zero-scan"
+    }
+  ],
+  "p0": {
+    "external_to_internal_escalation": false,
+    "gateway_bypass": false
+  },
+  "agent_id": "67f63ed3-7ea0-46b4-b53a-7b155968a19d",
+  "tenant_a": "ac2d6084-08bd-47b2-9054-110a12c66a35",
+  "finished_at": "2026-09-22T11:54:29+0000",
+  "summary": {
+    "total": 17,
+    "passes": 17,
+    "fails": 0,
+    "identity_rejection_rate": "10/10",
+    "p0_triggered": false
+  }
+}

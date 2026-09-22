@@ -34,7 +34,8 @@ COMPOSE = ["docker", "compose", "-f", str(WRAP / "docker-compose.wrapped.yml")]
 
 
 def sh(cmd, check=True, timeout=1800, env=None):
-    p = subprocess.run(cmd, cwd=str(WRAP), capture_output=True, text=True, timeout=timeout, env=env)
+    p = subprocess.run(cmd, cwd=str(WRAP), capture_output=True, text=True, timeout=timeout, env=env,
+                       encoding="utf-8", errors="replace")
     if check and p.returncode != 0:
         raise SystemExit(f"FAILED: {' '.join(cmd)}\n{p.stdout[-3000:]}\n{p.stderr[-3000:]}")
     return p

@@ -1,0 +1,30 @@
+  T6 T6-01    valid signed call (control)        -> PASS (control)
+  T6 T6-02    signed-request replay (nonce reuse) -> PASS (contained)
+  T6 T6-03    stale timestamp                    -> PASS (contained)
+  T6 T6-04    forged signature (wrong key)       -> PASS (contained)
+  T6 T6-05    stripped signature                 -> PASS (contained)
+  T6 T6-06    algorithm/scheme confusion         -> PASS (contained)
+  T6 T6-07    body tampering after signing       -> PASS (contained)
+  T6 T6-08    path tampering                     -> PASS (contained)
+  T6 T6-09    unknown key id                     -> PASS (contained)
+  T6 T6-10    expired grant                      -> FAIL
+  T6 T6-11    revoked grant                      -> FAIL
+  T6 T6-12    identity substitution              -> PASS (contained + correctly attributed)
+  T6 T6-13    P0: external -> internal escalation -> PASS (no escalation path)
+  T6 T6-14    P0: gateway bypass                 -> PASS (no bypass)
+
+--- stderr ---
+Traceback (most recent call last):
+  File "/lab/harness/v4_identity.py", line 310, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/lab/harness/v4_identity.py", line 263, in main
+    coll = C.colliding_identity_probe(ctx)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/lab/harness/v4_common.py", line 199, in colliding_identity_probe
+    other = second_agent_grant(ctx)
+            ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/lab/harness/v4_common.py", line 185, in second_agent_grant
+    assert s == 201, (s, raw)
+           ^^^^^^^^
+AssertionError: (409, {'success': False, 'error': {'code': 'CONFLICT', 'message': 'A grant with this label already exists for this agent.'}, 'request_id': '89aab298-a17d-421a-aeaa-b2b14c519449', 'meta': {'request_id': '89aab298-a17d-421a-aeaa-b2b14c519449', 'timestamp': '2026-09-22T11:51:49.011325+00:00'}})

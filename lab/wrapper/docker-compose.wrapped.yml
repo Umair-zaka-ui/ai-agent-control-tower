@@ -152,6 +152,31 @@ services:
     depends_on:
       act: { condition: service_healthy }
 
+  # V4 Wave-2: real multi-agent frameworks (LangGraph, CrewAI) ACT did not build.
+  # Clean python base, NO ACT source mounted, inside the same egress-deny network.
+  # Runs the Wave-2 agents and the V4 multi-agent (I-2) harness.
+  wave2:
+    build:
+      context: .
+      dockerfile: Dockerfile.wave2
+    image: actlab-wave2:v4
+    networks: [lab_net]
+    working_dir: /lab
+    environment:
+      LAB_MODE: wrapped
+      ACT_BASE: http://act:8802
+      LAB_DB_HOST: lab_db
+      LAB_DB_PORT: "5432"
+      LAB_REGISTRY_HOST: registry
+      LAB_CANARY_HOST: canary
+      LAB_MCP_HOST: mcp_trusted
+      PYTHONUNBUFFERED: "1"
+    volumes:
+      - ../:/lab
+    command: ["sleep", "infinity"]
+    depends_on:
+      act: { condition: service_healthy }
+
   # The boundary-proof probe: a stock Alpine with NO ACT code, no Python, nothing of ours.
   proof:
     image: alpine:3.20
