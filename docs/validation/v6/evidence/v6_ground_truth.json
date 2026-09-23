@@ -1,0 +1,32 @@
+{
+  "external_agent": {
+    "id": "cda60a5d-bab0-42b0-b4e5-eab06398c0a0",
+    "state": {
+      "lifecycle_status": "DRAFT",
+      "control_state": "REGISTERED",
+      "origin_category": "EXTERNAL"
+    },
+    "grant_authorizes_now": true,
+    "canary_target_reachable_now": true,
+    "required_effect_of_SUSPEND_AGENT": "NONE \u2014 ACT has no enforcement authority over a non-GOVERNED agent; it must REFUSE and change nothing",
+    "required_effect_of_grant_revocation": "next signed call 403 AND the canary finance target receives nothing further"
+  },
+  "native_agent": {
+    "id": "94f0843f-59b6-425c-853d-9a2867bc9886",
+    "state": {
+      "lifecycle_status": "ACTIVE",
+      "control_state": "GOVERNED",
+      "origin_category": "NATIVE"
+    },
+    "execution": "594534c8-7123-42ff-bf84-0934213bff4d",
+    "executions": [
+      {
+        "id": "594534c8-7123-42ff-bf84-0934213bff4d",
+        "status": "SUCCEEDED",
+        "cancel_requested": false
+      }
+    ],
+    "required_effect_of_SUSPEND_AGENT": "agent.lifecycle_status becomes SUSPENDED and active executions get cancel_requested=True"
+  },
+  "scoring_rule": "a containment PASSES only if the REAL effect matches this record; a status without its effect is a false containment claim (P0)"
+}

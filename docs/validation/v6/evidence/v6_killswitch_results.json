@@ -1,0 +1,121 @@
+{
+  "batch": "T20b",
+  "scenarios": [
+    {
+      "test_id": "V6-K1",
+      "scenario": "automation vs human kill",
+      "attack": "after a human kill, drive threat evaluation and a further automated containment",
+      "expected": "the kill DOMINATES: nothing in the threat path un-suspends the agent",
+      "observed": {
+        "after_kill": "SUSPENDED",
+        "automation_action_status": "EXECUTED",
+        "after_automation": "SUSPENDED",
+        "kill_undone": false
+      },
+      "verdict": "PASS (kill dominates)",
+      "authority": "no un-suspend branch in the threat package"
+    },
+    {
+      "test_id": "V6-K2",
+      "scenario": "revert a kill-switch containment",
+      "attack": "call the revert endpoint on an EXECUTED SUSPEND_AGENT action",
+      "expected": "refused \u2014 SUSPEND_AGENT is reversible=False by construction; the agent stays suspended",
+      "observed": {
+        "action": [
+          "92c76fd6-2e23-4125-9d71-1c98f8d5b458",
+          "SUSPEND_AGENT",
+          "EXECUTED",
+          false
+        ],
+        "revert_http": 409,
+        "code": "CONTAINMENT_ACTION_NOT_REVERSIBLE",
+        "agent_still_suspended": true
+      },
+      "verdict": "PASS (revert refused, stays suspended)",
+      "authority": "_REVERSIBLE[SUSPEND_AGENT] = False"
+    },
+    {
+      "test_id": "V6-K3",
+      "scenario": "concurrent conflicting containments",
+      "attack": "three containments fired at once on one agent from real separate sessions",
+      "expected": "one coherent effect, no torn state, no 5xx, and the agent ends SUSPENDED",
+      "observed": {
+        "results": [
+          {
+            "action": "SUSPEND_AGENT",
+            "http": 201,
+            "status": "EXECUTED"
+          },
+          {
+            "action": "SUSPEND_AGENT",
+            "http": 201,
+            "status": "FAILED"
+          },
+          {
+            "action": "REQUIRE_APPROVAL",
+            "http": 201,
+            "status": "EXECUTED"
+          }
+        ],
+        "lifecycle_final": "SUSPENDED",
+        "any_5xx": false
+      },
+      "verdict": "PASS (coherent, suspended)",
+      "authority": "commit-before-dispatch; no row locks"
+    },
+    {
+      "test_id": "V6-K4",
+      "scenario": "reactivation path analysis",
+      "attack": "look for any path that reactivates a killed agent, and who can reach it",
+      "expected": "the threat/automation package contains NO reactivation code; a human operator's `resume` (SUSPENDED->ACTIVE) exists by design as a separate, permission-gated, separately-audited verb",
+      "observed": {
+        "reactivation_code_in_threat_package": [],
+        "automation_can_reactivate": false,
+        "human_resume_exists_by_design": true,
+        "note": "AgentLifecycleService.resume emits RUNTIME_AGENT_RESUMED; ExecutionService.retry clears cancel_requested only for FAILED/TIMED_OUT/DEAD_LETTERED, never a CANCELLED kill"
+      },
+      "verdict": "PASS (no automation reactivation path)",
+      "authority": "AST: no reactivation in the threat package"
+    },
+    {
+      "test_id": "V6-K5",
+      "scenario": "retry a killed execution",
+      "attack": "terminate an execution, then attempt to retry it",
+      "expected": "refused \u2014 retry is only valid from FAILED/TIMED_OUT/DEAD_LETTERED, so a killed execution cannot be resurrected by clearing its cancel flag",
+      "observed": {
+        "retry_http": 409,
+        "code": "INVALID_LIFECYCLE_TRANSITION",
+        "executions": [
+          {
+            "id": "594534c8-7123-42ff-bf84-0934213bff4d",
+            "status": "SUCCEEDED",
+            "cancel_requested": false
+          }
+        ]
+      },
+      "verdict": "PASS (cannot resurrect a kill)",
+      "authority": "ExecutionService.retry state guard"
+    },
+    {
+      "test_id": "V6-K6",
+      "scenario": "revocation racing in-flight calls",
+      "attack": "revoke a grant while signed calls are in flight",
+      "expected": "no window where a revoked grant still authorizes: once a call is denied, no later call succeeds, and the call after the race is 403",
+      "observed": {
+        "call_sequence": [
+          200,
+          200,
+          403,
+          403,
+          403,
+          403
+        ],
+        "first_denial_index": 2,
+        "allow_after_denial": false,
+        "call_after_race": 403
+      },
+      "verdict": "PASS (no authorizing window)",
+      "authority": "grant re-read on every call; nothing cached"
+    }
+  ]
+}

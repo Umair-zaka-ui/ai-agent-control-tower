@@ -1,0 +1,320 @@
+act-1  | [act] /app/.env size: 110 bytes (masked); /app/.keys entries: 0 (masked tmpfs)
+act-1  | [act] alembic upgrade head
+act-1  | INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+act-1  | INFO  [alembic.runtime.migration] Will assume transactional DDL.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade  -> 0001_initial, Initial schema: organizations, users, agents, permissions, agent_actions,
+act-1  | approvals and audit_logs.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0001_initial -> 0002_phase2, Phase 2 schema: agent API keys, policies, advanced RBAC, approval
+act-1  | priority/SLA/comments and audit log forensic fields.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0002_phase2 -> 0003_agent_mgmt, Phase 3 Part 3.2 - enterprise agent management fields + statuses.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0003_agent_mgmt -> 0004_policy_mgmt, Phase 3 Part 3.3 - policy management metadata.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0004_policy_mgmt -> 0005_approval_workbench, Phase 3 Part 3.4 - approval queue & human review workbench.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0005_approval_workbench -> 0006_identity_foundation, Phase 4 Part 4.1 - Enterprise Identity Platform foundation.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0006_identity_foundation -> 0007_identity_lifecycle, Phase 4 Part 4.1a - unify the identity lifecycle across all identity types.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0007_identity_lifecycle -> 0008_auth_login_history, Phase 4 Part 4.2.2.1 - human authentication: login history + lockout window.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0008_auth_login_history -> 0009_session_lifecycle, Phase 4 Part 4.2.2.2 - login, logout & session lifecycle.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0009_session_lifecycle -> 0010_session_admin_permissions, Phase 4 Part 4.2.2.2 - administrative session-management permissions.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0010_session_admin_permissions -> 0011_security_event_read_indexes, Phase 4 Part 4.2.2.2 - indexes for the security-event read path.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0011_security_event_read_indexes -> 0012_registration_invites, Phase 4 Part 4.2.2.3.1 - enterprise registration, invitations & email verification.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0012_registration_invites -> 0013_credential_management, Phase 4 Part 4.2.2.3.2 - enterprise password policy & credential management.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0013_credential_management -> 0014_password_reset_recovery, Phase 4 Part 4.2.2.3.3 - password reset, account recovery & email change.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0014_password_reset_recovery -> 0015_account_protection, Phase 4 Part 4.2.2.3.4 - enterprise account protection & risk-based auth.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0015_account_protection -> 0016_rbac_foundation, Phase 4.3.1 - Enterprise RBAC foundation.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0016_rbac_foundation -> 0017_permission_engine, Phase 4.3.2 - Enterprise Permission Engine.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0017_permission_engine -> 0018_org_hierarchy, Phase 4.3.3 - Enterprise organization authorization hierarchy.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0018_org_hierarchy -> 0019_resource_authorization, Phase 4.3.4 - Enterprise resource-based authorization (RBAC + Resource ACL).
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0019_resource_authorization -> 0020_abac_engine, Phase 4.3.5 - Attribute-Based Access Control engine.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0020_abac_engine -> 0021_access_reviews, Phase 4.3.7 - Enterprise authorization administration portal.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0021_access_reviews -> 0022_governance_iga, Phase 4.3.8 - Identity Governance & Administration (IGA).
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0022_governance_iga -> 0023_agent_runtime, Phase 5.0 - Enterprise AI Agent Runtime & Lifecycle Management.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0023_agent_runtime -> 0024_agent_registry, Phase 5.1 - Enterprise Agent Registry, Definitions & Lifecycle.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0024_agent_registry -> 0025_agent_versioning, Phase 5.2 Part 1 - Enterprise Immutable Agent Versioning & Release Management.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0025_agent_versioning -> 0026_version_compatibility, Phase 5.2.6 - Compatibility & Breaking-Change Detection.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0026_version_compatibility -> 0027_version_signing, Phase 5.2.4 - Cryptographic Signing, Provenance & Portable Attestation.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0027_version_signing -> 0028_streaming_and_pricing, Phase 5.7a.3 - Streaming & Token Accounting.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0028_streaming_and_pricing -> 0029_provider_credentials, Phase 5.7a.5 - Per-Organization Provider Credentials.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0029_provider_credentials -> 0030_http_tool_egress, Phase 5.6a.1 - HTTP Tool Execution & Egress Control.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0030_http_tool_egress -> 0031_tool_resilience, Phase 5.6a.2 - Tool Schema Validation & Resilience.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0031_tool_resilience -> 0032_tool_loop, Phase 5.6a.3 - Model-Driven Tool Invocation Loop.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0032_tool_loop -> 0033_connector_core, Phase 2.1.1 - Connector Abstraction & Lifecycle.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0033_connector_core -> 0034_connector_auth, Phase 2.1.2 - Connector Authentication Framework.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0034_connector_auth -> 0035_connector_health, Phase 2.1.3 - Connector Registry & Health.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0035_connector_health -> 0036_identity_federation, Phase 2.3.1 - External Identity Federation.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0036_identity_federation -> 0037_deployment_lifecycle, Phase 3.1 - Enterprise Deployment Core.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0037_deployment_lifecycle -> 0038_environments_promotion, Phase 3.2 - Environment & Promotion Model.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0038_environments_promotion -> 0039_deployment_preflight, Phase 3.3 - Deployment Preflight & Release Gate Engine.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0039_deployment_preflight -> 0040_traffic_allocation, Phase 3.4 - Traffic Allocation, Version Resolver & Execution Gate.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0040_traffic_allocation -> 0041_canary_rollout, Phase 3.5 - Canary Deployment Engine.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0041_canary_rollout -> 0042_automated_rollback, Phase 3.7 - Automated Rollback & Release Safety.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0042_automated_rollback -> 0043_distributed_scheduler, Phase 3.8 - Distributed Scheduler.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0043_distributed_scheduler -> 0044_worker_fleet_rolling, Phase 3.9 - Distributed Execution Worker Fleet & Rolling Deployment.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0044_worker_fleet_rolling -> 0045_runtime_telemetry_context, Phase 4.1 - Runtime Telemetry & Trace Context Foundation.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0045_runtime_telemetry_context -> 0046_trace_explorer_index, Phase 4.2 - Unified AI Execution Trace (Trace Explorer & Timeline).
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0046_trace_explorer_index -> 0047_runtime_governance, Phase 4.3 - Runtime Governance Enforcement Engine.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0047_runtime_governance -> 0048_cost_governance, Phase 4.4 - Enterprise AI Cost Governance & FinOps.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0048_cost_governance -> 0049_behavioral_signals, Phase 4.5 - Behavioral Signals & Runtime Anomaly Detection.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0049_behavioral_signals -> 0050_slos_and_alerts, Phase 4.7 - SLOs, alert rules & incident signals.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0050_slos_and_alerts -> 0051_telemetry_privacy, Phase 4.8 - telemetry privacy, retention & access governance.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0051_telemetry_privacy -> 0052_key_material_canary, Phase M4.11 - key-material recovery & fail-loud integrity.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0052_key_material_canary -> 0053_installation_bootstrap, Phase M4.11a - the durable bootstrap marker.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0053_installation_bootstrap -> 0054_agent_asset_model, Phase 5.1 (M5.1) - Universal Agent Asset Model + Ownership.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0054_agent_asset_model -> 0055_agent_discovery, Phase 5.2 (M5.2) - Agent Discovery Framework.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0055_agent_discovery -> 0056_control_graph, Phase 5.3 (M5.3) - Identity, Delegation & Trust Graph.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0056_control_graph -> 0057_dependency_graph, Phase 5.4 (M5.4) - MCP / Tool / Credential / Resource Dependency Graph.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0057_dependency_graph -> 0058_security_posture, Phase 5.5 (M5.5) - Security Posture & Shadow Findings.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0058_security_posture -> 0059_threat_containment, Phase 5.6 (M5.6) - Runtime Threat Detection & Containment.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0059_threat_containment -> 0060_external_gov_bridge, Phase 5.7 (M5.7) - External Agent Governance Bridge.
+act-1  | INFO  [alembic.runtime.migration] Running upgrade 0060_external_gov_bridge -> 0061_assurance_evidence, Phase 5.9 (M5.9) - Assurance, Evidence & Compliance.
+act-1  | [act] keys bootstrap (fresh lab identity)
+act-1  | Generating a new local Ed25519 signing keypair for 'lab' at /lab/.keys -- this is a development convenience, NOT production-grade key management. Production deployments must configure Azure Key Vault (SIGNING_PROVIDER=AZURE_KEY_VAULT).
+act-1  | provisioned fresh key material and recorded the bootstrap marker:
+act-1  |   encryption: provider=LOCAL fingerprint=5aebb28d0cc2d54e
+act-1  |   signing:    key_id=lab v1 public_fingerprint=4edc65bbafe77292
+act-1  | back this up now: python -m app.security.keys backup <recovery-target>
+act-1  | install mode:            EXISTING_INSTALL  (bootstrap marker present)
+act-1  | bootstrap marker:        present
+act-1  | encrypted-state tables:  (none)
+act-1  | signed-state tables:     signing_keys
+act-1  | encryption provider:     {'provider': 'LOCAL', 'present': True, 'active_fingerprint': '5aebb28d0cc2d54e', 'fallback_fingerprints': []}
+act-1  | OK    key-material integrity OK — install=EXISTING_INSTALL encryption[provider=LOCAL fp=5aebb28d0cc2d54e state=OK validation=CANARY_MATCH] signing[keys=1 validation=OK]
+act-1  | [act] serving on 0.0.0.0:8802 (internal network only)
+act-1  | INFO:     Started server process [1]
+act-1  | INFO:     Waiting for application startup.
+act-1  | INFO:     Application startup complete.
+act-1  | INFO:     Uvicorn running on http://0.0.0.0:8802 (Press CTRL+C to quit)
+act-1  | INFO:     127.0.0.1:52628 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:57220 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:57226 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:57240 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:56692 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:56704 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:56706 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:56712 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:45220 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.5:40796 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     Shutting down
+act-1  | INFO:     Waiting for application shutdown.
+act-1  | INFO:     Application shutdown complete.
+act-1  | INFO:     Finished server process [1]
+act-1  | [act] /app/.env size: 110 bytes (masked); /app/.keys entries: 0 (masked tmpfs)
+act-1  | [act] alembic upgrade head
+act-1  | INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+act-1  | INFO  [alembic.runtime.migration] Will assume transactional DDL.
+act-1  | [act] keys bootstrap (fresh lab identity)
+act-1  | FAIL  BOOTSTRAP_REFUSED_MARKER_PRESENT: this installation is already established (bootstrap marker present) — it is not a new one — restore the original key material from the recovery archive (see docs/security/key-management.md); bootstrapping here would orphan every existing secret and signature
+act-1  | [act] bootstrap returned non-zero (see status below)
+act-1  | install mode:            EXISTING_INSTALL  (bootstrap marker present)
+act-1  | bootstrap marker:        present
+act-1  | encrypted-state tables:  (none)
+act-1  | signed-state tables:     signing_keys
+act-1  | encryption provider:     {'provider': 'LOCAL', 'present': True, 'active_fingerprint': '5aebb28d0cc2d54e', 'fallback_fingerprints': []}
+act-1  | OK    key-material integrity OK — install=EXISTING_INSTALL encryption[provider=LOCAL fp=5aebb28d0cc2d54e state=OK validation=CANARY_MATCH] signing[keys=1 validation=OK]
+act-1  | [act] serving on 0.0.0.0:8802 (internal network only)
+act-1  | INFO:     Started server process [1]
+act-1  | INFO:     Waiting for application startup.
+act-1  | INFO:     Application startup complete.
+act-1  | INFO:     Uvicorn running on http://0.0.0.0:8802 (Press CTRL+C to quit)
+act-1  | INFO:     127.0.0.1:51368 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:51380 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:51386 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:59552 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:59556 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:59572 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:45060 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:45064 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:45068 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:39372 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:39382 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:39398 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:55122 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:55130 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50158 - "POST /auth/register HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:50162 - "POST /api/v1/auth/login HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50176 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50192 - "POST /auth/register HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:50194 - "POST /api/v1/auth/login HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50206 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50222 - "POST /api/v1/discovery/sources HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:50230 - "POST /api/v1/discovery/sources/9eb379b7-cbce-4bc2-b8e2-6d46d973c12d/runs HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:50238 - "POST /api/v1/runtime/tools HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:50248 - "POST /api/v1/runtime/tools HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:50256 - "POST /api/v1/runtime/tools HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:50268 - "POST /api/v1/runtime/agents/cda60a5d-bab0-42b0-b4e5-eab06398c0a0/claim HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50270 - "POST /api/v1/runtime/agents/cda60a5d-bab0-42b0-b4e5-eab06398c0a0/control-state HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50274 - "PUT /api/v1/bridge/agents/cda60a5d-bab0-42b0-b4e5-eab06398c0a0/enforcement-mode HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50276 - "POST /api/v1/bridge/agents/cda60a5d-bab0-42b0-b4e5-eab06398c0a0/grants HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:50292 - "POST /api/v1/runtime/agents HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:50298 - "POST /api/v1/runtime/agents/94f0843f-59b6-425c-853d-9a2867bc9886/register HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50310 - "POST /api/v1/runtime/agents/94f0843f-59b6-425c-853d-9a2867bc9886/validate HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50326 - "POST /api/v1/runtime/agents/94f0843f-59b6-425c-853d-9a2867bc9886/identity/create-and-associate HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50342 - "POST /api/v1/runtime/agents/94f0843f-59b6-425c-853d-9a2867bc9886/submit-for-approval HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50346 - "POST /api/v1/runtime/agents/94f0843f-59b6-425c-853d-9a2867bc9886/approve HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50350 - "POST /api/v1/runtime/agents/94f0843f-59b6-425c-853d-9a2867bc9886/activate HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50360 - "POST /api/v1/runtime/agents/94f0843f-59b6-425c-853d-9a2867bc9886/versions HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:50374 - "POST /api/v1/runtime/agents/94f0843f-59b6-425c-853d-9a2867bc9886/versions/58f92887-565b-4c37-a841-51dc0fdc04b6/validate HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50378 - "POST /api/v1/runtime/agents/94f0843f-59b6-425c-853d-9a2867bc9886/versions/58f92887-565b-4c37-a841-51dc0fdc04b6/approve HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:55140 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50384 - "POST /api/v1/runtime/agents/94f0843f-59b6-425c-853d-9a2867bc9886/versions/58f92887-565b-4c37-a841-51dc0fdc04b6/publish HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50396 - "POST /api/v1/runtime/deployments?agent_id=94f0843f-59b6-425c-853d-9a2867bc9886 HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:50400 - "POST /api/v1/runtime/deployments/39092a18-8136-4505-be13-47c03940ab12/lifecycle/transition HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50414 - "POST /api/v1/runtime/deployments/39092a18-8136-4505-be13-47c03940ab12/lifecycle/transition HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50428 - "POST /api/v1/runtime/deployments/39092a18-8136-4505-be13-47c03940ab12/lifecycle/transition HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50444 - "POST /api/v1/runtime/executions HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:50456 - "POST /api/v1/bridge/capability HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50464 - "POST /api/v1/threat/agents/cda60a5d-bab0-42b0-b4e5-eab06398c0a0/containment HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:50476 - "POST /api/v1/bridge/capability HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50478 - "POST /api/v1/bridge/grants/a53bdd5b-3ba3-4161-bb33-b8961de601f4/revoke HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50480 - "POST /api/v1/bridge/capability HTTP/1.1" 403 Forbidden
+act-1  | INFO:     172.20.0.14:50494 - "POST /api/v1/threat/agents/94f0843f-59b6-425c-853d-9a2867bc9886/containment HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:50510 - "POST /api/v1/runtime/agents HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:50526 - "POST /api/v1/runtime/agents/39d2bb9e-1eda-472a-a48d-3d5d5c1ef8cc/register HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50538 - "POST /api/v1/runtime/agents/39d2bb9e-1eda-472a-a48d-3d5d5c1ef8cc/validate HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50552 - "POST /api/v1/runtime/agents/39d2bb9e-1eda-472a-a48d-3d5d5c1ef8cc/identity/create-and-associate HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50556 - "POST /api/v1/runtime/agents/39d2bb9e-1eda-472a-a48d-3d5d5c1ef8cc/submit-for-approval HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50566 - "POST /api/v1/runtime/agents/39d2bb9e-1eda-472a-a48d-3d5d5c1ef8cc/approve HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50572 - "POST /api/v1/runtime/agents/39d2bb9e-1eda-472a-a48d-3d5d5c1ef8cc/activate HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50576 - "POST /api/v1/runtime/agents/39d2bb9e-1eda-472a-a48d-3d5d5c1ef8cc/versions HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:50584 - "POST /api/v1/runtime/agents/39d2bb9e-1eda-472a-a48d-3d5d5c1ef8cc/versions/efb64350-967a-42c0-927b-6c47331eeb50/validate HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50588 - "POST /api/v1/runtime/agents/39d2bb9e-1eda-472a-a48d-3d5d5c1ef8cc/versions/efb64350-967a-42c0-927b-6c47331eeb50/approve HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50600 - "POST /api/v1/runtime/agents/39d2bb9e-1eda-472a-a48d-3d5d5c1ef8cc/versions/efb64350-967a-42c0-927b-6c47331eeb50/publish HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50604 - "POST /api/v1/runtime/deployments?agent_id=39d2bb9e-1eda-472a-a48d-3d5d5c1ef8cc HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:50616 - "POST /api/v1/runtime/deployments/39777334-e96b-4169-8ccb-a353c1a32ae1/lifecycle/transition HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50618 - "POST /api/v1/runtime/deployments/39777334-e96b-4169-8ccb-a353c1a32ae1/lifecycle/transition HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50626 - "POST /api/v1/runtime/deployments/39777334-e96b-4169-8ccb-a353c1a32ae1/lifecycle/transition HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50634 - "POST /api/v1/runtime/executions HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:50646 - "POST /api/v1/threat/agents/39d2bb9e-1eda-472a-a48d-3d5d5c1ef8cc/containment HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:50662 - "POST /api/v1/threat/agents/94f0843f-59b6-425c-853d-9a2867bc9886/containment HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:50678 - "POST /api/v1/threat/agents/94f0843f-59b6-425c-853d-9a2867bc9886/containment HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:50694 - "POST /api/v1/runtime/agents/cda60a5d-bab0-42b0-b4e5-eab06398c0a0/control-state HTTP/1.1" 409 Conflict
+act-1  | INFO:     172.20.0.14:50706 - "POST /api/v1/threat/agents/cda60a5d-bab0-42b0-b4e5-eab06398c0a0/containment HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:50718 - "POST /api/v1/runtime/agents HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:50734 - "POST /api/v1/runtime/agents/b77457e4-0b61-40a1-b341-52ac868a12db/register HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50742 - "POST /api/v1/runtime/agents/b77457e4-0b61-40a1-b341-52ac868a12db/validate HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50756 - "POST /api/v1/runtime/agents/b77457e4-0b61-40a1-b341-52ac868a12db/identity/create-and-associate HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50760 - "POST /api/v1/runtime/agents/b77457e4-0b61-40a1-b341-52ac868a12db/submit-for-approval HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50772 - "POST /api/v1/runtime/agents/b77457e4-0b61-40a1-b341-52ac868a12db/approve HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50788 - "POST /api/v1/runtime/agents/b77457e4-0b61-40a1-b341-52ac868a12db/activate HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50802 - "POST /api/v1/runtime/agents/b77457e4-0b61-40a1-b341-52ac868a12db/versions HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:50814 - "POST /api/v1/runtime/agents/b77457e4-0b61-40a1-b341-52ac868a12db/versions/d9107f96-6fbd-498d-9beb-ed03f12eceee/validate HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50818 - "POST /api/v1/runtime/agents/b77457e4-0b61-40a1-b341-52ac868a12db/versions/d9107f96-6fbd-498d-9beb-ed03f12eceee/approve HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50826 - "POST /api/v1/runtime/agents/b77457e4-0b61-40a1-b341-52ac868a12db/versions/d9107f96-6fbd-498d-9beb-ed03f12eceee/publish HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50828 - "POST /api/v1/runtime/deployments?agent_id=b77457e4-0b61-40a1-b341-52ac868a12db HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:50830 - "POST /api/v1/runtime/deployments/9d5b461c-5b39-42f2-b66b-c42103559258/lifecycle/transition HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50832 - "POST /api/v1/runtime/deployments/9d5b461c-5b39-42f2-b66b-c42103559258/lifecycle/transition HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50846 - "POST /api/v1/runtime/deployments/9d5b461c-5b39-42f2-b66b-c42103559258/lifecycle/transition HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50854 - "POST /api/v1/runtime/executions HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:50856 - "POST /api/v1/threat/agents/b77457e4-0b61-40a1-b341-52ac868a12db/containment HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:50860 - "POST /api/v1/threat/agents/b77457e4-0b61-40a1-b341-52ac868a12db/evaluate HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50868 - "POST /api/v1/threat/agents/b77457e4-0b61-40a1-b341-52ac868a12db/containment HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:50874 - "POST /api/v1/threat/containment/92c76fd6-2e23-4125-9d71-1c98f8d5b458/revert HTTP/1.1" 409 Conflict
+act-1  | INFO:     172.20.0.14:50886 - "POST /api/v1/runtime/agents HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:50902 - "POST /api/v1/runtime/agents/206a8880-398e-4890-ae92-60e68e6603d4/register HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50916 - "POST /api/v1/runtime/agents/206a8880-398e-4890-ae92-60e68e6603d4/validate HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50918 - "POST /api/v1/runtime/agents/206a8880-398e-4890-ae92-60e68e6603d4/identity/create-and-associate HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50930 - "POST /api/v1/runtime/agents/206a8880-398e-4890-ae92-60e68e6603d4/submit-for-approval HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50946 - "POST /api/v1/runtime/agents/206a8880-398e-4890-ae92-60e68e6603d4/approve HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50948 - "POST /api/v1/runtime/agents/206a8880-398e-4890-ae92-60e68e6603d4/activate HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50964 - "POST /api/v1/runtime/agents/206a8880-398e-4890-ae92-60e68e6603d4/versions HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:50976 - "POST /api/v1/runtime/agents/206a8880-398e-4890-ae92-60e68e6603d4/versions/b5900799-c0d9-45c1-946e-fd7b8e369665/validate HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50980 - "POST /api/v1/runtime/agents/206a8880-398e-4890-ae92-60e68e6603d4/versions/b5900799-c0d9-45c1-946e-fd7b8e369665/approve HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50984 - "POST /api/v1/runtime/agents/206a8880-398e-4890-ae92-60e68e6603d4/versions/b5900799-c0d9-45c1-946e-fd7b8e369665/publish HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:50998 - "POST /api/v1/runtime/deployments?agent_id=206a8880-398e-4890-ae92-60e68e6603d4 HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:51008 - "POST /api/v1/runtime/deployments/abc8fca7-5354-46ad-8fc9-dd543e1fac17/lifecycle/transition HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:51016 - "POST /api/v1/runtime/deployments/abc8fca7-5354-46ad-8fc9-dd543e1fac17/lifecycle/transition HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:51018 - "POST /api/v1/runtime/deployments/abc8fca7-5354-46ad-8fc9-dd543e1fac17/lifecycle/transition HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:51026 - "POST /api/v1/runtime/executions HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:51032 - "POST /api/v1/threat/agents/206a8880-398e-4890-ae92-60e68e6603d4/containment HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:51048 - "POST /api/v1/threat/agents/206a8880-398e-4890-ae92-60e68e6603d4/containment HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:51056 - "POST /api/v1/threat/agents/206a8880-398e-4890-ae92-60e68e6603d4/containment HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:51070 - "POST /api/v1/threat/agents/94f0843f-59b6-425c-853d-9a2867bc9886/containment HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:51076 - "POST /api/v1/runtime/executions/594534c8-7123-42ff-bf84-0934213bff4d/retry HTTP/1.1" 409 Conflict
+act-1  | INFO:     172.20.0.14:51084 - "POST /auth/register HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:51100 - "POST /api/v1/auth/login HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:51110 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:51120 - "POST /auth/register HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:51124 - "POST /api/v1/auth/login HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:51126 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:51136 - "POST /api/v1/discovery/sources HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:54854 - "POST /api/v1/discovery/sources/301a305e-d4e8-4465-beed-fd7e7c911184/runs HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:54862 - "POST /api/v1/runtime/tools HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:54876 - "POST /api/v1/runtime/tools HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:54878 - "POST /api/v1/runtime/tools HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:54880 - "POST /api/v1/runtime/agents/1248c136-feba-44e6-b70b-a76c85368893/claim HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:54896 - "POST /api/v1/runtime/agents/1248c136-feba-44e6-b70b-a76c85368893/control-state HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:54908 - "PUT /api/v1/bridge/agents/1248c136-feba-44e6-b70b-a76c85368893/enforcement-mode HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:54914 - "POST /api/v1/bridge/agents/1248c136-feba-44e6-b70b-a76c85368893/grants HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:54916 - "POST /api/v1/bridge/capability HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:54932 - "POST /api/v1/bridge/grants/e0c9fab6-1674-4d5b-a14e-1928e0c526c4/revoke HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:54920 - "POST /api/v1/bridge/capability HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:54934 - "POST /api/v1/bridge/capability HTTP/1.1" 403 Forbidden
+act-1  | INFO:     172.20.0.14:54944 - "POST /api/v1/bridge/capability HTTP/1.1" 403 Forbidden
+act-1  | INFO:     172.20.0.14:54948 - "POST /api/v1/bridge/capability HTTP/1.1" 403 Forbidden
+act-1  | INFO:     172.20.0.14:54960 - "POST /api/v1/bridge/capability HTTP/1.1" 403 Forbidden
+act-1  | INFO:     172.20.0.14:54962 - "POST /api/v1/bridge/capability HTTP/1.1" 403 Forbidden
+act-1  | INFO:     172.20.0.14:54972 - "POST /api/v1/threat/agents/94f0843f-59b6-425c-853d-9a2867bc9886/containment HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:54986 - "POST /auth/register HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:54990 - "POST /api/v1/auth/login HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:55006 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:55010 - "POST /auth/register HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:55022 - "POST /api/v1/auth/login HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:55038 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:53516 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:55048 - "POST /api/v1/discovery/sources HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:55054 - "POST /api/v1/discovery/sources/b36479ec-edb7-4c68-8f6d-b11562162b92/runs HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:55058 - "POST /api/v1/runtime/tools HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:55072 - "POST /api/v1/runtime/tools HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:55076 - "POST /api/v1/runtime/tools HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:55082 - "POST /api/v1/runtime/agents/4d9a5565-d6b9-4c13-b5f2-7a04195fae71/claim HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:55088 - "POST /api/v1/runtime/agents/4d9a5565-d6b9-4c13-b5f2-7a04195fae71/control-state HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:55092 - "PUT /api/v1/bridge/agents/4d9a5565-d6b9-4c13-b5f2-7a04195fae71/enforcement-mode HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:55104 - "POST /api/v1/bridge/agents/4d9a5565-d6b9-4c13-b5f2-7a04195fae71/grants HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:55116 - "POST /api/v1/threat/agents/4d9a5565-d6b9-4c13-b5f2-7a04195fae71/evaluate HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:55124 - "POST /api/v1/bridge/capability HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:55130 - "POST /auth/register HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:55136 - "POST /api/v1/auth/login HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:55140 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:55144 - "POST /auth/register HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:55156 - "POST /api/v1/auth/login HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:55170 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:55176 - "POST /api/v1/discovery/sources HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:55178 - "POST /api/v1/discovery/sources/6f777d99-3d18-4ec4-9516-34e050c10e56/runs HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:55190 - "POST /api/v1/runtime/tools HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:55196 - "POST /api/v1/runtime/tools HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:55204 - "POST /api/v1/runtime/tools HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:55216 - "POST /api/v1/runtime/agents/350cb3d8-e7b9-47e4-bede-dcdb0bdf6b9d/claim HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:55220 - "POST /api/v1/runtime/agents/350cb3d8-e7b9-47e4-bede-dcdb0bdf6b9d/control-state HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:55222 - "PUT /api/v1/bridge/agents/350cb3d8-e7b9-47e4-bede-dcdb0bdf6b9d/enforcement-mode HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:55230 - "POST /api/v1/bridge/agents/350cb3d8-e7b9-47e4-bede-dcdb0bdf6b9d/grants HTTP/1.1" 201 Created
+act-1  | INFO:     172.20.0.14:55244 - "POST /api/v1/bridge/capability HTTP/1.1" 403 Forbidden
+act-1  | INFO:     172.20.0.14:55246 - "POST /api/v1/bridge/capability HTTP/1.1" 403 Forbidden
+act-1  | INFO:     172.20.0.14:55262 - "POST /api/v1/bridge/capability HTTP/1.1" 403 Forbidden
+act-1  | INFO:     172.20.0.14:55278 - "POST /api/v1/bridge/capability HTTP/1.1" 403 Forbidden
+act-1  | INFO:     172.20.0.14:55292 - "POST /api/v1/bridge/capability HTTP/1.1" 403 Forbidden
+act-1  | INFO:     172.20.0.14:55296 - "POST /api/v1/bridge/capability HTTP/1.1" 403 Forbidden
+act-1  | INFO:     172.20.0.14:55302 - "POST /api/v1/bridge/capability HTTP/1.1" 403 Forbidden
+act-1  | INFO:     172.20.0.14:55308 - "POST /api/v1/bridge/capability HTTP/1.1" 403 Forbidden
+act-1  | INFO:     172.20.0.14:55318 - "POST /api/v1/bridge/capability HTTP/1.1" 403 Forbidden
+act-1  | INFO:     172.20.0.14:55328 - "POST /api/v1/bridge/capability HTTP/1.1" 403 Forbidden
+act-1  | INFO:     172.20.0.14:55342 - "POST /api/v1/bridge/capability HTTP/1.1" 403 Forbidden
+act-1  | INFO:     172.20.0.14:55344 - "POST /api/v1/bridge/capability HTTP/1.1" 403 Forbidden
+act-1  | INFO:     172.20.0.14:55354 - "POST /api/v1/threat/agents/350cb3d8-e7b9-47e4-bede-dcdb0bdf6b9d/evaluate HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:55360 - "GET /api/v1/threat/agents/350cb3d8-e7b9-47e4-bede-dcdb0bdf6b9d/findings HTTP/1.1" 200 OK
+act-1  | INFO:     172.20.0.14:55366 - "POST /api/v1/bridge/capability HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:53528 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:53538 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:60562 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:60574 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:60588 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:44598 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:44610 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:44612 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:36080 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:36086 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:36096 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:41862 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:41874 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:41876 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:41890 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:47704 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:47710 - "GET /docs HTTP/1.1" 200 OK
+act-1  | INFO:     127.0.0.1:47712 - "GET /docs HTTP/1.1" 200 OK

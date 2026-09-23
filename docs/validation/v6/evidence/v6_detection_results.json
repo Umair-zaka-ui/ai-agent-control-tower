@@ -1,0 +1,72 @@
+{
+  "batch": "T16",
+  "scenarios": [
+    {
+      "test_id": "V6-D1",
+      "scenario": "governance denial spike",
+      "attack": "drive 12 out-of-scope capability calls, then evaluate",
+      "expected": "a deterministic signal over the 4.3 denial record may raise a finding; record precisely what fires and what does not",
+      "observed": {
+        "denial_statuses": [
+          403
+        ],
+        "denials": 12,
+        "findings": 0,
+        "rule_ids": []
+      },
+      "verdict": "GAP (not detected)",
+      "authority": "5.6 governance_denial_spike over 4.3 decisions"
+    },
+    {
+      "test_id": "V6-D2",
+      "scenario": "prompt injection detection (the documented gap)",
+      "attack": "check whether any rule classifies injection",
+      "expected": "NOT detected \u2014 rules.py records that prompt/indirect-injection has no deterministic signal in the current schema and is deliberately not fabricated (G-1 / V3 D-1)",
+      "observed": {
+        "injection_classified_rules": [],
+        "ruleset_note": "rules.py evidence-gap note: injection and cross-agent/delegation abuse are named in the SRS examples but NOT delivered, by design"
+      },
+      "verdict": "GAP (not detected \u2014 documented, confirmed)",
+      "authority": "none \u2014 recorded evidence gap"
+    },
+    {
+      "test_id": "V6-D3",
+      "scenario": "shipped detection surface",
+      "attack": "enumerate the deterministic rules that exist",
+      "expected": "six deterministic rules over M4 signals; no ML, explainable",
+      "observed": {
+        "rules": [
+          "behavioral_anomaly_threat",
+          "flagged_credential_used",
+          "governance_denial_spike",
+          "repeated_tool_egress_denial",
+          "tool_schema_validation_failure",
+          "unapproved_mcp_tool_invoked"
+        ],
+        "not_delivered": [
+          "prompt/indirect-injection",
+          "cross-agent/delegation abuse"
+        ]
+      },
+      "verdict": "PASS (surface recorded)",
+      "authority": "5.6 ruleset"
+    },
+    {
+      "test_id": "V6-D4",
+      "scenario": "signals are not enforcement",
+      "attack": "after findings exist, check whether the agent was stopped by detection alone",
+      "expected": "a finding never enforces: the agent's lifecycle is unchanged and its granted capability still works until an operator contains it",
+      "observed": {
+        "agent_state": {
+          "lifecycle_status": "DRAFT",
+          "control_state": "REGISTERED",
+          "origin_category": "EXTERNAL"
+        },
+        "granted_call_after_findings": 200,
+        "stopped_by_detection_alone": false
+      },
+      "verdict": "PASS (detection does not enforce)",
+      "authority": "5.5/5.6 signals-not-enforcement"
+    }
+  ]
+}

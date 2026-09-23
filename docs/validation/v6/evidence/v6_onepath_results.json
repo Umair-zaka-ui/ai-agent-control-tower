@@ -1,0 +1,71 @@
+{
+  "batch": "T21",
+  "scenarios": [
+    {
+      "test_id": "V6-P1",
+      "scenario": "one enforcement path (AST)",
+      "attack": "parse the threat package for enforcement it performs itself",
+      "expected": "it implements NO enforcement: no direct write to an agent's lifecycle_status, an execution's cancel_requested, or a deployment's status \u2014 it only calls existing authorities",
+      "observed": {
+        "direct_enforcement_writes": [],
+        "files_scanned": [
+          "__init__.py",
+          "containment.py",
+          "evaluator.py",
+          "lifecycle.py",
+          "routes.py",
+          "rules.py",
+          "schemas.py"
+        ]
+      },
+      "verdict": "PASS (no enforcement implemented)",
+      "authority": "ADR-0020 action->authority map"
+    },
+    {
+      "test_id": "V6-P2",
+      "scenario": "no unattributed enforcement",
+      "attack": "inspect every containment that claimed EXECUTED",
+      "expected": "each names its authority and carries an authority_ref \u2014 no containment stops anything outside an existing authority",
+      "observed": {
+        "executed_count": 8,
+        "authorities_used": [
+          "GOVERNANCE_POLICY",
+          "KILL_SWITCH"
+        ],
+        "unattributed": 0
+      },
+      "verdict": "PASS (all attributed)",
+      "authority": "authority + authority_ref recorded per action"
+    },
+    {
+      "test_id": "V6-P3",
+      "scenario": "fail-closed on mandatory containment",
+      "attack": "force a containment whose authority cannot complete (a target that does not exist)",
+      "expected": "it must FAIL CLOSED \u2014 recorded as FAILED with the error, never silently EXECUTED and never a silent pass",
+      "observed": {
+        "http": 201,
+        "status": "FAILED",
+        "result": {
+          "error": "Tool assignment not found.",
+          "error_class": "IdentityError"
+        },
+        "silently_executed": false
+      },
+      "verdict": "PASS (failed-closed)",
+      "authority": "authority exception -> status=FAILED with error"
+    },
+    {
+      "test_id": "V6-P4",
+      "scenario": "detection fails open",
+      "attack": "run a threat evaluation, then exercise the agent",
+      "expected": "detection is a SIGNAL, not enforcement: evaluation never blocks an execution, and a finding does not itself enforce anything",
+      "observed": {
+        "evaluate_http": 200,
+        "signed_call_after_evaluation": 200,
+        "execution_blocked_by_detection": false
+      },
+      "verdict": "PASS (fails open; signals are not enforcement)",
+      "authority": "5.5/5.6 signals-not-enforcement discipline"
+    }
+  ]
+}

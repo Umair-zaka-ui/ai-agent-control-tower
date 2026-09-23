@@ -1,0 +1,166 @@
+{
+  "batch": "T20a",
+  "ground_truth": {
+    "external_agent": {
+      "id": "cda60a5d-bab0-42b0-b4e5-eab06398c0a0",
+      "state": {
+        "lifecycle_status": "DRAFT",
+        "control_state": "REGISTERED",
+        "origin_category": "EXTERNAL"
+      },
+      "grant_authorizes_now": true,
+      "canary_target_reachable_now": true,
+      "required_effect_of_SUSPEND_AGENT": "NONE \u2014 ACT has no enforcement authority over a non-GOVERNED agent; it must REFUSE and change nothing",
+      "required_effect_of_grant_revocation": "next signed call 403 AND the canary finance target receives nothing further"
+    },
+    "native_agent": {
+      "id": "94f0843f-59b6-425c-853d-9a2867bc9886",
+      "state": {
+        "lifecycle_status": "ACTIVE",
+        "control_state": "GOVERNED",
+        "origin_category": "NATIVE"
+      },
+      "execution": "594534c8-7123-42ff-bf84-0934213bff4d",
+      "executions": [
+        {
+          "id": "594534c8-7123-42ff-bf84-0934213bff4d",
+          "status": "SUCCEEDED",
+          "cancel_requested": false
+        }
+      ],
+      "required_effect_of_SUSPEND_AGENT": "agent.lifecycle_status becomes SUSPENDED and active executions get cancel_requested=True"
+    },
+    "scoring_rule": "a containment PASSES only if the REAL effect matches this record; a status without its effect is a false containment claim (P0)"
+  },
+  "scenarios": [
+    {
+      "test_id": "V6-C1",
+      "scenario": "false-containment-claim probe",
+      "attack": "request SUSPEND_AGENT (a native-only containment) on an EXTERNAL agent, with confirm=true",
+      "expected": "must be REFUSED with a real refusal_reason and NO authority_ref; and must change nothing \u2014 the agent stays as it was and the grant keeps authorizing (ACT claims no control it lacks)",
+      "observed": {
+        "http": 201,
+        "status": "REFUSED",
+        "refusal_reason": "ACT has no enforcement authority over this agent (control_state='REGISTERED', requires 'GOVERNED'). This is recorded and can be recommended to an operator, but no containment authority is invoked -- ACT does not claim control it does not have.",
+        "authority": "KILL_SWITCH",
+        "authority_ref": null,
+        "control_state_at_time": "REGISTERED",
+        "agent_state_after": {
+          "lifecycle_status": "DRAFT",
+          "control_state": "REGISTERED",
+          "origin_category": "EXTERNAL"
+        },
+        "grant_still_authorizes": true,
+        "canary_still_reached": true,
+        "claimed_contained": false,
+        "false_claim": false
+      },
+      "verdict": "PASS (truthful refusal)",
+      "authority": "truthful_capability(): control_state must be GOVERNED"
+    },
+    {
+      "test_id": "V6-C2",
+      "scenario": "refusal, then the authority ACT genuinely holds",
+      "attack": "after the refusal, revoke the grant \u2014 the containment ACT really can perform",
+      "expected": "EFFECT: the next signed call is 403 AND the canary finance target receives nothing further",
+      "observed": {
+        "revoke_http": 200,
+        "next_signed_call": 403,
+        "canary_hits_before": 2,
+        "canary_hits_after": 2,
+        "canary_silent": true
+      },
+      "verdict": "PASS (contained \u2014 effect verified)",
+      "authority": "5.7 grant revocation (uncached, re-read every call)"
+    },
+    {
+      "test_id": "V6-C3",
+      "scenario": "native containment (effect verified)",
+      "attack": "SUSPEND_AGENT on a GOVERNED, NATIVE agent \u2014 the side ACT truthfully reaches",
+      "expected": "EXECUTED with an authority_ref, and the REAL effect: lifecycle_status becomes SUSPENDED and active executions are cancel-requested",
+      "observed": {
+        "http": 201,
+        "status": "EXECUTED",
+        "authority": "KILL_SWITCH",
+        "authority_ref": {
+          "id": "94f0843f-59b6-425c-853d-9a2867bc9886",
+          "table": "agents"
+        },
+        "control_state_at_time": "GOVERNED",
+        "lifecycle_before": "ACTIVE",
+        "lifecycle_after": "SUSPENDED",
+        "executions_before": [
+          {
+            "id": "594534c8-7123-42ff-bf84-0934213bff4d",
+            "status": "SUCCEEDED",
+            "cancel_requested": false
+          }
+        ],
+        "executions_after": [
+          {
+            "id": "594534c8-7123-42ff-bf84-0934213bff4d",
+            "status": "SUCCEEDED",
+            "cancel_requested": false
+          }
+        ],
+        "effect_verified": true
+      },
+      "verdict": "PASS (contained \u2014 effect verified)",
+      "authority": "KillSwitchService scope=AGENT"
+    },
+    {
+      "test_id": "V6-C4",
+      "scenario": "unconfirmed containment has no effect",
+      "attack": "request SUSPEND_AGENT without confirm",
+      "expected": "PENDING_CONFIRMATION and NO effect \u2014 every one of the seven actions requires explicit confirmation before an authority is invoked",
+      "observed": {
+        "http": 201,
+        "status": "PENDING_CONFIRMATION",
+        "lifecycle_before": "ACTIVE",
+        "lifecycle_after": "ACTIVE",
+        "unchanged": true
+      },
+      "verdict": "PASS (no effect without confirmation)",
+      "authority": "_REQUIRES_CONFIRMATION for all seven actions"
+    },
+    {
+      "test_id": "V6-C5",
+      "scenario": "containment idempotency",
+      "attack": "repeat the same containment twice on an already-suspended agent",
+      "expected": "one coherent effect; repeats stay honest (EXECUTED or a truthful failure), never an un-suspend and never a torn state",
+      "observed": {
+        "repeat1": {
+          "http": 201,
+          "status": "EXECUTED"
+        },
+        "repeat2": {
+          "http": 201,
+          "status": "EXECUTED"
+        },
+        "lifecycle_final": "SUSPENDED",
+        "still_suspended": true
+      },
+      "verdict": "PASS (one effect, stays suspended)",
+      "authority": "kill-switch dominance (never un-suspends)"
+    },
+    {
+      "test_id": "V6-C6",
+      "scenario": "over-claim via mode confusion",
+      "attack": "make an external agent present as GOVERNED/NATIVE to unlock native containment",
+      "expected": "refused: control state is not attacker-settable (GOVERNED requires NATIVE, ADR-0023) and containment fields cannot mass-assign it; the containment stays REFUSED",
+      "observed": {
+        "direct_control_state_http": 409,
+        "direct_code": "CONTROL_STATE_ORIGIN_INCOMPATIBLE",
+        "containment_with_injected_fields_status": "REFUSED",
+        "agent_state_after": {
+          "lifecycle_status": "DRAFT",
+          "control_state": "REGISTERED",
+          "origin_category": "EXTERNAL"
+        },
+        "escalated": false
+      },
+      "verdict": "PASS (not attacker-settable)",
+      "authority": "ADR-0023 GOVERNED iff NATIVE"
+    }
+  ]
+}

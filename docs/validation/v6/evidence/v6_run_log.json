@@ -1,0 +1,98 @@
+{
+  "total_seconds": 212.87,
+  "steps": [
+    {
+      "step": "build act",
+      "seconds": 1.05,
+      "result": 0
+    },
+    {
+      "step": "build runner",
+      "seconds": 1.01,
+      "result": 0
+    },
+    {
+      "step": "up -d --wait",
+      "seconds": 27.94,
+      "result": 0
+    },
+    {
+      "step": "network is internal",
+      "seconds": 0.04,
+      "result": "internal=true driver=bridge"
+    },
+    {
+      "step": "no published ports",
+      "seconds": 0.18,
+      "result": "actlab-wrapped-act-1  | actlab-wrapped-canary-1  | actlab-wrapped-hostile_registry-1  | actlab-wrapped-lab_db-1 5432/tcp | actlab-wrapped-mcp_impersonator-1  | actlab-wrapped-mcp_risky-1  | actlab-wrapped-mcp_rugpull-1  | actlab-wrapped-mcp_trusted-1  | actlab-wrapped-mcp_unknown-1  | actlab-wrapped-otlp-1  | actlab-wrapped-proof-1  | actlab-wrapped-registry-1  | actlab-wrapped-runner-1  | actlab-wrapped-wave2-1"
+    },
+    {
+      "step": "hostile source up",
+      "seconds": 0.13,
+      "result": "actlab-wrapped-hostile_registry-1 running"
+    },
+    {
+      "step": "boundary proof (ACT running)",
+      "seconds": 25.52,
+      "result": {
+        "deny_lines_rc1": 13,
+        "allow_lines_rc0": 9
+      }
+    },
+    {
+      "step": "stop ACT",
+      "seconds": 0.92,
+      "result": 0
+    },
+    {
+      "step": "boundary proof (ACT STOPPED)",
+      "seconds": 30.52,
+      "result": {
+        "deny_lines_rc1": 14,
+        "allow_lines_rc0": 8
+      }
+    },
+    {
+      "step": "start ACT",
+      "seconds": 0.99,
+      "result": 0
+    },
+    {
+      "step": "ACT healthy again",
+      "seconds": 16.44,
+      "result": "healthy"
+    },
+    {
+      "step": "pre-flight (runner)",
+      "seconds": 43.15,
+      "result": [
+        "PRE-FLIGHT PASS: ledger=True zero_scan_clean=True positive_control=True boundary_present=True"
+      ]
+    },
+    {
+      "step": "V6 batches (runner)",
+      "seconds": 64.12,
+      "result": [
+        "anchored 6 file(s); head=653913326d3bc0b7",
+        "",
+        "V6 DONE: 18/20 pass, P0=False, canary_escapes=0, kill_dominance=True"
+      ]
+    },
+    {
+      "step": "capture + anchor ACT log",
+      "seconds": 0.43,
+      "result": {
+        "lines": 320,
+        "unexpected_canary_hits": 0,
+        "tracebacks": 0
+      }
+    },
+    {
+      "step": "final ledger verify",
+      "seconds": 0.31,
+      "result": [
+        "VERIFY OK: 9 entries, head=58d1247b767f8379, chain intact, all present files match"
+      ]
+    }
+  ]
+}
