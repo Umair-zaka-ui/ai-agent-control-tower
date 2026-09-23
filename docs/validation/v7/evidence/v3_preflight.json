@@ -1,0 +1,14 @@
+{
+  "checks": {
+    "ledger_active": true,
+    "boundary_proof_present": true,
+    "boundary_proof_denials_seen": 0,
+    "prior_gateway_calls": 0,
+    "fresh_baseline": true,
+    "canary_zero_scan_unexpected": {},
+    "zero_scan_clean": true,
+    "positive_control_probe_detected": true,
+    "positive_control_location": "v3_positive_control.tok"
+  },
+  "pass": true
+}

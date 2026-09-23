@@ -102,6 +102,13 @@ services:
     depends_on:
       canaries: { condition: service_completed_successfully }
 
+  # V7: the local model substrate -- an OpenAI- AND Anthropic-compatible
+  # deterministic inference server, in-network. Real SDKs point their base_url
+  # here, so the tier ladder runs with no API spend and nothing leaving the lab.
+  local_model:
+    <<: *lab_common
+    command: ["python", "/lab/services/local_model.py"]
+
   otlp:
     <<: *lab_common
     command: ["python", "/lab/services/otlp_collector.py"]
@@ -174,7 +181,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.wave2
-    image: actlab-wave2:v4
+    image: actlab-wave2:v7
     networks: [lab_net]
     working_dir: /lab
     environment:
@@ -185,6 +192,7 @@ services:
       LAB_REGISTRY_HOST: registry
       LAB_CANARY_HOST: canary
       LAB_MCP_HOST: mcp_trusted
+      LAB_MODEL_BASE_URL: http://local_model:8814/v1
       PYTHONUNBUFFERED: "1"
     volumes:
       - ../:/lab

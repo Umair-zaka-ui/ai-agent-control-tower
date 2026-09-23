@@ -1,40 +1,69 @@
-# WAVE-2 FRAMEWORK IMAGE (V4) — real multi-agent frameworks ACT did not build.
+# WAVE-2 / V7 FRAMEWORK IMAGE — real independent frameworks and SDKs.
 #
 # Deliberately built from a clean python base rather than FROM the ACT image, so
 # the frameworks' dependency trees cannot conflict with (or silently alter) ACT's
 # own pinned requirements. This container holds NO ACT source: it runs the lab's
-# Wave-2 agents and the V4 multi-agent harness, which speak to ACT only over HTTP
-# and read the LAB database read-only.
+# agents and harnesses, which speak to ACT only over HTTP and read the LAB
+# database read-only.
 #
-# Framework versions are PINNED so the run is reproducible, and are recorded in
-# /wave2_versions.json at build time (the V4 report cites them). The frameworks
-# are installed at their current releases; the RCE-class vectors in the V1
-# register (CrewAI VU#221883 / CVE-2026-2275 code-interpreter fallback,
-# deserialization issues) are NOT exercised anywhere in this lab: no
-# code-interpreter tool, no shell tool, and no model provider is configured, and
-# T12 is out of V4 scope. Egress is denied by the wrapper regardless.
+# TWO PYTHON ENVIRONMENTS, on purpose (a real V7 finding):
+#   base (/usr/local)  langgraph + crewai + anthropic    -- crewai pins openai<3
+#   /opt/sdkvenv       openai-agents + anthropic          -- the SDK needs openai>=3
+# CrewAI 1.15.22 requires `openai<3,>=2.30.0` while openai-agents 0.22.3 requires
+# `openai<4,>=3.0.0`, so the two mainstream frameworks CANNOT share one
+# environment. Separate runtimes is the correct answer and matches V7's premise
+# that each agent is independent with its own runtime. Recorded, not worked around.
+#
+# Framework versions are PINNED for reproducibility and captured at build time in
+# /wave2_versions.json. The RCE-class vectors in the V1 register (CrewAI
+# VU#221883 / CVE-2026-2275 code-interpreter fallback) are NOT exercised anywhere:
+# no code-interpreter tool, no shell tool, and only the lab's local model
+# substrate is configured. T12 is out of V7 scope. Egress is denied by the wrapper.
 FROM python:3.12-slim
 
 ARG LANGGRAPH_VERSION=1.2.12
 ARG CREWAI_VERSION=1.15.22
+ARG OPENAI_AGENTS_VERSION=0.22.3
+ARG ANTHROPIC_VERSION=1.8.0
 
-RUN apt-get update && apt-get install -y --no-install-recommends libpq5 \
+# nodejs: the custom Node agent is a genuinely different runtime in the matrix.
+RUN apt-get update && apt-get install -y --no-install-recommends libpq5 nodejs \
     && rm -rf /var/lib/apt/lists/*
 
+# --- base environment: LangGraph + CrewAI + Anthropic + the harness deps ---
 RUN pip install --no-cache-dir \
         "psycopg2-binary==2.9.10" \
         "langgraph==${LANGGRAPH_VERSION}" \
         "crewai==${CREWAI_VERSION}" \
- && python - <<'PY' > /wave2_versions.json
-import json
-v = {}
-for mod in ("langgraph", "crewai", "langchain_core", "pydantic"):
-    try:
-        m = __import__(mod)
-        v[mod] = getattr(m, "__version__", "unknown")
-    except Exception as e:
-        v[mod] = f"import-failed: {type(e).__name__}"
-print(json.dumps(v, indent=2))
+        "anthropic==${ANTHROPIC_VERSION}"
+
+# --- separate environment: the OpenAI Agents SDK (incompatible openai pin) ---
+RUN python -m venv /opt/sdkvenv \
+ && /opt/sdkvenv/bin/pip install --no-cache-dir --upgrade pip \
+ && /opt/sdkvenv/bin/pip install --no-cache-dir \
+        "openai-agents==${OPENAI_AGENTS_VERSION}" \
+        "anthropic==${ANTHROPIC_VERSION}"
+
+# Capture what actually resolved, in both environments, at build time.
+RUN python - > /wave2_versions.json <<'PY'
+import json, subprocess
+def ver(py, dists):
+    out = {}
+    for d in dists:
+        try:
+            r = subprocess.run([py, "-c",
+                                "import importlib.metadata as m;print(m.version(%r))" % d],
+                               capture_output=True, text=True, timeout=60)
+            out[d] = r.stdout.strip() or ("not-installed: " + r.stderr.strip()[:60])
+        except Exception as e:
+            out[d] = "lookup-failed: %s" % type(e).__name__
+    return out
+print(json.dumps({
+    "base_env": ver("python", ["langgraph", "crewai", "anthropic", "openai",
+                               "langchain-core", "pydantic"]),
+    "sdk_env": ver("/opt/sdkvenv/bin/python", ["openai-agents", "openai", "anthropic"]),
+    "note": "two environments because crewai pins openai<3 and openai-agents needs openai>=3",
+}, indent=2))
 PY
 
 # Telemetry off: these frameworks phone home by default. The egress-deny network
@@ -42,6 +71,7 @@ PY
 ENV CREWAI_DISABLE_TELEMETRY=true \
     CREWAI_TELEMETRY_OPT_OUT=true \
     OTEL_SDK_DISABLED=true \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    ACTLAB_SDK_PYTHON=/opt/sdkvenv/bin/python
 
 WORKDIR /lab

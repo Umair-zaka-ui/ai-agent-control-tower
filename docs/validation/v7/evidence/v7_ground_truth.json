@@ -1,0 +1,227 @@
+{
+  "per_agent": {
+    "custom_python": {
+      "agent": "custom_python",
+      "framework": "custom (stdlib)",
+      "runtime": "python",
+      "script": "custom_python.py",
+      "independence": {
+        "imports_app": false,
+        "imports": [
+          "_agentlib",
+          "json",
+          "pathlib",
+          "sys"
+        ]
+      },
+      "expected_origin_category": "EXTERNAL",
+      "expected_control_state": "REGISTERED (claimed+registered); GOVERNED must be UNREACHABLE",
+      "expected_enforcement_mode": "GATEWAY_ENFORCED (authorizes boundary calls; does not run the agent)",
+      "expected_act_enforcement_capability": "bound its reach (grant scope, revocation); NO agent-lifecycle containment (not GOVERNED)",
+      "expected_tools": [
+        "v7 granted finance capability (allowed)",
+        "v7 forbidden finance capability (must be denied)"
+      ],
+      "expected_mcp_dependency": "lab-payroll-mcp (trusted) from T3 upward",
+      "expected_memory": "none modelled in ACT (I-1)",
+      "multi_agent_capable": false,
+      "expected_a2a_edges_in_act": 0,
+      "tier_ceiling": 7,
+      "t5_status": "SKIPPED \u2014 cloud/SaaS needs the V8 adapter; deferred, not fabricated"
+    },
+    "custom_node": {
+      "agent": "custom_node",
+      "framework": "custom (Node.js built-ins)",
+      "runtime": "node",
+      "script": "custom_node.js",
+      "independence": {
+        "imports_app": false,
+        "imports": [
+          "node:crypto",
+          "node:fs",
+          "node:http",
+          "node:path"
+        ]
+      },
+      "expected_origin_category": "EXTERNAL",
+      "expected_control_state": "REGISTERED (claimed+registered); GOVERNED must be UNREACHABLE",
+      "expected_enforcement_mode": "GATEWAY_ENFORCED (authorizes boundary calls; does not run the agent)",
+      "expected_act_enforcement_capability": "bound its reach (grant scope, revocation); NO agent-lifecycle containment (not GOVERNED)",
+      "expected_tools": [
+        "v7 granted finance capability (allowed)",
+        "v7 forbidden finance capability (must be denied)"
+      ],
+      "expected_mcp_dependency": "lab-payroll-mcp (trusted) from T3 upward",
+      "expected_memory": "none modelled in ACT (I-1)",
+      "multi_agent_capable": false,
+      "expected_a2a_edges_in_act": 0,
+      "tier_ceiling": 7,
+      "t5_status": "SKIPPED \u2014 cloud/SaaS needs the V8 adapter; deferred, not fabricated"
+    },
+    "mcp_client": {
+      "agent": "mcp_client",
+      "framework": "custom MCP host",
+      "runtime": "python",
+      "script": "mcp_client.py",
+      "independence": {
+        "imports_app": false,
+        "imports": [
+          "_agentlib",
+          "json",
+          "pathlib",
+          "sys"
+        ]
+      },
+      "expected_origin_category": "EXTERNAL",
+      "expected_control_state": "REGISTERED (claimed+registered); GOVERNED must be UNREACHABLE",
+      "expected_enforcement_mode": "GATEWAY_ENFORCED (authorizes boundary calls; does not run the agent)",
+      "expected_act_enforcement_capability": "bound its reach (grant scope, revocation); NO agent-lifecycle containment (not GOVERNED)",
+      "expected_tools": [
+        "v7 granted finance capability (allowed)",
+        "v7 forbidden finance capability (must be denied)"
+      ],
+      "expected_mcp_dependency": "lab-payroll-mcp (trusted) from T3 upward",
+      "expected_memory": "none modelled in ACT (I-1)",
+      "multi_agent_capable": false,
+      "expected_a2a_edges_in_act": 0,
+      "tier_ceiling": 7,
+      "t5_status": "SKIPPED \u2014 cloud/SaaS needs the V8 adapter; deferred, not fabricated"
+    },
+    "langgraph": {
+      "agent": "langgraph",
+      "framework": "LangGraph",
+      "runtime": "python",
+      "script": "langgraph_agent.py",
+      "independence": {
+        "imports_app": false,
+        "imports": [
+          "__future__",
+          "_agentlib",
+          "importlib",
+          "json",
+          "langgraph",
+          "pathlib",
+          "sys",
+          "typing"
+        ]
+      },
+      "expected_origin_category": "EXTERNAL",
+      "expected_control_state": "REGISTERED (claimed+registered); GOVERNED must be UNREACHABLE",
+      "expected_enforcement_mode": "GATEWAY_ENFORCED (authorizes boundary calls; does not run the agent)",
+      "expected_act_enforcement_capability": "bound its reach (grant scope, revocation); NO agent-lifecycle containment (not GOVERNED)",
+      "expected_tools": [
+        "v7 granted finance capability (allowed)",
+        "v7 forbidden finance capability (must be denied)"
+      ],
+      "expected_mcp_dependency": "lab-payroll-mcp (trusted) from T3 upward",
+      "expected_memory": "none modelled in ACT (I-1)",
+      "multi_agent_capable": true,
+      "expected_a2a_edges_in_act": 0,
+      "tier_ceiling": 7,
+      "t5_status": "SKIPPED \u2014 cloud/SaaS needs the V8 adapter; deferred, not fabricated"
+    },
+    "crewai": {
+      "agent": "crewai",
+      "framework": "CrewAI",
+      "runtime": "python",
+      "script": "crewai_agent.py",
+      "independence": {
+        "imports_app": false,
+        "imports": [
+          "__future__",
+          "_agentlib",
+          "crewai",
+          "importlib",
+          "json",
+          "os",
+          "pathlib",
+          "sys"
+        ]
+      },
+      "expected_origin_category": "EXTERNAL",
+      "expected_control_state": "REGISTERED (claimed+registered); GOVERNED must be UNREACHABLE",
+      "expected_enforcement_mode": "GATEWAY_ENFORCED (authorizes boundary calls; does not run the agent)",
+      "expected_act_enforcement_capability": "bound its reach (grant scope, revocation); NO agent-lifecycle containment (not GOVERNED)",
+      "expected_tools": [
+        "v7 granted finance capability (allowed)",
+        "v7 forbidden finance capability (must be denied)"
+      ],
+      "expected_mcp_dependency": "lab-payroll-mcp (trusted) from T3 upward",
+      "expected_memory": "none modelled in ACT (I-1)",
+      "multi_agent_capable": true,
+      "expected_a2a_edges_in_act": 0,
+      "tier_ceiling": 7,
+      "t5_status": "SKIPPED \u2014 cloud/SaaS needs the V8 adapter; deferred, not fabricated"
+    },
+    "openai_sdk": {
+      "agent": "openai_sdk",
+      "framework": "OpenAI Agents SDK",
+      "runtime": "sdkvenv",
+      "script": "openai_sdk_agent.py",
+      "independence": {
+        "imports_app": false,
+        "imports": [
+          "__future__",
+          "_agentlib",
+          "agents",
+          "asyncio",
+          "importlib",
+          "json",
+          "openai",
+          "os",
+          "pathlib",
+          "sys"
+        ]
+      },
+      "expected_origin_category": "EXTERNAL",
+      "expected_control_state": "REGISTERED (claimed+registered); GOVERNED must be UNREACHABLE",
+      "expected_enforcement_mode": "GATEWAY_ENFORCED (authorizes boundary calls; does not run the agent)",
+      "expected_act_enforcement_capability": "bound its reach (grant scope, revocation); NO agent-lifecycle containment (not GOVERNED)",
+      "expected_tools": [
+        "v7 granted finance capability (allowed)",
+        "v7 forbidden finance capability (must be denied)"
+      ],
+      "expected_mcp_dependency": "lab-payroll-mcp (trusted) from T3 upward",
+      "expected_memory": "none modelled in ACT (I-1)",
+      "multi_agent_capable": true,
+      "expected_a2a_edges_in_act": 0,
+      "tier_ceiling": 7,
+      "t5_status": "SKIPPED \u2014 cloud/SaaS needs the V8 adapter; deferred, not fabricated"
+    },
+    "anthropic_sdk": {
+      "agent": "anthropic_sdk",
+      "framework": "Anthropic SDK",
+      "runtime": "python",
+      "script": "anthropic_agent.py",
+      "independence": {
+        "imports_app": false,
+        "imports": [
+          "__future__",
+          "_agentlib",
+          "anthropic",
+          "importlib",
+          "json",
+          "pathlib",
+          "sys"
+        ]
+      },
+      "expected_origin_category": "EXTERNAL",
+      "expected_control_state": "REGISTERED (claimed+registered); GOVERNED must be UNREACHABLE",
+      "expected_enforcement_mode": "GATEWAY_ENFORCED (authorizes boundary calls; does not run the agent)",
+      "expected_act_enforcement_capability": "bound its reach (grant scope, revocation); NO agent-lifecycle containment (not GOVERNED)",
+      "expected_tools": [
+        "v7 granted finance capability (allowed)",
+        "v7 forbidden finance capability (must be denied)"
+      ],
+      "expected_mcp_dependency": "lab-payroll-mcp (trusted) from T3 upward",
+      "expected_memory": "none modelled in ACT (I-1)",
+      "multi_agent_capable": true,
+      "expected_a2a_edges_in_act": 0,
+      "tier_ceiling": 7,
+      "t5_status": "SKIPPED \u2014 cloud/SaaS needs the V8 adapter; deferred, not fabricated"
+    }
+  },
+  "shared_mcp_server": "2b1809ed-7d57-4bf7-89d8-1f058433a762",
+  "true_agent_rows_discovered": 3,
+  "scoring_rule": "governance is scored against this manifest; containment on EFFECT"
+}

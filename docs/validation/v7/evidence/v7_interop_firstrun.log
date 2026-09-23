@@ -1,0 +1,29 @@
+model substrate reachable=True; sdk interpreter=/opt/sdkvenv/bin/python
+  anchored #2 lab/run/results/v7_ground_truth.json sha=98b77a3e919ad82f entry=44a5ca9d2e58c0ee
+anchored 1 file(s); head=44a5ca9d2e58c0ee
+ground truth anchored for 7 agents
+TIER LADDER T0-T7 (T5 skipped: cloud deferred to V8)
+  custom_python  max tier 6  independent=True
+  custom_node    max tier 6  independent=True
+  mcp_client     max tier 7  independent=True
+  langgraph      max tier None  independent=True
+  crewai         max tier 1  independent=True
+  openai_sdk     max tier 7  independent=True
+  anthropic_sdk  max tier None  independent=True
+  A1  discovery over a real socket       -> PASS
+  A2  reconciliation (no duplicate/silent merge) -> PASS
+  A3  truthful control state             -> PASS (truthful)
+  A4  governance of real work            -> PASS
+
+--- stderr ---
+Traceback (most recent call last):
+  File "/lab/harness/v7_interop.py", line 507, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/lab/harness/v7_interop.py", line 337, in main
+    still_live = _call(probe["cfg"], probe["cfg"]["allowed_tool"])
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/lab/harness/v7_interop.py", line 323, in _call
+    sig = _h.new(cfg["secret"].encode(), "\n".join(
+                 ^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'NoneType' object has no attribute 'encode'

@@ -1,0 +1,103 @@
+{
+  "total_seconds": 401.96,
+  "steps": [
+    {
+      "step": "build act",
+      "seconds": 1.01,
+      "result": 0
+    },
+    {
+      "step": "build runner",
+      "seconds": 0.94,
+      "result": 0
+    },
+    {
+      "step": "build wave2 (frameworks + SDKs)",
+      "seconds": 226.28,
+      "result": 0
+    },
+    {
+      "step": "up -d --wait",
+      "seconds": 27.03,
+      "result": 0
+    },
+    {
+      "step": "network is internal",
+      "seconds": 0.04,
+      "result": "internal=true driver=bridge"
+    },
+    {
+      "step": "no published ports",
+      "seconds": 0.17,
+      "result": "actlab-wrapped-act-1  | actlab-wrapped-canary-1  | actlab-wrapped-hostile_registry-1  | actlab-wrapped-lab_db-1 5432/tcp | actlab-wrapped-local_model-1  | actlab-wrapped-mcp_impersonator-1  | actlab-wrapped-mcp_risky-1  | actlab-wrapped-mcp_rugpull-1  | actlab-wrapped-mcp_trusted-1  | actlab-wrapped-mcp_unknown-1  | actlab-wrapped-otlp-1  | actlab-wrapped-proof-1  | actlab-wrapped-registry-1  | actlab-wrapped-runner-1  | actlab-wrapped-wave2-1"
+    },
+    {
+      "step": "local model substrate up",
+      "seconds": 0.13,
+      "result": "actlab-wrapped-local_model-1 running"
+    },
+    {
+      "step": "boundary proof (ACT running)",
+      "seconds": 25.51,
+      "result": {
+        "deny_lines_rc1": 13,
+        "allow_lines_rc0": 9
+      }
+    },
+    {
+      "step": "stop ACT",
+      "seconds": 0.89,
+      "result": 0
+    },
+    {
+      "step": "boundary proof (ACT STOPPED)",
+      "seconds": 30.5,
+      "result": {
+        "deny_lines_rc1": 14,
+        "allow_lines_rc0": 8
+      }
+    },
+    {
+      "step": "start ACT",
+      "seconds": 0.99,
+      "result": 0
+    },
+    {
+      "step": "ACT healthy again",
+      "seconds": 16.42,
+      "result": "healthy"
+    },
+    {
+      "step": "pre-flight (runner)",
+      "seconds": 41.75,
+      "result": [
+        "PRE-FLIGHT PASS: ledger=True zero_scan_clean=True positive_control=True boundary_present=True"
+      ]
+    },
+    {
+      "step": "V7 batches (runner)",
+      "seconds": 29.41,
+      "result": [
+        "  A2  reconciliation (no duplicate/silent merge) -> PASS",
+        "  A3  truthful control state             -> PASS (truthful)",
+        "  A4  governance of real work            -> PASS"
+      ]
+    },
+    {
+      "step": "capture + anchor ACT log",
+      "seconds": 0.43,
+      "result": {
+        "lines": 202,
+        "unexpected_canary_hits": 0,
+        "tracebacks": 0
+      }
+    },
+    {
+      "step": "final ledger verify",
+      "seconds": 0.32,
+      "result": [
+        "VERIFY OK: 4 entries, head=4558d56f1a344e77, chain intact, all present files match"
+      ]
+    }
+  ]
+}

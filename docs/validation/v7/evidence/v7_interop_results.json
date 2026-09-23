@@ -1,0 +1,367 @@
+{
+  "assertions": [
+    {
+      "assertion": 1,
+      "name": "discovery over a real socket",
+      "expected": "each agent discovered over HTTP; one canonical row each",
+      "observed": {
+        "canonical_rows": 3,
+        "references": [
+          "lab://wave1/mcp-client/dd664aa6",
+          "lab://wave1/node-agent/dd664aa6",
+          "lab://wave1/python-agent/dd664aa6"
+        ]
+      },
+      "verdict": "PASS"
+    },
+    {
+      "assertion": 2,
+      "name": "reconciliation (no duplicate/silent merge)",
+      "expected": "exactly one canonical row per external reference; 0 duplicates",
+      "observed": {
+        "rows": 3,
+        "duplicate_references": 0
+      },
+      "verdict": "PASS"
+    },
+    {
+      "assertion": 3,
+      "name": "truthful control state",
+      "expected": "EXTERNAL/REGISTERED; GOVERNED unreachable for every agent regardless of framework",
+      "observed": {
+        "observed_states": [
+          [
+            "EXTERNAL",
+            "REGISTERED"
+          ]
+        ],
+        "governed_attempts": [
+          {
+            "agent": "custom_python",
+            "status": 409,
+            "code": "CONTROL_STATE_ORIGIN_INCOMPATIBLE"
+          },
+          {
+            "agent": "custom_node",
+            "status": 409,
+            "code": "CONTROL_STATE_ORIGIN_INCOMPATIBLE"
+          },
+          {
+            "agent": "mcp_client",
+            "status": 409,
+            "code": "CONTROL_STATE_ORIGIN_INCOMPATIBLE"
+          },
+          {
+            "agent": "langgraph",
+            "status": 409,
+            "code": "CONTROL_STATE_ORIGIN_INCOMPATIBLE"
+          },
+          {
+            "agent": "crewai",
+            "status": 409,
+            "code": "CONTROL_STATE_ORIGIN_INCOMPATIBLE"
+          },
+          {
+            "agent": "openai_sdk",
+            "status": 409,
+            "code": "CONTROL_STATE_ORIGIN_INCOMPATIBLE"
+          },
+          {
+            "agent": "anthropic_sdk",
+            "status": 409,
+            "code": "CONTROL_STATE_ORIGIN_INCOMPATIBLE"
+          }
+        ],
+        "all_refused_409": true
+      },
+      "verdict": "PASS (truthful)"
+    },
+    {
+      "assertion": 4,
+      "name": "governance of real work",
+      "expected": "at every tier with boundary calls: allowed dispatched 200, forbidden denied 403",
+      "observed": {
+        "custom_python": {
+          "tiers_with_boundary_calls": 5,
+          "all_held": true
+        },
+        "custom_node": {
+          "tiers_with_boundary_calls": 4,
+          "all_held": true
+        },
+        "mcp_client": {
+          "tiers_with_boundary_calls": 5,
+          "all_held": true
+        },
+        "langgraph": {
+          "tiers_with_boundary_calls": 7,
+          "all_held": true
+        },
+        "crewai": {
+          "tiers_with_boundary_calls": 5,
+          "all_held": true
+        },
+        "openai_sdk": {
+          "tiers_with_boundary_calls": 7,
+          "all_held": true
+        },
+        "anthropic_sdk": {
+          "tiers_with_boundary_calls": 7,
+          "all_held": true
+        }
+      },
+      "verdict": "PASS"
+    },
+    {
+      "assertion": 5,
+      "name": "truthful containment (effect-scored)",
+      "expected": "REFUSED for an external agent with NO effect; then the real authority (grant revocation) produces a VERIFIED effect (403)",
+      "observed": {
+        "containment_status": "REFUSED",
+        "refusal_reason": "ACT has no enforcement authority over this agent (control_state='REGISTERED', requires 'GOVERNED'). This is recorded and",
+        "authority_ref": null,
+        "call_after_refusal": 200,
+        "call_after_revocation": 403,
+        "false_claim": false
+      },
+      "verdict": "PASS (truthful refusal + verified effect)"
+    },
+    {
+      "assertion": 6,
+      "name": "blast radius vs ground truth",
+      "expected": "exactly the agent with the recorded path; incompleteness flagged explicitly",
+      "observed": {
+        "true": [
+          "d09a8b95-1f35-40ce-9a5e-9b0cca70a42e"
+        ],
+        "reported": [
+          "d09a8b95-1f35-40ce-9a5e-9b0cca70a42e"
+        ],
+        "exact": true,
+        "incomplete": false
+      },
+      "verdict": "PASS"
+    },
+    {
+      "assertion": 7,
+      "name": "posture / shadow findings",
+      "expected": "shadow is ACCURATE IN BOTH DIRECTIONS: it fires for an unowned discovered agent and correctly does NOT fire once an agent is claimed and owned; posture still produces explainable findings for the owned agents",
+      "observed": {
+        "claimed_agents_shadow": {
+          "custom_python": {
+            "shadow": false,
+            "conditions": 0
+          },
+          "custom_node": {
+            "shadow": false,
+            "conditions": 0
+          },
+          "mcp_client": {
+            "shadow": false,
+            "conditions": 0
+          },
+          "langgraph": {
+            "shadow": false,
+            "conditions": 0
+          },
+          "crewai": {
+            "shadow": false,
+            "conditions": 0
+          },
+          "openai_sdk": {
+            "shadow": false,
+            "conditions": 0
+          },
+          "anthropic_sdk": {
+            "shadow": false,
+            "conditions": 0
+          }
+        },
+        "claimed_agents_all_quiet": true,
+        "unowned_control_agent_shadow": true,
+        "unowned_control_conditions": [
+          "discovered_outside_lifecycle",
+          "unmanaged_external_agent"
+        ],
+        "posture_findings_for_claimed_agents": [
+          [
+            "dangerous_dependency",
+            3
+          ]
+        ]
+      },
+      "verdict": "PASS (accurate both directions)",
+      "note": "V7 claims every agent during setup, so the owned side is expected quiet; the control proves shadow still fires where the precondition holds"
+    },
+    {
+      "assertion": 8,
+      "name": "detection under real behaviour (F6-1)",
+      "expected": "F6-1 predicts NO threat findings for gateway-enforced agents however much real denied traffic they generate, because the rules key off agent_executions",
+      "observed": {
+        "denied_boundary_calls_across_all_agents": 39,
+        "threat_findings_raised": 0,
+        "per_agent": {
+          "custom_python": {
+            "findings": 0,
+            "rule_ids": []
+          },
+          "custom_node": {
+            "findings": 0,
+            "rule_ids": []
+          },
+          "mcp_client": {
+            "findings": 0,
+            "rule_ids": []
+          },
+          "langgraph": {
+            "findings": 0,
+            "rule_ids": []
+          },
+          "crewai": {
+            "findings": 0,
+            "rule_ids": []
+          },
+          "openai_sdk": {
+            "findings": 0,
+            "rule_ids": []
+          },
+          "anthropic_sdk": {
+            "findings": 0,
+            "rule_ids": []
+          }
+        },
+        "f6_1_felt": true
+      },
+      "verdict": "GAP (F6-1 confirmed felt under real workload)"
+    },
+    {
+      "assertion": 9,
+      "name": "multi-agent A2A (I-2) under real handoffs",
+      "expected": "real framework handoffs occur; ACT observes ZERO A2A edges and INFERS none",
+      "observed": {
+        "real_framework_handoffs": 22,
+        "AGENT_DELEGATES_TO_rows_anywhere": 0,
+        "inferred_without_evidence": false
+      },
+      "verdict": "PASS (truthful NOT_OBSERVABLE, zero inferred)"
+    },
+    {
+      "assertion": 10,
+      "name": "tenant isolation",
+      "expected": "tenant B sees none of tenant A's agents",
+      "observed": {
+        "tenant_b_visible_A_agents": 0
+      },
+      "verdict": "PASS"
+    },
+    {
+      "assertion": 11,
+      "name": "cross-framework consistency",
+      "expected": "ACT governs every framework identically for the same behaviour: the same allowed and denied status sets regardless of stack",
+      "observed": {
+        "per_agent": {
+          "custom_python": {
+            "framework": "custom (stdlib)",
+            "max_tier": 7,
+            "boundary_gate_all_held": true,
+            "control_state_truthful": true,
+            "allowed_status_set": [
+              200
+            ],
+            "forbidden_status_set": [
+              403
+            ]
+          },
+          "custom_node": {
+            "framework": "custom (Node.js built-ins)",
+            "max_tier": 7,
+            "boundary_gate_all_held": true,
+            "control_state_truthful": true,
+            "allowed_status_set": [
+              200
+            ],
+            "forbidden_status_set": [
+              403
+            ]
+          },
+          "mcp_client": {
+            "framework": "custom MCP host",
+            "max_tier": 7,
+            "boundary_gate_all_held": true,
+            "control_state_truthful": true,
+            "allowed_status_set": [
+              200
+            ],
+            "forbidden_status_set": [
+              403
+            ]
+          },
+          "langgraph": {
+            "framework": "LangGraph",
+            "max_tier": 7,
+            "boundary_gate_all_held": true,
+            "control_state_truthful": true,
+            "allowed_status_set": [
+              200
+            ],
+            "forbidden_status_set": [
+              403
+            ]
+          },
+          "crewai": {
+            "framework": "CrewAI",
+            "max_tier": 7,
+            "boundary_gate_all_held": true,
+            "control_state_truthful": true,
+            "allowed_status_set": [
+              200
+            ],
+            "forbidden_status_set": [
+              403
+            ]
+          },
+          "openai_sdk": {
+            "framework": "OpenAI Agents SDK",
+            "max_tier": 7,
+            "boundary_gate_all_held": true,
+            "control_state_truthful": true,
+            "allowed_status_set": [
+              200
+            ],
+            "forbidden_status_set": [
+              403
+            ]
+          },
+          "anthropic_sdk": {
+            "framework": "Anthropic SDK",
+            "max_tier": 7,
+            "boundary_gate_all_held": true,
+            "control_state_truthful": true,
+            "allowed_status_set": [
+              200
+            ],
+            "forbidden_status_set": [
+              403
+            ]
+          }
+        },
+        "distinct_allowed_status_sets": [
+          [
+            200
+          ]
+        ],
+        "distinct_forbidden_status_sets": [
+          [
+            403
+          ]
+        ],
+        "uniform": true
+      },
+      "verdict": "PASS (uniform)"
+    }
+  ],
+  "tenants": {
+    "A": "ab661cce-ad32-43de-8b0d-1795fd6616d4",
+    "B": "efc90d37-f0f2-413e-8820-6fc7d75a6560"
+  }
+}

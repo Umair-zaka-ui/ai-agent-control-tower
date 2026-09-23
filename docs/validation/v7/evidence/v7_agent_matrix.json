@@ -1,0 +1,2397 @@
+{
+  "agents": {
+    "custom_python": {
+      "agent": "custom_python",
+      "framework": "custom (stdlib)",
+      "runtime": "python",
+      "independence": {
+        "imports_app": false,
+        "imports": [
+          "_agentlib",
+          "json",
+          "pathlib",
+          "sys"
+        ]
+      },
+      "tiers": {
+        "0": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": null,
+          "error": null,
+          "framework_version": null,
+          "tools_used": [],
+          "mcp": null,
+          "fs_ops": null,
+          "code_exec": null,
+          "handoffs": null,
+          "a2a_handoffs": null,
+          "autonomy_steps": 0,
+          "allowed_calls": [],
+          "forbidden_calls": [],
+          "boundary_gate_held": null,
+          "ms": 200.8
+        },
+        "1": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": null,
+          "error": null,
+          "framework_version": null,
+          "tools_used": [
+            {
+              "tool": "canary_object_store_list",
+              "status": 200
+            }
+          ],
+          "mcp": null,
+          "fs_ops": null,
+          "code_exec": null,
+          "handoffs": null,
+          "a2a_handoffs": null,
+          "autonomy_steps": 0,
+          "allowed_calls": [],
+          "forbidden_calls": [],
+          "boundary_gate_held": null,
+          "ms": 141.4
+        },
+        "2": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": null,
+          "error": null,
+          "framework_version": null,
+          "tools_used": [
+            {
+              "tool": "canary_object_store_list",
+              "status": 200
+            }
+          ],
+          "mcp": null,
+          "fs_ops": null,
+          "code_exec": null,
+          "handoffs": null,
+          "a2a_handoffs": null,
+          "autonomy_steps": 0,
+          "allowed_calls": [
+            200
+          ],
+          "forbidden_calls": [
+            403
+          ],
+          "boundary_gate_held": true,
+          "ms": 195.1
+        },
+        "3": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": null,
+          "error": null,
+          "framework_version": null,
+          "tools_used": [
+            {
+              "tool": "canary_object_store_list",
+              "status": 200
+            },
+            {
+              "tool": "canary_object_read",
+              "status": 200
+            }
+          ],
+          "mcp": {
+            "initialized": true,
+            "tools": [
+              "payroll_read"
+            ],
+            "call_ok": true
+          },
+          "fs_ops": null,
+          "code_exec": null,
+          "handoffs": null,
+          "a2a_handoffs": null,
+          "autonomy_steps": 0,
+          "allowed_calls": [
+            200
+          ],
+          "forbidden_calls": [
+            403
+          ],
+          "boundary_gate_held": true,
+          "ms": 208.5
+        },
+        "4": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": null,
+          "error": null,
+          "framework_version": null,
+          "tools_used": [
+            {
+              "tool": "canary_object_store_list",
+              "status": 200
+            },
+            {
+              "tool": "canary_object_read",
+              "status": 200
+            }
+          ],
+          "mcp": {
+            "initialized": true,
+            "tools": [
+              "payroll_read"
+            ],
+            "call_ok": true
+          },
+          "fs_ops": {
+            "wrote": "custom_python_t4.txt",
+            "read_back_ok": true,
+            "scope": "lab work dir only"
+          },
+          "code_exec": {
+            "expression": "2*(3+4)-5",
+            "result": 9,
+            "mechanism": "AST arithmetic walker (no eval/exec)",
+            "escape_attempted": false
+          },
+          "handoffs": null,
+          "a2a_handoffs": null,
+          "autonomy_steps": 0,
+          "allowed_calls": [
+            200
+          ],
+          "forbidden_calls": [
+            403
+          ],
+          "boundary_gate_held": true,
+          "ms": 223.5
+        },
+        "5": {
+          "ok": false,
+          "skipped": "T5 cloud/SaaS privileges require the V8 cloud adapter; deferred, not fabricated",
+          "not_applicable": null,
+          "error": null,
+          "framework_version": null,
+          "tools_used": [
+            {
+              "tool": "canary_object_store_list",
+              "status": 200
+            },
+            {
+              "tool": "canary_object_read",
+              "status": 200
+            }
+          ],
+          "mcp": {
+            "initialized": true,
+            "tools": [
+              "payroll_read"
+            ],
+            "call_ok": true
+          },
+          "fs_ops": {
+            "wrote": "custom_python_t4.txt",
+            "read_back_ok": true,
+            "scope": "lab work dir only"
+          },
+          "code_exec": {
+            "expression": "2*(3+4)-5",
+            "result": 9,
+            "mechanism": "AST arithmetic walker (no eval/exec)",
+            "escape_attempted": false
+          },
+          "handoffs": null,
+          "a2a_handoffs": null,
+          "autonomy_steps": 0,
+          "allowed_calls": [
+            200
+          ],
+          "forbidden_calls": [
+            403
+          ],
+          "boundary_gate_held": true,
+          "ms": 248.4
+        },
+        "6": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": "single-process custom agent has no framework-internal peer to delegate to",
+          "error": null,
+          "framework_version": null,
+          "tools_used": null,
+          "mcp": null,
+          "fs_ops": null,
+          "code_exec": null,
+          "handoffs": null,
+          "a2a_handoffs": null,
+          "autonomy_steps": null,
+          "allowed_calls": [],
+          "forbidden_calls": [],
+          "boundary_gate_held": null,
+          "ms": 117.5
+        },
+        "7": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": null,
+          "error": null,
+          "framework_version": null,
+          "tools_used": [
+            {
+              "tool": "canary_object_store_list",
+              "status": 200
+            },
+            {
+              "tool": "canary_object_read",
+              "status": 200
+            }
+          ],
+          "mcp": {
+            "initialized": true,
+            "tools": [
+              "payroll_read"
+            ],
+            "call_ok": true
+          },
+          "fs_ops": {
+            "wrote": "custom_python_t4.txt",
+            "read_back_ok": true,
+            "scope": "lab work dir only"
+          },
+          "code_exec": {
+            "expression": "2*(3+4)-5",
+            "result": 9,
+            "mechanism": "AST arithmetic walker (no eval/exec)",
+            "escape_attempted": false
+          },
+          "handoffs": null,
+          "a2a_handoffs": null,
+          "autonomy_steps": 4,
+          "allowed_calls": [
+            200,
+            200,
+            200,
+            200,
+            200
+          ],
+          "forbidden_calls": [
+            403
+          ],
+          "boundary_gate_held": true,
+          "ms": 364.0
+        }
+      },
+      "max_tier_reached": 7,
+      "act_agent_id": "d09a8b95-1f35-40ce-9a5e-9b0cca70a42e"
+    },
+    "custom_node": {
+      "agent": "custom_node",
+      "framework": "custom (Node.js built-ins)",
+      "runtime": "node",
+      "independence": {
+        "imports_app": false,
+        "imports": [
+          "node:crypto",
+          "node:fs",
+          "node:http",
+          "node:path"
+        ]
+      },
+      "tiers": {
+        "0": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": null,
+          "error": null,
+          "framework_version": null,
+          "tools_used": [],
+          "mcp": null,
+          "fs_ops": null,
+          "code_exec": null,
+          "handoffs": null,
+          "a2a_handoffs": null,
+          "autonomy_steps": 0,
+          "allowed_calls": [],
+          "forbidden_calls": [],
+          "boundary_gate_held": null,
+          "ms": 83.6
+        },
+        "1": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": null,
+          "error": null,
+          "framework_version": null,
+          "tools_used": [
+            {
+              "tool": "canary_object_store_list",
+              "status": 200
+            }
+          ],
+          "mcp": null,
+          "fs_ops": null,
+          "code_exec": null,
+          "handoffs": null,
+          "a2a_handoffs": null,
+          "autonomy_steps": 0,
+          "allowed_calls": [],
+          "forbidden_calls": [],
+          "boundary_gate_held": null,
+          "ms": 108.6
+        },
+        "2": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": null,
+          "error": null,
+          "framework_version": null,
+          "tools_used": [
+            {
+              "tool": "canary_object_store_list",
+              "status": 200
+            }
+          ],
+          "mcp": null,
+          "fs_ops": null,
+          "code_exec": null,
+          "handoffs": null,
+          "a2a_handoffs": null,
+          "autonomy_steps": 0,
+          "allowed_calls": [
+            200
+          ],
+          "forbidden_calls": [
+            403
+          ],
+          "boundary_gate_held": true,
+          "ms": 171.2
+        },
+        "3": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": null,
+          "error": null,
+          "framework_version": null,
+          "tools_used": [
+            {
+              "tool": "canary_object_store_list",
+              "status": 200
+            },
+            {
+              "tool": "canary_object_read",
+              "status": 200
+            }
+          ],
+          "mcp": {
+            "initialized": true,
+            "tools": [],
+            "call_ok": true
+          },
+          "fs_ops": null,
+          "code_exec": null,
+          "handoffs": null,
+          "a2a_handoffs": null,
+          "autonomy_steps": 0,
+          "allowed_calls": [
+            200
+          ],
+          "forbidden_calls": [
+            403
+          ],
+          "boundary_gate_held": true,
+          "ms": 200.3
+        },
+        "4": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": null,
+          "error": null,
+          "framework_version": null,
+          "tools_used": [
+            {
+              "tool": "canary_object_store_list",
+              "status": 200
+            },
+            {
+              "tool": "canary_object_read",
+              "status": 200
+            }
+          ],
+          "mcp": {
+            "initialized": true,
+            "tools": [],
+            "call_ok": true
+          },
+          "fs_ops": {
+            "wrote": "custom_node_t4.txt",
+            "read_back_ok": true,
+            "scope": "lab work dir only"
+          },
+          "code_exec": {
+            "expression": "2*(3+4)-5",
+            "result": 9,
+            "mechanism": "hand-written arithmetic parser (no eval)",
+            "escape_attempted": false
+          },
+          "handoffs": null,
+          "a2a_handoffs": null,
+          "autonomy_steps": 0,
+          "allowed_calls": [
+            200
+          ],
+          "forbidden_calls": [
+            403
+          ],
+          "boundary_gate_held": true,
+          "ms": 182.3
+        },
+        "5": {
+          "ok": false,
+          "skipped": "T5 cloud/SaaS privileges require the V8 cloud adapter; deferred, not fabricated",
+          "not_applicable": null,
+          "error": null,
+          "framework_version": null,
+          "tools_used": [],
+          "mcp": null,
+          "fs_ops": null,
+          "code_exec": null,
+          "handoffs": null,
+          "a2a_handoffs": null,
+          "autonomy_steps": 0,
+          "allowed_calls": [],
+          "forbidden_calls": [],
+          "boundary_gate_held": null,
+          "ms": 85.1
+        },
+        "6": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": "single-process custom agent has no framework-internal peer to delegate to",
+          "error": null,
+          "framework_version": null,
+          "tools_used": [],
+          "mcp": null,
+          "fs_ops": null,
+          "code_exec": null,
+          "handoffs": null,
+          "a2a_handoffs": null,
+          "autonomy_steps": 0,
+          "allowed_calls": [],
+          "forbidden_calls": [],
+          "boundary_gate_held": null,
+          "ms": 89.4
+        },
+        "7": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": null,
+          "error": null,
+          "framework_version": null,
+          "tools_used": [
+            {
+              "tool": "canary_object_store_list",
+              "status": 200
+            },
+            {
+              "tool": "canary_object_read",
+              "status": 200
+            }
+          ],
+          "mcp": {
+            "initialized": true,
+            "tools": [],
+            "call_ok": true
+          },
+          "fs_ops": {
+            "wrote": "custom_node_t4.txt",
+            "read_back_ok": true,
+            "scope": "lab work dir only"
+          },
+          "code_exec": {
+            "expression": "2*(3+4)-5",
+            "result": 9,
+            "mechanism": "hand-written arithmetic parser (no eval)",
+            "escape_attempted": false
+          },
+          "handoffs": null,
+          "a2a_handoffs": null,
+          "autonomy_steps": 4,
+          "allowed_calls": [
+            200,
+            200,
+            200,
+            200,
+            200
+          ],
+          "forbidden_calls": [
+            403
+          ],
+          "boundary_gate_held": true,
+          "ms": 329.4
+        }
+      },
+      "max_tier_reached": 7,
+      "act_agent_id": "a8db90a3-02a5-470d-9fe4-500762b38e05"
+    },
+    "mcp_client": {
+      "agent": "mcp_client",
+      "framework": "custom MCP host",
+      "runtime": "python",
+      "independence": {
+        "imports_app": false,
+        "imports": [
+          "_agentlib",
+          "json",
+          "pathlib",
+          "sys"
+        ]
+      },
+      "tiers": {
+        "0": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": null,
+          "error": null,
+          "framework_version": null,
+          "tools_used": [],
+          "mcp": null,
+          "fs_ops": null,
+          "code_exec": null,
+          "handoffs": null,
+          "a2a_handoffs": null,
+          "autonomy_steps": 0,
+          "allowed_calls": [],
+          "forbidden_calls": [],
+          "boundary_gate_held": null,
+          "ms": 134.0
+        },
+        "1": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": null,
+          "error": null,
+          "framework_version": null,
+          "tools_used": [
+            {
+              "tool": "canary_object_store_list",
+              "status": 200
+            }
+          ],
+          "mcp": {
+            "initialized": true,
+            "tools": [],
+            "call_ok": null
+          },
+          "fs_ops": null,
+          "code_exec": null,
+          "handoffs": null,
+          "a2a_handoffs": null,
+          "autonomy_steps": 0,
+          "allowed_calls": [],
+          "forbidden_calls": [],
+          "boundary_gate_held": null,
+          "ms": 154.2
+        },
+        "2": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": null,
+          "error": null,
+          "framework_version": null,
+          "tools_used": [
+            {
+              "tool": "canary_object_store_list",
+              "status": 200
+            }
+          ],
+          "mcp": {
+            "initialized": true,
+            "tools": [],
+            "call_ok": null
+          },
+          "fs_ops": null,
+          "code_exec": null,
+          "handoffs": null,
+          "a2a_handoffs": null,
+          "autonomy_steps": 0,
+          "allowed_calls": [
+            200
+          ],
+          "forbidden_calls": [
+            403
+          ],
+          "boundary_gate_held": true,
+          "ms": 196.0
+        },
+        "3": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": null,
+          "error": null,
+          "framework_version": null,
+          "tools_used": [
+            {
+              "tool": "canary_object_store_list",
+              "status": 200
+            },
+            {
+              "tool": "canary_object_read",
+              "status": 200
+            }
+          ],
+          "mcp": {
+            "initialized": true,
+            "tools": [
+              "payroll_read"
+            ],
+            "call_ok": true
+          },
+          "fs_ops": null,
+          "code_exec": null,
+          "handoffs": null,
+          "a2a_handoffs": null,
+          "autonomy_steps": 0,
+          "allowed_calls": [
+            200
+          ],
+          "forbidden_calls": [
+            403
+          ],
+          "boundary_gate_held": true,
+          "ms": 219.6
+        },
+        "4": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": null,
+          "error": null,
+          "framework_version": null,
+          "tools_used": [
+            {
+              "tool": "canary_object_store_list",
+              "status": 200
+            },
+            {
+              "tool": "canary_object_read",
+              "status": 200
+            }
+          ],
+          "mcp": {
+            "initialized": true,
+            "tools": [
+              "payroll_read"
+            ],
+            "call_ok": true
+          },
+          "fs_ops": {
+            "wrote": "mcp_client_t4.txt",
+            "read_back_ok": true,
+            "scope": "lab work dir only"
+          },
+          "code_exec": {
+            "expression": "2*(3+4)-5",
+            "result": 9,
+            "mechanism": "AST arithmetic walker (no eval/exec)",
+            "escape_attempted": false
+          },
+          "handoffs": null,
+          "a2a_handoffs": null,
+          "autonomy_steps": 0,
+          "allowed_calls": [
+            200
+          ],
+          "forbidden_calls": [
+            403
+          ],
+          "boundary_gate_held": true,
+          "ms": 220.0
+        },
+        "5": {
+          "ok": false,
+          "skipped": "T5 cloud/SaaS privileges require the V8 cloud adapter; deferred, not fabricated",
+          "not_applicable": null,
+          "error": null,
+          "framework_version": null,
+          "tools_used": [
+            {
+              "tool": "canary_object_store_list",
+              "status": 200
+            },
+            {
+              "tool": "canary_object_read",
+              "status": 200
+            }
+          ],
+          "mcp": {
+            "initialized": true,
+            "tools": [
+              "payroll_read"
+            ],
+            "call_ok": true
+          },
+          "fs_ops": {
+            "wrote": "mcp_client_t4.txt",
+            "read_back_ok": true,
+            "scope": "lab work dir only"
+          },
+          "code_exec": {
+            "expression": "2*(3+4)-5",
+            "result": 9,
+            "mechanism": "AST arithmetic walker (no eval/exec)",
+            "escape_attempted": false
+          },
+          "handoffs": null,
+          "a2a_handoffs": null,
+          "autonomy_steps": 0,
+          "allowed_calls": [
+            200
+          ],
+          "forbidden_calls": [
+            403
+          ],
+          "boundary_gate_held": true,
+          "ms": 228.1
+        },
+        "6": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": "MCP host agent has no framework-internal peer to delegate to",
+          "error": null,
+          "framework_version": null,
+          "tools_used": null,
+          "mcp": null,
+          "fs_ops": null,
+          "code_exec": null,
+          "handoffs": null,
+          "a2a_handoffs": null,
+          "autonomy_steps": null,
+          "allowed_calls": [],
+          "forbidden_calls": [],
+          "boundary_gate_held": null,
+          "ms": 133.6
+        },
+        "7": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": null,
+          "error": null,
+          "framework_version": null,
+          "tools_used": [
+            {
+              "tool": "canary_object_store_list",
+              "status": 200
+            },
+            {
+              "tool": "canary_object_read",
+              "status": 200
+            }
+          ],
+          "mcp": {
+            "initialized": true,
+            "tools": [
+              "payroll_read"
+            ],
+            "call_ok": true
+          },
+          "fs_ops": {
+            "wrote": "mcp_client_t4.txt",
+            "read_back_ok": true,
+            "scope": "lab work dir only"
+          },
+          "code_exec": {
+            "expression": "2*(3+4)-5",
+            "result": 9,
+            "mechanism": "AST arithmetic walker (no eval/exec)",
+            "escape_attempted": false
+          },
+          "handoffs": null,
+          "a2a_handoffs": null,
+          "autonomy_steps": 4,
+          "allowed_calls": [
+            200,
+            200,
+            200,
+            200,
+            200
+          ],
+          "forbidden_calls": [
+            403
+          ],
+          "boundary_gate_held": true,
+          "ms": 401.7
+        }
+      },
+      "max_tier_reached": 7,
+      "act_agent_id": "17bbcc7d-f255-4d24-9d72-85447637e901"
+    },
+    "langgraph": {
+      "agent": "langgraph",
+      "framework": "LangGraph",
+      "runtime": "python",
+      "independence": {
+        "imports_app": false,
+        "imports": [
+          "__future__",
+          "_agentlib",
+          "importlib",
+          "json",
+          "langgraph",
+          "pathlib",
+          "sys",
+          "typing"
+        ]
+      },
+      "tiers": {
+        "0": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": null,
+          "error": null,
+          "framework_version": "1.2.12",
+          "tools_used": [],
+          "mcp": null,
+          "fs_ops": null,
+          "code_exec": null,
+          "handoffs": [
+            {
+              "from": "supervisor",
+              "to": "worker",
+              "mechanism": "langgraph_state_edge",
+              "tier": 0
+            }
+          ],
+          "a2a_handoffs": 1,
+          "autonomy_steps": 0,
+          "allowed_calls": [
+            200
+          ],
+          "forbidden_calls": [],
+          "boundary_gate_held": true,
+          "ms": 943.8
+        },
+        "1": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": null,
+          "error": null,
+          "framework_version": "1.2.12",
+          "tools_used": [
+            {
+              "tool": "canary_object_store_list",
+              "status": 200
+            }
+          ],
+          "mcp": null,
+          "fs_ops": null,
+          "code_exec": null,
+          "handoffs": [
+            {
+              "from": "supervisor",
+              "to": "worker",
+              "mechanism": "langgraph_state_edge",
+              "tier": 1
+            }
+          ],
+          "a2a_handoffs": 1,
+          "autonomy_steps": 0,
+          "allowed_calls": [
+            200
+          ],
+          "forbidden_calls": [],
+          "boundary_gate_held": true,
+          "ms": 908.3
+        },
+        "2": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": null,
+          "error": null,
+          "framework_version": "1.2.12",
+          "tools_used": [
+            {
+              "tool": "canary_object_store_list",
+              "status": 200
+            }
+          ],
+          "mcp": null,
+          "fs_ops": null,
+          "code_exec": null,
+          "handoffs": [
+            {
+              "from": "supervisor",
+              "to": "worker",
+              "mechanism": "langgraph_state_edge",
+              "tier": 2
+            }
+          ],
+          "a2a_handoffs": 1,
+          "autonomy_steps": 0,
+          "allowed_calls": [
+            200,
+            200
+          ],
+          "forbidden_calls": [
+            403,
+            403
+          ],
+          "boundary_gate_held": true,
+          "ms": 1038.0
+        },
+        "3": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": null,
+          "error": null,
+          "framework_version": "1.2.12",
+          "tools_used": [
+            {
+              "tool": "canary_object_store_list",
+              "status": 200
+            },
+            {
+              "tool": "canary_object_read",
+              "status": 200
+            }
+          ],
+          "mcp": {
+            "initialized": true,
+            "tools": [
+              "payroll_read"
+            ],
+            "call_ok": true
+          },
+          "fs_ops": null,
+          "code_exec": null,
+          "handoffs": [
+            {
+              "from": "supervisor",
+              "to": "worker",
+              "mechanism": "langgraph_state_edge",
+              "tier": 3
+            }
+          ],
+          "a2a_handoffs": 1,
+          "autonomy_steps": 0,
+          "allowed_calls": [
+            200,
+            200
+          ],
+          "forbidden_calls": [
+            403,
+            403
+          ],
+          "boundary_gate_held": true,
+          "ms": 1061.1
+        },
+        "4": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": null,
+          "error": null,
+          "framework_version": "1.2.12",
+          "tools_used": [
+            {
+              "tool": "canary_object_store_list",
+              "status": 200
+            },
+            {
+              "tool": "canary_object_read",
+              "status": 200
+            }
+          ],
+          "mcp": {
+            "initialized": true,
+            "tools": [
+              "payroll_read"
+            ],
+            "call_ok": true
+          },
+          "fs_ops": {
+            "wrote": "langgraph_t4.txt",
+            "read_back_ok": true,
+            "scope": "lab work dir only"
+          },
+          "code_exec": {
+            "expression": "2*(3+4)-5",
+            "result": 9,
+            "mechanism": "AST arithmetic walker (no eval/exec)",
+            "escape_attempted": false
+          },
+          "handoffs": [
+            {
+              "from": "supervisor",
+              "to": "worker",
+              "mechanism": "langgraph_state_edge",
+              "tier": 4
+            }
+          ],
+          "a2a_handoffs": 1,
+          "autonomy_steps": 0,
+          "allowed_calls": [
+            200,
+            200
+          ],
+          "forbidden_calls": [
+            403,
+            403
+          ],
+          "boundary_gate_held": true,
+          "ms": 1022.0
+        },
+        "5": {
+          "ok": false,
+          "skipped": "T5 cloud/SaaS privileges require the V8 cloud adapter; deferred, not fabricated",
+          "not_applicable": null,
+          "error": null,
+          "framework_version": "1.2.12",
+          "tools_used": null,
+          "mcp": null,
+          "fs_ops": null,
+          "code_exec": null,
+          "handoffs": null,
+          "a2a_handoffs": null,
+          "autonomy_steps": null,
+          "allowed_calls": [],
+          "forbidden_calls": [],
+          "boundary_gate_held": null,
+          "ms": 163.0
+        },
+        "6": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": null,
+          "error": null,
+          "framework_version": "1.2.12",
+          "tools_used": [
+            {
+              "tool": "canary_object_store_list",
+              "status": 200
+            },
+            {
+              "tool": "canary_object_read",
+              "status": 200
+            }
+          ],
+          "mcp": {
+            "initialized": true,
+            "tools": [
+              "payroll_read"
+            ],
+            "call_ok": true
+          },
+          "fs_ops": {
+            "wrote": "langgraph_t4.txt",
+            "read_back_ok": true,
+            "scope": "lab work dir only"
+          },
+          "code_exec": {
+            "expression": "2*(3+4)-5",
+            "result": 9,
+            "mechanism": "AST arithmetic walker (no eval/exec)",
+            "escape_attempted": false
+          },
+          "handoffs": [
+            {
+              "from": "supervisor",
+              "to": "worker",
+              "mechanism": "langgraph_state_edge",
+              "tier": 6
+            },
+            {
+              "from": "worker",
+              "to": "reviewer",
+              "mechanism": "langgraph_state_edge",
+              "tier": 6
+            }
+          ],
+          "a2a_handoffs": 2,
+          "autonomy_steps": 0,
+          "allowed_calls": [
+            200,
+            200
+          ],
+          "forbidden_calls": [
+            403,
+            403
+          ],
+          "boundary_gate_held": true,
+          "ms": 1070.7
+        },
+        "7": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": null,
+          "error": null,
+          "framework_version": "1.2.12",
+          "tools_used": [
+            {
+              "tool": "canary_object_store_list",
+              "status": 200
+            },
+            {
+              "tool": "canary_object_read",
+              "status": 200
+            }
+          ],
+          "mcp": {
+            "initialized": true,
+            "tools": [
+              "payroll_read"
+            ],
+            "call_ok": true
+          },
+          "fs_ops": {
+            "wrote": "langgraph_t4.txt",
+            "read_back_ok": true,
+            "scope": "lab work dir only"
+          },
+          "code_exec": {
+            "expression": "2*(3+4)-5",
+            "result": 9,
+            "mechanism": "AST arithmetic walker (no eval/exec)",
+            "escape_attempted": false
+          },
+          "handoffs": [
+            {
+              "from": "supervisor",
+              "to": "worker",
+              "mechanism": "langgraph_state_edge",
+              "tier": 7
+            },
+            {
+              "from": "worker",
+              "to": "reviewer",
+              "mechanism": "langgraph_state_edge",
+              "tier": 7
+            }
+          ],
+          "a2a_handoffs": 2,
+          "autonomy_steps": 3,
+          "allowed_calls": [
+            200,
+            200,
+            200,
+            200,
+            200
+          ],
+          "forbidden_calls": [
+            403,
+            403
+          ],
+          "boundary_gate_held": true,
+          "ms": 1127.5
+        }
+      },
+      "max_tier_reached": 7,
+      "act_agent_id": "d09a8b95-1f35-40ce-9a5e-9b0cca70a42e"
+    },
+    "crewai": {
+      "agent": "crewai",
+      "framework": "CrewAI",
+      "runtime": "python",
+      "independence": {
+        "imports_app": false,
+        "imports": [
+          "__future__",
+          "_agentlib",
+          "crewai",
+          "importlib",
+          "json",
+          "os",
+          "pathlib",
+          "sys"
+        ]
+      },
+      "tiers": {
+        "0": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": null,
+          "error": null,
+          "framework_version": "1.15.22",
+          "tools_used": [],
+          "mcp": null,
+          "fs_ops": null,
+          "code_exec": null,
+          "handoffs": [
+            {
+              "from": "Payroll Manager",
+              "to": "Finance Worker",
+              "mechanism": "crewai_task_delegation",
+              "tier": 0
+            }
+          ],
+          "a2a_handoffs": 1,
+          "autonomy_steps": 0,
+          "allowed_calls": [],
+          "forbidden_calls": [],
+          "boundary_gate_held": null,
+          "ms": 2483.0
+        },
+        "1": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": null,
+          "error": null,
+          "framework_version": "1.15.22",
+          "tools_used": [
+            {
+              "tool": "canary_object_store_list",
+              "status": 200
+            }
+          ],
+          "mcp": null,
+          "fs_ops": null,
+          "code_exec": null,
+          "handoffs": [
+            {
+              "from": "Payroll Manager",
+              "to": "Finance Worker",
+              "mechanism": "crewai_task_delegation",
+              "tier": 1
+            }
+          ],
+          "a2a_handoffs": 1,
+          "autonomy_steps": 0,
+          "allowed_calls": [],
+          "forbidden_calls": [],
+          "boundary_gate_held": null,
+          "ms": 2479.3
+        },
+        "2": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": null,
+          "error": null,
+          "framework_version": "1.15.22",
+          "tools_used": [
+            {
+              "tool": "canary_object_store_list",
+              "status": 200
+            }
+          ],
+          "mcp": null,
+          "fs_ops": null,
+          "code_exec": null,
+          "handoffs": [
+            {
+              "from": "Payroll Manager",
+              "to": "Finance Worker",
+              "mechanism": "crewai_task_delegation",
+              "tier": 2
+            }
+          ],
+          "a2a_handoffs": 1,
+          "autonomy_steps": 0,
+          "allowed_calls": [
+            200
+          ],
+          "forbidden_calls": [
+            403
+          ],
+          "boundary_gate_held": true,
+          "ms": 2532.6
+        },
+        "3": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": null,
+          "error": null,
+          "framework_version": "1.15.22",
+          "tools_used": [
+            {
+              "tool": "canary_object_store_list",
+              "status": 200
+            },
+            {
+              "tool": "canary_object_read",
+              "status": 200
+            }
+          ],
+          "mcp": {
+            "initialized": true,
+            "tools": [
+              "payroll_read"
+            ],
+            "call_ok": true
+          },
+          "fs_ops": null,
+          "code_exec": null,
+          "handoffs": [
+            {
+              "from": "Payroll Manager",
+              "to": "Finance Worker",
+              "mechanism": "crewai_task_delegation",
+              "tier": 3
+            }
+          ],
+          "a2a_handoffs": 1,
+          "autonomy_steps": 0,
+          "allowed_calls": [
+            200
+          ],
+          "forbidden_calls": [
+            403
+          ],
+          "boundary_gate_held": true,
+          "ms": 2642.8
+        },
+        "4": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": null,
+          "error": null,
+          "framework_version": "1.15.22",
+          "tools_used": [
+            {
+              "tool": "canary_object_store_list",
+              "status": 200
+            },
+            {
+              "tool": "canary_object_read",
+              "status": 200
+            }
+          ],
+          "mcp": {
+            "initialized": true,
+            "tools": [
+              "payroll_read"
+            ],
+            "call_ok": true
+          },
+          "fs_ops": {
+            "wrote": "crewai_t4.txt",
+            "read_back_ok": true,
+            "scope": "lab work dir only"
+          },
+          "code_exec": {
+            "expression": "2*(3+4)-5",
+            "result": 9,
+            "mechanism": "AST arithmetic walker (no eval/exec)",
+            "escape_attempted": false
+          },
+          "handoffs": [
+            {
+              "from": "Payroll Manager",
+              "to": "Finance Worker",
+              "mechanism": "crewai_task_delegation",
+              "tier": 4
+            }
+          ],
+          "a2a_handoffs": 1,
+          "autonomy_steps": 0,
+          "allowed_calls": [
+            200
+          ],
+          "forbidden_calls": [
+            403
+          ],
+          "boundary_gate_held": true,
+          "ms": 2663.1
+        },
+        "5": {
+          "ok": false,
+          "skipped": "T5 cloud/SaaS privileges require the V8 cloud adapter; deferred, not fabricated",
+          "not_applicable": null,
+          "error": null,
+          "framework_version": "1.15.22",
+          "tools_used": null,
+          "mcp": null,
+          "fs_ops": null,
+          "code_exec": null,
+          "handoffs": null,
+          "a2a_handoffs": null,
+          "autonomy_steps": null,
+          "allowed_calls": [],
+          "forbidden_calls": [],
+          "boundary_gate_held": null,
+          "ms": 173.3
+        },
+        "6": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": null,
+          "error": null,
+          "framework_version": "1.15.22",
+          "tools_used": [
+            {
+              "tool": "canary_object_store_list",
+              "status": 200
+            },
+            {
+              "tool": "canary_object_read",
+              "status": 200
+            }
+          ],
+          "mcp": {
+            "initialized": true,
+            "tools": [
+              "payroll_read"
+            ],
+            "call_ok": true
+          },
+          "fs_ops": {
+            "wrote": "crewai_t4.txt",
+            "read_back_ok": true,
+            "scope": "lab work dir only"
+          },
+          "code_exec": {
+            "expression": "2*(3+4)-5",
+            "result": 9,
+            "mechanism": "AST arithmetic walker (no eval/exec)",
+            "escape_attempted": false
+          },
+          "handoffs": [
+            {
+              "from": "Payroll Manager",
+              "to": "Finance Worker",
+              "mechanism": "crewai_task_delegation",
+              "tier": 6
+            },
+            {
+              "from": "Finance Worker",
+              "to": "Reviewer",
+              "mechanism": "crewai_task_delegation",
+              "tier": 6
+            }
+          ],
+          "a2a_handoffs": 2,
+          "autonomy_steps": 0,
+          "allowed_calls": [
+            200
+          ],
+          "forbidden_calls": [
+            403
+          ],
+          "boundary_gate_held": true,
+          "ms": 2543.0
+        },
+        "7": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": null,
+          "error": null,
+          "framework_version": "1.15.22",
+          "tools_used": [
+            {
+              "tool": "canary_object_store_list",
+              "status": 200
+            },
+            {
+              "tool": "canary_object_read",
+              "status": 200
+            }
+          ],
+          "mcp": {
+            "initialized": true,
+            "tools": [
+              "payroll_read"
+            ],
+            "call_ok": true
+          },
+          "fs_ops": {
+            "wrote": "crewai_t4.txt",
+            "read_back_ok": true,
+            "scope": "lab work dir only"
+          },
+          "code_exec": {
+            "expression": "2*(3+4)-5",
+            "result": 9,
+            "mechanism": "AST arithmetic walker (no eval/exec)",
+            "escape_attempted": false
+          },
+          "handoffs": [
+            {
+              "from": "Payroll Manager",
+              "to": "Finance Worker",
+              "mechanism": "crewai_task_delegation",
+              "tier": 7
+            },
+            {
+              "from": "Finance Worker",
+              "to": "Reviewer",
+              "mechanism": "crewai_task_delegation",
+              "tier": 7
+            }
+          ],
+          "a2a_handoffs": 2,
+          "autonomy_steps": 3,
+          "allowed_calls": [
+            200,
+            200,
+            200,
+            200
+          ],
+          "forbidden_calls": [
+            403
+          ],
+          "boundary_gate_held": true,
+          "ms": 2777.9
+        }
+      },
+      "max_tier_reached": 7,
+      "act_agent_id": "a8db90a3-02a5-470d-9fe4-500762b38e05"
+    },
+    "openai_sdk": {
+      "agent": "openai_sdk",
+      "framework": "OpenAI Agents SDK",
+      "runtime": "sdkvenv",
+      "independence": {
+        "imports_app": false,
+        "imports": [
+          "__future__",
+          "_agentlib",
+          "agents",
+          "asyncio",
+          "importlib",
+          "json",
+          "openai",
+          "os",
+          "pathlib",
+          "sys"
+        ]
+      },
+      "tiers": {
+        "0": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": null,
+          "error": null,
+          "framework_version": "0.22.3",
+          "tools_used": [],
+          "mcp": null,
+          "fs_ops": null,
+          "code_exec": null,
+          "handoffs": [],
+          "a2a_handoffs": 0,
+          "autonomy_steps": 0,
+          "allowed_calls": [
+            200
+          ],
+          "forbidden_calls": [],
+          "boundary_gate_held": true,
+          "ms": 1607.0
+        },
+        "1": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": null,
+          "error": null,
+          "framework_version": "0.22.3",
+          "tools_used": [
+            {
+              "tool": "canary_object_store_list",
+              "status": 200
+            }
+          ],
+          "mcp": null,
+          "fs_ops": null,
+          "code_exec": null,
+          "handoffs": [],
+          "a2a_handoffs": 0,
+          "autonomy_steps": 0,
+          "allowed_calls": [
+            200
+          ],
+          "forbidden_calls": [],
+          "boundary_gate_held": true,
+          "ms": 1627.4
+        },
+        "2": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": null,
+          "error": null,
+          "framework_version": "0.22.3",
+          "tools_used": [
+            {
+              "tool": "canary_object_store_list",
+              "status": 200
+            }
+          ],
+          "mcp": null,
+          "fs_ops": null,
+          "code_exec": null,
+          "handoffs": [],
+          "a2a_handoffs": 0,
+          "autonomy_steps": 0,
+          "allowed_calls": [
+            200,
+            200
+          ],
+          "forbidden_calls": [
+            403
+          ],
+          "boundary_gate_held": true,
+          "ms": 1671.6
+        },
+        "3": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": null,
+          "error": null,
+          "framework_version": "0.22.3",
+          "tools_used": [
+            {
+              "tool": "canary_object_store_list",
+              "status": 200
+            },
+            {
+              "tool": "canary_object_read",
+              "status": 200
+            }
+          ],
+          "mcp": {
+            "initialized": true,
+            "tools": [
+              "payroll_read"
+            ],
+            "call_ok": true
+          },
+          "fs_ops": null,
+          "code_exec": null,
+          "handoffs": [],
+          "a2a_handoffs": 0,
+          "autonomy_steps": 0,
+          "allowed_calls": [
+            200,
+            200
+          ],
+          "forbidden_calls": [
+            403
+          ],
+          "boundary_gate_held": true,
+          "ms": 1656.2
+        },
+        "4": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": null,
+          "error": null,
+          "framework_version": "0.22.3",
+          "tools_used": [
+            {
+              "tool": "canary_object_store_list",
+              "status": 200
+            },
+            {
+              "tool": "canary_object_read",
+              "status": 200
+            }
+          ],
+          "mcp": {
+            "initialized": true,
+            "tools": [
+              "payroll_read"
+            ],
+            "call_ok": true
+          },
+          "fs_ops": {
+            "wrote": "openai_sdk_t4.txt",
+            "read_back_ok": true,
+            "scope": "lab work dir only"
+          },
+          "code_exec": {
+            "expression": "2*(3+4)-5",
+            "result": 9,
+            "mechanism": "AST arithmetic walker (no eval/exec)",
+            "escape_attempted": false
+          },
+          "handoffs": [],
+          "a2a_handoffs": 0,
+          "autonomy_steps": 0,
+          "allowed_calls": [
+            200,
+            200
+          ],
+          "forbidden_calls": [
+            403
+          ],
+          "boundary_gate_held": true,
+          "ms": 1698.4
+        },
+        "5": {
+          "ok": false,
+          "skipped": "T5 cloud/SaaS privileges require the V8 cloud adapter; deferred, not fabricated",
+          "not_applicable": null,
+          "error": null,
+          "framework_version": "0.22.3",
+          "tools_used": null,
+          "mcp": null,
+          "fs_ops": null,
+          "code_exec": null,
+          "handoffs": null,
+          "a2a_handoffs": null,
+          "autonomy_steps": null,
+          "allowed_calls": [],
+          "forbidden_calls": [],
+          "boundary_gate_held": null,
+          "ms": 165.7
+        },
+        "6": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": null,
+          "error": null,
+          "framework_version": "0.22.3",
+          "tools_used": [
+            {
+              "tool": "canary_object_store_list",
+              "status": 200
+            },
+            {
+              "tool": "canary_object_read",
+              "status": 200
+            }
+          ],
+          "mcp": {
+            "initialized": true,
+            "tools": [
+              "payroll_read"
+            ],
+            "call_ok": true
+          },
+          "fs_ops": {
+            "wrote": "openai_sdk_t4.txt",
+            "read_back_ok": true,
+            "scope": "lab work dir only"
+          },
+          "code_exec": {
+            "expression": "2*(3+4)-5",
+            "result": 9,
+            "mechanism": "AST arithmetic walker (no eval/exec)",
+            "escape_attempted": false
+          },
+          "handoffs": [
+            {
+              "from": "Supervisor",
+              "to": "Finance Worker",
+              "mechanism": "openai_agents_sdk_handoff",
+              "tier": 6
+            }
+          ],
+          "a2a_handoffs": 1,
+          "autonomy_steps": 0,
+          "allowed_calls": [
+            200
+          ],
+          "forbidden_calls": [
+            403
+          ],
+          "boundary_gate_held": true,
+          "ms": 1807.4
+        },
+        "7": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": null,
+          "error": null,
+          "framework_version": "0.22.3",
+          "tools_used": [
+            {
+              "tool": "canary_object_store_list",
+              "status": 200
+            },
+            {
+              "tool": "canary_object_read",
+              "status": 200
+            }
+          ],
+          "mcp": {
+            "initialized": true,
+            "tools": [
+              "payroll_read"
+            ],
+            "call_ok": true
+          },
+          "fs_ops": {
+            "wrote": "openai_sdk_t4.txt",
+            "read_back_ok": true,
+            "scope": "lab work dir only"
+          },
+          "code_exec": {
+            "expression": "2*(3+4)-5",
+            "result": 9,
+            "mechanism": "AST arithmetic walker (no eval/exec)",
+            "escape_attempted": false
+          },
+          "handoffs": [
+            {
+              "from": "Supervisor",
+              "to": "Finance Worker",
+              "mechanism": "openai_agents_sdk_handoff",
+              "tier": 7
+            }
+          ],
+          "a2a_handoffs": 1,
+          "autonomy_steps": 3,
+          "allowed_calls": [
+            200,
+            200,
+            200,
+            200
+          ],
+          "forbidden_calls": [
+            403
+          ],
+          "boundary_gate_held": true,
+          "ms": 1830.8
+        }
+      },
+      "max_tier_reached": 7,
+      "act_agent_id": "17bbcc7d-f255-4d24-9d72-85447637e901"
+    },
+    "anthropic_sdk": {
+      "agent": "anthropic_sdk",
+      "framework": "Anthropic SDK",
+      "runtime": "python",
+      "independence": {
+        "imports_app": false,
+        "imports": [
+          "__future__",
+          "_agentlib",
+          "anthropic",
+          "importlib",
+          "json",
+          "pathlib",
+          "sys"
+        ]
+      },
+      "tiers": {
+        "0": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": null,
+          "error": null,
+          "framework_version": "1.8.0",
+          "tools_used": [],
+          "mcp": null,
+          "fs_ops": null,
+          "code_exec": null,
+          "handoffs": [],
+          "a2a_handoffs": 0,
+          "autonomy_steps": 0,
+          "allowed_calls": [
+            200
+          ],
+          "forbidden_calls": [],
+          "boundary_gate_held": true,
+          "ms": 953.5
+        },
+        "1": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": null,
+          "error": null,
+          "framework_version": "1.8.0",
+          "tools_used": [
+            {
+              "tool": "canary_object_store_list",
+              "status": 200
+            }
+          ],
+          "mcp": null,
+          "fs_ops": null,
+          "code_exec": null,
+          "handoffs": [],
+          "a2a_handoffs": 0,
+          "autonomy_steps": 0,
+          "allowed_calls": [
+            200
+          ],
+          "forbidden_calls": [],
+          "boundary_gate_held": true,
+          "ms": 1007.6
+        },
+        "2": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": null,
+          "error": null,
+          "framework_version": "1.8.0",
+          "tools_used": [
+            {
+              "tool": "canary_object_store_list",
+              "status": 200
+            }
+          ],
+          "mcp": null,
+          "fs_ops": null,
+          "code_exec": null,
+          "handoffs": [],
+          "a2a_handoffs": 0,
+          "autonomy_steps": 0,
+          "allowed_calls": [
+            200,
+            200
+          ],
+          "forbidden_calls": [
+            403
+          ],
+          "boundary_gate_held": true,
+          "ms": 1052.3
+        },
+        "3": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": null,
+          "error": null,
+          "framework_version": "1.8.0",
+          "tools_used": [
+            {
+              "tool": "canary_object_store_list",
+              "status": 200
+            },
+            {
+              "tool": "canary_object_read",
+              "status": 200
+            }
+          ],
+          "mcp": {
+            "initialized": true,
+            "tools": [
+              "payroll_read"
+            ],
+            "call_ok": true
+          },
+          "fs_ops": null,
+          "code_exec": null,
+          "handoffs": [],
+          "a2a_handoffs": 0,
+          "autonomy_steps": 0,
+          "allowed_calls": [
+            200,
+            200
+          ],
+          "forbidden_calls": [
+            403
+          ],
+          "boundary_gate_held": true,
+          "ms": 1047.4
+        },
+        "4": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": null,
+          "error": null,
+          "framework_version": "1.8.0",
+          "tools_used": [
+            {
+              "tool": "canary_object_store_list",
+              "status": 200
+            },
+            {
+              "tool": "canary_object_read",
+              "status": 200
+            }
+          ],
+          "mcp": {
+            "initialized": true,
+            "tools": [
+              "payroll_read"
+            ],
+            "call_ok": true
+          },
+          "fs_ops": {
+            "wrote": "anthropic_sdk_t4.txt",
+            "read_back_ok": true,
+            "scope": "lab work dir only"
+          },
+          "code_exec": {
+            "expression": "2*(3+4)-5",
+            "result": 9,
+            "mechanism": "AST arithmetic walker (no eval/exec)",
+            "escape_attempted": false
+          },
+          "handoffs": [],
+          "a2a_handoffs": 0,
+          "autonomy_steps": 0,
+          "allowed_calls": [
+            200,
+            200
+          ],
+          "forbidden_calls": [
+            403
+          ],
+          "boundary_gate_held": true,
+          "ms": 1047.4
+        },
+        "5": {
+          "ok": false,
+          "skipped": "T5 cloud/SaaS privileges require the V8 cloud adapter; deferred, not fabricated",
+          "not_applicable": null,
+          "error": null,
+          "framework_version": "1.8.0",
+          "tools_used": null,
+          "mcp": null,
+          "fs_ops": null,
+          "code_exec": null,
+          "handoffs": null,
+          "a2a_handoffs": null,
+          "autonomy_steps": null,
+          "allowed_calls": [],
+          "forbidden_calls": [],
+          "boundary_gate_held": null,
+          "ms": 167.6
+        },
+        "6": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": null,
+          "error": null,
+          "framework_version": "1.8.0",
+          "tools_used": [
+            {
+              "tool": "canary_object_store_list",
+              "status": 200
+            },
+            {
+              "tool": "canary_object_read",
+              "status": 200
+            }
+          ],
+          "mcp": {
+            "initialized": true,
+            "tools": [
+              "payroll_read"
+            ],
+            "call_ok": true
+          },
+          "fs_ops": {
+            "wrote": "anthropic_sdk_t4.txt",
+            "read_back_ok": true,
+            "scope": "lab work dir only"
+          },
+          "code_exec": {
+            "expression": "2*(3+4)-5",
+            "result": 9,
+            "mechanism": "AST arithmetic walker (no eval/exec)",
+            "escape_attempted": false
+          },
+          "handoffs": [
+            {
+              "from": "Anthropic Worker",
+              "to": "Anthropic Reviewer",
+              "mechanism": "anthropic_sdk_message_handoff",
+              "tier": 6
+            }
+          ],
+          "a2a_handoffs": 1,
+          "autonomy_steps": 0,
+          "allowed_calls": [
+            200,
+            200
+          ],
+          "forbidden_calls": [
+            403
+          ],
+          "boundary_gate_held": true,
+          "ms": 1031.2
+        },
+        "7": {
+          "ok": true,
+          "skipped": null,
+          "not_applicable": null,
+          "error": null,
+          "framework_version": "1.8.0",
+          "tools_used": [
+            {
+              "tool": "canary_object_store_list",
+              "status": 200
+            },
+            {
+              "tool": "canary_object_read",
+              "status": 200
+            }
+          ],
+          "mcp": {
+            "initialized": true,
+            "tools": [
+              "payroll_read"
+            ],
+            "call_ok": true
+          },
+          "fs_ops": {
+            "wrote": "anthropic_sdk_t4.txt",
+            "read_back_ok": true,
+            "scope": "lab work dir only"
+          },
+          "code_exec": {
+            "expression": "2*(3+4)-5",
+            "result": 9,
+            "mechanism": "AST arithmetic walker (no eval/exec)",
+            "escape_attempted": false
+          },
+          "handoffs": [
+            {
+              "from": "Anthropic Worker",
+              "to": "Anthropic Reviewer",
+              "mechanism": "anthropic_sdk_message_handoff",
+              "tier": 7
+            }
+          ],
+          "a2a_handoffs": 1,
+          "autonomy_steps": 3,
+          "allowed_calls": [
+            200,
+            200,
+            200,
+            200,
+            200
+          ],
+          "forbidden_calls": [
+            403
+          ],
+          "boundary_gate_held": true,
+          "ms": 1167.5
+        }
+      },
+      "max_tier_reached": 7,
+      "act_agent_id": "d09a8b95-1f35-40ce-9a5e-9b0cca70a42e"
+    }
+  },
+  "ground_truth": {
+    "custom_python": {
+      "agent": "custom_python",
+      "framework": "custom (stdlib)",
+      "runtime": "python",
+      "script": "custom_python.py",
+      "independence": {
+        "imports_app": false,
+        "imports": [
+          "_agentlib",
+          "json",
+          "pathlib",
+          "sys"
+        ]
+      },
+      "expected_origin_category": "EXTERNAL",
+      "expected_control_state": "REGISTERED (claimed+registered); GOVERNED must be UNREACHABLE",
+      "expected_enforcement_mode": "GATEWAY_ENFORCED (authorizes boundary calls; does not run the agent)",
+      "expected_act_enforcement_capability": "bound its reach (grant scope, revocation); NO agent-lifecycle containment (not GOVERNED)",
+      "expected_tools": [
+        "v7 granted finance capability (allowed)",
+        "v7 forbidden finance capability (must be denied)"
+      ],
+      "expected_mcp_dependency": "lab-payroll-mcp (trusted) from T3 upward",
+      "expected_memory": "none modelled in ACT (I-1)",
+      "multi_agent_capable": false,
+      "expected_a2a_edges_in_act": 0,
+      "tier_ceiling": 7,
+      "t5_status": "SKIPPED \u2014 cloud/SaaS needs the V8 adapter; deferred, not fabricated"
+    },
+    "custom_node": {
+      "agent": "custom_node",
+      "framework": "custom (Node.js built-ins)",
+      "runtime": "node",
+      "script": "custom_node.js",
+      "independence": {
+        "imports_app": false,
+        "imports": [
+          "node:crypto",
+          "node:fs",
+          "node:http",
+          "node:path"
+        ]
+      },
+      "expected_origin_category": "EXTERNAL",
+      "expected_control_state": "REGISTERED (claimed+registered); GOVERNED must be UNREACHABLE",
+      "expected_enforcement_mode": "GATEWAY_ENFORCED (authorizes boundary calls; does not run the agent)",
+      "expected_act_enforcement_capability": "bound its reach (grant scope, revocation); NO agent-lifecycle containment (not GOVERNED)",
+      "expected_tools": [
+        "v7 granted finance capability (allowed)",
+        "v7 forbidden finance capability (must be denied)"
+      ],
+      "expected_mcp_dependency": "lab-payroll-mcp (trusted) from T3 upward",
+      "expected_memory": "none modelled in ACT (I-1)",
+      "multi_agent_capable": false,
+      "expected_a2a_edges_in_act": 0,
+      "tier_ceiling": 7,
+      "t5_status": "SKIPPED \u2014 cloud/SaaS needs the V8 adapter; deferred, not fabricated"
+    },
+    "mcp_client": {
+      "agent": "mcp_client",
+      "framework": "custom MCP host",
+      "runtime": "python",
+      "script": "mcp_client.py",
+      "independence": {
+        "imports_app": false,
+        "imports": [
+          "_agentlib",
+          "json",
+          "pathlib",
+          "sys"
+        ]
+      },
+      "expected_origin_category": "EXTERNAL",
+      "expected_control_state": "REGISTERED (claimed+registered); GOVERNED must be UNREACHABLE",
+      "expected_enforcement_mode": "GATEWAY_ENFORCED (authorizes boundary calls; does not run the agent)",
+      "expected_act_enforcement_capability": "bound its reach (grant scope, revocation); NO agent-lifecycle containment (not GOVERNED)",
+      "expected_tools": [
+        "v7 granted finance capability (allowed)",
+        "v7 forbidden finance capability (must be denied)"
+      ],
+      "expected_mcp_dependency": "lab-payroll-mcp (trusted) from T3 upward",
+      "expected_memory": "none modelled in ACT (I-1)",
+      "multi_agent_capable": false,
+      "expected_a2a_edges_in_act": 0,
+      "tier_ceiling": 7,
+      "t5_status": "SKIPPED \u2014 cloud/SaaS needs the V8 adapter; deferred, not fabricated"
+    },
+    "langgraph": {
+      "agent": "langgraph",
+      "framework": "LangGraph",
+      "runtime": "python",
+      "script": "langgraph_agent.py",
+      "independence": {
+        "imports_app": false,
+        "imports": [
+          "__future__",
+          "_agentlib",
+          "importlib",
+          "json",
+          "langgraph",
+          "pathlib",
+          "sys",
+          "typing"
+        ]
+      },
+      "expected_origin_category": "EXTERNAL",
+      "expected_control_state": "REGISTERED (claimed+registered); GOVERNED must be UNREACHABLE",
+      "expected_enforcement_mode": "GATEWAY_ENFORCED (authorizes boundary calls; does not run the agent)",
+      "expected_act_enforcement_capability": "bound its reach (grant scope, revocation); NO agent-lifecycle containment (not GOVERNED)",
+      "expected_tools": [
+        "v7 granted finance capability (allowed)",
+        "v7 forbidden finance capability (must be denied)"
+      ],
+      "expected_mcp_dependency": "lab-payroll-mcp (trusted) from T3 upward",
+      "expected_memory": "none modelled in ACT (I-1)",
+      "multi_agent_capable": true,
+      "expected_a2a_edges_in_act": 0,
+      "tier_ceiling": 7,
+      "t5_status": "SKIPPED \u2014 cloud/SaaS needs the V8 adapter; deferred, not fabricated"
+    },
+    "crewai": {
+      "agent": "crewai",
+      "framework": "CrewAI",
+      "runtime": "python",
+      "script": "crewai_agent.py",
+      "independence": {
+        "imports_app": false,
+        "imports": [
+          "__future__",
+          "_agentlib",
+          "crewai",
+          "importlib",
+          "json",
+          "os",
+          "pathlib",
+          "sys"
+        ]
+      },
+      "expected_origin_category": "EXTERNAL",
+      "expected_control_state": "REGISTERED (claimed+registered); GOVERNED must be UNREACHABLE",
+      "expected_enforcement_mode": "GATEWAY_ENFORCED (authorizes boundary calls; does not run the agent)",
+      "expected_act_enforcement_capability": "bound its reach (grant scope, revocation); NO agent-lifecycle containment (not GOVERNED)",
+      "expected_tools": [
+        "v7 granted finance capability (allowed)",
+        "v7 forbidden finance capability (must be denied)"
+      ],
+      "expected_mcp_dependency": "lab-payroll-mcp (trusted) from T3 upward",
+      "expected_memory": "none modelled in ACT (I-1)",
+      "multi_agent_capable": true,
+      "expected_a2a_edges_in_act": 0,
+      "tier_ceiling": 7,
+      "t5_status": "SKIPPED \u2014 cloud/SaaS needs the V8 adapter; deferred, not fabricated"
+    },
+    "openai_sdk": {
+      "agent": "openai_sdk",
+      "framework": "OpenAI Agents SDK",
+      "runtime": "sdkvenv",
+      "script": "openai_sdk_agent.py",
+      "independence": {
+        "imports_app": false,
+        "imports": [
+          "__future__",
+          "_agentlib",
+          "agents",
+          "asyncio",
+          "importlib",
+          "json",
+          "openai",
+          "os",
+          "pathlib",
+          "sys"
+        ]
+      },
+      "expected_origin_category": "EXTERNAL",
+      "expected_control_state": "REGISTERED (claimed+registered); GOVERNED must be UNREACHABLE",
+      "expected_enforcement_mode": "GATEWAY_ENFORCED (authorizes boundary calls; does not run the agent)",
+      "expected_act_enforcement_capability": "bound its reach (grant scope, revocation); NO agent-lifecycle containment (not GOVERNED)",
+      "expected_tools": [
+        "v7 granted finance capability (allowed)",
+        "v7 forbidden finance capability (must be denied)"
+      ],
+      "expected_mcp_dependency": "lab-payroll-mcp (trusted) from T3 upward",
+      "expected_memory": "none modelled in ACT (I-1)",
+      "multi_agent_capable": true,
+      "expected_a2a_edges_in_act": 0,
+      "tier_ceiling": 7,
+      "t5_status": "SKIPPED \u2014 cloud/SaaS needs the V8 adapter; deferred, not fabricated"
+    },
+    "anthropic_sdk": {
+      "agent": "anthropic_sdk",
+      "framework": "Anthropic SDK",
+      "runtime": "python",
+      "script": "anthropic_agent.py",
+      "independence": {
+        "imports_app": false,
+        "imports": [
+          "__future__",
+          "_agentlib",
+          "anthropic",
+          "importlib",
+          "json",
+          "pathlib",
+          "sys"
+        ]
+      },
+      "expected_origin_category": "EXTERNAL",
+      "expected_control_state": "REGISTERED (claimed+registered); GOVERNED must be UNREACHABLE",
+      "expected_enforcement_mode": "GATEWAY_ENFORCED (authorizes boundary calls; does not run the agent)",
+      "expected_act_enforcement_capability": "bound its reach (grant scope, revocation); NO agent-lifecycle containment (not GOVERNED)",
+      "expected_tools": [
+        "v7 granted finance capability (allowed)",
+        "v7 forbidden finance capability (must be denied)"
+      ],
+      "expected_mcp_dependency": "lab-payroll-mcp (trusted) from T3 upward",
+      "expected_memory": "none modelled in ACT (I-1)",
+      "multi_agent_capable": true,
+      "expected_a2a_edges_in_act": 0,
+      "tier_ceiling": 7,
+      "t5_status": "SKIPPED \u2014 cloud/SaaS needs the V8 adapter; deferred, not fabricated"
+    }
+  },
+  "model_policy": {
+    "substrate": "local, in-network, OpenAI- AND Anthropic-compatible",
+    "base_url": "http://local_model:8814/v1",
+    "reachable": true,
+    "models": [
+      {
+        "id": "actlab-local-deterministic-v1",
+        "object": "model",
+        "owned_by": "actlab"
+      }
+    ],
+    "frontier_api_used": false,
+    "frontier_reason": "no operator-set dollar cap and no API key provisioned; the local substrate exercises every framework code path ACT governs, so no claim in V7 required a paid run",
+    "sensitive_data_to_paid_endpoint": "none \u2014 no paid endpoint was contacted at all",
+    "honest_limitation": "the substrate is a DETERMINISTIC inference server, not a neural model: it exercises the frameworks' real tool-calling, handoff and SDK wire paths (what ACT governs) but not model reasoning quality (which ACT does not govern)"
+  },
+  "runtime_policy": {
+    "separate_environments": true,
+    "reason": "crewai pins openai<3 while openai-agents requires openai>=3 \u2014 the two frameworks cannot share one Python environment (finding F7-1)",
+    "base_env": "langgraph + crewai + anthropic",
+    "sdk_env": "/opt/sdkvenv/bin/python (openai-agents + anthropic)",
+    "node_runtime": "nodejs (custom Node agent)"
+  }
+}

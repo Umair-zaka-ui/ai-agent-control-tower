@@ -1,0 +1,47 @@
+{
+  "measurements": {
+    "agents_governed_truthfully": 7,
+    "agents_total": 7,
+    "frameworks": [
+      "Anthropic SDK",
+      "CrewAI",
+      "LangGraph",
+      "OpenAI Agents SDK",
+      "custom (Node.js built-ins)",
+      "custom (stdlib)",
+      "custom MCP host"
+    ],
+    "max_tier_per_agent": {
+      "custom_python": 7,
+      "custom_node": 7,
+      "mcp_client": 7,
+      "langgraph": 7,
+      "crewai": 7,
+      "openai_sdk": 7,
+      "anthropic_sdk": 7
+    },
+    "t5_status": "SKIPPED (cloud, deferred to V8)",
+    "reconciliation_duplicates": 0,
+    "control_state_truthful_all_frameworks": true,
+    "containment_effect_verified": true,
+    "blast_radius_exact": true,
+    "detection_findings_under_real_workload": 0,
+    "denied_boundary_calls": 39,
+    "f6_1_felt_gap": true,
+    "a2a_edges_observable": 0,
+    "real_framework_handoffs": 22,
+    "cross_framework_uniform": true,
+    "canary_escapes": 0,
+    "per_hop_tenant_bound": true,
+    "frontier_spend": "0.00 (frontier exception NOT used)",
+    "SCALE_CLAIMS": "NONE \u2014 interoperability only; throughput/latency-at-volume is V9"
+  },
+  "canary_zero_scan": {},
+  "p0": {
+    "false_containment_claim": false,
+    "cross_tenant": false,
+    "silent_merge": false,
+    "inferred_a2a_edge": false,
+    "frontier_sensitive_data": false
+  }
+}
