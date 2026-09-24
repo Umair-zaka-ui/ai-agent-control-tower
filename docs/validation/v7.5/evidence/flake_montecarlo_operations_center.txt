@@ -1,0 +1,3 @@
+pairs=20000  LIKELY(>=0.85, blocks)=35 (0.17%)  POSSIBLE(>=0.72, warns)=12793 (64.0%)  max=0.8639
+example blocking pair: ('Ops Agent 1b8fbf0f', 'Ops Agent 18ebffe6', 0.8639)
+typical field ratios: name=0.667 desc=0.700 purpose=0.878

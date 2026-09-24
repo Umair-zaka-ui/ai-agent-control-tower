@@ -1,0 +1,5 @@
+botocore 1.43.66 | httpx 0.28.1
+IAM example      | match: True | 33f5dad2191de0cb4b7ab912f876876c2c4f72e2991a458f9499233c7b992438
+Bedrock POST tok=False | match: True | 413d53630f0b522672cdd9da68cadce3927f78ac5123be4c5d71e44aec55b609
+Bedrock POST tok=True  | match: True | 35a7bd48319ffdcc20df881585f16d4110446ee41f64ae42a7345186bea117d5
+wire body: b'{"maxResults":10,"nextToken":"abc"}' | path as sent: /agents

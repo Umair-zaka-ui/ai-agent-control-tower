@@ -1,0 +1,26 @@
+# V7.5 test diff vs d7d0369 — generated 2026-09-24T18:59:22Z
+ backend/tests/discovery/test_discovery_framework.py | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+?? backend/tests/discovery/test_aws_bedrock_agents_adapter.py
+
+diff --git a/backend/tests/discovery/test_discovery_framework.py b/backend/tests/discovery/test_discovery_framework.py
+index 030a2c9..6096b45 100644
+--- a/backend/tests/discovery/test_discovery_framework.py
++++ b/backend/tests/discovery/test_discovery_framework.py
+@@ -764,9 +764,13 @@ def test_ac14_manual_trigger_is_idempotent_via_idempotency_key(client: TestClien
+ # AC-15 - reference vs. deferred vendor catalog
+ # --------------------------------------------------------------------------- #
+ def test_ac15_reference_adapter_distinguished_no_vendor_catalog() -> None:
++    """Intent preserved across V7.5: the registry is exhaustive by
++    construction and is NOT a vendor catalog. V7.5 authorized exactly one
++    cloud adapter (``AWS_BEDROCK_AGENTS``, ADR-0024) as the programme's one
++    product-change exception; every other vendor name stays banned."""
+     keys = adapter_registry.registered_keys()
+-    assert keys == ("HTTP_AGENT_REGISTRY",)
+-    for banned in ("AZURE_AI_FOUNDRY", "AWS_BEDROCK_AGENTS", "LANGGRAPH", "CREWAI", "KUBERNETES", "MCP"):
++    assert keys == ("AWS_BEDROCK_AGENTS", "HTTP_AGENT_REGISTRY")
++    for banned in ("AZURE_AI_FOUNDRY", "GCP_VERTEX_AGENTS", "LANGGRAPH", "CREWAI", "KUBERNETES", "MCP"):
+         assert banned not in keys
+ 
+ 
+## new file: backend/tests/discovery/test_aws_bedrock_agents_adapter.py (878 lines, sha256 628c13492711d5ec0c01d879a88f60af28420cc1ef5807898e47709984eeddc8)

@@ -141,12 +141,27 @@ fixture — the same real-`http.server` convention Phase 2.2.1's REST-connector
 tests established), not to catalog a vendor. No real vendor's API shape is
 assumed anywhere in this adapter.
 
-**Explicitly deferred**: Azure AI Foundry, AWS Bedrock Agents, a
-LangGraph/CrewAI registry, Kubernetes CRDs, a real MCP server's
+**One vendor adapter exists — by explicit exception.** Post-M5 Validation
+phase V7.5 (2026-09-24) authorized exactly one cloud discovery adapter so
+that V8 can red-team cloud discovery: **`AWS_BEDROCK_AGENTS`**
+(`app/discovery/adapters/aws_bedrock_agents.py`, ADR-0024). It is
+discovery-plane-only, calls one read-only operation (`ListAgents`) through
+`GovernedHttpClient` with a standard-library SigV4 signer, derives its one
+allowed host from a pattern-validated region, discovers only *Agents for
+Amazon Bedrock* agent constructs (never the rest of the cloud), and stores
+its read-only AWS credential encrypted as the source secret — the credential
+authenticates ACT-to-AWS and never becomes internal identity. Cloud-
+discovered agents are ordinary EXTERNAL / DISCOVERED agents and inherit the
+known F6-1 detection gap by design. See `docs/validation/v7.5/`.
+
+**Still explicitly deferred**: Azure AI Foundry, GCP Vertex AI Agent Engine,
+a LangGraph/CrewAI registry, Kubernetes CRDs, a real MCP server's
 `list_agents`, and any other vendor-specific adapter. Adding one is a new,
 independent module under `app/discovery/adapters/`, registered the same way
 — the framework does not change. `test_ac15_reference_adapter_distinguished_no_vendor_catalog`
-asserts the registry holds exactly `("HTTP_AGENT_REGISTRY",)` today.
+asserts the registry holds exactly `("AWS_BEDROCK_AGENTS", "HTTP_AGENT_REGISTRY")`
+and that no other vendor key is registered — the registry stays fixed and
+code-side, never a catalog.
 
 A reference MCP-style adapter, when built, would discover an MCP server's
 agents *as agents* — it must not build the MCP dependency graph, which is

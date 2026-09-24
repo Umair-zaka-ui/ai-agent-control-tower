@@ -42,6 +42,7 @@ rejected*.
 | [0021](./0021-truthful-external-enforcement-modes.md) | Four enforcement modes, each truthfully bounded; the strongest is derived from control_state and is not storable | Accepted |
 | [0022](./0022-assurance-evidence-not-verdict.md) | Assurance produces evidence and control mappings, never a compliance verdict; insufficient evidence is a first-class result | Accepted |
 | [0023](./0023-governed-requires-native.md) | `control_state = GOVERNED` requires `origin_category = NATIVE`; the origin × control-state matrix is enforced in the one control-state service and asserted over the whole table | Accepted |
+| [0024](./0024-cloud-discovery-adapter-aws-bedrock-agents.md) | One cloud discovery adapter (AWS Bedrock Agents) on the 5.2 connector-containment pattern: discovery-plane-only, read-only source credential, never a second identity or network path | Proposed (V7.5 review) |
 
 ## Status values
 

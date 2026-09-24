@@ -42,10 +42,13 @@ def registered_keys() -> tuple[str, ...]:
 
 
 def _ensure_reference_adapter_registered() -> None:
-    """Importing this module alone must be enough to see the reference
-    adapter registered -- so callers (routes, the scheduler handler, tests)
-    never need to remember a separate import for side effects."""
-    from app.discovery.adapters import http_agent_registry  # noqa: F401
+    """Importing this module alone must be enough to see the built-in
+    adapters registered -- so callers (routes, the scheduler handler, tests)
+    never need to remember a separate import for side effects. Two today:
+    the 5.2 reference adapter and the one cloud adapter V7.5 authorized
+    (``AWS_BEDROCK_AGENTS``, ADR-0024); the registry stays fixed and
+    code-side, never a catalog."""
+    from app.discovery.adapters import aws_bedrock_agents, http_agent_registry  # noqa: F401
 
 
 _ensure_reference_adapter_registered()

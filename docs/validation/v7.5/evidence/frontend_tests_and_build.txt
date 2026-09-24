@@ -1,0 +1,42 @@
+   [33m[2m✓[22m[39m WidgetCard states[2m > [22mshows an error message and retry button on error [33m333[2mms[22m[39m
+ [32m✓[39m src/modules/audit/tests/ExportDialog.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[33m 851[2mms[22m[39m
+   [33m[2m✓[22m[39m ExportDialog[2m > [22mexports as CSV by default and reports the matching count [33m533[2mms[22m[39m
+ [32m✓[39m src/modules/policies/tests/policyFormatters.test.ts [2m([22m[2m6 tests[22m[2m)[22m[90m 5[2mms[22m[39m
+ [32m✓[39m src/components/dashboard/KpiCard.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[90m 298[2mms[22m[39m
+ [32m✓[39m src/modules/identity/tests/linkContract.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 3[2mms[22m[39m
+ [32m✓[39m src/modules/identity/tests/identity.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[90m 73[2mms[22m[39m
+ [32m✓[39m src/modules/approvals/tests/RejectDialog.test.tsx [2m([22m[2m1 test[22m[2m)[22m[33m 1421[2mms[22m[39m
+   [33m[2m✓[22m[39m RejectDialog[2m > [22mrequires a reason of at least the minimum length before confirming [33m1420[2mms[22m[39m
+ [32m✓[39m src/modules/audit/tests/AuditTimeline.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[33m 319[2mms[22m[39m
+ [32m✓[39m src/modules/agents/tests/useDebouncedValue.test.ts [2m([22m[2m1 test[22m[2m)[22m[90m 22[2mms[22m[39m
+ [32m✓[39m src/utils/risk.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 3[2mms[22m[39m
+ [32m✓[39m src/modules/policies/tests/DeleteConfirmModal.test.tsx [2m([22m[2m1 test[22m[2m)[22m[33m 613[2mms[22m[39m
+   [33m[2m✓[22m[39m DeleteConfirmModal[2m > [22mkeeps the delete button disabled until DELETE is typed [33m611[2mms[22m[39m
+ [32m✓[39m src/modules/policies/tests/PolicyBuilder.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[33m 1534[2mms[22m[39m
+   [33m[2m✓[22m[39m PolicyBuilder[2m > [22mblocks step 1 with validation errors when required fields are empty [33m504[2mms[22m[39m
+   [33m[2m✓[22m[39m PolicyBuilder[2m > [22madvances past step 1 once name and description are provided [33m1028[2mms[22m[39m
+ [32m✓[39m src/test/build-integrity.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 19754[2mms[22m[39m
+   [33m[2m✓[22m[39m build integrity[2m > [22mtypechecks the whole frontend — vitest does not, and a broken build once hid behind it [33m19753[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m52 passed[39m[22m[90m (52)[39m
+[2m      Tests [22m [1m[32m384 passed[39m[22m[90m (384)[39m
+[2m   Start at [22m 22:55:10
+[2m   Duration [22m 61.92s[2m (transform 7.49s, setup 51.91s, collect 66.02s, tests 99.77s, environment 232.27s, prepare 11.55s)[22m
+
+=== BUILD ===
+[2Ktransforming...✓ 1313 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                                 0.87 kB │ gzip:   0.46 kB
+dist/assets/index-BSmFJRuJ.css                 38.56 kB │ gzip:   7.74 kB
+dist/assets/AgentActivityChart-TIMg9eCY.js      1.23 kB │ gzip:   0.71 kB
+dist/assets/RiskTrendChart-C6yL0X5G.js          1.63 kB │ gzip:   0.89 kB
+dist/assets/index-1bsIuPNt.js               1,826.56 kB │ gzip: 467.61 kB
+
+[32m✓ built in 2.71s[39m
+[33m[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.[39m
+FRONTEND DONE rc=0

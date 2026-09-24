@@ -1,0 +1,12 @@
+.................................                                        [100%]
+============================== warnings summary ===============================
+tests/discovery/test_aws_bedrock_agents_adapter.py::test_unit_adapter_listed_by_the_api_with_its_secret_requirement
+  C:\Users\PHS\Desktop\ai-agent-control-tower\backend\.venv\Lib\site-packages\passlib\handlers\argon2.py:716: DeprecationWarning: Accessing argon2.__version__ is deprecated and will be removed in a future release. Use importlib.metadata directly to query for structlog's packaging metadata.
+    _argon2_cffi.__version__, max_version)
+
+tests/discovery/test_aws_bedrock_agents_adapter.py: 68 warnings
+  C:\Users\PHS\Desktop\ai-agent-control-tower\backend\.venv\Lib\site-packages\jose\jwt.py:311: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = timegm(datetime.utcnow().utctimetuple())
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+33 passed, 69 warnings in 45.56s

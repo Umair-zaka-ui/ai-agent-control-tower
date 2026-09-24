@@ -1,0 +1,82 @@
+..........F.F................F......................................     [100%]
+================================== FAILURES ===================================
+___________ test_unit_credential_format_is_parsed_and_never_echoed ____________
+
+    def test_unit_credential_format_is_parsed_and_never_echoed() -> None:
+        c = mod._parse_credential(f"{AKID}:{SECRET}")
+        assert (c.access_key_id, c.secret_access_key, c.session_token) == (AKID, SECRET, None)
+        c2 = mod._parse_credential(f"{AKID}:{SECRET}:{SESSION}")
+        assert c2.session_token == SESSION
+        for bad in (None, "", "no-colon", ":", f"{AKID}:", "lowercase-akid:secret", "x" * 10 + ":" + SECRET):
+            with pytest.raises(IdentityError) as exc:
+                mod._parse_credential(bad)
+            assert exc.value.code == ErrorCode.DISCOVERY_SOURCE_INVALID_CONFIG
+            if bad:
+>               assert SECRET not in exc.value.message and bad not in exc.value.message
+E               assert ('wJalrXUtnFE...CYEXAMPLEKEY' not in "AWS_BEDROCK...ION_TOKEN]'."
+E                 
+E                 '<AWS-DOCS-EXAMPLE-SECRET-REDACTED>' is contained here:
+E                   ON_TOKEN]'. and ':' not in "AWS_BEDROCK...ION_TOKEN]'."
+E                 
+E                 ':' is contained here:
+E                   AWS_BEDROCK_AGENTS credential is malformed: expected 'ACCESS_KEY_ID:SECRET_ACCESS_KEY[:SESSION_TOKEN]'.
+E                 ?                                           +)
+
+tests\discovery\test_aws_bedrock_agents_adapter.py:357: AssertionError
+__________ test_unit_sigv4_matches_aws_published_known_answer_vector __________
+
+    def test_unit_sigv4_matches_aws_published_known_answer_vector() -> None:
+        """AWS's published SigV4 worked example (IAM ListUsers, 2015-08-30,
+        AKIDEXAMPLE / the documentation example secret)."""
+        secret = "<AWS-DOCS-EXAMPLE-SECRET-REDACTED>"
+>       assert mod._signing_key(secret, "20150830", "us-east-1", "iam").hex() == \
+            "c4afb1cc5771d871763a393e44b703571b55cc28424d1a5e86da6ed3c154a4b9"
+E       AssertionError: assert '2c94c0cf5378...2b664bd55b73c' == 'c4afb1cc5771...a6ed3c154a4b9'
+E         
+E         - c4afb1cc5771d871763a393e44b703571b55cc28424d1a5e86da6ed3c154a4b9
+E         + 2c94c0cf5378ada6887f09bb697df8fc0affdb34ba1cdd5bda32b664bd55b73c
+
+tests\discovery\test_aws_bedrock_agents_adapter.py:384: AssertionError
+_ test_structural_governed_http_client_is_the_only_network_primitive_and_no_aws_sdk _
+
+    def test_structural_governed_http_client_is_the_only_network_primitive_and_no_aws_sdk() -> None:
+        modules = _module_imports()
+        assert "app.integration.sdk" in modules
+        for banned in ("boto3", "botocore", "httpx", "requests", "urllib.request", "urllib3", "socket",
+                       "aiohttp", "http.client", "ssl"):
+            assert not any(m == banned or m.startswith(banned + ".") for m in modules), banned
+        # boto3/botocore exist in the environment only as a transitive dependency
+        # of other packages; the adapter neither imports nor references them, so
+        # every byte on the wire goes through GovernedHttpClient.
+        source_text = _ADAPTER_PATH.read_text(encoding="utf-8")
+>       assert "boto3" not in source_text and "botocore" not in source_text.replace(
+            "botocore's ``bedrock-agent/2023-06-05`` service model", "").replace(
+            "botocore bedrock-agent/2023-06-05 metadata.signingName", "")
+E       assert ('boto3' not in '"""V7.5 - t...ifier",\n]\n'
+E         
+E         'boto3' is contained here:
+E           sion 4. ``boto3``/``botocore`` would be a second network
+E         ?           +++++
+E             primitive outside ``GovernedHttpClient``, so SigV4 is implemented here in
+E             ~40 lines of standard library (``hmac``/``hashlib``) - a *header
+E             computation*, not a transport. It signs exactly the bytes and path the...
+E         
+E         ...Full output truncated (459 lines hidden), use '-vv' to show)
+
+tests\discovery\test_aws_bedrock_agents_adapter.py:820: AssertionError
+============================== warnings summary ===============================
+tests/discovery/test_aws_bedrock_agents_adapter.py::test_unit_adapter_listed_by_the_api_with_its_secret_requirement
+  C:\Users\PHS\Desktop\ai-agent-control-tower\backend\.venv\Lib\site-packages\passlib\handlers\argon2.py:716: DeprecationWarning: Accessing argon2.__version__ is deprecated and will be removed in a future release. Use importlib.metadata directly to query for structlog's packaging metadata.
+    _argon2_cffi.__version__, max_version)
+
+tests/discovery/test_aws_bedrock_agents_adapter.py: 68 warnings
+tests/discovery/test_discovery_framework.py: 94 warnings
+  C:\Users\PHS\Desktop\ai-agent-control-tower\backend\.venv\Lib\site-packages\jose\jwt.py:311: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = timegm(datetime.utcnow().utctimetuple())
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/discovery/test_aws_bedrock_agents_adapter.py::test_unit_credential_format_is_parsed_and_never_echoed
+FAILED tests/discovery/test_aws_bedrock_agents_adapter.py::test_unit_sigv4_matches_aws_published_known_answer_vector
+FAILED tests/discovery/test_aws_bedrock_agents_adapter.py::test_structural_governed_http_client_is_the_only_network_primitive_and_no_aws_sdk
+3 failed, 65 passed, 163 warnings in 76.14s (0:01:16)

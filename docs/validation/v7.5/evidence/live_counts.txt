@@ -1,0 +1,5 @@
+tables_live: 152
+alembic_head_live: 0061_assurance_evidence
+tables_metadata: 151
+routes_api: 672 | routes_all: 676
+discovery_adapters: ('AWS_BEDROCK_AGENTS', 'HTTP_AGENT_REGISTRY')

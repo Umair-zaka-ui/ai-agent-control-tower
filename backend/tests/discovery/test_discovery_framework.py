@@ -764,9 +764,13 @@ def test_ac14_manual_trigger_is_idempotent_via_idempotency_key(client: TestClien
 # AC-15 - reference vs. deferred vendor catalog
 # --------------------------------------------------------------------------- #
 def test_ac15_reference_adapter_distinguished_no_vendor_catalog() -> None:
+    """Intent preserved across V7.5: the registry is exhaustive by
+    construction and is NOT a vendor catalog. V7.5 authorized exactly one
+    cloud adapter (``AWS_BEDROCK_AGENTS``, ADR-0024) as the programme's one
+    product-change exception; every other vendor name stays banned."""
     keys = adapter_registry.registered_keys()
-    assert keys == ("HTTP_AGENT_REGISTRY",)
-    for banned in ("AZURE_AI_FOUNDRY", "AWS_BEDROCK_AGENTS", "LANGGRAPH", "CREWAI", "KUBERNETES", "MCP"):
+    assert keys == ("AWS_BEDROCK_AGENTS", "HTTP_AGENT_REGISTRY")
+    for banned in ("AZURE_AI_FOUNDRY", "GCP_VERTEX_AGENTS", "LANGGRAPH", "CREWAI", "KUBERNETES", "MCP"):
         assert banned not in keys
 
 
