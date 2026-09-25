@@ -1,0 +1,15 @@
+{
+ "started": "2026-09-25T17:41:03.529953+00:00",
+ "steps": [
+  {
+   "dist": "worst",
+   "rung": 100000,
+   "fixtures_rc": 0,
+   "fixtures_s": 88,
+   "measure_rc": 0,
+   "measure_s": 1429
+  }
+ ],
+ "recovery_rc": 0,
+ "finished": "2026-09-25T18:09:08.139120+00:00"
+}

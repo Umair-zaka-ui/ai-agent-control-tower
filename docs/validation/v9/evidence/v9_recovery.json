@@ -1,0 +1,603 @@
+{
+ "scenarios": {
+  "bootstrap": {
+   "encryption_fingerprint": "347a5c973468f750",
+   "adopted_existing_key": false,
+   "signing_key_id": "default",
+   "signing_key_version": 1,
+   "keys": [
+    "default.v1.pem",
+    "default.v1.pub.pem",
+    "model_credentials.key"
+   ],
+   "marker": [
+    [
+     "347a5c973468f750",
+     "bootstrap"
+    ]
+   ],
+   "canary": [
+    [
+     "MODEL_CREDENTIAL_ENCRYPTION",
+     "347a5c973468f750"
+    ]
+   ]
+  },
+  "seed": {
+   "org_id": "cc65570c-4ae0-49ab-8338-2515e0c8811f",
+   "admin_email": "v9-rec@lab.example",
+   "agent_id": "bc8e9611-6e70-4b6b-a555-fe8170c5a2c1",
+   "version_id": "3964c5f2-d3ea-4cc0-9164-c01b2cd44164",
+   "provider_credential_id": "b7bafc9a-09e1-43ed-98e0-cf0effbb3c0d",
+   "tool_credential_id": "575c0030-0b8b-4326-9994-25a6b2fffb65",
+   "source_id": "e8d89ac8-29e3-4a8f-9702-da26741cc7cf",
+   "steps": {
+    "register": 200,
+    "validate": 200,
+    "identity": 200,
+    "submit-for-approval": 200,
+    "approve": 200,
+    "activate": 200,
+    "version_validate": 200,
+    "version_approve": 200,
+    "version_publish": 200
+   },
+   "signature_rows": 1,
+   "signature_valid_before_backup": true,
+   "marker": [
+    [
+     "347a5c973468f750",
+     "bootstrap"
+    ]
+   ],
+   "canary": [
+    [
+     "MODEL_CREDENTIAL_ENCRYPTION",
+     "347a5c973468f750"
+    ]
+   ]
+  },
+  "backup": {
+   "artifacts": [
+    "keys/model_credentials.key",
+    "keys/default.v1.pem",
+    "keys/default.v1.pub.pem"
+   ],
+   "encryption_present": true,
+   "fingerprint": "347a5c973468f750",
+   "archive_problems": []
+  },
+  "restore_keys_from_archive": {
+   "restored": [
+    "model_credentials.key",
+    "default.v1.pem",
+    "default.v1.pub.pem"
+   ],
+   "keys": [
+    "default.v1.pem",
+    "default.v1.pub.pem",
+    "model_credentials.key"
+   ]
+  },
+  "R1_restore_with_key": {
+   "integrity": {
+    "install_mode": "EXISTING_INSTALL",
+    "encryption": {
+     "provider": "LOCAL",
+     "fingerprint": "347a5c973468f750",
+     "key_state": "OK",
+     "validation": "CANARY_MATCH"
+    },
+    "signing": {
+     "keys_checked": 1,
+     "validation": "OK",
+     "signed_state": true
+    }
+   },
+   "install_mode": "EXISTING_INSTALL",
+   "marker": true,
+   "decrypt_provider_credential": true,
+   "decrypt_tool_credential": true,
+   "decrypt_discovery_source_secret": true,
+   "historical_signature_valid": true,
+   "historical_snapshot_intact": true,
+   "new_version_published": true,
+   "new_publish_steps": {
+    "validate": 200,
+    "approve": 200,
+    "publish": 200
+   },
+   "new_signature_valid": true,
+   "keys": [
+    "default.v1.pem",
+    "default.v1.pub.pem",
+    "model_credentials.key"
+   ]
+  },
+  "R2_restore_without_key": {
+   "keys_before": [],
+   "install_mode": "EXISTING_INSTALL",
+   "verify": {
+    "type": "KeyMaterialError",
+    "code": "ENCRYPTION_KEY_MISSING_ESTABLISHED_INSTALL",
+    "message": "ENCRYPTION_KEY_MISSING_ESTABLISHED_INSTALL: this is an established installation (bootstrap marker present) but no provider-credential encryption key is available \u2014 restore backend/.keys/model_credentials.key (or set MODEL_CREDENTIAL_ENCRYPT"
+   },
+   "verify_allow_bootstrap": {
+    "type": "KeyMaterialError",
+    "code": "ENCRYPTION_KEY_MISSING_ESTABLISHED_INSTALL",
+    "message": "ENCRYPTION_KEY_MISSING_ESTABLISHED_INSTALL: this is an established installation (bootstrap marker present) but no provider-credential encryption key is available \u2014 restore backend/.keys/model_credentials.key (or set MODEL_CREDENTIAL_ENCRYPT"
+   },
+   "bootstrap": {
+    "type": "KeyMaterialError",
+    "code": "BOOTSTRAP_REFUSED_MARKER_PRESENT",
+    "message": "BOOTSTRAP_REFUSED_MARKER_PRESENT: this installation is already established (bootstrap marker present) \u2014 it is not a new one \u2014 restore the original key material from the recovery archive (see docs/security/key-management.md); bootstrapping h"
+   },
+   "decrypt": {
+    "type": "KeyMaterialError",
+    "code": "ENCRYPTION_KEY_MISSING",
+    "message": "ENCRYPTION_KEY_MISSING: no provider-credential encryption key is configured and none is present at C:\\Users\\PHS\\Desktop\\ai-agent-control-tower\\lab\\.keys\\v9rec\\empty\\model_credentials.key \u2014 restore backend/.keys/model_credentials.key from th"
+   },
+   "keys_after": [],
+   "key_file_created": false,
+   "marker_canary_unchanged": true,
+   "state_after": {
+    "marker": [
+     [
+      "347a5c973468f750",
+      "bootstrap"
+     ]
+    ],
+    "canary": [
+     [
+      "MODEL_CREDENTIAL_ENCRYPTION",
+      "347a5c973468f750"
+     ]
+    ]
+   },
+   "silent_identity_reset": false
+  },
+  "R4_wrong_key": {
+   "variant": "wrong_key",
+   "keys": [
+    "default.v1.pem",
+    "default.v1.pub.pem",
+    "model_credentials.key"
+   ],
+   "verify": {
+    "type": "KeyMaterialError",
+    "code": "ENCRYPTION_KEY_CANNOT_DECRYPT",
+    "message": "ENCRYPTION_KEY_CANNOT_DECRYPT: the configured encryption key cannot decrypt this database's existing ciphertext \u2014 restore the correct key from the recovery archive \u2014 see docs/security/key-management.md"
+   },
+   "marker_canary_unchanged": true,
+   "loud": true
+  },
+  "R4_malformed_key": {
+   "variant": "malformed_key",
+   "keys": [
+    "default.v1.pem",
+    "default.v1.pub.pem",
+    "model_credentials.key"
+   ],
+   "verify": {
+    "type": "KeyMaterialError",
+    "code": "ENCRYPTION_KEY_MALFORMED",
+    "message": "ENCRYPTION_KEY_MALFORMED: an encryption key is present but is not a structurally valid key \u2014 restore a valid key from the recovery archive; a malformed key is never used and is never replaced automatically"
+   },
+   "marker_canary_unchanged": true,
+   "loud": true
+  },
+  "R4_unknown_provider": {
+   "variant": "unknown_provider",
+   "keys": [
+    "default.v1.pem",
+    "default.v1.pub.pem",
+    "model_credentials.key"
+   ],
+   "verify": {
+    "type": "KeyMaterialError",
+    "code": "ENCRYPTION_KEY_PROVIDER_UNKNOWN",
+    "message": "ENCRYPTION_KEY_PROVIDER_UNKNOWN: encryption key provider 'VAULT' is not configured in this build \u2014 set ENCRYPTION_KEY_PROVIDER to one of: ['LOCAL']"
+   },
+   "marker_canary_unchanged": true,
+   "loud": true
+  },
+  "R4_key_path_is_directory": {
+   "variant": "key_path_is_directory",
+   "keys": [
+    "default.v1.pem",
+    "default.v1.pub.pem",
+    "model_credentials.key"
+   ],
+   "verify": {
+    "type": "KeyMaterialError",
+    "code": "ENCRYPTION_KEY_PROVIDER_UNAVAILABLE",
+    "message": "ENCRYPTION_KEY_PROVIDER_UNAVAILABLE: the encryption key provider 'LOCAL' could not be reached \u2014 restore connectivity to the key provider and restart; the platform will not start without its key provider and will never fall back to generatin"
+   },
+   "marker_canary_unchanged": true,
+   "loud": true
+  },
+  "R3_marker_only_zero_ciphertext": {
+   "install_mode": "EXISTING_INSTALL",
+   "marker": true,
+   "encrypted_tables": [],
+   "signed_tables": [],
+   "verify": {
+    "type": "KeyMaterialError",
+    "code": "ENCRYPTION_KEY_UNVERIFIED_ESTABLISHED_INSTALL",
+    "message": "ENCRYPTION_KEY_UNVERIFIED_ESTABLISHED_INSTALL: this is an established installation (bootstrap marker present) but the encryption key cannot be verified \u2014 there is no canary and no encrypted data to test it against \u2014 restore the key material"
+   },
+   "verify_allow_bootstrap": {
+    "type": "KeyMaterialError",
+    "code": "ENCRYPTION_KEY_UNVERIFIED_ESTABLISHED_INSTALL",
+    "message": "ENCRYPTION_KEY_UNVERIFIED_ESTABLISHED_INSTALL: this is an established installation (bootstrap marker present) but the encryption key cannot be verified \u2014 there is no canary and no encrypted data to test it against \u2014 restore the key material"
+   }
+  },
+  "R3_marker_only_key_absent": {
+   "keys_before": [],
+   "install_mode": "EXISTING_INSTALL",
+   "verify": {
+    "type": "KeyMaterialError",
+    "code": "ENCRYPTION_KEY_MISSING_ESTABLISHED_INSTALL",
+    "message": "ENCRYPTION_KEY_MISSING_ESTABLISHED_INSTALL: this is an established installation (bootstrap marker present) but no provider-credential encryption key is available \u2014 restore backend/.keys/model_credentials.key (or set MODEL_CREDENTIAL_ENCRYPT"
+   },
+   "verify_allow_bootstrap": {
+    "type": "KeyMaterialError",
+    "code": "ENCRYPTION_KEY_MISSING_ESTABLISHED_INSTALL",
+    "message": "ENCRYPTION_KEY_MISSING_ESTABLISHED_INSTALL: this is an established installation (bootstrap marker present) but no provider-credential encryption key is available \u2014 restore backend/.keys/model_credentials.key (or set MODEL_CREDENTIAL_ENCRYPT"
+   },
+   "bootstrap": {
+    "type": "KeyMaterialError",
+    "code": "BOOTSTRAP_REFUSED_MARKER_PRESENT",
+    "message": "BOOTSTRAP_REFUSED_MARKER_PRESENT: this installation is already established (bootstrap marker present) \u2014 it is not a new one \u2014 restore the original key material from the recovery archive (see docs/security/key-management.md); bootstrapping h"
+   },
+   "decrypt": {
+    "type": "KeyMaterialError",
+    "code": "ENCRYPTION_KEY_MISSING",
+    "message": "ENCRYPTION_KEY_MISSING: no provider-credential encryption key is configured and none is present at C:\\Users\\PHS\\Desktop\\ai-agent-control-tower\\lab\\.keys\\v9rec\\r3nokey\\model_credentials.key \u2014 restore backend/.keys/model_credentials.key from "
+   },
+   "keys_after": [],
+   "key_file_created": false,
+   "marker_canary_unchanged": true,
+   "state_after": {
+    "marker": [
+     [
+      "347a5c973468f750",
+      "bootstrap"
+     ]
+    ],
+    "canary": []
+   },
+   "silent_identity_reset": false
+  },
+  "seed_transient": {
+   "workers_seeded": 3,
+   "expired_locks_seeded": 2,
+   "seeded_at": "2026-09-25T18:07:26.238189+00:00"
+  },
+  "snapshot_before": {
+   "tables": {
+    "organizations": {
+     "count": 21,
+     "md5": "94db674356bf53087f21ac6d36ef5d32"
+    },
+    "users": {
+     "count": 31,
+     "md5": "73d3611bee57cb9e9b2d1f947ef0d322"
+    },
+    "agents": {
+     "count": 176300,
+     "md5": "c1e9444e0db6f26216ea814397836ab4"
+    },
+    "control_graph_edges": {
+     "count": 1093009,
+     "md5": "4f8fdcafe194f189b90ac0685950822d"
+    },
+    "discovery_sources": {
+     "count": 3,
+     "md5": "df7fbbbfd37d016dc4c16d97e5f54280"
+    },
+    "discovery_runs": {
+     "count": 5,
+     "md5": "312d0a55ced43ff801d3bb330b9418f3"
+    },
+    "discovery_observations": {
+     "count": 120500,
+     "md5": "5362efc7ebef8ea5c73f536aae588a62"
+    },
+    "discovery_findings": {
+     "count": 31400,
+     "md5": "95d78fbd816676a74256c757623705c4"
+    },
+    "posture_findings": {
+     "count": 19651,
+     "md5": "34d1e66c344dda95e9833103e96d624d"
+    },
+    "threat_findings": {
+     "count": 0,
+     "md5": null
+    },
+    "policies": {
+     "count": 0,
+     "md5": null
+    },
+    "runtime_governance_policies": {
+     "count": 0,
+     "md5": null
+    },
+    "external_capability_grants": {
+     "count": 200,
+     "md5": "c2c5b0a2b2383d4bb8ee0fcef8592fb1"
+    },
+    "external_gateway_calls": {
+     "count": 300082,
+     "md5": "4f0112d72319a0f2c927eec1601c223d"
+    },
+    "assurance_evidence_bundles": {
+     "count": 0,
+     "md5": null
+    },
+    "assurance_evaluations": {
+     "count": 0,
+     "md5": null
+    },
+    "budgets": {
+     "count": 101,
+     "md5": "f92fd261bb170c38c37cf5448dbf2d51"
+    },
+    "budget_reservations": {
+     "count": 0,
+     "md5": null
+    },
+    "runtime_alerts": {
+     "count": 100,
+     "md5": "5d1fd4da1479f5dcdf82a4e10f9448ba"
+    },
+    "worker_registrations": {
+     "count": 3,
+     "md5": "794d911d8fc26316359e28ff1aea5b05"
+    },
+    "execution_locks": {
+     "count": 2,
+     "md5": "a57d7900b9b7e00d4bc2c0cc57847fe2"
+    },
+    "resources": {
+     "count": 5000,
+     "md5": "fffc437569ef982e42a85d9d99815372"
+    },
+    "tools": {
+     "count": 10002,
+     "md5": "0867023a011e73156a1a8eb88a1c47ac"
+    },
+    "agent_executions": {
+     "count": 121550,
+     "md5": "06ead61d4a18d733b0a320b4f368cb34"
+    },
+    "agent_versions": {
+     "count": 1000,
+     "md5": "f962f1ee88a2467de89838e2d59ef34e"
+    },
+    "delegations": {
+     "count": 10,
+     "md5": "35f7478ce1997ee473d4890adf20e02b"
+    },
+    "agent_ownership_history": {
+     "count": 0,
+     "md5": null
+    },
+    "signing_keys": {
+     "count": 0,
+     "md5": null
+    },
+    "agent_version_signatures": {
+     "count": 0,
+     "md5": null
+    },
+    "key_material_canary": {
+     "count": 0,
+     "md5": null
+    },
+    "installation_bootstrap": {
+     "count": 0,
+     "md5": null
+    }
+   },
+   "open_alerts": 100,
+   "budget_limit_sum": "2000.00000000",
+   "open_posture_findings": 19651,
+   "snapshot_seconds": 16.8,
+   "hub_blast_radius_agents": 40148,
+   "hub_incomplete": false
+  },
+  "disk_guard": {
+   "free_gb": 9.68,
+   "db_gb": 1.11,
+   "need_gb": 2.99,
+   "largest_tables_mb": {
+    "control_graph_edges": 492,
+    "agents": 152,
+    "external_gateway_calls": 121,
+    "runtime_events": 96,
+    "authorization_audit": 94,
+    "discovery_observations": 48,
+    "agent_executions": 41,
+    "posture_findings": 21,
+    "discovery_findings": 16,
+    "tools": 2,
+    "resources": 2,
+    "role_permissions": 1
+   },
+   "excluded_table_data": [],
+   "fits": true
+  },
+  "snapshot_after": {
+   "tables": {
+    "organizations": {
+     "count": 21,
+     "md5": "94db674356bf53087f21ac6d36ef5d32"
+    },
+    "users": {
+     "count": 31,
+     "md5": "73d3611bee57cb9e9b2d1f947ef0d322"
+    },
+    "agents": {
+     "count": 176300,
+     "md5": "c1e9444e0db6f26216ea814397836ab4"
+    },
+    "control_graph_edges": {
+     "count": 1093009,
+     "md5": "4f8fdcafe194f189b90ac0685950822d"
+    },
+    "discovery_sources": {
+     "count": 3,
+     "md5": "df7fbbbfd37d016dc4c16d97e5f54280"
+    },
+    "discovery_runs": {
+     "count": 5,
+     "md5": "312d0a55ced43ff801d3bb330b9418f3"
+    },
+    "discovery_observations": {
+     "count": 120500,
+     "md5": "5362efc7ebef8ea5c73f536aae588a62"
+    },
+    "discovery_findings": {
+     "count": 31400,
+     "md5": "95d78fbd816676a74256c757623705c4"
+    },
+    "posture_findings": {
+     "count": 19651,
+     "md5": "34d1e66c344dda95e9833103e96d624d"
+    },
+    "threat_findings": {
+     "count": 0,
+     "md5": null
+    },
+    "policies": {
+     "count": 0,
+     "md5": null
+    },
+    "runtime_governance_policies": {
+     "count": 0,
+     "md5": null
+    },
+    "external_capability_grants": {
+     "count": 200,
+     "md5": "c2c5b0a2b2383d4bb8ee0fcef8592fb1"
+    },
+    "external_gateway_calls": {
+     "count": 300082,
+     "md5": "4f0112d72319a0f2c927eec1601c223d"
+    },
+    "assurance_evidence_bundles": {
+     "count": 0,
+     "md5": null
+    },
+    "assurance_evaluations": {
+     "count": 0,
+     "md5": null
+    },
+    "budgets": {
+     "count": 101,
+     "md5": "f92fd261bb170c38c37cf5448dbf2d51"
+    },
+    "budget_reservations": {
+     "count": 0,
+     "md5": null
+    },
+    "runtime_alerts": {
+     "count": 100,
+     "md5": "5d1fd4da1479f5dcdf82a4e10f9448ba"
+    },
+    "worker_registrations": {
+     "count": 3,
+     "md5": "794d911d8fc26316359e28ff1aea5b05"
+    },
+    "execution_locks": {
+     "count": 2,
+     "md5": "a57d7900b9b7e00d4bc2c0cc57847fe2"
+    },
+    "resources": {
+     "count": 5000,
+     "md5": "fffc437569ef982e42a85d9d99815372"
+    },
+    "tools": {
+     "count": 10002,
+     "md5": "0867023a011e73156a1a8eb88a1c47ac"
+    },
+    "agent_executions": {
+     "count": 121550,
+     "md5": "06ead61d4a18d733b0a320b4f368cb34"
+    },
+    "agent_versions": {
+     "count": 1000,
+     "md5": "f962f1ee88a2467de89838e2d59ef34e"
+    },
+    "delegations": {
+     "count": 10,
+     "md5": "35f7478ce1997ee473d4890adf20e02b"
+    },
+    "agent_ownership_history": {
+     "count": 0,
+     "md5": null
+    },
+    "signing_keys": {
+     "count": 0,
+     "md5": null
+    },
+    "agent_version_signatures": {
+     "count": 0,
+     "md5": null
+    },
+    "key_material_canary": {
+     "count": 0,
+     "md5": null
+    },
+    "installation_bootstrap": {
+     "count": 0,
+     "md5": null
+    }
+   },
+   "open_alerts": 100,
+   "budget_limit_sum": "2000.00000000",
+   "open_posture_findings": 19651,
+   "snapshot_seconds": 17.0,
+   "hub_blast_radius_agents": 40148,
+   "hub_incomplete": false
+  },
+  "durable_state_diff": {
+   "tables_compared": 31,
+   "differences": {},
+   "identical": true,
+   "open_alerts_preserved": true,
+   "budgets_preserved": true,
+   "open_posture_findings_preserved": true,
+   "hub_blast_radius_consistent": true
+  },
+  "phantom_workers_after_restore": {
+   "live_before_reap": [
+    "v9-worker-0",
+    "v9-worker-1",
+    "v9-worker-2"
+   ],
+   "stale_detected": [
+    "v9-worker-0",
+    "v9-worker-1",
+    "v9-worker-2"
+   ],
+   "reaped": 3,
+   "live_after_reap": [],
+   "stale_after_seconds": 90.0,
+   "locks_before": 2,
+   "expired_locks_reaped": 0,
+   "locks_after": 0,
+   "no_phantom_live_worker": true
+  }
+ },
+ "timings_s": {
+  "pg_dump_small": 0.2,
+  "pg_restore_small_r1": 1.6,
+  "pg_restore_small_r2": 1.4,
+  "pg_dump_scale": 11.8,
+  "dump_scale_mb": 139.6,
+  "pg_restore_scale_r100k": 18.8
+ }
+}

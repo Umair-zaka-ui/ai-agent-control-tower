@@ -1,0 +1,573 @@
+{
+ "rung": 100,
+ "dist": "realistic",
+ "tenant_agents": 42,
+ "tenant_edges": 408,
+ "totals": {
+  "organizations": 4,
+  "users": 14,
+  "agents": 100,
+  "tools": 20,
+  "resources": 20,
+  "control_graph_edges": 924,
+  "agent_executions": 151,
+  "discovery_observations": 342,
+  "external_gateway_calls": 360,
+  "budgets": 43,
+  "runtime_alerts": 100
+ },
+ "ops": [
+  {
+   "op": "reachability.trust_delegation_depth_ladder",
+   "n": 7,
+   "ladder": [
+    {
+     "depth": 4,
+     "ms": 108.2,
+     "nodes": 5
+    },
+    {
+     "depth": 8,
+     "ms": 6.6,
+     "nodes": 14
+    },
+    {
+     "depth": 12,
+     "ms": 8.8,
+     "nodes": 24
+    },
+    {
+     "depth": 16,
+     "ms": 10.6,
+     "nodes": 30
+    },
+    {
+     "depth": 20,
+     "ms": 11.5,
+     "nodes": 34
+    },
+    {
+     "depth": 24,
+     "ms": 11.5,
+     "nodes": 34
+    },
+    {
+     "depth": 32,
+     "ms": 12.8,
+     "nodes": 34
+    }
+   ],
+   "path_growth_per_depth(max14)": [
+    {
+     "depth": 0,
+     "paths": 1,
+     "distinct_nodes": 1
+    },
+    {
+     "depth": 1,
+     "paths": 2,
+     "distinct_nodes": 2
+    },
+    {
+     "depth": 2,
+     "paths": 2,
+     "distinct_nodes": 1
+    },
+    {
+     "depth": 3,
+     "paths": 2,
+     "distinct_nodes": 1
+    },
+    {
+     "depth": 4,
+     "paths": 2,
+     "distinct_nodes": 1
+    },
+    {
+     "depth": 5,
+     "paths": 4,
+     "distinct_nodes": 2
+    },
+    {
+     "depth": 6,
+     "paths": 6,
+     "distinct_nodes": 3
+    },
+    {
+     "depth": 7,
+     "paths": 6,
+     "distinct_nodes": 3
+    },
+    {
+     "depth": 8,
+     "paths": 8,
+     "distinct_nodes": 4
+    },
+    {
+     "depth": 9,
+     "paths": 8,
+     "distinct_nodes": 4
+    },
+    {
+     "depth": 10,
+     "paths": 10,
+     "distinct_nodes": 5
+    },
+    {
+     "depth": 11,
+     "paths": 8,
+     "distinct_nodes": 4
+    },
+    {
+     "depth": 12,
+     "paths": 4,
+     "distinct_nodes": 2
+    },
+    {
+     "depth": 13,
+     "paths": 8,
+     "distinct_nodes": 4
+    },
+    {
+     "depth": 14,
+     "paths": 10,
+     "distinct_nodes": 5
+    }
+   ],
+   "chain_len": 31,
+   "max_depth_completed": 32,
+   "p50_ms": 12.8,
+   "p95_ms": 12.8,
+   "cliff": false,
+   "hot_seq_scans": [],
+   "plans": []
+  },
+  {
+   "op": "reachability.super_node_fanout_depth2",
+   "n": 5,
+   "p50_ms": 1.52,
+   "p95_ms": 1.91,
+   "p99_ms": 1.91,
+   "min_ms": 1.5,
+   "max_ms": 1.91,
+   "statements": 3,
+   "distinct_read_statements": 3,
+   "hot_seq_scans": [],
+   "plans": [
+    {
+     "stmt": "49efb19d13",
+     "sql": "\n        WITH RECURSIVE reach(node_type, node_id, depth, path) AS (\n            SELECT CAST(%(start_type)s AS varchar), CAST(%(start_id)s AS uuid), 0,\n                   ARRAY[CAST(%(start_key)s AS text)]\n          UNION ALL\n            SELECT e.target_type, e.target_id, r.depth + 1,\n                   r.path || (e.target_type || ':' || e.target_id)\n            FROM reach r\n            JOIN control_graph_edges e\n              ON e.source_type = r.node_type\n             AND e.source_id = r.node_id\n             AND e.organization_id = %(org)s\n             AND e.revoked_at IS NULL\n             AND (e.valid_until IS NULL OR e.valid_until > now())\n             AND (%(all_types)s OR e.edge_type = ANY(%(edge_types)s))\n            WHERE r.depth < %(max_depth)s\n              AND NOT ((e.target_type || ':' || e.target_id) = ANY(r.path))\n        )\n        SELECT DISTINCT ON (node_type, node_id) node_type, node_id, depth, path\n        FROM reach\n        WHERE depth > 0\n        ORDER BY node_type, node_id, depth\n        ",
+     "plan": "Unique  (cost=252.90..252.93 rows=4 width=84) (actual time=0.020..0.021 rows=0 loops=1)\n  Buffers: shared hit=3\n  CTE reach\n    ->  Recursive Union  (cost=0.00..252.61 rows=11 width=84) (actual time=0.002..0.015 rows=1 loops=1)\n          Buffers: shared hit=3\n          ->  Result  (cost=0.00..0.01 rows=1 width=84) (actual time=0.001..0.001 rows=1 loops=1)\n          ->  Nested Loop  (cost=0.28..25.25 rows=1 width=58) (actual time=0.012..0.013 rows=0 loops=1)\n                Buffers: shared hit=3\n                ->  WorkTable Scan on reach r  (cost=0.00..0.22 rows=3 width=84) (actual time=0.001..0.001 rows=1 loops=1)\n                      Filter: (depth < 2)\n                ->  Index Scan using ix_control_graph_edges_source on control_graph_edges e  (cost=0.28..8.33 rows=1 width=43) (actual time=0.011..0.011 rows=0 loops=1)\n                      Index Cond: ((organization_id = '4bc33d97-a8d0-4a84-b841-64b0aff74923'::uuid) AND ((source_type)::text = (r.node_type)::text) AND (source_id = r.node_id))\n                      Filter: ((revoked_at IS NULL) AND ((edge_type)::text = ANY ('{TRUSTS}'::text[])) AND ((valid_until IS NULL) OR (valid_until > now())) AND ((((target_type)::text || ':'::text) || (target_id)::text) <> ALL (r.path)))\n                      Rows Removed by Filter: 8\n                      Buffers: shared hit=3\n  ->  Sort  (cost=0.29..0.30 rows=4 width=84) (actual time=0.020..0.020 rows=0 loops=1)\n        Sort Key: reach.node_type, reach.node_id, reach.depth\n        Sort Method: quicksort  Memory: 25kB\n        Buffers: shared hit=3\n        ->  CTE Scan on reach  (cost=0.00..0.25 rows=4 width=84) (actual time=0.016..0.016 rows=0 loops=1)\n              Filter: (depth > 0)\n              Rows Removed by Filter: 1\n              Buffers: shared hit=3\nPlanning Time: 0.157 ms\nExecution Time: 0.041 ms"
+    }
+   ],
+   "result_nodes": 0
+  },
+  {
+   "op": "blast_radius.reverse_hub_resource_depth16",
+   "n": 5,
+   "p50_ms": 7.76,
+   "p95_ms": 13.9,
+   "p99_ms": 13.9,
+   "min_ms": 7.09,
+   "max_ms": 13.9,
+   "statements": 10,
+   "distinct_read_statements": 6,
+   "hot_seq_scans": [],
+   "plans": [
+    {
+     "stmt": "8e838957ed",
+     "sql": "\n        WITH RECURSIVE reach(node_type, node_id, depth, node_path, edge_path, capped) AS (\n            SELECT CAST(%(start_type)s AS varchar), CAST(%(start_id)s AS uuid), 0,\n                   ARRAY[CAST(%(start_key)s AS text)], ARRAY[]::uuid[], false\n          UNION ALL\n            SELECT e.source_type, e.source_id, r.depth + 1,\n                   r.node_path || (e.source_type || ':' || e.source_id),\n                   r.edge_path || e.id,\n                   (r.depth + 1 >= %(max_depth)s)\n            FROM reach r\n            JOIN control_graph_edges e\n              ON e.target_type = r.node_type\n             AND e.target_id = r.node_id\n             AND e.organization_id = %(org)s\n             AND e.revoked_at IS NULL\n             AND (e.valid_until IS NULL OR e.valid_until > now())\n             AND (%(all_types)s OR e.edge_type = ANY(%(edge_types)s))\n            WHERE r.depth < %(max_depth)s\n              AND NOT ((e.source_type || ':' || e.source_id) = ANY(r.node_path))\n        )\n        SELECT DISTINCT ON (node_type, node_id)\n               node_type, node_id, depth, node_path, edge_path,\n               (SELECT bool_or(capped) FROM reach) AS any_capped\n        FROM reach\n        WHERE depth > 0\n        ORDER BY node_type, node_id, depth\n        ",
+     "plan": "Unique  (cost=254.02..254.05 rows=4 width=117) (actual time=0.240..0.247 rows=43 loops=1)\n  Buffers: shared hit=223\n  CTE reach\n    ->  Recursive Union  (cost=0.00..253.47 rows=11 width=117) (actual time=0.001..0.164 rows=62 loops=1)\n          Buffers: shared hit=223\n          ->  Result  (cost=0.00..0.01 rows=1 width=117) (actual time=0.001..0.001 rows=1 loops=1)\n          ->  Nested Loop  (cost=0.30..25.34 rows=1 width=90) (actual time=0.034..0.049 rows=20 loops=3)\n                Buffers: shared hit=223\n                ->  WorkTable Scan on reach r  (cost=0.00..0.22 rows=3 width=116) (actual time=0.000..0.001 rows=21 loops=3)\n                      Filter: (depth < 16)\n                ->  Index Scan using ix_control_graph_edges_target on control_graph_edges e  (cost=0.30..8.35 rows=1 width=59) (actual time=0.001..0.002 rows=1 loops=62)\n                      Index Cond: ((organization_id = '4bc33d97-a8d0-4a84-b841-64b0aff74923'::uuid) AND ((target_type)::text = (r.node_type)::text) AND (target_id = r.node_id))\n                      Filter: ((revoked_at IS NULL) AND ((valid_until IS NULL) OR (valid_until > now())) AND ((edge_type)::text = ANY ('{DEPENDS_ON_TOOL,DEPENDS_ON_MCP_SERVER,DEPENDS_ON_CREDENTIAL,DEPENDS_ON_CONNECTOR,DEPENDS_ON_RESOURCE,MCP_EXPOSES_TOOL,TOOL_USES_CREDENTIAL,TOOL_ACCESSES_RESOURCE,CREDENTIAL_ACCESSES_RESOURCE}'::text[])) AND ((((source_type)::text || ':'::text) || (source_id)::text) <> ALL (r.node_path)))\n                      Rows Removed by Filter: 1\n                      Buffers: shared hit=223\n  InitPlan 2\n    ->  Aggregate  (cost=0.25..0.26 rows=1 width=1) (actual time=0.185..0.185 rows=1 loops=1)\n          Buffers: shared hit=220\n          ->  CTE Scan on reach reach_1  (cost=0.00..0.22 rows=11 width=1) (actual time=0.000..0.179 rows=62 loops=1)\n                Buffers: shared hit=220\n  ->  Sort  (cost=0.29..0.30 rows=4 width=117) (actual time=0.239..0.241 rows=61 loops=1)\n        Sort Key: reach.node_type, reach.node_id, reach.depth\n        Sort Method: quicksort  Memory: 40kB\n        Buffers: shared hit=223\n        ->  CTE Scan on reach  (cost=0.00..0.25 rows=4 width=117) (actual time=0.206..0.212 rows=61 loops=1)\n              Filter: (depth > 0)\n              Rows Removed by Filter: 1\n              Buffers: shared hit=223\nPlanning Time: 0.187 ms\nExecution Time: 0.275 ms"
+    }
+   ],
+   "agents_found": 42,
+   "all_dependents": 43,
+   "incomplete": false
+  },
+  {
+   "op": "blast_radius.reverse_typical_resource_depth16",
+   "n": 10,
+   "p50_ms": 6.05,
+   "p95_ms": 6.93,
+   "p99_ms": 6.93,
+   "min_ms": 4.71,
+   "max_ms": 6.93,
+   "statements": 9,
+   "distinct_read_statements": 5,
+   "hot_seq_scans": [],
+   "plans": [
+    {
+     "stmt": "8e838957ed",
+     "sql": "\n        WITH RECURSIVE reach(node_type, node_id, depth, node_path, edge_path, capped) AS (\n            SELECT CAST(%(start_type)s AS varchar), CAST(%(start_id)s AS uuid), 0,\n                   ARRAY[CAST(%(start_key)s AS text)], ARRAY[]::uuid[], false\n          UNION ALL\n            SELECT e.source_type, e.source_id, r.depth + 1,\n                   r.node_path || (e.source_type || ':' || e.source_id),\n                   r.edge_path || e.id,\n                   (r.depth + 1 >= %(max_depth)s)\n            FROM reach r\n            JOIN control_graph_edges e\n              ON e.target_type = r.node_type\n             AND e.target_id = r.node_id\n             AND e.organization_id = %(org)s\n             AND e.revoked_at IS NULL\n             AND (e.valid_until IS NULL OR e.valid_until > now())\n             AND (%(all_types)s OR e.edge_type = ANY(%(edge_types)s))\n            WHERE r.depth < %(max_depth)s\n              AND NOT ((e.source_type || ':' || e.source_id) = ANY(r.node_path))\n        )\n        SELECT DISTINCT ON (node_type, node_id)\n               node_type, node_id, depth, node_path, edge_path,\n               (SELECT bool_or(capped) FROM reach) AS any_capped\n        FROM reach\n        WHERE depth > 0\n        ORDER BY node_type, node_id, depth\n        ",
+     "plan": "Unique  (cost=254.02..254.05 rows=4 width=117) (actual time=0.123..0.127 rows=23 loops=1)\n  Buffers: shared hit=94\n  CTE reach\n    ->  Recursive Union  (cost=0.00..253.47 rows=11 width=117) (actual time=0.001..0.083 rows=24 loops=1)\n          Buffers: shared hit=94\n          ->  Result  (cost=0.00..0.01 rows=1 width=117) (actual time=0.001..0.001 rows=1 loops=1)\n          ->  Nested Loop  (cost=0.30..25.34 rows=1 width=90) (actual time=0.026..0.037 rows=12 loops=2)\n                Buffers: shared hit=94\n                ->  WorkTable Scan on reach r  (cost=0.00..0.22 rows=3 width=116) (actual time=0.000..0.001 rows=12 loops=2)\n                      Filter: (depth < 16)\n                ->  Index Scan using ix_control_graph_edges_target on control_graph_edges e  (cost=0.30..8.35 rows=1 width=59) (actual time=0.002..0.002 rows=1 loops=24)\n                      Index Cond: ((organization_id = '4bc33d97-a8d0-4a84-b841-64b0aff74923'::uuid) AND ((target_type)::text = (r.node_type)::text) AND (target_id = r.node_id))\n                      Filter: ((revoked_at IS NULL) AND ((valid_until IS NULL) OR (valid_until > now())) AND ((edge_type)::text = ANY ('{DEPENDS_ON_TOOL,DEPENDS_ON_MCP_SERVER,DEPENDS_ON_CREDENTIAL,DEPENDS_ON_CONNECTOR,DEPENDS_ON_RESOURCE,MCP_EXPOSES_TOOL,TOOL_USES_CREDENTIAL,TOOL_ACCESSES_RESOURCE,CREDENTIAL_ACCESSES_RESOURCE}'::text[])) AND ((((source_type)::text || ':'::text) || (source_id)::text) <> ALL (r.node_path)))\n                      Rows Removed by Filter: 2\n                      Buffers: shared hit=94\n  InitPlan 2\n    ->  Aggregate  (cost=0.25..0.26 rows=1 width=1) (actual time=0.086..0.086 rows=1 loops=1)\n          Buffers: shared hit=91\n          ->  CTE Scan on reach reach_1  (cost=0.00..0.22 rows=11 width=1) (actual time=0.000..0.082 rows=24 loops=1)\n                Buffers: shared hit=91\n  ->  Sort  (cost=0.29..0.30 rows=4 width=117) (actual time=0.123..0.124 rows=23 loops=1)\n        Sort Key: reach.node_type, reach.node_id, reach.depth\n        Sort Method: quicksort  Memory: 29kB\n        Buffers: shared hit=94\n        ->  CTE Scan on reach  (cost=0.00..0.25 rows=4 width=117) (actual time=0.109..0.111 rows=23 loops=1)\n              Filter: (depth > 0)\n              Rows Removed by Filter: 1\n              Buffers: shared hit=94\nPlanning Time: 0.174 ms\nExecution Time: 0.154 ms"
+    }
+   ],
+   "agents_found": 23,
+   "incomplete": false
+  },
+  {
+   "op": "blast_radius.what_breaks_tool_hub_depth16",
+   "n": 5,
+   "p50_ms": 7.11,
+   "p95_ms": 8.03,
+   "p99_ms": 8.03,
+   "min_ms": 6.16,
+   "max_ms": 8.03,
+   "statements": 9,
+   "distinct_read_statements": 5,
+   "hot_seq_scans": [],
+   "plans": [
+    {
+     "stmt": "8e838957ed",
+     "sql": "\n        WITH RECURSIVE reach(node_type, node_id, depth, node_path, edge_path, capped) AS (\n            SELECT CAST(%(start_type)s AS varchar), CAST(%(start_id)s AS uuid), 0,\n                   ARRAY[CAST(%(start_key)s AS text)], ARRAY[]::uuid[], false\n          UNION ALL\n            SELECT e.source_type, e.source_id, r.depth + 1,\n                   r.node_path || (e.source_type || ':' || e.source_id),\n                   r.edge_path || e.id,\n                   (r.depth + 1 >= %(max_depth)s)\n            FROM reach r\n            JOIN control_graph_edges e\n              ON e.target_type = r.node_type\n             AND e.target_id = r.node_id\n             AND e.organization_id = %(org)s\n             AND e.revoked_at IS NULL\n             AND (e.valid_until IS NULL OR e.valid_until > now())\n             AND (%(all_types)s OR e.edge_type = ANY(%(edge_types)s))\n            WHERE r.depth < %(max_depth)s\n              AND NOT ((e.source_type || ':' || e.source_id) = ANY(r.node_path))\n        )\n        SELECT DISTINCT ON (node_type, node_id)\n               node_type, node_id, depth, node_path, edge_path,\n               (SELECT bool_or(capped) FROM reach) AS any_capped\n        FROM reach\n        WHERE depth > 0\n        ORDER BY node_type, node_id, depth\n        ",
+     "plan": "Unique  (cost=254.02..254.05 rows=4 width=117) (actual time=0.187..0.193 rows=42 loops=1)\n  Buffers: shared hit=153\n  CTE reach\n    ->  Recursive Union  (cost=0.00..253.47 rows=11 width=117) (actual time=0.001..0.137 rows=43 loops=1)\n          Buffers: shared hit=153\n          ->  Result  (cost=0.00..0.01 rows=1 width=117) (actual time=0.001..0.001 rows=1 loops=1)\n          ->  Nested Loop  (cost=0.30..25.34 rows=1 width=90) (actual time=0.044..0.062 rows=21 loops=2)\n                Buffers: shared hit=153\n                ->  WorkTable Scan on reach r  (cost=0.00..0.22 rows=3 width=116) (actual time=0.000..0.002 rows=22 loops=2)\n                      Filter: (depth < 16)\n                ->  Index Scan using ix_control_graph_edges_target on control_graph_edges e  (cost=0.30..8.35 rows=1 width=59) (actual time=0.002..0.002 rows=1 loops=43)\n                      Index Cond: ((organization_id = '4bc33d97-a8d0-4a84-b841-64b0aff74923'::uuid) AND ((target_type)::text = (r.node_type)::text) AND (target_id = r.node_id))\n                      Filter: ((revoked_at IS NULL) AND ((valid_until IS NULL) OR (valid_until > now())) AND ((edge_type)::text = ANY ('{DEPENDS_ON_TOOL,DEPENDS_ON_MCP_SERVER,DEPENDS_ON_CREDENTIAL,DEPENDS_ON_CONNECTOR,DEPENDS_ON_RESOURCE,MCP_EXPOSES_TOOL,TOOL_USES_CREDENTIAL,TOOL_ACCESSES_RESOURCE,CREDENTIAL_ACCESSES_RESOURCE}'::text[])) AND ((((source_type)::text || ':'::text) || (source_id)::text) <> ALL (r.node_path)))\n                      Rows Removed by Filter: 1\n                      Buffers: shared hit=153\n  InitPlan 2\n    ->  Aggregate  (cost=0.25..0.26 rows=1 width=1) (actual time=0.136..0.137 rows=1 loops=1)\n          Buffers: shared hit=150\n          ->  CTE Scan on reach reach_1  (cost=0.00..0.22 rows=11 width=1) (actual time=0.000..0.131 rows=43 loops=1)\n                Buffers: shared hit=150\n  ->  Sort  (cost=0.29..0.30 rows=4 width=117) (actual time=0.187..0.188 rows=42 loops=1)\n        Sort Key: reach.node_type, reach.node_id, reach.depth\n        Sort Method: quicksort  Memory: 33kB\n        Buffers: shared hit=153\n        ->  CTE Scan on reach  (cost=0.00..0.25 rows=4 width=117) (actual time=0.163..0.166 rows=42 loops=1)\n              Filter: (depth > 0)\n              Rows Removed by Filter: 1\n              Buffers: shared hit=153\nPlanning Time: 0.212 ms\nExecution Time: 0.226 ms"
+    }
+   ],
+   "affected_agents": 42,
+   "affected_nodes": 42
+  },
+  {
+   "op": "blast_radius.agents_reaching_resource_kind_payroll",
+   "n": 5,
+   "p50_ms": 14.36,
+   "p95_ms": 20.98,
+   "p99_ms": 20.98,
+   "min_ms": 14.29,
+   "max_ms": 20.98,
+   "statements": 18,
+   "distinct_read_statements": 6,
+   "hot_seq_scans": [],
+   "plans": [
+    {
+     "stmt": "8e838957ed",
+     "sql": "\n        WITH RECURSIVE reach(node_type, node_id, depth, node_path, edge_path, capped) AS (\n            SELECT CAST(%(start_type)s AS varchar), CAST(%(start_id)s AS uuid), 0,\n                   ARRAY[CAST(%(start_key)s AS text)], ARRAY[]::uuid[], false\n          UNION ALL\n            SELECT e.source_type, e.source_id, r.depth + 1,\n                   r.node_path || (e.source_type || ':' || e.source_id),\n                   r.edge_path || e.id,\n                   (r.depth + 1 >= %(max_depth)s)\n            FROM reach r\n            JOIN control_graph_edges e\n              ON e.target_type = r.node_type\n             AND e.target_id = r.node_id\n             AND e.organization_id = %(org)s\n             AND e.revoked_at IS NULL\n             AND (e.valid_until IS NULL OR e.valid_until > now())\n             AND (%(all_types)s OR e.edge_type = ANY(%(edge_types)s))\n            WHERE r.depth < %(max_depth)s\n              AND NOT ((e.source_type || ':' || e.source_id) = ANY(r.node_path))\n        )\n        SELECT DISTINCT ON (node_type, node_id)\n               node_type, node_id, depth, node_path, edge_path,\n               (SELECT bool_or(capped) FROM reach) AS any_capped\n        FROM reach\n        WHERE depth > 0\n        ORDER BY node_type, node_id, depth\n        ",
+     "plan": "Unique  (cost=254.02..254.05 rows=4 width=117) (actual time=0.283..0.291 rows=43 loops=1)\n  Buffers: shared hit=223\n  CTE reach\n    ->  Recursive Union  (cost=0.00..253.47 rows=11 width=117) (actual time=0.002..0.202 rows=62 loops=1)\n          Buffers: shared hit=223\n          ->  Result  (cost=0.00..0.01 rows=1 width=117) (actual time=0.001..0.001 rows=1 loops=1)\n          ->  Nested Loop  (cost=0.30..25.34 rows=1 width=90) (actual time=0.043..0.061 rows=20 loops=3)\n                Buffers: shared hit=223\n                ->  WorkTable Scan on reach r  (cost=0.00..0.22 rows=3 width=116) (actual time=0.000..0.001 rows=21 loops=3)\n                      Filter: (depth < 16)\n                ->  Index Scan using ix_control_graph_edges_target on control_graph_edges e  (cost=0.30..8.35 rows=1 width=59) (actual time=0.002..0.002 rows=1 loops=62)\n                      Index Cond: ((organization_id = '4bc33d97-a8d0-4a84-b841-64b0aff74923'::uuid) AND ((target_type)::text = (r.node_type)::text) AND (target_id = r.node_id))\n                      Filter: ((revoked_at IS NULL) AND ((valid_until IS NULL) OR (valid_until > now())) AND ((edge_type)::text = ANY ('{DEPENDS_ON_TOOL,DEPENDS_ON_MCP_SERVER,DEPENDS_ON_CREDENTIAL,DEPENDS_ON_CONNECTOR,DEPENDS_ON_RESOURCE,MCP_EXPOSES_TOOL,TOOL_USES_CREDENTIAL,TOOL_ACCESSES_RESOURCE,CREDENTIAL_ACCESSES_RESOURCE}'::text[])) AND ((((source_type)::text || ':'::text) || (source_id)::text) <> ALL (r.node_path)))\n                      Rows Removed by Filter: 1\n                      Buffers: shared hit=223\n  InitPlan 2\n    ->  Aggregate  (cost=0.25..0.26 rows=1 width=1) (actual time=0.201..0.202 rows=1 loops=1)\n          Buffers: shared hit=220\n          ->  CTE Scan on reach reach_1  (cost=0.00..0.22 rows=11 width=1) (actual time=0.000..0.194 rows=62 loops=1)\n                Buffers: shared hit=220\n  ->  Sort  (cost=0.29..0.30 rows=4 width=117) (actual time=0.283..0.284 rows=61 loops=1)\n        Sort Key: reach.node_type, reach.node_id, reach.depth\n        Sort Method: quicksort  Memory: 40kB\n        Buffers: shared hit=223\n        ->  CTE Scan on reach  (cost=0.00..0.25 rows=4 width=117) (actual time=0.247..0.253 rows=61 loops=1)\n              Filter: (depth > 0)\n              Rows Removed by Filter: 1\n              Buffers: shared hit=223\nPlanning Time: 0.185 ms\nExecution Time: 0.327 ms"
+    }
+   ],
+   "agents": 42,
+   "resources": 0
+  },
+  {
+   "op": "authority_chain.reconstruct_replay_depth31_plus_10_delegation_hops",
+   "n": 10,
+   "p50_ms": 6.01,
+   "p95_ms": 14.34,
+   "p99_ms": 14.34,
+   "min_ms": 5.82,
+   "max_ms": 14.34,
+   "statements": 13,
+   "distinct_read_statements": 9,
+   "hot_seq_scans": [],
+   "plans": [
+    {
+     "stmt": "5904b8be6e",
+     "sql": "\n        WITH RECURSIVE chain(id, parent_execution_id, depth, path) AS (\n            SELECT id, parent_execution_id, 0, ARRAY[id]\n            FROM agent_executions\n            WHERE id = %(eid)s AND organization_id = %(org)s\n          UNION ALL\n            SELECT p.id, p.parent_execution_id, c.depth + 1, c.path || p.id\n            FROM chain c\n            JOIN agent_executions p\n              ON p.id = c.parent_execution_id\n             AND p.organization_id = %(org)s\n            WHERE c.depth < %(max_depth)s\n              AND NOT (p.id = ANY(c.path))\n        )\n        SELECT id FROM chain WHERE depth > 0 ORDER BY depth DESC\n        ",
+     "plan": "Sort  (cost=75.43..75.45 rows=10 width=20) (actual time=0.028..0.030 rows=0 loops=1)\n  Sort Key: chain.depth DESC\n  Sort Method: quicksort  Memory: 25kB\n  Buffers: shared hit=6\n  CTE chain\n    ->  Recursive Union  (cost=0.00..74.56 rows=31 width=68) (actual time=0.015..0.024 rows=1 loops=1)\n          Buffers: shared hit=6\n          ->  Seq Scan on agent_executions  (cost=0.00..6.27 rows=1 width=68) (actual time=0.014..0.014 rows=1 loops=1)\n                Filter: ((id = '9abd7159-2709-4ec2-b03c-a029404fc60b'::uuid) AND (organization_id = '4bc33d97-a8d0-4a84-b841-64b0aff74923'::uuid))\n                Rows Removed by Filter: 150\n                Buffers: shared hit=4\n          ->  Hash Join  (cost=0.26..6.80 rows=3 width=68) (actual time=0.008..0.009 rows=0 loops=1)\n                Hash Cond: (p.id = c.parent_execution_id)\n                Join Filter: (p.id <> ALL (c.path))\n                Buffers: shared hit=2\n                ->  Seq Scan on agent_executions p  (cost=0.00..5.89 rows=151 width=32) (actual time=0.002..0.002 rows=1 loops=1)\n                      Filter: (organization_id = '4bc33d97-a8d0-4a84-b841-64b0aff74923'::uuid)\n                      Buffers: shared hit=2\n                ->  Hash  (cost=0.22..0.22 rows=3 width=52) (actual time=0.001..0.002 rows=0 loops=1)\n                      Buckets: 1024  Batches: 1  Memory Usage: 8kB\n                      ->  WorkTable Scan on chain c  (cost=0.00..0.22 rows=3 width=52) (actual time=0.001..0.001 rows=1 loops=1)\n                            Filter: (depth < 32)\n  ->  CTE Scan on chain  (cost=0.00..0.70 rows=10 width=20) (actual time=0.024..0.024 rows=0 loops=1)\n        Filter: (depth > 0)\n        Rows Removed by Filter: 1\n        Buffers: shared hit=6\nPlanning:\n  Buffers: shared hit=2\nPlanning Time: 0.143 ms\nExecution Time: 0.045 ms"
+    }
+   ],
+   "hops": 1,
+   "complete": false
+  },
+  {
+   "op": "authority_chain.reconstruct_typical",
+   "n": 10,
+   "p50_ms": 12.38,
+   "p95_ms": 15.99,
+   "p99_ms": 15.99,
+   "min_ms": 11.89,
+   "max_ms": 15.99,
+   "statements": 37,
+   "distinct_read_statements": 11,
+   "hot_seq_scans": [],
+   "plans": [
+    {
+     "stmt": "5904b8be6e",
+     "sql": "\n        WITH RECURSIVE chain(id, parent_execution_id, depth, path) AS (\n            SELECT id, parent_execution_id, 0, ARRAY[id]\n            FROM agent_executions\n            WHERE id = %(eid)s AND organization_id = %(org)s\n          UNION ALL\n            SELECT p.id, p.parent_execution_id, c.depth + 1, c.path || p.id\n            FROM chain c\n            JOIN agent_executions p\n              ON p.id = c.parent_execution_id\n             AND p.organization_id = %(org)s\n            WHERE c.depth < %(max_depth)s\n              AND NOT (p.id = ANY(c.path))\n        )\n        SELECT id FROM chain WHERE depth > 0 ORDER BY depth DESC\n        ",
+     "plan": "Sort  (cost=75.43..75.45 rows=10 width=20) (actual time=0.048..0.051 rows=0 loops=1)\n  Sort Key: chain.depth DESC\n  Sort Method: quicksort  Memory: 25kB\n  Buffers: shared hit=6\n  CTE chain\n    ->  Recursive Union  (cost=0.00..74.56 rows=31 width=68) (actual time=0.014..0.041 rows=1 loops=1)\n          Buffers: shared hit=6\n          ->  Seq Scan on agent_executions  (cost=0.00..6.27 rows=1 width=68) (actual time=0.013..0.025 rows=1 loops=1)\n                Filter: ((id = '305f28dd-251f-4841-b792-16d1337c35db'::uuid) AND (organization_id = '4bc33d97-a8d0-4a84-b841-64b0aff74923'::uuid))\n                Rows Removed by Filter: 150\n                Buffers: shared hit=4\n          ->  Hash Join  (cost=0.26..6.80 rows=3 width=68) (actual time=0.013..0.014 rows=0 loops=1)\n                Hash Cond: (p.id = c.parent_execution_id)\n                Join Filter: (p.id <> ALL (c.path))\n                Buffers: shared hit=2\n                ->  Seq Scan on agent_executions p  (cost=0.00..5.89 rows=151 width=32) (actual time=0.003..0.003 rows=1 loops=1)\n                      Filter: (organization_id = '4bc33d97-a8d0-4a84-b841-64b0aff74923'::uuid)\n                      Buffers: shared hit=2\n                ->  Hash  (cost=0.22..0.22 rows=3 width=52) (actual time=0.002..0.004 rows=0 loops=1)\n                      Buckets: 1024  Batches: 1  Memory Usage: 8kB\n                      ->  WorkTable Scan on chain c  (cost=0.00..0.22 rows=3 width=52) (actual time=0.001..0.001 rows=1 loops=1)\n                            Filter: (depth < 32)\n  ->  CTE Scan on chain  (cost=0.00..0.70 rows=10 width=20) (actual time=0.041..0.041 rows=0 loops=1)\n        Filter: (depth > 0)\n        Rows Removed by Filter: 1\n        Buffers: shared hit=6\nPlanning:\n  Buffers: shared hit=2\nPlanning Time: 0.260 ms\nExecution Time: 0.076 ms"
+    }
+   ],
+   "hops": 12,
+   "complete": true
+  },
+  {
+   "op": "estate.command_center_overview",
+   "n": 10,
+   "p50_ms": 11.66,
+   "p95_ms": 32.87,
+   "p99_ms": 32.87,
+   "min_ms": 11.37,
+   "max_ms": 32.87,
+   "statements": 25,
+   "distinct_read_statements": 20,
+   "hot_seq_scans": [],
+   "plans": [],
+   "agents_total": 42
+  },
+  {
+   "op": "inventory.list_agents_page1_size50",
+   "n": 10,
+   "p50_ms": 11.48,
+   "p95_ms": 14.33,
+   "p99_ms": 14.33,
+   "min_ms": 10.48,
+   "max_ms": 14.33,
+   "statements": 5,
+   "distinct_read_statements": 5,
+   "hot_seq_scans": [],
+   "plans": []
+  },
+  {
+   "op": "inventory.list_agents_last_page(1)_size50",
+   "n": 5,
+   "p50_ms": 10.4,
+   "p95_ms": 11.58,
+   "p99_ms": 11.58,
+   "min_ms": 10.26,
+   "max_ms": 11.58,
+   "statements": 5,
+   "distinct_read_statements": 5,
+   "hot_seq_scans": [],
+   "plans": []
+  },
+  {
+   "op": "inventory.list_agents_filtered_search",
+   "n": 10,
+   "p50_ms": 8.41,
+   "p95_ms": 12.5,
+   "p99_ms": 12.5,
+   "min_ms": 8.0,
+   "max_ms": 12.5,
+   "statements": 5,
+   "distinct_read_statements": 5,
+   "hot_seq_scans": [],
+   "plans": []
+  },
+  {
+   "op": "cost.summary_total",
+   "n": 10,
+   "p50_ms": 1.25,
+   "p95_ms": 1.74,
+   "p99_ms": 1.74,
+   "min_ms": 1.17,
+   "max_ms": 1.74,
+   "statements": 1,
+   "distinct_read_statements": 1,
+   "hot_seq_scans": [],
+   "plans": [],
+   "executions": null
+  },
+  {
+   "op": "cost.summary_by_agent",
+   "n": 5,
+   "p50_ms": 3.21,
+   "p95_ms": 3.61,
+   "p99_ms": 3.61,
+   "min_ms": 3.15,
+   "max_ms": 3.61,
+   "statements": 2,
+   "distinct_read_statements": 2,
+   "hot_seq_scans": [],
+   "plans": []
+  },
+  {
+   "op": "posture.full_population_origin_state_guard(all_tenants)",
+   "n": 10,
+   "p50_ms": 1.0,
+   "p95_ms": 1.29,
+   "p99_ms": 1.29,
+   "min_ms": 0.84,
+   "max_ms": 1.29,
+   "statements": 1,
+   "distinct_read_statements": 1,
+   "hot_seq_scans": [],
+   "plans": [],
+   "violating_rows": 0
+  },
+  {
+   "op": "posture.evaluate_tenant_full",
+   "n": 1,
+   "p50_ms": 1215.6,
+   "p95_ms": 1215.6,
+   "agents_evaluated": 42,
+   "budget_exceeded": false,
+   "findings_opened": 126,
+   "summary": {
+    "agents_evaluated": 42,
+    "findings_opened": 126,
+    "findings_resolved": 0,
+    "insufficient_data": 0,
+    "rule_errors": 0,
+    "ruleset_version": "1"
+   },
+   "tenant_agents": 42,
+   "per_agent_ms": 28.94
+  },
+  {
+   "op": "gateway.authz_only_denied_outside_scope(403)",
+   "n": 40,
+   "p50_ms": 15.16,
+   "p95_ms": 17.05,
+   "p99_ms": 21.41,
+   "min_ms": 12.77,
+   "max_ms": 21.41,
+   "statements": 13,
+   "distinct_read_statements": 4,
+   "hot_seq_scans": [],
+   "plans": []
+  },
+  {
+   "op": "gateway.allowed_with_local_dispatch(200)",
+   "n": 40,
+   "p50_ms": 219.02,
+   "p95_ms": 242.9,
+   "p99_ms": 283.85,
+   "min_ms": 198.81,
+   "max_ms": 283.85,
+   "statements": 27,
+   "distinct_read_statements": 11,
+   "hot_seq_scans": [],
+   "plans": []
+  },
+  {
+   "op": "reconciliation.dense_run",
+   "n": 1,
+   "observations": 42,
+   "elapsed_s": 0.24,
+   "throughput_obs_per_s": 175.0,
+   "per_obs_ms": 5.71,
+   "result": {
+    "created": 19,
+    "linked": 21,
+    "flagged": 2
+   },
+   "expected": {
+    "observations": 42,
+    "created": 19,
+    "linked": 21,
+    "flagged": 2,
+    "distinct_link_targets": 21,
+    "distinct_flag_targets": 2
+   },
+   "precision": {
+    "created_match": true,
+    "linked_match": true,
+    "flagged_match": true,
+    "agents_delta_equals_created": true,
+    "duplicate_external_references": 0
+   },
+   "hot_seq_scans": [],
+   "plans": [
+    {
+     "stmt": "bd18eace33",
+     "sql": "SELECT agents.organization_id, agents.name, agents.description, agents.agent_type, agents.api_key_hash, agents.status, agents.owner, agents.department, agents.version, agents.capabilities, agents.default_risk_score, agents.max_allowed_risk, agents.human_approval_required, agents.auto_suspend_threshold, agents.risk_level, agents.health, agents.slug, agents.project_id, agents.owner_type, agents.owner_id, agents.criticality, agents.data_classification, agents.default_environment, agents.lifecycle_status, agents.archived_at, agents.business_unit_id, agents.department_id, agents.team_id, agents.identity_id, agents.display_name, agents.business_purpose, agents.autonomy_level, agents.technical_owner_id, agents.compliance_owner_id, agents.support_contact, agents.documentation_url, agents.repository_url, agents.tags, agents.metadata, agents.registration_source, agents.external_reference, agents.created_by, agents.updated_by, agents.validated_at, agents.approved_at, agents.activated_at, agents.suspended_at, agents.retired_at, agents.row_version, agents.control_state, agents.origin_category, agents.origin_provider, agents.external_enforcement_mode, agents.first_observed_at, agents.last_observed_at, agents.discovery_source_ref, agents.discovery_confidence, agents.id, agents.created_at, agents.updated_at \nFROM agents \nWHERE agents.organization_id = %(organization_id_1)s::UUID AND agents.external_reference = %(external_reference_1)s",
+     "plan": "Index Scan using uq_agents_org_external_ref on agents  (cost=0.14..8.16 rows=1 width=4504) (actual time=0.008..0.009 rows=1 loops=1)\n  Index Cond: ((organization_id = '4bc33d97-a8d0-4a84-b841-64b0aff74923'::uuid) AND ((external_reference)::text = 'ext-0-0'::text))\n  Buffers: shared hit=4\nPlanning Time: 0.091 ms\nExecution Time: 0.018 ms"
+    }
+   ]
+  },
+  {
+   "op": "reconciliation.check_staleness_10pct_missing",
+   "n": 1,
+   "linked_agents": 40,
+   "elapsed_s": 0.04,
+   "result": {
+    "raised": 4,
+    "resolved": 0
+   },
+   "p50_ms": 40.0,
+   "p95_ms": 40.0
+  },
+  {
+   "op": "reconciliation.concurrent_3_sessions_300_obs",
+   "n": 1,
+   "elapsed_s": 5.28,
+   "per_session": [
+    {
+     "created": 156,
+     "linked": 144,
+     "flagged": 0
+    },
+    {
+     "created": 12,
+     "linked": 288,
+     "flagged": 0
+    },
+    {
+     "created": 132,
+     "linked": 168,
+     "flagged": 0
+    }
+   ],
+   "errors": [],
+   "agents_created_total": 300,
+   "expected_agents": 300,
+   "duplicates": 0,
+   "no_duplicate_create": true
+  },
+  {
+   "op": "discovery.sweep_volume_two_runs",
+   "n": 2,
+   "items_served": 42,
+   "runs": [
+    {
+     "status": "SUCCEEDED",
+     "observations": 42,
+     "created": 42,
+     "linked": 0,
+     "findings": 0,
+     "elapsed_s": 0.61,
+     "checkpoint": {},
+     "error": null
+    },
+    {
+     "status": "SUCCEEDED",
+     "observations": 42,
+     "created": 0,
+     "linked": 42,
+     "findings": 0,
+     "elapsed_s": 0.43,
+     "checkpoint": {},
+     "error": null
+    }
+   ],
+   "idempotent": true,
+   "duplicates": 0,
+   "p50_ms": 610.0,
+   "p95_ms": 430.0
+  },
+  {
+   "op": "tenant.small_tenant_list_agents_beside_busy_tenant",
+   "n": 10,
+   "p50_ms": 9.86,
+   "p95_ms": 12.36,
+   "p99_ms": 12.36,
+   "min_ms": 8.93,
+   "max_ms": 12.36,
+   "statements": 5,
+   "distinct_read_statements": 5,
+   "hot_seq_scans": [],
+   "plans": [],
+   "small_tenant_agents": 25,
+   "api_total_matches_fixture": null
+  }
+ ],
+ "checks": {
+  "grants_issued": {
+   "count": 14,
+   "first_error": null
+  },
+  "gateway_dispatch_hits": 41,
+  "cross_tenant_blast_radius": "GRAPH_NODE_NOT_FOUND",
+  "hostile_edge_truncated_at_tenant_edge": true,
+  "hostile_edge_walk_ms": 5.1,
+  "estate_total_equals_live_count": true,
+  "estate_total_equals_fixture": true
+ },
+ "hot_seq_scan_ops": [],
+ "elapsed_s": 20.6,
+ "env": {
+  "postgres": "17.10 host-native (PostgreSQL 17 Windows build, dedicated instance on 127.0.0.1:55432; 12 CPU / 16 GB host)",
+  "shared_buffers": "512MB",
+  "work_mem": "32MB",
+  "harness": "in-process, host CPython 3.13, loopback only"
+ }
+}

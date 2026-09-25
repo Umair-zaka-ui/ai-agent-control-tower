@@ -1,0 +1,331 @@
+17:09:43Z ledger init rc=0 ledger initialised at lab\run\results\ledger.jsonl (genesis 1f381a479ee8165f)
+17:09:43Z == fixtures dist=realistic rung=100
+17:09:49Z fixtures rc=0 in 6s :: {"totals": {"organizations": 4, "users": 14, "agents": 100, "tools": 20, "resources": 20, "control_graph_edges": 924, "agent_executions": 151, "discovery_observations": 342, "external_gateway_calls": 360, "budgets": 43, "runtime_alerts": 100}, "seconds": 2.0, "manifest": "C:\\Users\\PHS\\Desktop\\ai-agent-control-tower\\lab\\run\\results\\v9_fixture_realistic_100.json"}
+17:09:49Z ledger anchor rc=0: anchored 1 file(s); head=94a9cdc2debf2107
+17:09:49Z == measure dist=realistic rung=100
+17:10:14Z measure rc=0 in 25s
+17:10:14Z    == measuring rung=100 dist=realistic tenant_agents=42 tenant_edges=408 totals={'organizations': 4, 'users': 14, 'agents': 100, 'tools': 20, 'resources': 20, 'control_graph_edges': 924, 'agent_executions': 151, 'discovery_observations': 342, 'external_gateway_calls': 360, 'budgets': 43, 'runtime_alerts': 100}
+17:10:14Z        reachability depth 4: 108.2ms nodes=5
+17:10:14Z        reachability depth 8: 6.6ms nodes=14
+17:10:14Z        reachability depth 12: 8.8ms nodes=24
+17:10:14Z        reachability depth 16: 10.6ms nodes=30
+17:10:14Z        reachability depth 20: 11.5ms nodes=34
+17:10:14Z        reachability depth 24: 11.5ms nodes=34
+17:10:14Z        reachability depth 32: 12.8ms nodes=34
+17:10:14Z        reachability.super_node_fanout_depth2: p50=1.52ms p95=1.91ms n=5 stmts=3 hot_seq_scans=0
+17:10:14Z        blast_radius.reverse_hub_resource_depth16: p50=7.76ms p95=13.9ms n=5 stmts=10 hot_seq_scans=0
+17:10:14Z        blast_radius.reverse_typical_resource_depth16: p50=6.05ms p95=6.93ms n=10 stmts=9 hot_seq_scans=0
+17:10:14Z        blast_radius.what_breaks_tool_hub_depth16: p50=7.11ms p95=8.03ms n=5 stmts=9 hot_seq_scans=0
+17:10:14Z        blast_radius.agents_reaching_resource_kind_payroll: p50=14.36ms p95=20.98ms n=5 stmts=18 hot_seq_scans=0
+17:10:14Z        authority_chain.reconstruct_replay_depth31_plus_10_delegation_hops: p50=6.01ms p95=14.34ms n=10 stmts=13 hot_seq_scans=0
+17:10:14Z        authority_chain.reconstruct_typical: p50=12.38ms p95=15.99ms n=10 stmts=37 hot_seq_scans=0
+17:10:14Z        estate.command_center_overview: p50=11.66ms p95=32.87ms n=10 stmts=25 hot_seq_scans=0
+17:10:14Z        inventory.list_agents_page1_size50: p50=11.48ms p95=14.33ms n=10 stmts=5 hot_seq_scans=0
+17:10:14Z        inventory.list_agents_last_page(1)_size50: p50=10.4ms p95=11.58ms n=5 stmts=5 hot_seq_scans=0
+17:10:14Z        inventory.list_agents_filtered_search: p50=8.41ms p95=12.5ms n=10 stmts=5 hot_seq_scans=0
+17:10:14Z        cost.summary_total: p50=1.25ms p95=1.74ms n=10 stmts=1 hot_seq_scans=0
+17:10:14Z        cost.summary_by_agent: p50=3.21ms p95=3.61ms n=5 stmts=2 hot_seq_scans=0
+17:10:14Z        posture.full_population_origin_state_guard(all_tenants): p50=1.0ms p95=1.29ms n=10 stmts=1 hot_seq_scans=0
+17:10:14Z        posture.evaluate_tenant_full: {'op': 'posture.evaluate_tenant_full', 'n': 1, 'p50_ms': 1215.6, 'p95_ms': 1215.6, 'agents_evaluated': 42, 'budget_exceeded': False, 'findings_opened': 126, 'summary': {'agents_evaluated': 42, 'findings_opened': 126, 'findings_resolved': 0, 'insufficient_data': 0, 'rule_errors': 0, 'ruleset_version': '1'}, 'tenant_agents': 42, 'per_agent_ms': 28.94}
+17:10:14Z        gateway.authz_only_denied_outside_scope(403): p50=15.16ms p95=17.05ms n=40 stmts=13 hot_seq_scans=0
+17:10:14Z        gateway.allowed_with_local_dispatch(200): p50=219.02ms p95=242.9ms n=40 stmts=27 hot_seq_scans=0
+17:10:14Z        reconciliation.dense_run: 42 obs in 0.24s (175.0/s) result={'created': 19, 'linked': 21, 'flagged': 2} precision={'created_match': True, 'linked_match': True, 'flagged_match': True, 'agents_delta_equals_created': True, 'duplicate_external_references': 0}
+17:10:14Z        staleness: 40 linked, {'raised': 4, 'resolved': 0} in 0.04s
+17:10:14Z        race: sessions=[{'created': 156, 'linked': 144, 'flagged': 0}, {'created': 12, 'linked': 288, 'flagged': 0}, {'created': 132, 'linked': 168, 'flagged': 0}] agents=300 dups=0 errors=[]
+17:10:14Z        sweep: {'op': 'discovery.sweep_volume_two_runs', 'n': 2, 'items_served': 42, 'runs': [{'status': 'SUCCEEDED', 'observations': 42, 'created': 42, 'linked': 0, 'findings': 0, 'elapsed_s': 0.61, 'checkpoint': {}, 'error': None}, {'status': 'SUCCEEDED', 'observations': 42, 'created': 0, 'linked': 42, 'findings': 0, 'elapsed_s': 0.43, 'checkpoint': {}, 'error': None}], 'idempotent': True, 'duplicates': 0, 'p50_ms': 610.0, 'p95_ms': 430.0}
+17:10:14Z        tenant.small_tenant_list_agents_beside_busy_tenant: p50=9.86ms p95=12.36ms n=10 stmts=5 hot_seq_scans=0
+17:10:14Z        tenant checks: cross_tenant=GRAPH_NODE_NOT_FOUND hostile_truncated=True estate_ok=True
+17:10:14Z    == wrote C:\Users\PHS\Desktop\ai-agent-control-tower\lab\run\results\v9_measure_realistic_100.json in 20.6s
+17:10:14Z ledger anchor rc=0: anchored 1 file(s); head=58366cfd1f61732a
+17:10:14Z == fixtures dist=realistic rung=1000
+17:10:21Z fixtures rc=0 in 7s :: {"totals": {"organizations": 10, "users": 20, "agents": 1000, "tools": 96, "resources": 59, "control_graph_edges": 8874, "agent_executions": 400, "discovery_observations": 556, "external_gateway_calls": 921, "budgets": 101, "runtime_alerts": 100}, "seconds": 2.5, "manifest": "C:\\Users\\PHS\\Desktop\\ai-agent-control-tower\\lab\\run\\results\\v9_fixture_realistic_1000.json"}
+17:10:21Z ledger anchor rc=0: anchored 1 file(s); head=7fd4a20800c0923c
+17:10:21Z == measure dist=realistic rung=1000
+17:11:22Z measure rc=0 in 61s
+17:11:22Z    == measuring rung=1000 dist=realistic tenant_agents=256 tenant_edges=2433 totals={'organizations': 10, 'users': 20, 'agents': 1000, 'tools': 96, 'resources': 59, 'control_graph_edges': 8874, 'agent_executions': 400, 'discovery_observations': 556, 'external_gateway_calls': 921, 'budgets': 101, 'runtime_alerts': 100}
+17:11:22Z        reachability depth 4: 118.4ms nodes=52
+17:11:22Z        reachability depth 8: 47.7ms nodes=178
+17:11:22Z        reachability depth 12: 77.1ms nodes=180
+17:11:22Z        reachability depth 16: 426.3ms nodes=180
+17:11:22Z        reachability depth 20: 4820.3ms nodes=180
+17:11:22Z        reachability depth 24: OperationalError after 18835.3ms
+17:11:22Z        reachability.super_node_fanout_depth2: p50=1.85ms p95=2.12ms n=5 stmts=3 hot_seq_scans=0
+17:11:22Z        blast_radius.reverse_hub_resource_depth16: p50=12.39ms p95=20.18ms n=5 stmts=10 hot_seq_scans=0
+17:11:22Z        blast_radius.reverse_typical_resource_depth16: p50=10.34ms p95=13.09ms n=10 stmts=10 hot_seq_scans=0
+17:11:22Z        blast_radius.what_breaks_tool_hub_depth16: p50=8.09ms p95=8.85ms n=5 stmts=9 hot_seq_scans=0
+17:11:22Z        blast_radius.agents_reaching_resource_kind_payroll: p50=24.71ms p95=29.2ms n=5 stmts=18 hot_seq_scans=0
+17:11:22Z        authority_chain.reconstruct_replay_depth31_plus_10_delegation_hops: p50=6.18ms p95=17.94ms n=10 stmts=13 hot_seq_scans=0
+17:11:22Z        authority_chain.reconstruct_typical: p50=14.79ms p95=19.21ms n=10 stmts=37 hot_seq_scans=0
+17:11:22Z        estate.command_center_overview: p50=14.27ms p95=27.63ms n=10 stmts=25 hot_seq_scans=0
+17:11:22Z        inventory.list_agents_page1_size50: p50=12.91ms p95=14.87ms n=10 stmts=5 hot_seq_scans=0
+17:11:22Z        inventory.list_agents_last_page(5)_size50: p50=11.4ms p95=12.71ms n=5 stmts=5 hot_seq_scans=0
+17:11:22Z        inventory.list_agents_filtered_search: p50=9.26ms p95=10.55ms n=10 stmts=5 hot_seq_scans=0
+17:11:22Z        cost.summary_total: p50=1.27ms p95=1.52ms n=10 stmts=1 hot_seq_scans=0
+17:11:22Z        cost.summary_by_agent: p50=5.3ms p95=5.79ms n=5 stmts=2 hot_seq_scans=0
+17:11:22Z        posture.full_population_origin_state_guard(all_tenants): p50=1.32ms p95=1.76ms n=10 stmts=1 hot_seq_scans=0
+17:11:22Z        posture.evaluate_tenant_full: {'op': 'posture.evaluate_tenant_full', 'n': 1, 'p50_ms': 7860.1, 'p95_ms': 7860.1, 'agents_evaluated': 256, 'budget_exceeded': False, 'findings_opened': 792, 'summary': {'agents_evaluated': 256, 'findings_opened': 792, 'findings_resolved': 0, 'insufficient_data': 0, 'rule_errors': 0, 'ruleset_version': '1'}, 'tenant_agents': 256, 'per_agent_ms': 30.7}
+17:11:22Z        gateway.authz_only_denied_outside_scope(403): p50=13.57ms p95=20.32ms n=40 stmts=13 hot_seq_scans=0
+17:11:22Z        gateway.allowed_with_local_dispatch(200): p50=228.8ms p95=256.31ms n=40 stmts=27 hot_seq_scans=0
+17:11:22Z        reconciliation.dense_run: 256 obs in 1.5s (170.4/s) result={'created': 116, 'linked': 128, 'flagged': 12} precision={'created_match': True, 'linked_match': True, 'flagged_match': True, 'agents_delta_equals_created': True, 'duplicate_external_references': 0}
+17:11:22Z        staleness: 244 linked, {'raised': 25, 'resolved': 0} in 0.20s
+17:11:22Z        race: sessions=[{'created': 71, 'linked': 229, 'flagged': 0}, {'created': 225, 'linked': 75, 'flagged': 0}, {'created': 4, 'linked': 296, 'flagged': 0}] agents=300 dups=0 errors=[]
+17:11:22Z        sweep: {'op': 'discovery.sweep_volume_two_runs', 'n': 2, 'items_served': 256, 'runs': [{'status': 'SUCCEEDED', 'observations': 256, 'created': 256, 'linked': 0, 'findings': 0, 'elapsed_s': 2.62, 'checkpoint': {}, 'error': None}, {'status': 'SUCCEEDED', 'observations': 256, 'created': 0, 'linked': 256, 'findings': 0, 'elapsed_s': 1.76, 'checkpoint': {}, 'error': None}], 'idempotent': True, 'duplicates': 0, 'p50_ms': 2620.0, 'p95_ms': 1760.0}
+17:11:22Z        tenant.small_tenant_list_agents_beside_busy_tenant: p50=11.21ms p95=12.22ms n=10 stmts=5 hot_seq_scans=0
+17:11:22Z        tenant checks: cross_tenant=GRAPH_NODE_NOT_FOUND hostile_truncated=True estate_ok=True
+17:11:22Z    == wrote C:\Users\PHS\Desktop\ai-agent-control-tower\lab\run\results\v9_measure_realistic_1000.json in 56.6s
+17:11:22Z ledger anchor rc=0: anchored 1 file(s); head=eaa0aaa9de270bbe
+17:11:22Z == fixtures dist=realistic rung=10000
+17:11:33Z fixtures rc=0 in 11s :: {"totals": {"organizations": 100, "users": 110, "agents": 10000, "tools": 996, "resources": 655, "control_graph_edges": 87718, "agent_executions": 1576, "discovery_observations": 1304, "external_gateway_calls": 3612, "budgets": 101, "runtime_alerts": 100}, "seconds": 6.5, "manifest": "C:\\Users\\PHS\\Desktop\\ai-agent-control-tower\\lab\\run\\results\\v9_fixture_realistic_10000.json"}
+17:11:33Z ledger anchor rc=0: anchored 1 file(s); head=1cec56f7284fdf35
+17:11:33Z == measure dist=realistic rung=10000
+17:13:04Z measure rc=0 in 92s
+17:13:04Z    == measuring rung=10000 dist=realistic tenant_agents=1004 tenant_edges=9513 totals={'organizations': 100, 'users': 110, 'agents': 10000, 'tools': 996, 'resources': 655, 'control_graph_edges': 87718, 'agent_executions': 1576, 'discovery_observations': 1304, 'external_gateway_calls': 3612, 'budgets': 101, 'runtime_alerts': 100}
+17:13:04Z        reachability depth 4: 127.2ms nodes=45
+17:13:04Z        reachability depth 8: 99.3ms nodes=356
+17:13:04Z        reachability depth 12: 240.2ms nodes=694
+17:13:04Z        reachability depth 16: 1249.9ms nodes=714
+17:13:04Z        reachability depth 20: OperationalError after 17821.1ms
+17:13:04Z        reachability.super_node_fanout_depth2: p50=1.65ms p95=1.68ms n=3 stmts=3 hot_seq_scans=0
+17:13:04Z        blast_radius.reverse_hub_resource_depth16: p50=14.1ms p95=21.01ms n=3 stmts=10 hot_seq_scans=0
+17:13:04Z        blast_radius.reverse_typical_resource_depth16: p50=7.95ms p95=9.94ms n=10 stmts=10 hot_seq_scans=0
+17:13:04Z        blast_radius.what_breaks_tool_hub_depth16: p50=5.2ms p95=5.29ms n=3 stmts=9 hot_seq_scans=0
+17:13:04Z        blast_radius.agents_reaching_resource_kind_payroll: p50=26.32ms p95=27.01ms n=3 stmts=18 hot_seq_scans=0
+17:13:04Z        authority_chain.reconstruct_replay_depth31_plus_10_delegation_hops: p50=5.95ms p95=17.57ms n=10 stmts=13 hot_seq_scans=0
+17:13:04Z        authority_chain.reconstruct_typical: p50=19.11ms p95=24.89ms n=10 stmts=37 hot_seq_scans=0
+17:13:04Z        estate.command_center_overview: p50=14.75ms p95=27.07ms n=10 stmts=25 hot_seq_scans=0
+17:13:04Z        inventory.list_agents_page1_size50: p50=11.84ms p95=17.09ms n=10 stmts=5 hot_seq_scans=0
+17:13:04Z        inventory.list_agents_last_page(20)_size50: p50=13.48ms p95=14.66ms n=5 stmts=5 hot_seq_scans=0
+17:13:04Z        inventory.list_agents_filtered_search: p50=9.92ms p95=11.55ms n=10 stmts=5 hot_seq_scans=0
+17:13:04Z        cost.summary_total: p50=1.49ms p95=2.47ms n=10 stmts=1 hot_seq_scans=0
+17:13:04Z        cost.summary_by_agent: p50=10.42ms p95=11.8ms n=5 stmts=2 hot_seq_scans=1
+17:13:04Z        posture.full_population_origin_state_guard(all_tenants): p50=4.65ms p95=4.87ms n=10 stmts=1 hot_seq_scans=1
+17:13:04Z        posture.evaluate_tenant_full: {'op': 'posture.evaluate_tenant_full', 'n': 1, 'p50_ms': 28123.1, 'p95_ms': 28123.1, 'agents_evaluated': 1004, 'budget_exceeded': False, 'findings_opened': 2537, 'summary': {'agents_evaluated': 1004, 'findings_opened': 2537, 'findings_resolved': 0, 'insufficient_data': 0, 'rule_errors': 0, 'ruleset_version': '1'}, 'tenant_agents': 1004, 'per_agent_ms': 28.01}
+17:13:04Z        gateway.authz_only_denied_outside_scope(403): p50=11.8ms p95=14.4ms n=40 stmts=13 hot_seq_scans=0
+17:13:04Z        gateway.allowed_with_local_dispatch(200): p50=207.13ms p95=229.72ms n=40 stmts=27 hot_seq_scans=0
+17:13:04Z        reconciliation.dense_run: 1004 obs in 5.06s (198.4/s) result={'created': 452, 'linked': 502, 'flagged': 50} precision={'created_match': True, 'linked_match': True, 'flagged_match': True, 'agents_delta_equals_created': True, 'duplicate_external_references': 0}
+17:13:04Z        staleness: 954 linked, {'raised': 96, 'resolved': 0} in 0.69s
+17:13:04Z        race: sessions=[{'created': 280, 'linked': 20, 'flagged': 0}, {'created': 0, 'linked': 300, 'flagged': 0}, {'created': 20, 'linked': 280, 'flagged': 0}] agents=300 dups=0 errors=[]
+17:13:04Z        sweep: {'op': 'discovery.sweep_volume_two_runs', 'n': 2, 'items_served': 1004, 'runs': [{'status': 'SUCCEEDED', 'observations': 1004, 'created': 1004, 'linked': 0, 'findings': 0, 'elapsed_s': 10.19, 'checkpoint': {}, 'error': None}, {'status': 'SUCCEEDED', 'observations': 1004, 'created': 0, 'linked': 1004, 'findings': 0, 'elapsed_s': 5.85, 'checkpoint': {}, 'error': None}], 'idempotent': True, 'duplicates': 0, 'p50_ms': 10190.0, 'p95_ms': 5850.0}
+17:13:04Z        tenant.small_tenant_list_agents_beside_busy_tenant: p50=11.32ms p95=145.17ms n=10 stmts=5 hot_seq_scans=0
+17:13:04Z        tenant checks: cross_tenant=GRAPH_NODE_NOT_FOUND hostile_truncated=True estate_ok=True
+17:13:04Z    == wrote C:\Users\PHS\Desktop\ai-agent-control-tower\lab\run\results\v9_measure_realistic_10000.json in 87.5s
+17:13:04Z ledger anchor rc=0: anchored 1 file(s); head=2b682e4cc8b8d57c
+17:13:04Z == fixtures dist=realistic rung=100000
+17:13:54Z fixtures rc=0 in 50s :: {"totals": {"organizations": 1000, "users": 1010, "agents": 100000, "tools": 10199, "resources": 6790, "control_graph_edges": 872549, "agent_executions": 7212, "discovery_observations": 5019, "external_gateway_calls": 16986, "budgets": 101, "runtime_alerts": 100}, "seconds": 46.1, "manifest": "C:\\Users\\PHS\\Desktop\\ai-agent-control-tower\\lab\\run\\results\\v9_fixture_realistic_100000.json"}
+17:13:54Z ledger anchor rc=0: anchored 1 file(s); head=8f4d735e94bab26b
+17:13:54Z == measure dist=realistic rung=100000
+17:22:29Z measure rc=0 in 515s
+17:22:29Z    rol_graph_edges': 872549, 'agent_executions': 7212, 'discovery_observations': 5019, 'external_gateway_calls': 16986, 'budgets': 101, 'runtime_alerts': 100}
+17:22:29Z        reachability depth 4: 217.1ms nodes=22
+17:22:29Z        reachability depth 8: 72.7ms nodes=287
+17:22:29Z        reachability depth 12: 520.1ms nodes=1883
+17:22:29Z        reachability depth 16: 1140.7ms nodes=2930
+17:22:29Z        reachability depth 20: 16168.6ms nodes=3011
+17:22:29Z        reachability depth 24: OperationalError after 17099.5ms
+17:22:29Z        reachability.super_node_fanout_depth2: p50=2.44ms p95=2.57ms n=3 stmts=4 hot_seq_scans=0
+17:22:29Z        blast_radius.reverse_hub_resource_depth16: p50=6.71ms p95=7.8ms n=3 stmts=9 hot_seq_scans=0
+17:22:29Z        blast_radius.reverse_typical_resource_depth16: p50=8.68ms p95=10.7ms n=10 stmts=10 hot_seq_scans=0
+17:22:29Z        blast_radius.what_breaks_tool_hub_depth16: p50=7.87ms p95=8.27ms n=3 stmts=9 hot_seq_scans=0
+17:22:29Z        blast_radius.agents_reaching_resource_kind_payroll: p50=30.41ms p95=32.59ms n=3 stmts=17 hot_seq_scans=0
+17:22:29Z        authority_chain.reconstruct_replay_depth31_plus_10_delegation_hops: p50=5.62ms p95=6.15ms n=10 stmts=13 hot_seq_scans=0
+17:22:29Z        authority_chain.reconstruct_typical: p50=47.54ms p95=178.22ms n=10 stmts=37 hot_seq_scans=0
+17:22:29Z        estate.command_center_overview: p50=29.0ms p95=35.5ms n=10 stmts=25 hot_seq_scans=2
+17:22:29Z        inventory.list_agents_page1_size50: p50=18.92ms p95=148.58ms n=10 stmts=5 hot_seq_scans=0
+17:22:29Z        inventory.list_agents_last_page(94)_size50: p50=17.2ms p95=20.63ms n=5 stmts=5 hot_seq_scans=0
+17:22:29Z        inventory.list_agents_filtered_search: p50=14.39ms p95=16.41ms n=10 stmts=5 hot_seq_scans=0
+17:22:29Z        cost.summary_total: p50=4.08ms p95=10.51ms n=10 stmts=1 hot_seq_scans=1
+17:22:29Z        cost.summary_by_agent: p50=16.69ms p95=19.83ms n=5 stmts=2 hot_seq_scans=2
+17:22:29Z        posture.full_population_origin_state_guard(all_tenants): p50=35.21ms p95=38.19ms n=10 stmts=1 hot_seq_scans=1
+17:22:29Z        posture.evaluate_tenant_full: {'op': 'posture.evaluate_tenant_full', 'n': 1, 'p50_ms': 139641.8, 'p95_ms': 139641.8, 'agents_evaluated': 4719, 'budget_exceeded': False, 'findings_opened': 10438, 'summary': {'agents_evaluated': 4719, 'findings_opened': 10438, 'findings_resolved': 0, 'insufficient_data': 0, 'rule_errors': 0, 'ruleset_version': '1'}, 'tenant_agents': 4719, 'per_agent_ms': 29.59}
+17:22:29Z        gateway.authz_only_denied_outside_scope(403): p50=12.1ms p95=13.61ms n=40 stmts=13 hot_seq_scans=0
+17:22:29Z        gateway.allowed_with_local_dispatch(200): p50=205.88ms p95=229.13ms n=40 stmts=27 hot_seq_scans=0
+17:22:29Z        reconciliation.dense_run: 4719 obs in 24.25s (194.6/s) result={'created': 2125, 'linked': 2359, 'flagged': 235} precision={'created_match': True, 'linked_match': True, 'flagged_match': True, 'agents_delta_equals_created': True, 'duplicate_external_references': 0}
+17:22:29Z        staleness: 4484 linked, {'raised': 449, 'resolved': 0} in 3.28s
+17:22:29Z        race: sessions=[{'created': 284, 'linked': 16, 'flagged': 0}, {'created': 1, 'linked': 299, 'flagged': 0}, {'created': 15, 'linked': 285, 'flagged': 0}] agents=300 dups=0 errors=[]
+17:22:29Z        sweep: {'op': 'discovery.sweep_volume_two_runs', 'n': 2, 'items_served': 4719, 'runs': [{'status': 'SUCCEEDED', 'observations': 4719, 'created': 4719, 'linked': 0, 'findings': 0, 'elapsed_s': 46.96, 'checkpoint': {}, 'error': None}, {'status': 'SUCCEEDED', 'observations': 4719, 'created': 0, 'linked': 4719, 'findings': 0, 'elapsed_s': 31.2, 'checkpoint': {}, 'error': None}], 'idempotent': True, 'duplicates': 0, 'p50_ms': 46960.0, 'p95_ms': 31200.0}
+17:22:29Z        sweep bound: {'op': 'discovery.sweep_100k_source_single_run_bound', 'n': 1, 'items_served': 100000, 'status': 'PARTIAL', 'observations': 20000, 'created': 20000, 'checkpoint': {'offset': 19800}, 'error': 'absolute item bound reached', 'elapsed_s': 209.6, 'p50_ms': 209599.9, 'p95_ms': 209599.9}
+17:22:29Z        tenant.small_tenant_list_agents_beside_busy_tenant: p50=24.63ms p95=38.99ms n=10 stmts=5 hot_seq_scans=0
+17:22:29Z        tenant checks: cross_tenant=GRAPH_NODE_NOT_FOUND hostile_truncated=True estate_ok=True
+17:22:29Z    == wrote C:\Users\PHS\Desktop\ai-agent-control-tower\lab\run\results\v9_measure_realistic_100000.json in 510.9s
+17:22:30Z ledger anchor rc=0: anchored 1 file(s); head=dee88e0c936e7375
+17:22:30Z == fixtures dist=worst rung=100
+17:22:36Z fixtures rc=0 in 6s :: {"totals": {"organizations": 21, "users": 31, "agents": 100, "tools": 108, "resources": 105, "control_graph_edges": 1175, "agent_executions": 151, "discovery_observations": 380, "external_gateway_calls": 360, "budgets": 81, "runtime_alerts": 100}, "seconds": 2.2, "manifest": "C:\\Users\\PHS\\Desktop\\ai-agent-control-tower\\lab\\run\\results\\v9_fixture_worst_100.json"}
+17:22:36Z ledger anchor rc=0: anchored 1 file(s); head=14ea7af7679f47c6
+17:22:36Z == measure dist=worst rung=100
+17:23:57Z measure rc=0 in 81s
+17:23:57Z    == measuring rung=100 dist=worst tenant_agents=80 tenant_edges=915 totals={'organizations': 21, 'users': 31, 'agents': 100, 'tools': 108, 'resources': 105, 'control_graph_edges': 1175, 'agent_executions': 151, 'discovery_observations': 380, 'external_gateway_calls': 360, 'budgets': 81, 'runtime_alerts': 100}
+17:23:57Z        reachability depth 4: 133.9ms nodes=61
+17:23:57Z        reachability depth 8: 45.2ms nodes=75
+17:23:57Z        reachability depth 12: 1911.9ms nodes=75
+17:23:57Z        reachability depth 16: OperationalError after 25843.6ms
+17:23:57Z        reachability.super_node_fanout_depth2: p50=6.91ms p95=7.53ms n=5 stmts=19 hot_seq_scans=0
+17:23:57Z        blast_radius.reverse_hub_resource_depth16: p50=10.36ms p95=15.46ms n=5 stmts=10 hot_seq_scans=0
+17:23:57Z        blast_radius.reverse_typical_resource_depth16: p50=7.97ms p95=9.67ms n=10 stmts=10 hot_seq_scans=0
+17:23:57Z        blast_radius.what_breaks_tool_hub_depth16: p50=5.66ms p95=5.88ms n=5 stmts=9 hot_seq_scans=0
+17:23:57Z        blast_radius.agents_reaching_resource_kind_payroll: p50=18.71ms p95=19.83ms n=5 stmts=17 hot_seq_scans=0
+17:23:57Z        authority_chain.reconstruct_replay_depth31_plus_10_delegation_hops: p50=5.32ms p95=13.26ms n=10 stmts=13 hot_seq_scans=0
+17:23:57Z        authority_chain.reconstruct_typical: p50=11.38ms p95=13.92ms n=10 stmts=37 hot_seq_scans=0
+17:23:57Z        estate.command_center_overview: p50=12.14ms p95=25.92ms n=10 stmts=25 hot_seq_scans=0
+17:23:57Z        inventory.list_agents_page1_size50: p50=10.3ms p95=14.43ms n=10 stmts=5 hot_seq_scans=0
+17:23:57Z        inventory.list_agents_last_page(1)_size50: p50=9.94ms p95=10.18ms n=5 stmts=5 hot_seq_scans=0
+17:23:57Z        inventory.list_agents_filtered_search: p50=7.74ms p95=8.68ms n=10 stmts=5 hot_seq_scans=0
+17:23:57Z        cost.summary_total: p50=1.31ms p95=1.72ms n=10 stmts=1 hot_seq_scans=0
+17:23:57Z        cost.summary_by_agent: p50=3.46ms p95=3.6ms n=5 stmts=2 hot_seq_scans=0
+17:23:57Z        posture.full_population_origin_state_guard(all_tenants): p50=1.08ms p95=1.41ms n=10 stmts=1 hot_seq_scans=0
+17:23:57Z        posture.evaluate_tenant_full: {'op': 'posture.evaluate_tenant_full', 'n': 1, 'p50_ms': 1983.5, 'p95_ms': 1983.5, 'agents_evaluated': 80, 'budget_exceeded': False, 'findings_opened': 247, 'summary': {'agents_evaluated': 80, 'findings_opened': 247, 'findings_resolved': 0, 'insufficient_data': 0, 'rule_errors': 0, 'ruleset_version': '1'}, 'tenant_agents': 80, 'per_agent_ms': 24.79}
+17:23:57Z        gateway.authz_only_denied_outside_scope(403): p50=12.09ms p95=15.0ms n=40 stmts=13 hot_seq_scans=0
+17:23:57Z        gateway.allowed_with_local_dispatch(200): p50=218.15ms p95=244.44ms n=40 stmts=27 hot_seq_scans=0
+17:23:57Z        reconciliation.dense_run: 80 obs in 0.51s (156.3/s) result={'created': 36, 'linked': 40, 'flagged': 4} precision={'created_match': True, 'linked_match': True, 'flagged_match': True, 'agents_delta_equals_created': True, 'duplicate_external_references': 0}
+17:23:57Z        staleness: 76 linked, {'raised': 8, 'resolved': 0} in 0.07s
+17:23:57Z        race: sessions=[{'created': 204, 'linked': 96, 'flagged': 0}, {'created': 13, 'linked': 287, 'flagged': 0}, {'created': 83, 'linked': 217, 'flagged': 0}] agents=300 dups=0 errors=[]
+17:23:57Z        sweep: {'op': 'discovery.sweep_volume_two_runs', 'n': 2, 'items_served': 80, 'runs': [{'status': 'SUCCEEDED', 'observations': 80, 'created': 80, 'linked': 0, 'findings': 0, 'elapsed_s': 0.97, 'checkpoint': {}, 'error': None}, {'status': 'SUCCEEDED', 'observations': 80, 'created': 0, 'linked': 80, 'findings': 0, 'elapsed_s': 0.62, 'checkpoint': {}, 'error': None}], 'idempotent': True, 'duplicates': 0, 'p50_ms': 970.0, 'p95_ms': 620.0}
+17:23:57Z        tenant.small_tenant_list_agents_beside_busy_tenant: p50=8.41ms p95=9.39ms n=10 stmts=5 hot_seq_scans=0
+17:23:57Z        tenant checks: cross_tenant=GRAPH_NODE_NOT_FOUND hostile_truncated=True estate_ok=True
+17:23:57Z    == wrote C:\Users\PHS\Desktop\ai-agent-control-tower\lab\run\results\v9_measure_worst_100.json in 76.9s
+17:23:57Z ledger anchor rc=0: anchored 1 file(s); head=63913931059ac5d0
+17:23:57Z == fixtures dist=worst rung=1000
+17:24:05Z fixtures rc=0 in 7s :: {"totals": {"organizations": 21, "users": 31, "agents": 1000, "tools": 180, "resources": 140, "control_graph_edges": 11529, "agent_executions": 1572, "discovery_observations": 1100, "external_gateway_calls": 3600, "budgets": 101, "runtime_alerts": 100}, "seconds": 3.0, "manifest": "C:\\Users\\PHS\\Desktop\\ai-agent-control-tower\\lab\\run\\results\\v9_fixture_worst_1000.json"}
+17:24:05Z ledger anchor rc=0: anchored 1 file(s); head=be3d8bbcaefd157f
+17:24:05Z == measure dist=worst rung=1000
+17:26:08Z measure rc=0 in 124s
+17:26:08Z    == measuring rung=1000 dist=worst tenant_agents=800 tenant_edges=9466 totals={'organizations': 21, 'users': 31, 'agents': 1000, 'tools': 180, 'resources': 140, 'control_graph_edges': 11529, 'agent_executions': 1572, 'discovery_observations': 1100, 'external_gateway_calls': 3600, 'budgets': 101, 'runtime_alerts': 100}
+17:26:08Z        reachability depth 4: 142.0ms nodes=92
+17:26:08Z        reachability depth 8: 246.0ms nodes=747
+17:26:08Z        reachability depth 12: 5333.4ms nodes=768
+17:26:08Z        reachability depth 16: OperationalError after 17801.7ms
+17:26:08Z        reachability.super_node_fanout_depth2: p50=44.44ms p95=53.34ms n=5 stmts=154 hot_seq_scans=0
+17:26:08Z        blast_radius.reverse_hub_resource_depth16: p50=28.57ms p95=32.94ms n=5 stmts=10 hot_seq_scans=0
+17:26:08Z        blast_radius.reverse_typical_resource_depth16: p50=16.78ms p95=28.15ms n=10 stmts=10 hot_seq_scans=0
+17:26:08Z        blast_radius.what_breaks_tool_hub_depth16: p50=19.91ms p95=32.92ms n=5 stmts=9 hot_seq_scans=0
+17:26:08Z        blast_radius.agents_reaching_resource_kind_payroll: p50=45.47ms p95=58.57ms n=5 stmts=17 hot_seq_scans=0
+17:26:08Z        authority_chain.reconstruct_replay_depth31_plus_10_delegation_hops: p50=6.3ms p95=21.07ms n=10 stmts=13 hot_seq_scans=0
+17:26:08Z        authority_chain.reconstruct_typical: p50=23.89ms p95=27.4ms n=10 stmts=37 hot_seq_scans=1
+17:26:08Z        estate.command_center_overview: p50=16.24ms p95=30.94ms n=10 stmts=25 hot_seq_scans=1
+17:26:08Z        inventory.list_agents_page1_size50: p50=11.08ms p95=15.0ms n=10 stmts=5 hot_seq_scans=0
+17:26:08Z        inventory.list_agents_last_page(16)_size50: p50=11.22ms p95=13.78ms n=5 stmts=5 hot_seq_scans=0
+17:26:08Z        inventory.list_agents_filtered_search: p50=11.08ms p95=14.66ms n=10 stmts=5 hot_seq_scans=0
+17:26:08Z        cost.summary_total: p50=1.85ms p95=2.59ms n=10 stmts=1 hot_seq_scans=0
+17:26:08Z        cost.summary_by_agent: p50=9.42ms p95=10.14ms n=5 stmts=2 hot_seq_scans=0
+17:26:08Z        posture.full_population_origin_state_guard(all_tenants): p50=1.25ms p95=1.51ms n=10 stmts=1 hot_seq_scans=0
+17:26:08Z        posture.evaluate_tenant_full: {'op': 'posture.evaluate_tenant_full', 'n': 1, 'p50_ms': 25490.7, 'p95_ms': 25490.7, 'agents_evaluated': 800, 'budget_exceeded': False, 'findings_opened': 2250, 'summary': {'agents_evaluated': 800, 'findings_opened': 2250, 'findings_resolved': 0, 'insufficient_data': 0, 'rule_errors': 0, 'ruleset_version': '1'}, 'tenant_agents': 800, 'per_agent_ms': 31.86}
+17:26:08Z        gateway.authz_only_denied_outside_scope(403): p50=13.89ms p95=15.21ms n=40 stmts=13 hot_seq_scans=0
+17:26:08Z        gateway.allowed_with_local_dispatch(200): p50=217.46ms p95=237.49ms n=40 stmts=27 hot_seq_scans=0
+17:26:08Z        reconciliation.dense_run: 800 obs in 5.44s (147.1/s) result={'created': 360, 'linked': 400, 'flagged': 40} precision={'created_match': True, 'linked_match': True, 'flagged_match': True, 'agents_delta_equals_created': True, 'duplicate_external_references': 0}
+17:26:08Z        staleness: 760 linked, {'raised': 76, 'resolved': 0} in 0.82s
+17:26:08Z        race: sessions=[{'created': 286, 'linked': 14, 'flagged': 0}, {'created': 13, 'linked': 287, 'flagged': 0}, {'created': 1, 'linked': 299, 'flagged': 0}] agents=300 dups=0 errors=[]
+17:26:08Z        sweep: {'op': 'discovery.sweep_volume_two_runs', 'n': 2, 'items_served': 800, 'runs': [{'status': 'SUCCEEDED', 'observations': 800, 'created': 800, 'linked': 0, 'findings': 0, 'elapsed_s': 8.56, 'checkpoint': {}, 'error': None}, {'status': 'SUCCEEDED', 'observations': 800, 'created': 0, 'linked': 800, 'findings': 0, 'elapsed_s': 5.0, 'checkpoint': {}, 'error': None}], 'idempotent': True, 'duplicates': 0, 'p50_ms': 8560.0, 'p95_ms': 5000.0}
+17:26:08Z        tenant.small_tenant_list_agents_beside_busy_tenant: p50=8.9ms p95=10.33ms n=10 stmts=5 hot_seq_scans=0
+17:26:08Z        tenant checks: cross_tenant=GRAPH_NODE_NOT_FOUND hostile_truncated=True estate_ok=True
+17:26:08Z    == wrote C:\Users\PHS\Desktop\ai-agent-control-tower\lab\run\results\v9_measure_worst_1000.json in 119.3s
+17:26:09Z ledger anchor rc=0: anchored 1 file(s); head=7028d776d084c490
+17:26:09Z == fixtures dist=worst rung=10000
+17:26:23Z fixtures rc=0 in 14s :: {"totals": {"organizations": 21, "users": 31, "agents": 10000, "tools": 1000, "resources": 500, "control_graph_edges": 112001, "agent_executions": 13550, "discovery_observations": 8300, "external_gateway_calls": 36000, "budgets": 101, "runtime_alerts": 100}, "seconds": 10.2, "manifest": "C:\\Users\\PHS\\Desktop\\ai-agent-control-tower\\lab\\run\\results\\v9_fixture_worst_10000.json"}
+17:26:23Z ledger anchor rc=0: anchored 1 file(s); head=86aa736d46452837
+17:26:23Z == measure dist=worst rung=10000
+17:35:56Z measure rc=0 in 573s
+17:35:56Z    == measuring rung=10000 dist=worst tenant_agents=8000 tenant_edges=91848 totals={'organizations': 21, 'users': 31, 'agents': 10000, 'tools': 1000, 'resources': 500, 'control_graph_edges': 112001, 'agent_executions': 13550, 'discovery_observations': 8300, 'external_gateway_calls': 36000, 'budgets': 101, 'runtime_alerts': 100}
+17:35:56Z        reachability depth 4: 133.6ms nodes=87
+17:35:56Z        reachability depth 8: 1163.7ms nodes=4267
+17:35:56Z        reachability depth 12: 9743.0ms nodes=7195
+17:35:56Z        reachability depth 16: OperationalError after 11474.3ms
+17:35:56Z        reachability.super_node_fanout_depth2: p50=377.49ms p95=392.75ms n=3 stmts=1480 hot_seq_scans=0
+17:35:56Z        blast_radius.reverse_hub_resource_depth16: p50=163.94ms p95=299.03ms n=3 stmts=10 hot_seq_scans=1
+17:35:56Z        blast_radius.reverse_typical_resource_depth16: p50=6.88ms p95=9.18ms n=10 stmts=9 hot_seq_scans=0
+17:35:56Z        blast_radius.what_breaks_tool_hub_depth16: p50=118.41ms p95=279.68ms n=3 stmts=9 hot_seq_scans=0
+17:35:56Z        blast_radius.agents_reaching_resource_kind_payroll: p50=171.92ms p95=336.51ms n=3 stmts=18 hot_seq_scans=1
+17:35:56Z        authority_chain.reconstruct_replay_depth31_plus_10_delegation_hops: p50=6.23ms p95=20.55ms n=10 stmts=13 hot_seq_scans=0
+17:35:56Z        authority_chain.reconstruct_typical: p50=113.15ms p95=267.64ms n=10 stmts=37 hot_seq_scans=1
+17:35:56Z        estate.command_center_overview: p50=43.94ms p95=61.97ms n=10 stmts=25 hot_seq_scans=7
+17:35:56Z        inventory.list_agents_page1_size50: p50=11.67ms p95=15.07ms n=10 stmts=5 hot_seq_scans=0
+17:35:56Z        inventory.list_agents_last_page(160)_size50: p50=13.89ms p95=15.02ms n=5 stmts=5 hot_seq_scans=0
+17:35:56Z        inventory.list_agents_filtered_search: p50=15.54ms p95=17.12ms n=10 stmts=5 hot_seq_scans=0
+17:35:56Z        cost.summary_total: p50=5.6ms p95=7.41ms n=10 stmts=1 hot_seq_scans=1
+17:35:56Z        cost.summary_by_agent: p50=21.03ms p95=22.29ms n=5 stmts=2 hot_seq_scans=3
+17:35:56Z        posture.full_population_origin_state_guard(all_tenants): p50=5.13ms p95=6.55ms n=10 stmts=1 hot_seq_scans=1
+17:35:56Z        posture.evaluate_tenant_full: {'op': 'posture.evaluate_tenant_full', 'n': 1, 'p50_ms': None, 'p95_ms': None, 'budget_exceeded': True, 'budget_s': 300.0, 'agents_evaluated': 7771, 'elapsed_s': 300.0, 'per_agent_ms': 38.61, 'projected_full_s': 308.9, 'tenant_agents': 8000}
+17:35:56Z        gateway.authz_only_denied_outside_scope(403): p50=13.08ms p95=15.19ms n=40 stmts=13 hot_seq_scans=0
+17:35:56Z        gateway.allowed_with_local_dispatch(200): p50=214.18ms p95=229.77ms n=40 stmts=27 hot_seq_scans=0
+17:35:56Z        reconciliation.dense_run: 8000 obs in 49.38s (162.0/s) result={'created': 3600, 'linked': 4000, 'flagged': 400} precision={'created_match': True, 'linked_match': True, 'flagged_match': True, 'agents_delta_equals_created': True, 'duplicate_external_references': 0}
+17:35:56Z        staleness: 7600 linked, {'raised': 760, 'resolved': 0} in 7.87s
+17:35:56Z        race: sessions=[{'created': 10, 'linked': 290, 'flagged': 0}, {'created': 111, 'linked': 189, 'flagged': 0}, {'created': 179, 'linked': 121, 'flagged': 0}] agents=300 dups=0 errors=[]
+17:35:56Z        sweep: {'op': 'discovery.sweep_volume_two_runs', 'n': 2, 'items_served': 8000, 'runs': [{'status': 'SUCCEEDED', 'observations': 8000, 'created': 8000, 'linked': 0, 'findings': 0, 'elapsed_s': 84.72, 'checkpoint': {}, 'error': None}, {'status': 'SUCCEEDED', 'observations': 8000, 'created': 0, 'linked': 8000, 'findings': 0, 'elapsed_s': 49.68, 'checkpoint': {}, 'error': None}], 'idempotent': True, 'duplicates': 0, 'p50_ms': 84720.0, 'p95_ms': 49680.0}
+17:35:56Z        tenant.small_tenant_list_agents_beside_busy_tenant: p50=11.82ms p95=19.44ms n=10 stmts=5 hot_seq_scans=0
+17:35:56Z        tenant checks: cross_tenant=GRAPH_NODE_NOT_FOUND hostile_truncated=True estate_ok=True
+17:35:56Z    == wrote C:\Users\PHS\Desktop\ai-agent-control-tower\lab\run\results\v9_measure_worst_10000.json in 568.6s
+17:35:56Z ledger anchor rc=0: anchored 1 file(s); head=f8f316e6e2b7846e
+17:35:56Z == fixtures dist=worst rung=100000
+17:36:46Z fixtures rc=1 in 50s :: DETAIL:  Key (agent_version_id)=(05505d14-7acf-410f-a9d7-a4eaafede54e) is not present in table "agent_versions".
+17:36:46Z == recovery
+17:39:49Z recovery rc=0 in 182s
+17:39:49Z    bootstrap/seed/backup done in 18s
+17:39:49Z    R1: {"integrity": {"install_mode": "EXISTING_INSTALL", "encryption": {"provider": "LOCAL", "fingerprint": "2501a9bb7e8dffcc", "key_state": "OK", "validation": "CANARY_MATCH"}, "signing": {"keys_checked": 1, "validation": "OK", "signed_state": true}}, "install_mode": "EXISTING_INSTALL", "marker": true, "decrypt_provider_credential": true, "decrypt_tool_credential": true, "decrypt_discovery_source_secre
+17:39:49Z    R2: {"keys_before": [], "install_mode": "EXISTING_INSTALL", "verify": {"type": "KeyMaterialError", "code": "ENCRYPTION_KEY_MISSING_ESTABLISHED_INSTALL", "message": "ENCRYPTION_KEY_MISSING_ESTABLISHED_INSTALL: this is an established installation (bootstrap marker present) but no provider-credential encryption key is available \u2014 restore backend/.keys/model_credentials.key (or set MODEL_CREDENTIAL_ENCRYPT"}, "verify_allow_bootstrap": {"type": "KeyMaterialError", "code": "ENCRYPTION_KEY_MISSING_ESTABLISHED_INSTALL", "message": "ENCRYPTION_KEY_MISSING_ESTABLISHED_INSTALL: this is an established in
+17:39:49Z    R4 wrong_key: {"variant": "wrong_key", "keys": ["default.v1.pem", "default.v1.pub.pem", "model_credentials.key"], "verify": {"type": "KeyMaterialError", "code": "ENCRYPTION_KEY_CANNOT_DECRYPT", "message": "ENCRYPTION_KEY_CANNOT_DECRYPT: the configured encryption key cannot decrypt this database's existing ciphert
+17:39:49Z    R4 malformed_key: {"variant": "malformed_key", "keys": ["default.v1.pem", "default.v1.pub.pem", "model_credentials.key"], "verify": {"type": "KeyMaterialError", "code": "ENCRYPTION_KEY_MALFORMED", "message": "ENCRYPTION_KEY_MALFORMED: an encryption key is present but is not a structurally valid key \u2014 restore a v
+17:39:49Z    R4 unknown_provider: {"variant": "unknown_provider", "keys": ["default.v1.pem", "default.v1.pub.pem", "model_credentials.key"], "verify": {"type": "KeyMaterialError", "code": "ENCRYPTION_KEY_PROVIDER_UNKNOWN", "message": "ENCRYPTION_KEY_PROVIDER_UNKNOWN: encryption key provider 'VAULT' is not configured in this build \u
+17:39:49Z    R4 key_path_is_directory: {"variant": "key_path_is_directory", "keys": ["default.v1.pem", "default.v1.pub.pem", "model_credentials.key"], "verify": {"type": "KeyMaterialError", "code": "ENCRYPTION_KEY_PROVIDER_UNAVAILABLE", "message": "ENCRYPTION_KEY_PROVIDER_UNAVAILABLE: the encryption key provider 'LOCAL' could not be reac
+17:39:49Z    R3: {"install_mode": "EXISTING_INSTALL", "marker": true, "encrypted_tables": [], "signed_tables": [], "verify": {"type": "KeyMaterialError", "code": "ENCRYPTION_KEY_UNVERIFIED_ESTABLISHED_INSTALL", "message": "ENCRYPTION_KEY_UNVERIFIED_ESTABLISHED_INSTALL: this is an established installation (bootstrap marker present) but the encryption key cannot be verified \u2014 there is no canary and no encrypted
+17:39:49Z    durable diff: {"tables_compared": 31, "differences": {}, "identical": true, "open_alerts_preserved": true, "budgets_preserved": true, "open_posture_findings_preserved": true, "hub_blast_radius_consistent": true}
+17:39:49Z    waiting 82s for the restored heartbeats to age past WORKER_STALE_AFTER_SECONDS
+17:39:49Z    phantom: {"live_before_reap": ["v9-worker-0", "v9-worker-1", "v9-worker-2"], "stale_detected": ["v9-worker-0", "v9-worker-1", "v9-worker-2"], "reaped": 3, "live_after_reap": [], "stale_after_seconds": 90.0, "locks_before": 0, "expired_locks_reaped": 0, "locks_after": 0, "no_phantom_live_worker": true}
+17:39:49Z    wrote v9_recovery.json
+17:39:49Z ledger anchor rc=0: anchored 1 file(s); head=911859ebb9c287ae
+17:40:01Z o11 rc=0 :: {"dockerignore_excludes_keys": false, "dockerfile_copies_whole_context": true, "keys_dir_files": 92705, "keys_dir_private_pems": 46352, "keys_dir_test_residue_files": 92694, "keys_dir_size_mb": 10.8, "o11_stands": true}
+17:40:01Z ledger anchor rc=0: anchored 1 file(s); head=81d14d8ad8992b66
+17:40:01Z ledger verify rc=0 :: VERIFY OK: 17 entries, head=81d14d8ad8992b66, chain intact, all present files match
+17:41:03Z == fixtures dist=worst rung=100000
+17:42:31Z fixtures rc=0 in 88s :: {"totals": {"organizations": 21, "users": 31, "agents": 100000, "tools": 10000, "resources": 5000, "control_graph_edges": 1093009, "agent_executions": 121550, "discovery_observations": 80300, "external_gateway_calls": 300000, "budgets": 101, "runtime_alerts": 100}, "seconds": 83.4, "manifest": "C:\\Users\\PHS\\Desktop\\ai-agent-control-tower\\lab\\run\\results\\v9_fixture_worst_100000.json"}
+17:42:31Z ledger anchor rc=0: anchored 1 file(s); head=0038d642bfe0cdb7
+17:42:31Z == measure dist=worst rung=100000
+18:06:20Z measure rc=0 in 1429s
+18:06:20Z     31, 'agents': 100000, 'tools': 10000, 'resources': 5000, 'control_graph_edges': 1093009, 'agent_executions': 121550, 'discovery_observations': 80300, 'external_gateway_calls': 300000, 'budgets': 101, 'runtime_alerts': 100}
+18:06:20Z        reachability depth 4: 142.2ms nodes=56
+18:06:20Z        reachability depth 8: 321.6ms nodes=1116
+18:06:20Z        reachability depth 12: 5031.3ms nodes=16724
+18:06:20Z        reachability depth 16: 22477.2ms nodes=63322
+18:06:20Z        reachability depth 20: OperationalError after 22568.2ms
+18:06:20Z        reachability.super_node_fanout_depth2: p50=3975.74ms p95=4206.82ms n=3 stmts=14866 hot_seq_scans=0
+18:06:20Z        blast_radius.reverse_hub_resource_depth16: p50=2442.62ms p95=2461.51ms n=3 stmts=10 hot_seq_scans=1
+18:06:20Z        blast_radius.reverse_typical_resource_depth16: p50=18.61ms p95=30.66ms n=10 stmts=10 hot_seq_scans=0
+18:06:20Z        blast_radius.what_breaks_tool_hub_depth16: p50=1887.31ms p95=1894.55ms n=3 stmts=9 hot_seq_scans=0
+18:06:20Z        blast_radius.agents_reaching_resource_kind_payroll: p50=2440.43ms p95=2449.96ms n=3 stmts=17 hot_seq_scans=1
+18:06:20Z        authority_chain.reconstruct_replay_depth31_plus_10_delegation_hops: p50=7.02ms p95=15.02ms n=10 stmts=13 hot_seq_scans=0
+18:06:20Z        authority_chain.reconstruct_typical: p50=1011.45ms p95=1330.29ms n=10 stmts=37 hot_seq_scans=1
+18:06:20Z        estate.command_center_overview: p50=333.22ms p95=485.53ms n=10 stmts=25 hot_seq_scans=7
+18:06:20Z        inventory.list_agents_page1_size50: p50=16.76ms p95=23.02ms n=10 stmts=5 hot_seq_scans=0
+18:06:20Z        inventory.list_agents_last_page(1600)_size50: p50=47.1ms p95=47.85ms n=5 stmts=5 hot_seq_scans=0
+18:06:20Z        inventory.list_agents_filtered_search: p50=54.05ms p95=59.66ms n=10 stmts=5 hot_seq_scans=0
+18:06:20Z        cost.summary_total: p50=34.39ms p95=137.14ms n=10 stmts=1 hot_seq_scans=1
+18:06:20Z        cost.summary_by_agent: p50=113.32ms p95=231.09ms n=5 stmts=2 hot_seq_scans=2
+18:06:20Z        posture.full_population_origin_state_guard(all_tenants): p50=37.36ms p95=138.72ms n=10 stmts=1 hot_seq_scans=1
+18:06:20Z        posture.evaluate_tenant_full: {'op': 'posture.evaluate_tenant_full', 'n': 1, 'p50_ms': None, 'p95_ms': None, 'budget_exceeded': True, 'budget_s': 300.0, 'agents_evaluated': 7595, 'elapsed_s': 300.0, 'per_agent_ms': 39.51, 'projected_full_s': 3160.4, 'tenant_agents': 80000}
+18:06:20Z        gateway.authz_only_denied_outside_scope(403): p50=12.78ms p95=20.18ms n=40 stmts=13 hot_seq_scans=0
+18:06:20Z        gateway.allowed_with_local_dispatch(200): p50=214.19ms p95=236.5ms n=40 stmts=27 hot_seq_scans=0
+18:06:20Z        reconciliation.dense_run: 80000 obs in 431.31s (185.5/s) result={'created': 36000, 'linked': 40000, 'flagged': 4000} precision={'created_match': True, 'linked_match': True, 'flagged_match': True, 'agents_delta_equals_created': True, 'duplicate_external_references': 0}
+18:06:20Z        staleness: 76000 linked, {'raised': 7600, 'resolved': 0} in 58.38s
+18:06:20Z        race: sessions=[{'created': 222, 'linked': 78, 'flagged': 0}, {'created': 5, 'linked': 295, 'flagged': 0}, {'created': 73, 'linked': 227, 'flagged': 0}] agents=300 dups=0 errors=[]
+18:06:20Z        sweep: {'op': 'discovery.sweep_volume_two_runs', 'n': 2, 'items_served': 20000, 'runs': [{'status': 'PARTIAL', 'observations': 20000, 'created': 20000, 'linked': 0, 'findings': 0, 'elapsed_s': 203.3, 'checkpoint': {'offset': 19800}, 'error': 'absolute item bound reached'}, {'status': 'SUCCEEDED', 'observations': 200, 'created': 0, 'linked': 200, 'findings': 19800, 'elapsed_s': 84.47, 'checkpoint': {}, 'error': None}], 'idempotent': False, 'duplicates': 0, 'p50_ms': 203300.0, 'p95_ms': 84470.0}
+18:06:20Z        sweep bound: {'op': 'discovery.sweep_100k_source_single_run_bound', 'n': 1, 'items_served': 100000, 'status': 'PARTIAL', 'observations': 20000, 'created': 20000, 'checkpoint': {'offset': 19800}, 'error': 'absolute item bound reached', 'elapsed_s': 197.77, 'p50_ms': 197772.5, 'p95_ms': 197772.5}
+18:06:20Z        tenant.small_tenant_list_agents_beside_busy_tenant: p50=23.55ms p95=34.46ms n=10 stmts=5 hot_seq_scans=0
+18:06:20Z        tenant checks: cross_tenant=GRAPH_NODE_NOT_FOUND hostile_truncated=True estate_ok=True
+18:06:20Z    == wrote C:\Users\PHS\Desktop\ai-agent-control-tower\lab\run\results\v9_measure_worst_100000.json in 1424.6s
+18:06:20Z ledger anchor rc=0: anchored 1 file(s); head=95a2924429115409
+18:06:20Z == recovery
+18:09:06Z recovery rc=0 in 166s
+18:09:06Z    bootstrap/seed/backup done in 17s
+18:09:06Z    R1: {"integrity": {"install_mode": "EXISTING_INSTALL", "encryption": {"provider": "LOCAL", "fingerprint": "347a5c973468f750", "key_state": "OK", "validation": "CANARY_MATCH"}, "signing": {"keys_checked": 1, "validation": "OK", "signed_state": true}}, "install_mode": "EXISTING_INSTALL", "marker": true, "decrypt_provider_credential": true, "decrypt_tool_credential": true, "decrypt_discovery_source_secre
+18:09:06Z    R2: {"keys_before": [], "install_mode": "EXISTING_INSTALL", "verify": {"type": "KeyMaterialError", "code": "ENCRYPTION_KEY_MISSING_ESTABLISHED_INSTALL", "message": "ENCRYPTION_KEY_MISSING_ESTABLISHED_INSTALL: this is an established installation (bootstrap marker present) but no provider-credential encryption key is available \u2014 restore backend/.keys/model_credentials.key (or set MODEL_CREDENTIAL_ENCRYPT"}, "verify_allow_bootstrap": {"type": "KeyMaterialError", "code": "ENCRYPTION_KEY_MISSING_ESTABLISHED_INSTALL", "message": "ENCRYPTION_KEY_MISSING_ESTABLISHED_INSTALL: this is an established in
+18:09:06Z    R4 wrong_key: {"variant": "wrong_key", "keys": ["default.v1.pem", "default.v1.pub.pem", "model_credentials.key"], "verify": {"type": "KeyMaterialError", "code": "ENCRYPTION_KEY_CANNOT_DECRYPT", "message": "ENCRYPTION_KEY_CANNOT_DECRYPT: the configured encryption key cannot decrypt this database's existing ciphert
+18:09:06Z    R4 malformed_key: {"variant": "malformed_key", "keys": ["default.v1.pem", "default.v1.pub.pem", "model_credentials.key"], "verify": {"type": "KeyMaterialError", "code": "ENCRYPTION_KEY_MALFORMED", "message": "ENCRYPTION_KEY_MALFORMED: an encryption key is present but is not a structurally valid key \u2014 restore a v
+18:09:06Z    R4 unknown_provider: {"variant": "unknown_provider", "keys": ["default.v1.pem", "default.v1.pub.pem", "model_credentials.key"], "verify": {"type": "KeyMaterialError", "code": "ENCRYPTION_KEY_PROVIDER_UNKNOWN", "message": "ENCRYPTION_KEY_PROVIDER_UNKNOWN: encryption key provider 'VAULT' is not configured in this build \u
+18:09:06Z    R4 key_path_is_directory: {"variant": "key_path_is_directory", "keys": ["default.v1.pem", "default.v1.pub.pem", "model_credentials.key"], "verify": {"type": "KeyMaterialError", "code": "ENCRYPTION_KEY_PROVIDER_UNAVAILABLE", "message": "ENCRYPTION_KEY_PROVIDER_UNAVAILABLE: the encryption key provider 'LOCAL' could not be reac
+18:09:06Z    R3: {"install_mode": "EXISTING_INSTALL", "marker": true, "encrypted_tables": [], "signed_tables": [], "verify": {"type": "KeyMaterialError", "code": "ENCRYPTION_KEY_UNVERIFIED_ESTABLISHED_INSTALL", "message": "ENCRYPTION_KEY_UNVERIFIED_ESTABLISHED_INSTALL: this is an established installation (bootstrap marker present) but the encryption key cannot be verified \u2014 there is no canary and no encrypted
+18:09:06Z    disk guard: {'free_gb': 9.68, 'db_gb': 1.11, 'need_gb': 2.99, 'largest_tables_mb': {'control_graph_edges': 492, 'agents': 152, 'external_gateway_calls': 121, 'runtime_events': 96, 'authorization_audit': 94, 'discovery_observations': 48, 'agent_executions': 41, 'posture_findings': 21, 'discovery_findings': 16, 'tools': 2, 'resources': 2, 'role_permissions': 1}, 'excluded_table_data': [], 'fits': True}
+18:09:06Z    durable diff: {"tables_compared": 31, "differences": {}, "identical": true, "open_alerts_preserved": true, "budgets_preserved": true, "open_posture_findings_preserved": true, "hub_blast_radius_consistent": true}
+18:09:06Z    waiting 7s for the restored heartbeats to age past WORKER_STALE_AFTER_SECONDS
+18:09:06Z    phantom: {"live_before_reap": ["v9-worker-0", "v9-worker-1", "v9-worker-2"], "stale_detected": ["v9-worker-0", "v9-worker-1", "v9-worker-2"], "reaped": 3, "live_after_reap": [], "stale_after_seconds": 90.0, "locks_before": 2, "expired_locks_reaped": 0, "locks_after": 0, "no_phantom_live_worker": true}
+18:09:06Z    wrote v9_recovery.json
+18:09:06Z ledger anchor rc=0: anchored 1 file(s); head=9c6f539b3ec4f691
+18:09:08Z o11 rc=0 :: {"dockerignore_excludes_keys": false, "dockerfile_copies_whole_context": true, "keys_dir_files": 92705, "keys_dir_private_pems": 46352, "keys_dir_test_residue_files": 92694, "keys_dir_size_mb": 10.8, "o11_stands": true}
+18:09:08Z ledger anchor rc=0: anchored 1 file(s); head=897f829641e883fc
+18:09:08Z ledger verify rc=1 :: FILE ALTERED after anchor: lab\run\results\v9_recovery.json (anchored c6f1c77baf6d5d26, now 4169474464f8e09a)

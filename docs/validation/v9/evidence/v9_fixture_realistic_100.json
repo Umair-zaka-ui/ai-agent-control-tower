@@ -1,0 +1,103 @@
+{
+ "rung": 100,
+ "dist": "realistic",
+ "seed": 9,
+ "tenants": 4,
+ "sizes_top5": [
+  42,
+  25,
+  18,
+  15
+ ],
+ "measured": {
+  "org_id": "4bc33d97-a8d0-4a84-b841-64b0aff74923",
+  "admin_id": "c99fc92e-67de-4fdc-8656-b514d26b11d9",
+  "agents": 42,
+  "tools": 5,
+  "resources": 5,
+  "unowned": 10,
+  "gateway_agents": 14,
+  "ext_refs": 25,
+  "nat_refs": 12,
+  "real_registration": true,
+  "hub_resource": "cebae0ce-7592-4ced-8a7b-a486aeb4c25c",
+  "hub_tool": "3828a233-3c37-47d1-9961-6a748a75c6b9",
+  "super_agent": "2f2e3a28-3f4a-4b97-b917-026615ff429f",
+  "chain_heads": [
+   "3982c521-aaee-48eb-8305-94a27228d9ad"
+  ],
+  "chain_len": 31,
+  "delegation_hops": 10,
+  "replay_leaves": [
+   "9abd7159-2709-4ec2-b03c-a029404fc60b"
+  ],
+  "replay_depth": 31,
+  "executions": 120,
+  "versions": 42,
+  "gateway_calls": 360,
+  "sample_agent": "1a5b5154-df1b-4b92-9c32-e24f0e2c7775",
+  "sample_resource": "42a3e616-e62d-4670-bea0-55eb04f877f1",
+  "sample_tool": "0095e315-056e-40f3-813f-3dfa74278c9b",
+  "typical_execution": "305f28dd-251f-4841-b792-16d1337c35db",
+  "source_id": "deaf5398-3fd1-4507-8de0-2ece488ecb39",
+  "run_id": "0f8f6a2d-e330-4b39-928a-3c6f28030441",
+  "race_run_id": "e1cd5c18-f5d9-4b23-8a1b-a289affa748a",
+  "recon_expected": {
+   "observations": 42,
+   "created": 19,
+   "linked": 21,
+   "flagged": 2,
+   "distinct_link_targets": 21,
+   "distinct_flag_targets": 2
+  },
+  "budgets": 43,
+  "alerts": 100,
+  "gateway_agent_ids": [
+   "2d35059c-884f-4c5a-88af-6de0a9a75813",
+   "c2058e6f-fcc9-4dc9-8556-8580642b91c5",
+   "1fbeaa41-d90f-4d98-8b5d-fe7265201a78",
+   "42414581-22ca-40de-8633-4af5ee3b325f",
+   "046e8285-cd2e-4b98-9799-6d17c65b221b",
+   "01a62aed-54d2-4d46-88d3-f795516fb2ef",
+   "37b91470-30e2-4230-961e-42ac9cee260d",
+   "9394e6bf-49a1-41ff-a5cb-310cc469497e",
+   "268ff9c4-8da6-48f4-8789-530cd871d7fe",
+   "dd94fa02-3141-4337-9109-ace10b17a761",
+   "c5efd5c0-709e-4c59-ae85-492c3ef68ff9",
+   "99164ec8-4c46-41d2-bb49-2d2c1bb1d2ae",
+   "1daf60c2-728e-486c-8200-6934c74c51df",
+   "704e4205-eaad-4532-a131-4aa9a502e8a2"
+  ],
+  "edges": 408
+ },
+ "tenant_agents": {
+  "4bc33d97-a8d0-4a84-b841-64b0aff74923": 42,
+  "804fa7b1-ee7f-4337-9af9-a20bb79d1861": 25,
+  "c7e1f94d-183b-4e00-bbb5-479458dc4dfc": 18,
+  "d77d943d-1e82-494b-abc8-3748a96300d4": 15
+ },
+ "totals": {
+  "organizations": 4,
+  "users": 14,
+  "agents": 100,
+  "tools": 20,
+  "resources": 20,
+  "control_graph_edges": 924,
+  "agent_executions": 151,
+  "discovery_observations": 342,
+  "external_gateway_calls": 360,
+  "budgets": 43,
+  "runtime_alerts": 100
+ },
+ "generation_seconds": 2.0,
+ "other_tenants": [
+  "804fa7b1-ee7f-4337-9af9-a20bb79d1861",
+  "c7e1f94d-183b-4e00-bbb5-479458dc4dfc",
+  "d77d943d-1e82-494b-abc8-3748a96300d4"
+ ],
+ "other_admins": [
+  "49794750-7487-4a7f-bbdc-4b77bc84dcea",
+  "d4857f80-4716-4914-8f54-6a59f371274a",
+  "26c0da2c-c894-4a9e-8fd5-2568afecb645"
+ ]
+}

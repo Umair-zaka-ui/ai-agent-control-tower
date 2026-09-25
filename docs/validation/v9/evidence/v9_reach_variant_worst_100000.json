@@ -1,0 +1,68 @@
+{
+ "rung": 100000,
+ "dist": "worst",
+ "tenant_agents": 80000,
+ "tenant_edges": 891051,
+ "equivalence": [
+  {
+   "depth": 4,
+   "A_ms": 6.8,
+   "A_nodes": 56,
+   "A_error": null,
+   "B_ms": 1.4,
+   "B_nodes": 56,
+   "identical_node_sets": true
+  },
+  {
+   "depth": 8,
+   "A_ms": 22.6,
+   "A_nodes": 1116,
+   "A_error": null,
+   "B_ms": 5.9,
+   "B_nodes": 1116,
+   "identical_node_sets": true
+  }
+ ],
+ "variant_ladder": [
+  {
+   "depth": 12,
+   "B_ms": 229.0,
+   "B_nodes": 16724,
+   "B_error": null,
+   "C_ms": 144.8,
+   "C_nodes": 16724,
+   "C_error": null
+  },
+  {
+   "depth": 16,
+   "B_ms": 1351.6,
+   "B_nodes": 63323,
+   "B_error": null,
+   "C_ms": 1879.8,
+   "C_nodes": 63323,
+   "C_error": null
+  },
+  {
+   "depth": 24,
+   "B_ms": 4501.5,
+   "B_nodes": 66996,
+   "B_error": null,
+   "C_ms": 10807.3,
+   "C_nodes": 66996,
+   "C_error": null
+  },
+  {
+   "depth": 32,
+   "B_ms": 8009.1,
+   "B_nodes": 66996,
+   "B_error": null,
+   "C_ms": 24281.4,
+   "C_nodes": 66996,
+   "C_error": null
+  }
+ ],
+ "A_at_default_depth_16": {
+  "ms": 3950.5,
+  "rows": 63322
+ }
+}

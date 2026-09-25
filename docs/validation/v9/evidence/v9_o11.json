@@ -1,0 +1,34 @@
+{
+ "dockerignore_path": "backend\\.dockerignore",
+ "dockerignore_patterns": [
+  ".venv/",
+  "venv/",
+  "__pycache__/",
+  "*.pyc",
+  ".pytest_cache/",
+  ".mypy_cache/",
+  ".ruff_cache/",
+  ".env",
+  ".git/",
+  "tests/"
+ ],
+ "dockerignore_excludes_keys": false,
+ "dockerfile_copy_lines": [
+  "COPY requirements.txt .",
+  "COPY . .",
+  "COPY docker-entrypoint.sh /docker-entrypoint.sh"
+ ],
+ "dockerfile_copies_whole_context": true,
+ "compose_build_contexts": [
+  "./backend",
+  "context:"
+ ],
+ "keys_dir_exists": true,
+ "keys_dir_files": 92705,
+ "keys_dir_private_pems": 46352,
+ "keys_dir_has_encryption_key": true,
+ "keys_dir_test_residue_files": 92694,
+ "keys_dir_size_mb": 10.8,
+ "git_ignores_keys": true,
+ "o11_stands": true
+}
