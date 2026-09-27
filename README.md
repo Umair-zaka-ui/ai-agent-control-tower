@@ -1,1636 +1,596 @@
 # AI Agent Control Tower
 
-> A backend control plane that tracks, controls, approves, blocks and audits the actions performed by AI agents.
->
-> **Phase 1** (MVP): agents, permissions, risk scoring, approvals, audit logs.
-> **Phase 2** (production-oriented): agent API-key auth, a database-driven policy engine, advanced RBAC, email notifications, forensic audit, dashboard APIs, risk engine v2, and Docker. See the [Phase 2 guide](#phase-2--production-oriented-platform) below.
-> **Phase 3** (enterprise dashboard UI): a React 19 + TypeScript web console (`frontend/`) that consumes the Phase 1/2 APIs. Delivered: **Part 1** (scaffold + dark theme + app-shell), **Part 2** (JWT auth + sidebar/top-nav + route guards), **Part 3.1** (live operational dashboard — KPIs, charts, approval queue, recent actions/audit, system health, 60s auto-refresh), **Part 3.2a** (agent-management module — server-driven table, create wizard, details + stats, edit, lifecycle), **Part 3.3** (policy-management module), **Part 3.4** (approval queue & human review workbench — statistics cards, filterable queue, detail page, review workbench with approve/reject/escalate/assign, risk breakdown, audit timeline, history & escalations boards), **Part 3.5** (enterprise Audit & Compliance Center — audit dashboard with statistics + activity timeline + recent events, a filterable/searchable/paginated events explorer, forensic event detail with request/response viewers and a related-events flow, plus RBAC-gated security & compliance dashboards and a multi-format export center), **Part 3.6** (enterprise Analytics & AI Operations Center — executive KPI grid with live trends, AI fleet health, an activity overview chart, a risk analytics dashboard with heatmap, a performance dashboard with agent ranking, policy & human-review analytics, an estimated cost dashboard, a reports center with export, rule-based AI insights, and role-gated executive/operations dashboards with auto-refresh). See [`frontend/README.md`](frontend/README.md) and [`ROADMAP.md`](ROADMAP.md).
->
-> **Phase 4** (enterprise identity): **Part 4.1** (Enterprise Identity Platform foundation — an isolated `app/identity` package giving every human, AI agent, service account, organization and external application a formal identity model with a consistent lifecycle. Adds the org → department → team hierarchy, sessions/refresh-tokens/device-sessions and security events, a repository + service architecture, a versioned `/api/v1/identity` API with a standard error envelope, and identity audit integration; see [`docs/phase-4-part-1.md`](docs/phase-4-part-1.md)), **Part 4.2.1** (authentication architecture & trust model — an `app/identity/auth` layer with the `IdentityContext`, seven core auth services (authentication/token/refresh-token/credential/session/security-event/resolver) with real login → rotation → reuse-detection → logout, an authentication middleware dependency, auth enums/error codes/security-event types, a threat model and a token-table migration plan; see [`docs/identity/`](docs/identity/)), and **Part 4.2.2.1** (enterprise human authentication — the `/api/v1/auth/*` endpoints (login/refresh/logout/me/sessions) on those services, **argon2id** password hashing with legacy-bcrypt auto-upgrade, a full password-complexity policy, **account lockout** (5 failures/15 min) backed by a new `login_history` table, and a frontend with silent token refresh + a 401→refresh→retry interceptor + session-expired modal; see [`docs/identity/human-authentication.md`](docs/identity/human-authentication.md)). Later parts add the **permission engine**, **organization hierarchy**, **resource-based authorization**, **ABAC**, **authorization middleware**, the **admin portal**, and **identity governance** — see [`docs/authorization/`](docs/authorization/) and [`docs/governance/`](docs/governance/).
->
-> **Phase 5** (agent runtime): agent lifecycle & execution, the enterprise agent **registry**, and immutable, checksummed, **cryptographically signed** versioning with in-toto/DSSE attestations. See [`docs/runtime/`](docs/runtime/).
->
-> **Milestone 1** (real execution — **complete**): a model provider abstraction, a real OpenAI-compatible adapter, SSE streaming with real token/cost accounting, an eight-class error taxonomy with retry and circuit-breaking, per-organization encrypted provider credentials, HTTP tool execution behind a hardened SSRF egress guard, tool schema validation, and the model-driven tool invocation loop. An agent now genuinely executes end to end.
->
-> **Milestone 2** (Enterprise Integration Framework — **complete, 9/9**): the connector abstraction & lifecycle, a pluggable authentication framework, registry & health, a connector SDK, four generic connectors (REST, database, storage, queue), and external identity federation (OIDC + SAML). See [`docs/integration/connectors.md`](docs/integration/connectors.md) and [`docs/identity/federation.md`](docs/identity/federation.md).
->
-> **Milestone 3** (Deployment, Release & Operations — **COMPLETE, 10/10**): the deployment lifecycle core, governed environments & promotion, the release gate, weighted traffic allocation with a version resolver and fail-closed execution gate, the canary rollout engine with AI-aware release health, blue-green/recreate strategies, **automated rollback** — per-tenant trigger policies that roll a failing candidate back on their own, strictly subordinate to the kill switch — a **distributed scheduler** whose instances coordinate through Postgres leases so every due job runs exactly once, and a **distributed execution worker fleet** — agent executions now run on independently-operable worker processes that hold no database lock across model or tool network I/O, with **rolling deployment** defined over real worker cohorts rather than simulated counters, and the **Release Operations Center** — twelve operational views through which an operator sees and drives all of it, with dangerous actions confirmation-gated and unsafe state shown rather than smoothed over. See [`docs/deployment/`](docs/deployment/).
->
-> **Milestone 4** (Runtime Governance & Observability — **complete, 10/10**): Phase 4.1 laid the instrumentation contract. A trace follows an execution across every hop on the `correlation_id` rails that already existed but were almost never populated; spans are **derived from the domain rows rather than stored**, so the telemetry plane duplicates nothing and can never disagree with what actually happened; telemetry is **best-effort and non-gating** — the one subsystem here that deliberately fails open, because it is not the business transaction; and an isolated secret scrubber runs on the write path under a **METADATA_ONLY** baseline. Phase 4.6 makes it **interoperable**: execution traces and operational metrics stream to any OTLP collector (Datadog, Grafana, Splunk, …) through an adapter that keeps every vendor and even the OTel SDK out of the core, and a collector outage can never affect an execution — export is fail-open with a bounded buffer, off the hot path. Phase 4.8 makes the telemetry plane a **governed data system**: what is captured is a deliberate per-tenant/environment/agent/classification policy (`METADATA_ONLY` / `REDACTED_CONTENT` / `FULL_CONTENT` / `DISABLED`) defaulting conservatively; content is scrubbed of secrets and redacted **before** it is ever persisted, and chain-of-thought never is; reading trace content is a **distinct, stronger, audited permission** that executing or seeing metadata does not grant; and every telemetry class expires on its own schedule while domain and financial truth persist. See [`docs/observability/`](docs/observability/).
->
-> **Phase M4.11 + M4.11a** (Production Integrity Closure & Install-Mode Hardening — the Milestone 5 prerequisite): ACT's own trust foundation — the Fernet key behind every encrypted credential and the Ed25519 keys behind every version attestation — is now a recoverable, fail-safe asset. An established installation missing or holding the wrong key **fails loud at startup** with a deterministic, secret-free error instead of silently regenerating a replacement and rendering every stored secret undecryptable. NEW vs EXISTING is a **positive durable fact** — a `installation_bootstrap` marker written once at bootstrap — not an inference from absent ciphertext (M4.11a corrected that: an established install with zero encrypted rows could otherwise be misread as new). Startup resolves a deterministic five-state key taxonomy (absent / malformed / wrong / provider-unavailable / never-bootstrapped), a wrong key is caught by a canary verifier, the keys have a supported tested backup/restore with proven cryptographic continuity, and an `EncryptionKeyProvider` seam (mirroring the signing provider) makes an external KMS/Vault a documented next step rather than a rewrite. See [`docs/security/key-management.md`](docs/security/key-management.md) and [ADR-0014](docs/architecture/adr/0014-key-material-recovery-and-fail-loud-integrity.md).
->
-> **Current state at a glance** — [Where the project is now](#where-the-project-is-now) below, or [`REPO_STATE.md`](REPO_STATE.md) for the verified, exhaustive version.
+**Know every agent. Know its reach. Know what you can actually control.**
 
-As organizations hand more real-world tasks to autonomous AI agents (submitting claims, updating records, sending emails, moving money), they need a control plane that sits between the agent and the action. The **AI Agent Control Tower** is that control plane: every action an agent attempts is checked against permissions, scored for risk, and either **allowed**, **blocked**, or **routed to a human for approval** — and every decision is written to an immutable audit log.
+ACT is an enterprise AI control plane for discovering, governing, securing,
+observing, and auditing AI agents across an organization. It maps agents to the
+humans, identities, models, tools, MCP servers, credentials, data, applications,
+policies, and infrastructure they depend on, then distinguishes what the
+organization can merely observe from what it can genuinely govern or stop.
 
-This repository contains the FastAPI + PostgreSQL backend (`backend/`) and the React + TypeScript dashboard (`frontend/`). It is a personal learning / startup project and uses no company code, data, or infrastructure.
+**Visibility is not the same as control.** ACT records what it can see, what it
+can govern, and what it can enforce as three separate facts. Where it lacks the
+authority to act, it says so: a containment request against an agent ACT does
+not run returns `REFUSED` with a reason, never a fabricated success.
 
-For machine-independent source and database backups, scheduled snapshots, and
-new-system restore steps, see [`RECOVERY.md`](RECOVERY.md).
-
----
-
-## Where the project is now
-
-*Verified 2026-08-14 against `main` at `5b33f42`. The narrative sections further
-down this file are a phase-by-phase historical log kept in build order; this
-section is the current-state summary. For the exhaustive, mechanically-verified
-state of the repository — live schema, migration chain, route table, per-module
-inventory, known gaps — [`REPO_STATE.md`](REPO_STATE.md) is the authority, and it
-is the document to trust if it and this README ever disagree.*
+ACT is an independent engineering and startup project. It is not a finished
+commercial product and is not presented as ready for production use. It
+contains no employer code, data, or infrastructure.
 
 | | |
 |---|---|
-| Backend tests | **2,385 passed**, 0 failed, 1 deselected |
-| Frontend tests | **359 passed** |
-| Live schema | **141 tables**, migration head `0055_agent_discovery` |
-| HTTP routes | **603** |
+| Latest milestone | Milestone 5, Universal Agent Control & Security Fabric, complete on `main` |
+| Baseline | commit `9667707` (2026-09-16), migration head `0061_assurance_evidence` |
+| Stack | FastAPI, SQLAlchemy, PostgreSQL 17 backend; React 19 + TypeScript console |
+| Evidence | Automated engineering proofs on `main`; no production or customer validation |
+| Repository record | [REPO_STATE.md](REPO_STATE.md) · [ROADMAP.md](ROADMAP.md) · [CHANGELOG.md](CHANGELOG.md) |
 
-### Milestones
+Contents:
+[Why ACT exists](#why-act-exists) ·
+[Truthful control model](#the-truthful-control-model) ·
+[Capabilities](#capabilities) ·
+[Conceptual control graph](#conceptual-control-graph) ·
+[Architectural principles](#architectural-principles) ·
+[What has been demonstrated](#what-has-been-demonstrated) ·
+[Repository state](#current-verified-repository-state) ·
+[Milestones](#milestones) ·
+[Validation status](#validation-status) ·
+[Limitations](#limitations-and-what-act-is-not) ·
+[Quick start](#quick-start) ·
+[Documentation](#documentation)
 
-| Milestone | Status | What it delivers |
+---
+
+## Why ACT Exists
+
+Enterprises are beginning to operate growing numbers of AI agents across
+frameworks, models, tools, applications, identities, APIs, MCP servers,
+credentials, and infrastructure. A traditional inventory can tell an
+organization that an agent exists. That is not enough.
+
+The harder questions are:
+
+- Who owns this agent?
+- Which identity does it execute as?
+- Which credentials can it use?
+- Which tools and APIs can it invoke?
+- Which MCP servers does it depend on?
+- Which applications, data, and infrastructure can it reach?
+- Which other agents or authority chains extend its effective reach?
+- What happens if the agent is compromised, and what is the resulting blast radius?
+- Which controls can ACT actually enforce, and which are only advisory or observational?
+- What evidence exists for every one of those answers?
+
+ACT is built around answering those questions truthfully. Every answer is
+backed by a row, a decision record, or an audited event, and every claim of
+control is bounded by the authority ACT actually holds.
+
+---
+
+## The Truthful Control Model
+
+This is ACT's defining design constraint. Discovery, governance, and
+enforcement are separate facts, recorded separately, and none of them is
+inferred from another.
+
+### Control states
+
+Every agent in ACT's single canonical registry carries a server-authoritative
+`control_state`. It answers one question: what can ACT actually do to this
+agent?
+
+| State | Meaning | What ACT may do |
 |---|---|---|
-| **Phases 1–4** | Complete | Governance pipeline, dashboard UI, enterprise identity, RBAC/ABAC authorization, identity governance |
-| **Phase 5.0–5.2** | Complete | Agent runtime & lifecycle, enterprise registry, immutable signed versioning |
-| **Milestone 1** — real execution | **Complete** | Model provider abstraction, a real OpenAI-compatible adapter, streaming & token/cost accounting, an error taxonomy with retry/circuit-breaking, per-organization encrypted credentials, HTTP tool execution behind an SSRF egress guard, tool schema validation, and the model-driven tool invocation loop |
-| **Milestone 2** — Enterprise Integration Framework | **Complete (9/9)** | Connector abstraction/lifecycle, a pluggable authentication framework, registry & health, a connector SDK, four generic connectors (REST, database, storage, queue), and external identity federation (OIDC + SAML) |
-| **Milestone 3** — Deployment, Release & Operations | **Complete (10/10)** | Deployment lifecycle core, environments & promotion, the release gate, weighted traffic allocation + version resolver, the canary engine, blue-green/recreate/rolling strategies, automated rollback with per-tenant trigger policies, a distributed scheduler, a distributed execution worker fleet, and the Release Operations Center over all of it |
-| **Milestone 4** — Runtime Governance & Observability | **Complete (10/10)** | **4.1**: trace/span context on the existing `correlation_id` rails, bounded semantic attributes, a non-gating runtime-event contract, an isolated secret scrubber and the METADATA_ONLY baseline. **4.2**: full trace assembly and the trace explorer — search by trace/agent/version/environment/model/tool/status/error/time, and reconstruct any execution's chronology. Spans stay derived, not stored: 4.2 measured assembly at 0.74ms p50 over 90,695 executions and added one index rather than a projection. **4.3**: the runtime governance engine — six checkpoints *inside* the tool loop, one structured ALLOW/DENY/CHALLENGE/STOP decision, the four pre-existing termination caps **generalized into it** so there is exactly one enforcement path, and a governance plane that **fails closed** (the deliberate inverse of telemetry). **4.4**: cost truth and FinOps — real per-execution spend aggregated by org/agent/version/environment/provider/model/project/time with actual, estimated and unpriced kept apart; immutable pricing provenance; deterministic spend anomalies; and budgets enforced by **reserve-then-reconcile**, proven against twelve concurrent Postgres sessions, supplying a constraint to 4.3 rather than becoming a second thing that can stop an execution. The legacy estimated cost endpoint is deprecated in place. **4.5**: deterministic, explainable behavioral signals — error-rate/latency/cost/tool-failure/tool-pattern/policy-denial/loop-termination — reusing 3.5's evaluation engine, `INSUFFICIENT_DATA` first-class, every finding self-explaining, **no ML by mandate**, connector attribution deferred and named rather than invented, and strictly signals (4.3 stays the only enforcer). **4.6**: OpenTelemetry interoperability — execution traces and operational metrics to any OTLP collector, the SDK behind a one-module adapter (no vendor in core, AST-asserted), export **fail-open** with a **bounded** buffer and off the hot path (a collector outage never touches an execution, proven with a real collector-down run), metrics scraped over an authenticated tenant-scoped `/metrics` with bounded cardinality. **4.7**: runtime SLOs (SLI/target/window/error budget) evaluated deterministically with INSUFFICIENT_DATA honesty, and a first-class alert lifecycle (OPEN → ACKNOWLEDGED → RESOLVED → SUPPRESSED) an SLO breach or a significant behavioral finding raises — DB-deduplicated so one condition is one alert, and **a signal, not a notifier**: no Slack/email/PagerDuty delivery is built (AST-enforced), a future integration consumes the record. **4.8**: telemetry privacy, retention & access governance — capture policy in four modes per tenant/environment/agent/classification, defaulting conservatively (production/sensitive never resolves to `FULL_CONTENT` without an explicit policy; a misconfiguration fails toward *less* capture); content materialised into a dedicated `trace_content` store on first authorised view, scrubbed of secrets and classification-redacted **before persistence** in every mode, chain-of-thought never captured; `runtime.trace.content.view` a distinct permission strictly stronger than the metadata view, audited on every use, with a 404-vs-403 discipline that never leaks cross-tenant existence; per-class retention with a safe, idempotent, bounded expiration sweep that deletes telemetry but never domain truth. **4.9**: the Enterprise Runtime Governance & Observability Center — nine per-persona operator views over the 4.1–4.8 engines (health, traces, cost, governance decisions, behaviour, SLOs, alerts, telemetry policy), read + trigger only with the server authoritative, dangerous actions confirmation-gated, and truthful state throughout. The Trace Detail content pane inherits 4.8 in full: content only to `runtime.trace.content.view` holders, fetched exclusively through the audited endpoint, capture mode shown truthfully, 404-vs-403 honoured. **4.10**: hardening and **the §33 end-to-end proof** — one real governed execution demonstrated threading trace → governance → cost → redaction → audit → export: the engine stops the loop mid-flight as spend approaches the bound, the budget holds, the trace reconstructs, the secret is absent from `trace_content` and the OTLP wire, the decision is audited. Plus tenant privacy, the budget race (real separate Postgres sessions), and both plane directions (telemetry fails open, governance fails closed) each re-proven, and all fifteen §41 gates A–O closed. **Milestone 4 is complete.** |
-| **Phase M4.11** — Production Integrity Closure | **Complete** | Key-material recovery & fail-loud integrity — the Milestone 5 prerequisite. ACT's encryption (Fernet) and signing (Ed25519) key material is now a recoverable, fail-safe asset: an established install missing or holding the wrong key **fails loud at startup** (deterministic, no secret in the message) instead of silently regenerating one and rendering every stored ciphertext undecryptable; NEW vs EXISTING is decided by the presence of encrypted data in the database, not the absence of a key file, so a restored DB with rows and no key can never be bootstrapped; a wrong key is caught by a `key_material_canary` verifier plus a trial-decrypt, not only an absent one; a deliberate `python -m app.security.keys bootstrap` provisions a genuine new install and refuses an existing one; the keys have a supported, tested backup/restore (`python -m app.security.keys backup|verify`, `Export-ControlTowerSecrets.ps1` now includes `backend/.keys/`) with proven continuity — historical ciphertext decrypts, historical signatures verify, new signing continues after an authorized restore; an `EncryptionKeyProvider` seam mirrors the signing provider so an external KMS/Vault is a config change (no vendor SDK in core); and rotation is a `MultiFernet` key ring with the big re-encrypt job deferred-with-architecture. One additive table (`key_material_canary`), no route, changes no decrypt behaviour for any existing row. The end-to-end production-integrity proof covers positive continuity + negative missing-key + negative wrong-key + no-leak. |
-| **Phase M4.11a** — Install-Mode Classification Hardening | **Complete** | A corrective phase for M4.11. Its NEW-vs-EXISTING classification inferred "new install" from the *absence of encrypted state* — unsafe, because an established install can hold zero encrypted credential rows and would then be misread as new and silently handed a fresh cryptographic identity after key loss. NEW is now a **positive durable fact**: a single-row `installation_bootstrap` marker (migration `0053`) written once at bootstrap or backfilled at startup after an existing key is verified. `detect_install_mode` ⇒ EXISTING iff the marker is present OR any encrypted/signed state exists; NEW iff the marker is absent AND no such state — a missing key file never by itself implies NEW. Startup resolves a deterministic **five-state key taxonomy** — `KEY_ABSENT` / `KEY_MALFORMED` / `KEY_PRESENT_BUT_WRONG` / `KEY_PROVIDER_UNAVAILABLE` / `INSTALLATION_NEVER_BOOTSTRAPPED` — each a distinct operator-safe error code with no material leak; a provider outage never masquerades as a new install. One additive table, no route, no decrypt-behaviour change; the classification only tightens. Every M4.11 guarantee preserved and its end-to-end proof extended with the zero-ciphertext-loses-key leg. |
-| **Milestone 5** — Universal Agent Control & Security Fabric | **In progress (2/9)** | **5.1**: the foundation. ACT's one canonical `agents` registry is extended *in place* (never a second registry) so it can truthfully describe native, external, discovered, claimed, registered, governed and unknown agents — seven additive columns (`control_state`, `origin_category`, `origin_provider`, and four discovery placeholders 5.2 populates). **`control_state` (`DISCOVERED → CLAIMED → REGISTERED → GOVERNED`) is a distinct dimension from the operational `lifecycle_status`** — the 13-state lifecycle machine and its ~27 consumers are unchanged. It is server-authoritative (absent from every write schema), moved only through a `FOR UPDATE`-locked, audited, tenant-scoped `claim` (→ `CLAIMED`, never `GOVERNED`) and a `control-state` transition endpoint requiring an owner to reach `GOVERNED`. Ownership reuses existing columns + history — no new people/ownership table. Every pre-existing agent backfilled to native + governed. **5.2**: the Agent Discovery Framework — the first phase that reaches outside ACT. A vendor-neutral adapter contract (mirrors the Milestone 2 connector pattern, `GovernedHttpClient`-only egress) populates 5.1's placeholders: append-only `discovery_observations` (evidence, never truth — `UPDATE`/`DELETE` revoked from `PUBLIC`, secrets scrubbed before persistence) feed a deterministic `ReconciliationService` that derives canonical state through 5.1's own server-authoritative seam — exact `external_reference` matching, a fixed confidence threshold, and exactly three outcomes: create a `DISCOVERED` agent, link discovery metadata only, or flag a `discovery_findings` row for a human (**no silent merge or split**, ever — a collision with a native agent always flags). Staleness raises a finding, never a deletion. **No database lock or open transaction is held across the external fetch** — the adapter contract's `fetch()` takes no database session at all, and a real held-open HTTP call is proven, behaviorally, not to block a concurrent write to the same source row — extending the Milestone 1 deadlock lesson to external I/O for the first time. Sweeps run on the existing Phase 3.8 scheduler (no new scheduler); the framework ships with **one real reference adapter** proven against a genuine local HTTP server, with every vendor-specific adapter (Azure, AWS, LangGraph/CrewAI, Kubernetes, MCP) explicitly deferred. No discovery graph, MCP dependency graph, posture, threat, gateway or UI machinery — those are 5.3–5.9. Four new tables; +10 routes. |
+| `DISCOVERED` | ACT knows the agent exists, usually through a discovery sweep | Record it, map it, raise findings about it. No authority. |
+| `CLAIMED` | An authorized person has taken responsibility for it | Ownership is recorded. Still not governed. |
+| `REGISTERED` | Brought under ACT's registry and policy scope | Policy evaluation, and gateway grants where configured. |
+| `GOVERNED` | ACT has native runtime enforcement authority | Runtime governance and the kill switch apply. In the current implementation, this state is used for agents executed through ACT's native runtime. |
 
-**What "complete" means for Milestone 1**: an agent that is registered,
-versioned, signed and deployed genuinely executes end to end — it calls a real
-model, the model requests a real tool, the tool runs behind an egress guard, the
-result feeds back into the conversation, the loop resolves to a final answer, and
-every token, call and decision is audited.
+Discovery never implies governance. A client cannot write `control_state`; it
+moves only through audited, owner-gated transitions. Details:
+[docs/runtime/registry/asset-model.md](docs/runtime/registry/asset-model.md).
 
-Deliberately not built, with the owning phase named rather than left vague:
-vendor-specific connectors (SAP/Salesforce/ServiceNow — fast-follow work once a
-real deployment names a vendor). Rolling deployment *was* on this list for three
-phases, refusing to simulate itself over vestigial replica counters; Phase 3.9
-built the worker fleet and implemented it for real, and Phase 3.10 put an
-operator in front of the whole thing. [`REPO_STATE.md`](REPO_STATE.md) §9 keeps the full, honest gap
-list, including things that are placeholders rather than features.
+### External enforcement modes
 
----
+For agents ACT did not build and does not run, an enforcement mode states how
+far ACT's reach extends. Each mode carries both what ACT does and what it
+explicitly cannot do, and both travel together in every API response.
 
-## How it works
+| Mode | ACT does | Enforcement reach | ACT explicitly cannot |
+|---|---|---|---|
+| `OBSERVED` | Ingests the agent's events as evidence | None | Deny, stop, or constrain anything the agent does |
+| `ADVISORY` | Evaluates the real runtime policies and recommends | None | Enforce anything; a recommendation is advice for a human |
+| `GATEWAY_ENFORCED` | Authorizes or denies capability calls the agent routes through ACT's gateway | The boundary only | Reach the agent's model calls, its network traffic, or any tool it holds directly |
+| `NATIVE_ENFORCED` | Runs the agent | Full: the runtime governance engine and the kill switch | |
 
-```
-AI Agent ── POST /agent-actions ──▶ Permission Check ──▶ Risk Score ──▶ Decision ──▶ Audit Log
-                                                                           │
-                                                                           ├─ ALLOW            (executed)
-                                                                           ├─ BLOCK            (blocked)
-                                                                           └─ PENDING_APPROVAL ─▶ Approval Queue ─▶ human approves/rejects
-```
+In the current implementation, `NATIVE_ENFORCED` is server-derived from
+`control_state = GOVERNED` and is not independently writable. A
+gateway-enforced external agent stays `REGISTERED`; its only enforcement beyond
+a single denied call is revocation of its grant, which ends its access to ACT's
+boundary and does not stop the underlying agent.
+Details: [docs/bridge/enforcement-modes.md](docs/bridge/enforcement-modes.md).
 
-**Decision rules**
+### Containment and `REFUSED`
 
-| Condition                                   | Decision           |
-| ------------------------------------------- | ------------------ |
-| Agent is not `ACTIVE`                       | `BLOCK`            |
-| No permission rule, or rule is denied       | `BLOCK`            |
-| Permission granted and `risk_score <= 40`   | `ALLOW`            |
-| Permission granted and `41 <= risk <= 80`   | `PENDING_APPROVAL` |
-| Permission granted and `risk_score > 80`    | `BLOCK`            |
+Containment maps seven actions (terminate execution, suspend agent, deny tool,
+revoke capability, isolate credential, disable integration, require approval)
+onto authorities that already exist in the platform. It adds no enforcement of
+its own.
 
-Every decision — and every approval/rejection — writes an `audit_logs` entry.
+For containment actions that require native runtime authority, an agent that
+is not `GOVERNED` returns `status: REFUSED` when ACT lacks the required
+authority. Nothing is invoked, and the record does not pretend otherwise.
+`REFUSED` is not a product
+failure. It is the evidence that ACT does not fabricate enforcement authority,
+and the Milestone 5 proof asserts it rather than avoiding it. Details:
+[docs/threat/truthful-containment.md](docs/threat/truthful-containment.md).
 
-**Risk scoring (Phase 1)** is a simple, deterministic table keyed by action (e.g. `READ` = 10, `SEND_EMAIL` = 35, `UPDATE_RECORD` = 55, `SUBMIT_CLAIM` = 75, `DELETE_RECORD` = 90, `TRANSFER_MONEY` = 95, unknown = 85), with a small bump for sensitive payloads (large money amounts).
+The rule to take away: **visibility is not authority, and authority is not
+enforcement.**
 
 ---
 
-## Tech stack
+## Capabilities
 
-- **Backend:** Python 3.13 (3.11+ supported) / FastAPI
-- **Database:** PostgreSQL 17 (local) — the sole datastore, by
-  [ADR-0002](docs/architecture/adr/0002-postgresql-as-sole-datastore.md); no
-  Redis, no queue broker, no separate cache
-- **ORM:** SQLAlchemy 2.0
-- **Migrations:** Alembic (42 revisions, head `0041_canary_rollout`)
-- **Auth:** JWT bearer tokens with rotating refresh tokens; **argon2id** password
-  hashing (legacy bcrypt auto-upgraded on login)
-- **Frontend:** React 19 + TypeScript + Vite, tested with Vitest
-- **Crypto:** Ed25519 version signing (in-toto / DSSE attestations), Fernet
-  encryption for stored secrets
-- **Federation:** OIDC via `python-jose`; SAML 2.0 via `python3-saml` + `xmlsec`
-  (XML signature verification is delegated to the audited `libxmlsec1` C library,
-  never hand-rolled)
-- **Connectors:** `httpx` (REST), SQLAlchemy Core + `PyMySQL` (database), `boto3`
-  (S3 storage / SQS), `pika` (AMQP)
-- **Docs:** Swagger / OpenAPI (built into FastAPI)
+The capabilities below are implemented on `main`; major paths are exercised by
+the repository's backend and frontend test suites. Vendor breadth is
+deliberately narrow; see
+[Limitations](#limitations-and-what-act-is-not).
 
----
+**Estate and control**
 
-## Project structure
+- One canonical agent registry describing native, external, and discovered
+  agents, with ownership, provenance, and `control_state`.
+- Discovery and reconciliation: append-only observations from a source adapter,
+  deterministic reconciliation with no silent merge or delete, and staleness
+  raised as a finding. One reference HTTP registry adapter ships.
+- Agent identity and authority mapping: one machine identity per agent,
+  ownership history, and reconstructable human-to-agent-to-tool authority
+  chains.
+- Relational control graph over identities, agents, tools, MCP servers,
+  credentials, connectors, and resources, with dependency and reachability
+  queries and blast-radius analysis. Recursive SQL, no graph database.
+- MCP servers and tools represented through the existing tool domain, with
+  trust status recorded as evidence rather than enforced.
+- Security posture rules and shadow-agent findings: deterministic, explainable,
+  signals only.
+- Runtime threat detection over governance decisions, behavioral findings, and
+  tool calls. Detection recommends; an operator confirms.
+- Truthful containment routed only through existing authorities, with
+  `REFUSED` where authority is absent.
+- External governance gateway with HMAC-signed, scoped, expiring, revocable
+  grants and database-enforced replay protection.
+- Enterprise command center covering estate inventory, shadow agents,
+  ownership, identity, the control graph, tools and MCP, posture, threats,
+  external platforms, governance coverage, cost exposure, and assurance.
+  Affordances are computed from server truth, never guessed in the browser.
 
-```
-ai-agent-control-tower/
-├── docker-compose.yml          # local PostgreSQL
-├── README.md
-├── REPO_STATE.md               # verified state of the repository (the authority)
-├── ROADMAP.md                  # phase-by-phase roadmap
-├── CHANGELOG.md
-├── RECOVERY.md                 # backup / restore / system migration
-├── docs/                       # architecture, ADRs, and per-domain guides
-│   ├── architecture/           # C4 views, ADRs, threat model, ERD
-│   ├── identity/               # auth, sessions, credentials, federation
-│   ├── authorization/          # RBAC, ABAC, resource authorization
-│   ├── governance/             # access certification, SoD, risk scoring
-│   ├── runtime/                # agents, versioning, providers, gateways
-│   ├── integration/            # connectors (Milestone 2)
-│   └── deployment/             # lifecycle, environments, gates, traffic,
-│                               #   canary, strategies (Milestone 3)
-├── scripts/backup/             # snapshot / verify / restore PowerShell scripts
-├── frontend/                   # React 19 + TypeScript dashboard
-└── backend/
-    ├── alembic.ini
-    ├── requirements.txt
-    ├── .env.example
-    ├── migrations/             # Alembic environment + versions
-    ├── tests/                  # backend suite, mirroring the app packages
-    └── app/
-        ├── main.py             # FastAPI app
-        ├── seed.py             # demo data seeder
-        ├── core/               # config, database, security, enums
-        ├── models/             # SQLAlchemy models (119 tables)
-        ├── schemas/            # Pydantic request/response models
-        ├── api/                # Phase 1/2 governance API
-        ├── services/           # Phase 1/2 engines (permission, risk, decision,
-        │                       #   approval, audit, orchestration)
-        ├── identity/           # enterprise identity: users, orgs, sessions,
-        │                       #   credentials, protection, federation
-        ├── authorization/      # RBAC + ABAC engine, gateway, governance
-        ├── runtime/            # the agent runtime
-        │   ├── registry/       # agent registry
-        │   ├── versioning/     # immutable versions, signing, attestation
-        │   ├── providers/      # model provider abstraction + adapters
-        │   ├── tools/          # egress guard, HTTP executor, concurrency
-        │   ├── environment/    # environments & promotion policy
-        │   ├── release_gate/   # preflight checks + PASS/WARNING/BLOCK verdict
-        │   └── deployment/     # lifecycle, traffic, resolver, canary,
-        │                       #   health, strategies
-        └── integration/        # Milestone 2 — deliberately a sibling of
-            ├── auth/           #   runtime, never imported by it
-            ├── connectors/     #   REST, database, storage, queue
-            └── sdk/            #   the connector-authoring surface
-```
+**Governed execution**
 
-Two placements above are load-bearing rather than stylistic. `app/integration/`
-sits beside `app/runtime/` rather than inside it because the runtime must never
-know a connector exists — a test greps every file under `app/runtime/` for the
-word "connector" and fails the build if it finds one. And
-`app/identity/federation/` lives under identity, not integration, because it
-authenticates a user *to* the platform rather than the platform *to* an external
-system — the inverse trust direction from every connector.
+- Runtime governance checkpoints inside the model-to-tool loop returning
+  `ALLOW`, `DENY`, `CHALLENGE`, or `STOP`, failing closed when a mandatory
+  checkpoint cannot be evaluated.
+- Authorization and permission enforcement through one gateway: RBAC with a
+  role hierarchy, ABAC over subject, resource, action, environment, and
+  AI-specific attributes, resource ACLs, delegated administration, and identity
+  governance (access review campaigns, separation of duties, orphaned
+  identities).
+- Human approval workflows: risk-scored actions routed to a review workbench
+  with approve, reject, escalate, and assign.
+- Model and tool gateways: an OpenAI-compatible provider adapter with streaming
+  and token accounting, per-organization encrypted credentials, retry and
+  circuit breaking, HTTP tools behind an SSRF egress guard, and JSON Schema
+  argument validation.
+- Deployment and release lifecycle: environments and promotion, a fail-closed
+  release gate, weighted traffic allocation, canary, blue-green, recreate, and
+  rolling strategies, automated rollback subordinate to the kill switch, a
+  Postgres-leased scheduler and worker fleet, and a Release Operations Center.
+- Enterprise integration: a connector framework and SDK, four generic
+  connectors (REST, database, storage, queue), and OIDC and SAML federation.
+
+**Observability, cost, and assurance**
+
+- Execution tracing derived from domain rows, a trace explorer, and
+  OpenTelemetry export to any OTLP collector, fail-open and off the hot path.
+- Cost governance with actual, estimated, and unpriced spend kept apart, and
+  budgets enforced by reserve-then-reconcile.
+- Telemetry privacy and retention: per-scope capture policy defaulting to
+  metadata only, secrets scrubbed before persistence, chain-of-thought never
+  captured, a distinct audited permission for content, and per-class expiry.
+- SLOs, error budgets, and an alert lifecycle that creates signals and
+  deliberately does not deliver notifications.
+- Assurance: control evaluations returning `PASS`, `FAIL`, or
+  `INSUFFICIENT_EVIDENCE`, DSSE-signed evidence bundles, and partial relevance
+  mappings to NIST AI RMF 1.0, ISO/IEC 42001:2023, and SOC 2. No verdict field
+  exists anywhere.
+
+**Integrity and recovery**
+
+- Fernet-encrypted secrets, Ed25519-signed agent versions with in-toto/DSSE
+  attestations, fail-loud startup on missing or wrong key material, a durable
+  installation marker, and tested backup and restore procedures.
 
 ---
 
-## Setup
+## Conceptual Control Graph
 
-All commands below are run from the **`backend/`** directory unless noted.
+The diagram is conceptual. It shows what ACT relates and where its control
+surfaces sit; it is not a deployment topology. Dotted edges are observation.
+Heavy edges are the only places ACT enforces anything, and each is bounded.
 
-### 1. Start PostgreSQL
+```mermaid
+flowchart LR
+  subgraph estate["Enterprise estate (observed or governed, never owned by ACT)"]
+    H["Humans and owners"]
+    A["AI agents<br/>native, external, discovered"]
+    I["Identities and credentials"]
+    M["Models"]
+    T["Tools, APIs, MCP servers"]
+    D["Applications and data"]
+    N["Infrastructure"]
+    H --> A
+    A --> I
+    A --> M
+    A --> T
+    T --> D
+    D --> N
+  end
 
-**Option A — Docker (recommended):** from the repository root:
+  subgraph act["ACT control plane"]
+    DS["Discovery<br/>evidence in, never truth"]
+    R["Canonical registry<br/>ownership and control_state"]
+    G["Control graph<br/>authority chains, dependencies, blast radius"]
+    AZ["Authorization<br/>RBAC, ABAC, resource policy"]
+    GW["External gateway<br/>signed grants, boundary-only enforcement"]
+    RG["Runtime governance<br/>fail-closed checkpoints"]
+    TP["Posture and threat<br/>findings and recommendations"]
+    CT["Containment<br/>existing authorities, or REFUSED"]
+    OB["Observability<br/>derived, fail-open"]
+    AS["Assurance<br/>evidence, not verdicts"]
+    DS --> R
+    R --> G
+    G --> TP
+    TP --> CT
+    R --> AZ
+    GW --> AZ
+    AZ --> RG
+    RG --> OB
+    OB --> AS
+    G --> AS
+  end
+
+  A -.->|observed| DS
+  I -.->|observed| DS
+  T -.->|observed| DS
+  A -->|calls an external agent chooses to route through ACT| GW
+  RG ==>|enforced only for agents ACT runs| A
+  CT ==>|GOVERNED agents only, otherwise REFUSED| A
+  GW ==>|reaches only the calls that pass through it| T
+```
+
+---
+
+## Architectural Principles
+
+The decisions below are recorded as ADRs and, where the repository says so,
+enforced by tests. Index:
+[docs/architecture/adr/README.md](docs/architecture/adr/README.md).
+
+- **One canonical agent registry.** Native, external, and discovered agents are
+  rows in the same table with additive columns. There is no second registry.
+- **Discovery is evidence, not authority.** Observations are append-only;
+  canonical state is derived by deterministic reconciliation, never by trusting
+  a source.
+- **Visibility is not control.** Reach is derived from `control_state` and
+  enforcement mode, and no UI or API may claim more than that derivation
+  allows.
+- **Authorization remains authoritative.** Every surface, including the agent
+  runtime and the external gateway, calls the same authorization gateway.
+  Nothing calls RBAC or ABAC directly.
+- **Runtime governance is the enforcement plane.** Exactly one engine can stop
+  an execution and exactly one authority can suspend an agent. Containment
+  orchestrates them rather than adding a second enforcer.
+- **Mandatory governance fails closed; telemetry and export fail open.** A
+  checkpoint that cannot be evaluated stops the execution. A telemetry or
+  collector failure never touches one.
+- **Telemetry is derived and non-authoritative.** Spans are computed from
+  domain rows, so the telemetry plane cannot disagree with what happened.
+- **No database lock across external I/O.** Model calls, tool calls, and
+  discovery fetches run outside any open transaction.
+- **Tenant isolation everywhere.** Cross-tenant reads return not-found,
+  including per hop inside graph traversal.
+- **No chain-of-thought capture**, in any capture mode.
+- **Assurance produces evidence, not verdicts.** No compliance score, grade, or
+  status field exists.
+- **PostgreSQL is the sole datastore** (ADR-0002). The execution queue,
+  scheduler leases, rate limits, and the control graph all live in Postgres.
+  The control graph is relational recursive SQL, not a graph database
+  (ADR-0017).
+
+---
+
+## What Has Been Demonstrated
+
+All evidence below is automated and lives on `main`. It was produced on
+developer hardware in a controlled environment. It is not evidence of a
+production enterprise deployment, not customer validation, and not a
+compliance attestation.
+
+**Milestone 5 end-to-end proof**
+([summary](docs/milestone-5/summary.md), [proof](docs/milestone-5/proof.md)).
+The proof crosses the operating-system process boundary in both directions.
+ACT discovers an agent from a real registry server on a real socket. That
+agent, running in a separate process whose source is asserted to import nothing
+from ACT, signs its own requests and calls ACT's governance gateway over a real
+socket. Across fourteen steps the agent is discovered, reconciled without
+duplication, landed as `DISCOVERED` with no authority, flagged as shadow with
+its conditions, shown reaching a payroll resource through an unapproved MCP
+server, claimed, placed under `GATEWAY_ENFORCED`, allowed one capability call
+and denied another, detected as a threat, and then subjected to containment.
+
+The containment step is the important one. The proof asserts that
+`SUSPEND_AGENT` returns `REFUSED`, because ACT does not run this agent and will
+not fake a kill. It then asserts that the control ACT genuinely holds at that
+reach, revoking the boundary grant, takes effect: the external process is run
+again and its call is refused before anything reaches the capability.
+
+**Milestone 4 end-to-end proof**
+([docs/runtime/milestone-4-proof.md](docs/runtime/milestone-4-proof.md)). One
+real governed execution against a priced model with a hard budget, a redacted
+capture policy, and a planted secret. The governance engine stops the loop
+mid-flight as spend approaches the bound, the budget holds, the trace
+reconstructs, the secret is absent from the content store and from the
+serialized OTLP bytes, and the decision is audited. Twelve concurrent workers on
+separate Postgres connections cannot overspend a shared budget.
+
+**Key-material integrity**
+([docs/security/key-management.md](docs/security/key-management.md)).
+Historical ciphertext decrypts and historical signatures verify after a backup
+and restore. An established installation with a missing or wrong key fails
+loudly at startup instead of silently minting a new cryptographic identity.
+
+**What has not been demonstrated**
+
+- Any deployment outside a developer or Docker Compose environment.
+- Any pilot, design partner, or customer use.
+- Discovery against a real cloud, SaaS, or framework inventory. The one shipped
+  adapter targets a generic HTTP registry.
+- Live backends for the database, storage, and queue connectors, or a live
+  model provider in the default test run.
+- Continuous verification. There is no CI pipeline in the repository.
+- Browser-level end-to-end tests of the console.
+- Scale beyond synthetic single-tenant fixtures.
+
+---
+
+## Current Verified Repository State
+
+Recorded at the verified Phase 5.10 baseline on `main`. These figures are
+recorded, not continuously verified; the repository has no CI.
+
+| Item | Value |
+|---|---|
+| Milestone | Milestone 5 complete (10/10) |
+| Main baseline | `9667707` (2026-09-16) |
+| Migration head | `0061_assurance_evidence` |
+| Database | PostgreSQL 17, the sole datastore |
+| Recorded schema | 152 tables including Alembic metadata |
+| Recorded HTTP surface | 676 routes including FastAPI documentation and default routes |
+| Recorded tests | Backend 2,640 collected: 2,639 passed, 1 known fixture flake, 1 live-provider test deselected by default. Frontend 384 passed. |
+| Backend | FastAPI, SQLAlchemy 2.0, Alembic, PostgreSQL |
+| Frontend | React 19, TypeScript, Vite, Vitest |
+
+[REPO_STATE.md](REPO_STATE.md) contains the mechanically maintained repository
+record. Its Phase 5.10 header is the current baseline, while some historical
+deep sections have not yet been regenerated.
+
+---
+
+## Milestones
+
+| Milestone | Scope | Status on `main` |
+|---|---|---|
+| Foundation (historical Phases 1 to 5.2) | Governance pipeline, console, enterprise identity, RBAC and ABAC, identity governance, agent registry, signed versioning | Complete |
+| Milestone 1 | Governed agent execution: real model provider, streaming, cost accounting, HTTP tools, the tool loop | Complete |
+| Milestone 2 | Integration and connector platform: connector framework, SDK, four generic connectors, OIDC and SAML federation | Complete (9/9) |
+| Milestone 3 | Deployment and release operations: lifecycle, gates, traffic, canary, strategies, automated rollback, scheduler, worker fleet, operations center | Complete (10/10) |
+| Milestone 4 | Runtime governance and observability: tracing, governance engine, cost, behavioral signals, OpenTelemetry, SLOs, privacy, observability center, proof | Complete (10/10) |
+| M4.11 / M4.11a | Production integrity closure: key-material recovery, fail-loud startup, durable install marker | Complete |
+| Milestone 5 | Universal agent control and security fabric: asset model, discovery, control graph, dependencies, posture, threat and containment, external gateway, command center, assurance, proof | Complete (10/10) |
+
+Milestone status and the historical roadmap: [ROADMAP.md](ROADMAP.md).
+Phase-by-phase record: [CHANGELOG.md](CHANGELOG.md).
+
+---
+
+## Validation Status
+
+Milestone 5 is complete on `main` and backed by controlled engineering proofs.
+Those proofs are not a substitute for deployment and validation inside a real
+enterprise environment.
+
+Additional validation work exists outside the shipped `main` baseline and is
+not represented here as shipped functionality. Real-enterprise validation
+remains future work.
+
+---
+
+## Limitations and What ACT Is Not
+
+ACT is an independent engineering project with clear boundaries. It is not
+presented as:
+
+- A compliance attestation platform, or evidence of SOC 2, ISO 27001, HIPAA, or
+  GDPR compliance. Assurance produces evidence and partial relevance mappings
+  only ([docs/assurance/overview.md](docs/assurance/overview.md)).
+- A production-validated enterprise deployment. The shipped Compose stack is a
+  development and demo stack with default credentials and no TLS.
+- A universal ability to terminate arbitrary external agents. ACT stops only
+  what it runs. Elsewhere it revokes what it granted and records `REFUSED`.
+- A replacement for an organization's IAM, cloud, network, or endpoint security
+  controls. ACT governs what routes through it and maps the rest.
+- Evidence that every AI-agent framework, model vendor, or cloud is integrated.
+  One reference discovery adapter, one model protocol (OpenAI-compatible), and
+  four generic connectors ship.
+- A claim that visibility equals control.
+
+Work that remains, stated as engineering boundaries:
+
+- Vendor-specific discovery adapters (Azure, AWS, LangGraph, CrewAI,
+  Kubernetes, MCP) and vendor connectors are deferred.
+- Two posture rules and two threat rules named in the specification are not
+  delivered, because no deterministic signal exists for them yet:
+  [docs/posture/rules.md](docs/posture/rules.md),
+  [docs/threat/rules.md](docs/threat/rules.md).
+- Encryption and signing keys live on local disk behind a provider seam.
+  External KMS or vault integration is deferred.
+- No MFA factor, CAPTCHA provider, or alert notification delivery is wired.
+- No process-level sandboxing between agent executions beyond tenant-scoped
+  rows.
+- No CI pipeline. Test totals are recorded per phase.
+- Production hardening (TLS termination, secret management, managed Postgres,
+  monitoring) is operator-owned and not covered by this repository.
+- External validation against real infrastructure remains future work.
+
+---
+
+## Quick Start
+
+This is a local development path. The Compose stack uses default credentials,
+seeds demo data, and publishes the database port. It is a template for
+exploration, not a production deployment.
+
+**Prerequisites:** Docker with Compose. For local development without
+containers: Python 3.12 or newer, Node.js 22, and PostgreSQL 17.
+
+### Option A: full stack with Docker Compose
 
 ```bash
-docker compose up -d
+git clone https://github.com/Umair-zaka-ui/ai-agent-control-tower.git
+cd ai-agent-control-tower
+docker compose up -d --build
 ```
 
-This starts PostgreSQL 17 on `localhost:5432` with database `ai_agent_control_tower` (user/password `postgres`/`postgres`).
+The `api` container runs migrations and seeds demo data on first start.
 
-> **Upgrading a checkout you started before Phase 3.9:** `act_pgdata` is a PostgreSQL
-> major-version-specific data directory, so 17 will refuse to start against a volume
-> written by 16. Dump anything you need, then `docker compose down && docker volume rm
-> <project>_act_pgdata`. See [RECOVERY.md](RECOVERY.md) — deliberately not automated,
-> because a script that silently dropped a database volume would be worse than the
-> mismatch it fixed.
+- Console: http://localhost:8080
+- API and Swagger UI: http://localhost:8000/docs
 
-**Option B — local PostgreSQL install:** create the database manually:
+### Option B: local development
 
-```sql
-CREATE DATABASE ai_agent_control_tower;
+Start only the database:
+
+```bash
+docker compose up -d db
 ```
 
-### 2. Create a virtual environment & install dependencies
+Backend:
 
 ```bash
 cd backend
 python -m venv .venv
-
-# Windows (PowerShell)
-.venv\Scripts\Activate.ps1
-# macOS / Linux
-# source .venv/bin/activate
-
+.venv\Scripts\Activate.ps1        # Windows PowerShell
+# source .venv/bin/activate       # macOS / Linux
 pip install -r requirements.txt
-```
 
-### 3. Configure environment variables
+# Windows PowerShell
+Copy-Item .env.example .env
+# macOS / Linux
+# cp .env.example .env
+# then set DATABASE_URL and JWT_SECRET_KEY in .env
 
-```bash
-cp .env.example .env        # Windows: copy .env.example .env
-```
-
-Then edit `backend/.env` if your PostgreSQL credentials differ. Key variables:
-
-| Variable                      | Description                                   |
-| ----------------------------- | --------------------------------------------- |
-| `DATABASE_URL`                | PostgreSQL connection string                  |
-| `JWT_SECRET_KEY`              | Secret used to sign JWTs (set a long random)  |
-| `JWT_ALGORITHM`               | JWT algorithm (default `HS256`)               |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | Token lifetime (default `1440` = 1 day)       |
-| `BACKEND_CORS_ORIGINS`        | Allowed origins for the future dashboard      |
-
-Generate a strong secret:
-
-```bash
-python -c "import secrets; print(secrets.token_urlsafe(48))"
-```
-
-### 4. Run database migrations
-
-```bash
 alembic upgrade head
-```
-
-This creates all seven tables. Useful commands:
-
-```bash
-alembic current                              # show current revision
-alembic history                              # list migrations
-alembic downgrade -1                         # roll back one step
-alembic revision --autogenerate -m "msg"     # generate a new migration after model changes
-```
-
-### 5. Seed demo data
-
-```bash
 python -m app.seed
+uvicorn app.main:app --reload     # http://localhost:8000/docs
 ```
 
-This creates the demo organization, two users, three agents and their permission rules (see below).
-
-### 6. Run the API
+Frontend, in a second terminal:
 
 ```bash
-uvicorn app.main:app --reload
+cd frontend
+npm install
+
+# Windows PowerShell
+Copy-Item .env.example .env
+# macOS / Linux
+# cp .env.example .env
+# .env sets VITE_API_BASE_URL=http://localhost:8000
+
+npm run dev                       # http://localhost:5173
 ```
 
-- API base: `http://localhost:8000`
-- **Swagger UI:** `http://localhost:8000/docs`
-- ReDoc: `http://localhost:8000/redoc`
-- Health check: `http://localhost:8000/health`
+### Demo accounts
 
----
+The seeder creates `admin@example.com` and `reviewer@example.com`, both with
+the password `DemoPass!2026`, plus demo agents and their permission rules in a
+fictional organization.
 
-## Demo data
+### Tests
 
-After running `python -m app.seed`:
-
-**Organization:** `Demo Healthcare Org`
-
-### Onboarding (Phase 4.2.2.3.1)
-
-Organizations are **invitation only** by default. An administrator invites by email
-(Settings → Security → Invitations); the invitee sets a password, confirms their email
-address, and only then can sign in. Invitation links last 7 days, verification links 24
-hours, and both are single-use and stored hashed. Public onboarding endpoints are rate
-limited to 5 requests/minute/IP.
-
-See [registration](docs/identity/registration.md), [invitations](docs/identity/invitations.md)
-and [email verification](docs/identity/email-verification.md).
-
-### Credential management (Phase 4.2.2.3.2)
-
-Enterprise password lifecycle on top of the argon2id hashing from 4.2.2.1: a single-source
-policy (length, character classes, common-password blocklist, keyboard/number sequences,
-repeats, and your own name/email/org), **password history** (no reuse of the last 10),
-**90-day expiration** with in-app warnings, **administrative reset** issuing a one-time
-temporary password, and a **mandatory first-login change** the app cannot be skipped past.
-Self-service change is at Settings → Security → Change password; admins get a
-**password dashboard** (expired / expiring / temporary users). Every credential event is
-audited. See [password policy](docs/identity/password-policy.md),
-[credential management](docs/identity/credential-management.md) and
-[password history](docs/identity/password-history.md).
-
-### Account recovery (Phase 4.2.2.3.3)
-
-Self-service **forgot password** (a hashed, single-use, 30-minute `rst_` token emailed
-as a link), **reset** that runs the full credential discipline and revokes every session,
-and **verified email change** (confirm the new address before it takes effect; alert the
-old one when it does). Forgot-password is a non-enumerating uniform response; all public
-recovery endpoints are rate limited (5/min/IP). Admins get a **recovery-events dashboard**
-(Settings → Security → Recovery events). See [password reset](docs/identity/password-reset.md),
-[recovery](docs/identity/recovery.md) and [email verification & change](docs/identity/email-verification.md).
-
-### Account protection & risk-based auth (Phase 4.2.2.3.4)
-
-Authentication is no longer binary. Every login is scored (0–100) from signals — new
-device/country, impossible travel, failed-attempt count, suspicious agent, blocked IP —
-and the score plus admin **protection rules** decide allow / challenge / MFA / lock /
-block. **Progressive lockout** (15m → 30m → 1h → 24h → security review) backs a stateful
-`account_locks` table; **brute-force & credential-stuffing** patterns are detected per
-account/IP/target-set; **blocked IPs** are refused at the door; a **CAPTCHA** seam and
-**adaptive rate limits** are in place. Failed logins stay generic (no enumeration, no
-signal leak). A security console (Settings → Security → Account protection) shows the
-dashboard, login attempts, risk events, locks (with audited unlock), blocked IPs and
-rules. See [account protection](docs/security/account-protection.md),
-[risk-based auth](docs/security/risk-based-authentication.md),
-[brute-force protection](docs/security/brute-force-protection.md),
-[account lockout](docs/security/account-lockout.md) and
-[protection rules](docs/security/identity-protection-rules.md).
-
-### API contract & HTTP hardening (Phase 4.2.2.3.5)
-
-The Phase 4.2.2 close-out. Every request carries a correlation id (`X-Request-ID`,
-generated when absent, echoed on the response and threaded into the error envelope), and
-every response — success or error — carries standard security headers (`nosniff`,
-`X-Frame-Options: DENY`, a deny-by-default CSP, `Referrer-Policy`, `Permissions-Policy`,
-opt-in HSTS). Errors follow the `{success, error:{code,message}, request_id}` envelope;
-success bodies stay bare by design. The consolidated endpoint map, response format and
-error codes are in [HTTP API conventions](docs/api/http-conventions.md).
-
-### Enterprise RBAC foundation (Phase 4.3.1)
-
-Authorization becomes a first-class subsystem. Enterprise **roles** (with category,
-lifecycle status and priority), a `resource.action` **permission catalog** grouped by
-domain, **scoped role assignments** (global / organization / department / team / project
-/ resource, optionally time-boxed), an acyclic **role hierarchy** (a senior role inherits
-its children's permissions), and an **authorization audit** trail. 18 built-in roles ship
-seeded alongside the legacy four. Business logic never branches on role names — it gates
-on permission codes (`Depends(require_permission("agent.create"))`). Admin portal at
-**Settings → Security → Authorization** (Roles, Permissions, Assignments, Hierarchy,
-Audit). See [RBAC](docs/authorization/rbac.md), [roles](docs/authorization/roles.md),
-[permissions](docs/authorization/permissions.md) and
-[role hierarchy](docs/authorization/role-hierarchy.md).
-
-### Permission Engine (Phase 4.3.2)
-
-Every authorization decision flows through one centralized **PermissionEngine** — no
-controller ever branches on a role name. It resolves an identity's roles (with
-inheritance), collects allow/deny grants, expands **wildcards** (`agent.*`, and the
-reserved global `*` for `ROLE_PLATFORM_OWNER`), applies **scope**, and resolves
-**conflicts** (explicit deny always wins) before allowing or denying — default deny.
-Resolved grants are **cached** per identity (Postgres-backed, version-invalidated on any
-role/permission/assignment change) and every decision is auditable
-(`authorization_decisions`, with timing). `require_permission` now gates through the
-engine platform-wide; `POST /api/v1/authorization/check` answers "can I?" for the caller;
-the SPA gets `useCan("agent.create")` and `<ProtectedComponent permission=…>`. See
-[permission engine](docs/authorization/permission-engine.md),
-[resolution](docs/authorization/permission-resolution.md),
-[wildcards](docs/authorization/wildcards.md), [scopes](docs/authorization/scopes.md) and
-[caching](docs/authorization/caching.md).
-
-### Organization hierarchy (Phase 4.3.3)
-
-Authorization is now evaluated **within a full organizational hierarchy**: Platform →
-Organization → Business Unit → Department → Team → Project → Resources. Permissions flow
-**downward** (a department-scoped role authorizes any team/project below it, resolved via
-each resource's ownership path), isolation flows **upward** (cross-organization access is
-denied by default — a foreign entity 404s), and **delegated administration** lets each
-level grant authority only over its own scope (never exceeding the delegator's). Resource
-ownership attaches agents/policies/workflows to the tree. Admin portal at
-**Settings → Security → Organization** (Hierarchy explorer, Business units, Departments,
-Teams, Projects, Delegation). See
-[organization hierarchy](docs/authorization/organization-hierarchy.md),
-[hierarchy resolution](docs/authorization/hierarchy-resolution.md),
-[resource ownership](docs/authorization/resource-ownership.md) and
-[delegated administration](docs/authorization/delegated-administration.md).
-
-### Resource-based authorization (Phase 4.3.4)
-
-Every managed object — agents, prompts, workflows, policies, datasets, dashboards,
-connectors, … — is a **first-class protected resource** with its own authorization
-metadata: an **owner** (user/team/department/organization, transfers audited with
-preserved history), an **ACL** (per-principal allow/deny with expiry; explicit deny
-always wins), **sharing** (READ → MANAGE levels for users/teams/departments/org, with
-expiry), **time-boxed delegation**, **visibility levels** (PRIVATE → PUBLIC_INTERNAL)
-and an optional **resource policy** ("only the Compliance team may publish"). The
-Permission Engine layers all of this over the role decision, so two users with the same
-role can get different answers for the same permission on different resources — default
-deny, cross-tenant isolated, every decision auditable. Security admins simulate any
-identity × resource × permission in the **Authorization Inspector**. Admin portal at
-**Settings → Security → Resources** (Resource permissions, ACL, Sharing, Ownership,
-Delegation, Inspector). See
-[resource authorization](docs/authorization/resource-authorization.md),
-[resource ACL](docs/authorization/resource-acl.md),
-[resource sharing](docs/authorization/resource-sharing.md) and
-[delegation](docs/authorization/delegation.md).
-
-### Attribute-Based Access Control (Phase 4.3.5)
-
-The final authorization layer is **context-aware**: after RBAC, the organization
-hierarchy and the resource chain allow an action, the **ABAC engine** decides whether it
-is safe *right now* — evaluating **subject** (roles, clearance, MFA, risk score),
-**resource** (classification, PII/PHI flags, environment), **action** (destructive,
-data-export, bulk), **environment** (network zone, device trust, business hours, session
-risk) and **AI-specific** attributes (autonomy level, model, tool risk) against
-versioned, lifecycle-managed policies. A policy's effect can deny, require **human
-approval / MFA / justification**, **mask fields** or **limit the action** — and ABAC can
-never grant what the baseline denied (default deny stands). Policies use nested
-ALL/ANY/NOT conditions over **registered attributes only**, are combined with
-deny-overrides precedence, and every decision is explainable (sensitive values redacted)
-and audited. Admins get a **visual policy builder**, a read-only **Policy Simulator**,
-an attribute catalog, an evaluation viewer and time-boxed policy exceptions at
-**Settings → Security → Context policies**. See the
-[ABAC overview](docs/authorization/abac/overview.md),
-[policy language](docs/authorization/abac/policy-language.md),
-[attributes](docs/authorization/abac/attributes.md),
-[operators](docs/authorization/abac/operators.md),
-[combining algorithms](docs/authorization/abac/combining-algorithms.md),
-[lifecycle](docs/authorization/abac/policy-lifecycle.md),
-[simulation](docs/authorization/abac/policy-simulation.md) and
-[security](docs/authorization/abac/security.md).
-
-### Authorization middleware & enforcement (Phase 4.3.6)
-
-The whole authorization stack now runs behind **one enforcement pipeline**. The
-**Authorization Gateway** coordinates authentication context, session state,
-organization hierarchy, RBAC, resource authorization, ABAC, obligations, audit,
-caching and metrics in a fixed ten-stage order, and every enforcement surface —
-REST routes (`require_permission`), the explicit check endpoint, background
-workers, scheduled jobs, workflow nodes, the **AI agent runtime** and API-key
-integrations — calls the gateway; nothing calls RBAC or ABAC directly. Every
-decision carries a stage-by-stage **pipeline trace** stored in the audit trail
-(six events, from `AUTHORIZATION_STARTED` to `EXECUTION_COMPLETED`), challenges
-surface as typed errors the SPA turns into approval / MFA / justification
-flows, constraint decisions (mask fields, limit action) ride with the request,
-and final decisions are **cached** with keys that rotate on any role, policy,
-organization or session change (warm path <5ms, never caching challenges or
-dynamic context). The context object is immutable and spoof-proof; evaluation
-errors fail closed. See [middleware](docs/authorization/middleware.md),
-[pipeline](docs/authorization/pipeline.md),
-[gateway](docs/authorization/gateway.md),
-[obligations](docs/authorization/obligations.md) and
-[context](docs/authorization/context.md).
-
-### Authorization administration portal (Phase 4.3.7)
-
-A unified **IAM control plane** at `/admin`: an operational **dashboard**
-(users, roles, policies, sessions, request/deny volumes, approval queue, MFA
-challenges, cache and latency health, trend charts), the **decision explorer**
-(searchable, tenant-isolated history of every authorization decision — viewing
-is itself audited), **access review campaigns** (periodic certification with a
-DRAFT → ACTIVE → COMPLETED → ARCHIVED lifecycle; activation snapshots every
-in-scope role assignment, and a reviewer's *revoke* removes the live grant
-immediately through the RBAC service), and **security analytics** (denied
-trends, high-risk decisions, approval rates, latency percentiles, top denied
-permissions). A permission-aware portal navigation unifies the existing roles,
-organization, resources, ABAC builder/simulator and audit pages, and a
-dedicated `/api/v1/admin` API (10 separable `admin.*` permissions) delegates
-every operation to the underlying phase services — one implementation, fully
-audited, enforced through the authorization gateway. See
-[dashboard](docs/admin/dashboard.md),
-[access reviews](docs/admin/access-reviews.md),
-[decision explorer](docs/admin/decision-explorer.md),
-[audit center](docs/admin/audit-center.md) and
-[security analytics](docs/admin/security-analytics.md).
-
-### Identity Governance & Administration (Phase 4.3.8)
-
-A full **IGA** layer at `/governance`, built on the 4.3.1–4.3.7 authorization
-platform: **access certification** (reuses the 4.3.7 campaign engine, adds
-campaign types and MODIFIED/DELEGATED decisions), **Separation of Duties and
-toxic-permission detection** (one rule engine — an identity trips a rule when
-its effective, hierarchy-resolved permissions cover both of the rule's
-permission sets; detection runs on demand *and* continuously on every role
-assignment), **privileged access review** (risk-scored list of every identity
-holding a tracked admin-tier role, with approve/revoke), **orphaned identity
-detection** (disabled-but-granted, 90-day-inactive, stale API keys, unused
-roles), **governance risk scoring** (0–100, five weighted factors → LOW/
-MEDIUM/HIGH/CRITICAL), **automated remediation** (typed actions against a
-finding — role removal, account/key disable and delegation expiry execute for
-real; notify/approval-request/MFA/ticket actions are audit-tracked hooks with
-no downstream system to call yet), and **compliance reporting** (SOC 2/ISO
-27001/HIPAA/GDPR/NIST/CIS control → evidence mapping, immutable snapshots,
-JSON/CSV export). See [docs/governance/](docs/governance/) for the full set —
-dashboard, access-certification, sod-analysis, toxic-permissions,
-privileged-access, orphaned-identities, risk-scoring, remediation and
-compliance-reporting.
-
-### Agent Runtime & Lifecycle Management (Phase 5.0)
-
-The execution layer, at `/runtime`: **agent registry** (additive columns on
-the existing Phase 1 `agents` table — no parallel registry), **immutable,
-checksummed versioning** (DRAFT → READY_FOR_REVIEW → APPROVED → PUBLISHED,
-tamper-detected by recomputing the checksum at publish), **deployments**
-(RECREATE strategy across DEVELOPMENT/TEST/STAGING/PRODUCTION/SANDBOX, with
-rollback), the **Runtime Gateway** (every execution request walks agent
-state → deployment → version → idempotency → the existing
-`AuthorizationGateway` RBAC/ABAC pipeline → runtime policy → approval →
-queue, exactly as Phase 4.3.6's gateway was already designed to be called
-by "agent runtime"), a **Postgres-backed execution queue** (`SELECT ... FOR
-UPDATE SKIP LOCKED`, no Redis/Celery dependency, driven inline/eagerly in
-this environment), **capability and tool registries** with per-agent
-assignment and a default-deny Tool Gateway (only `FUNCTION`/`echo` actually
-executes; every other tool type is fully authorized but fails closed),
-runtime **approvals** (mission-critical + production always gates), a live
-**dashboard** and **Operations Center**, and an **emergency kill switch**
-(execution/agent/project/organization/platform scope — platform is
-cross-tenant and requires `SUPER_ADMIN`). Runtime limits (concurrency,
-per-minute rate, daily cost budget, per-execution token estimate),
-execution timeouts, worker-crash recovery, tool-assignment constraints,
-input/output contract validation and the execution state machine are all
-enforced, not just modeled. See [docs/runtime/](docs/runtime/)
-for the full set — architecture, agent-lifecycle, versioning, deployments,
-executions, workers-and-queue, capabilities-and-tools, gateways,
-runtime-policy-and-approvals, health-and-observability,
-operations-and-kill-switch, security, and — added by Milestone 4's Phase 4.3 —
-runtime-governance and runtime-policy-checkpoints, which cover the *in-loop*
-enforcement engine as distinct from the admission-time policy gate above;
-cost-governance and budgets (Phase 4.4); and behavioral-signals (Phase 4.5). The
-telemetry plane added by Milestone 4 lives beside it in
-[docs/observability/](docs/observability/) — architecture (the three-plane
-model), tracing, semantic-conventions, opentelemetry and metrics (Phase 4.6),
-and — added by Phase 4.8 — privacy (capture policy, the four modes, the
-conservative default, redact-before-persist, and the distinct content
-permission) and retention (per-class expiry). Operational SLOs and the alert
-lifecycle (Phase 4.7) are in [docs/operations/](docs/operations/).
-
-### Enterprise Agent Registry (Phase 5.1)
-
-The registry gate every agent must pass before it can version, deploy or
-execute: **accountable ownership** (business/technical/compliance owner,
-with an immutable transfer history), a **mandatory machine identity**
-(one per agent, DB-enforced), org-hierarchy scoping (business unit/
-department/team, derived from project when not given explicitly), a
-**13-state lifecycle** (register → validate → submit-for-approval →
-approve/reject → activate/suspend/resume → deprecate/archive/restore →
-retire, each transition its own audited event), a **validation-report
-engine** (metadata/ownership/identity/definition/risk rules, JSON Schema
-DoS guards, entrypoint format checks), **duplicate detection** (exact +
-similarity, reviewer decisions), **JSON/YAML/CSV import & export** (imports
-always land as DRAFT; exports always exclude secrets), a legacy-agent
-migration/classification page, optimistic concurrency (`row_version`), and
-a registration wizard with draft autosave. See
-[docs/runtime/registry/](docs/runtime/registry/) for the full set.
-
-### Enterprise Versioning & Release Management (Phase 5.2 Part 1)
-
-Every agent version is an immutable, checksummed release artifact: enforced
-**semantic versioning** (auto-derived or validated, strictly increasing), a
-**snapshot builder** that freezes the complete release document (identity,
-definition, runtime config, release metadata/artifacts/notes) at publish
-time, **version lineage** (parent linking, supersession tracking, a
-settable rollback-target pointer), a global **release-channel** catalog,
-categorized **release notes** and **artifact references**, a version
-**status-history** ledger, a new `RETIRED` terminal lifecycle state,
-**version comparison** (a structural diff between any two versions), and
-a **promotion-readiness** diagnostic (advisory, never a lifecycle gate).
-See [docs/runtime/versioning.md](docs/runtime/versioning.md) for the full
-set, including the deliberate scope decisions made against the SRS.
-
-**Compatibility & breaking-change detection (Phase 5.2.6)** — the
-`compatibility_level` column Part 1 reserved is now real: every publish
-automatically classifies the new version against its resolved baseline as
-`COMPATIBLE` / `BACKWARD_COMPATIBLE` / `BREAKING` / `UNKNOWN` (input/output
-contract, tool/capability bindings, model config, resource limits, policy
-tightening), records one finding per detected change, and checks the
-declared semantic-version increment against what was actually detected —
-reported as advisory, never a `publish()` blocker. See the "Compatibility &
-breaking-change detection" section of
-[docs/runtime/versioning.md](docs/runtime/versioning.md).
-
-**Cryptographic signing, provenance & attestation (Phase 5.2.4)** — every
-publish now produces a real signature: a canonical, cross-language-stable
-serialization backs every checksum (replacing `json.dumps`'s
-unspecified-across-languages defaults), a pluggable signing provider
-(local Ed25519 today; Azure Key Vault a configuration change away) signs
-the frozen snapshot, and a self-contained in-toto Statement v1 / DSSE
-attestation document records exactly what was published and by whom — no
-database lookup needed to interpret it. Signing is fail-closed: unlike
-compatibility analysis, a signing failure aborts publication entirely. Key
-rotation and revocation are supported; verification is internal-only for
-now (deliberately deferred, not forgotten — see the "Known Deviations" in
-[docs/runtime/versioning.md](docs/runtime/versioning.md)).
-
-**Model provider abstraction (Phase 5.7a.1)** — the first step in
-replacing the mock execution every layer above it has been tested
-against: a real `ModelProvider` interface, an explicit registry, and a
-provider-neutral internal representation (messages, requests, responses,
-capabilities) that no future adapter's shape can leak outside its own
-module. `MOCK` is migrated onto it with zero change in externally
-observable behavior — proof the interface doesn't distort what it
-expresses. No real provider yet; that's the next sub-phase. See
-[docs/runtime/providers.md](docs/runtime/providers.md).
-
-### Milestone 1 — real execution (complete)
-
-The mock every layer above had been tested against is gone. `OpenAICompatible`
-talks the OpenAI chat-completions wire protocol against any `base_url`
-(Ollama / vLLM / LM Studio / OpenAI) — named for the protocol, not a vendor.
-Real SSE **streaming** reassembles tool calls across fragmented chunks, and an
-interruption persists a partial rather than raising. **Token and cost accounting**
-is real: a provider that omits usage reports `{}` and is never zero-filled, and
-prices live in an effective-dated table, so a local unpriced model honestly costs
-zero rather than being estimated at something.
-
-An eight-class, provider-neutral **error taxonomy** decides what is retryable;
-classification lives in the adapter while retry, exponential backoff with jitter
-and a three-state circuit breaker live in the service layer, so a second adapter
-inherits all of it with no new retry code. **Per-organization credentials** are
-encrypted at rest, resolved at execution time, with the environment variable kept
-only as a fallback.
-
-On the tool side, an `HTTP` action executes behind an SSRF **egress guard** that
-validates addresses across decimal/octal/hex encodings, pins the connection to
-the address it validated (defeating DNS rebinding, verified empirically against
-the installed `httpx`/`httpcore`), and re-validates on redirect — reading its
-allowlist from the *frozen version snapshot*, never live mutable state. Tool
-arguments are validated against a declared JSON-Schema contract **before any side
-effect**, and the resilience machinery is reused from the model side rather than
-duplicated.
-
-Finally the **tool invocation loop** joins them: the model requests a tool, the
-tool runs through the unchanged gateway, the structured result feeds back, and
-the loop resolves — bounded by four independent termination caps (iterations,
-token budget, wall clock, repeated-identical-call). Tools the model requests
-together run in parallel only when every one is declared idempotent. See
-[docs/runtime/gateways.md](docs/runtime/gateways.md).
-
-### Milestone 2 — Enterprise Integration Framework (complete, 9/9)
-
-A `Connector` abstraction with a five-state tenant-instance lifecycle, six
-authentication schemes (API key, bearer, basic, two OAuth2 flows, mTLS) with
-encrypted credential storage and concurrency-safe token refresh, a registry that
-fails fast on a disabled or failed instance, health probes, and an **SDK** whose
-surface is the enforcement: an SDK-authored connector cannot make an undeclared
-outbound call, receive a decrypted credential, suppress audit, or reach another
-tenant's data — because no method exists to do any of those, not because an
-author is asked not to.
-
-Four generic connectors ship, each carrying one sharp containment rule:
-
-- **REST** — injection-safe path/query/header rendering; `123/../admin` renders as
-  a single escaped segment and never escapes to `/admin`
-- **Database** — **the model never writes SQL.** It supplies bound parameters to
-  pre-declared, reviewed queries; the executor has no parameter position a raw
-  SQL string could occupy anywhere in the codebase
-- **Storage** — **a model-supplied path can never escape its declared scope**,
-  canonicalized (percent-decoding, Unicode normalization, symlink resolution)
-  and *then* contains-checked, with no gap between validation and use
-- **Queue** — publish is scoped to a queue fixed by the tool contract (no
-  queue-name parameter exists to redirect through), and consume is always
-  bounded on both batch size and wall clock
-
-**External identity federation** (OIDC + SAML 2.0) completes the milestone, and
-inverts the trust direction: it holds no user secret and verifies an assertion
-inward. Accepted algorithms come from the organization's stored configuration and
-never from the token's own header; SAML signature verification follows the
-signature's own reference back to the exact ID-referenced element, tested against
-deliberately-constructed signature-wrapping attacks. A federated login terminates
-in the platform's *existing* session pipeline — never a parallel one.
-
-### Milestone 3 — Deployment, Release & Operations (complete, 10/10)
-
-Deployments became a governed domain: a 15-state lifecycle with a single
-transition authority and optimistic concurrency, governed **environments** with
-policy plus an immutability-preserving **promotion** operation, and a **release
-gate** aggregating thirteen checks into one authoritative PASS / WARNING / BLOCK
-verdict that fails closed — an unexpected exception in any check becomes a
-blocking finding, never a silently skipped one.
-
-On top of that sits **weighted traffic allocation**: a version resolver on the
-execution hot path (≤3 indexed queries, no cache — deliberately, because every
-candidate cache key is mutated by code across three phases and a stale cache
-would be a fail-closed hazard *under the kill switch*), with concurrency settled
-by a partial unique index rather than a lock, so nothing here can deadlock
-against the execution path's own locks.
-
-Three rollout patterns now drive that one allocation mechanism:
-
-| Strategy | Pattern | The old version |
-|---|---|---|
-| **Canary** | 5 → 25 → 50 → 100, gated per stage | superseded at the end |
-| **Recreate** | 0 → 100 in one cutover | superseded immediately |
-| **Blue-green** | 0 (warm) → 100 in one atomic switch | **preserved at 0%** for instant rollback |
-
-A canary stage clears only when its minimum duration, minimum sample count **and**
-health requirement are all satisfied, judged by an **AI-aware health engine** that
-aggregates real executions over a window rather than reading a liveness heartbeat
-— a model version can be perfectly alive while refusing every third request.
-`INSUFFICIENT_DATA` is first-class and satisfies no requirement at any level:
-two successes out of two is not "healthy", because nothing bad *observed* is not
-nothing bad *happening*.
-
-**Rolling deployment was deferred until it could be real.** For three phases it
-raised a real 501 naming Phase 3.9, because there was no worker fleet to roll
-over and a handler that incremented the vestigial replica counters would have
-reported progress while nothing rolled. Phase 3.9 built the fleet and
-implemented it properly: steps are derived from *actual* registered capacity, so
-a fleet holding 8 and 2 slots rolls 80% → 100% rather than an invented ladder.
-
-**Automated rollback (3.7)** turns rollback from an operation into a safety
-system. Per-tenant, per-environment trigger policies watch the same health
-verdicts the canary engine uses and roll a failing candidate back **on their
-own** — the milestone's headline proof, made automatic. `rollback_target_id` is
-now authoritative: a rollback returns to the *designated* last-known-good, and
-fails closed rather than guessing when none is designated, because a wrong
-rollback looks like a successful one.
-
-Three properties are worth stating because they are what make unattended
-automation defensible:
-
-- **Automation is subordinate to the kill switch; humans are not.** An automatic
-  rollback on a killed agent does not run — automation must never quietly undo a
-  human's kill. A *manual* rollback still runs, because a kill switch must never
-  trap an operator on the version they are trying to leave.
-- **Thin data never triggers.** Three failures out of three is a 100% error rate
-  and still not evidence. `INSUFFICIENT_DATA` and `UNKNOWN` satisfy nothing.
-- **Evidence survives the rollback.** The candidate's metrics at the moment it
-  was rolled back are preserved — the rollback must not be the act that destroys
-  the reason for it.
-
-See [docs/deployment/](docs/deployment/), and
-[docs/deployment/rollback.md](docs/deployment/rollback.md) in particular.
-
-**Users** (password `DemoPass!2026`):
-
-| Email                  | Role       |
-| ---------------------- | ---------- |
-| `admin@example.com`    | `ADMIN`    |
-| `reviewer@example.com` | `REVIEWER` |
-
-**Agents & permissions:**
-
-| Agent                  | Resource         | Action          | Allowed |
-| ---------------------- | ---------------- | --------------- | ------- |
-| BillingAgent           | `CLAIM`          | `READ`          | ✅      |
-| BillingAgent           | `CLAIM`          | `SUBMIT_CLAIM`  | ✅      |
-| BillingAgent           | `PATIENT_RECORD` | `READ`          | ✅      |
-| BillingAgent           | `PATIENT_RECORD` | `UPDATE_RECORD` | ❌      |
-| SchedulingAgent        | `APPOINTMENT`    | `READ`          | ✅      |
-| SchedulingAgent        | `APPOINTMENT`    | `CREATE`        | ✅      |
-| SchedulingAgent        | `APPOINTMENT`    | `CANCEL`        | ✅      |
-| ClinicalSummaryAgent   | `PATIENT_RECORD` | `READ`          | ✅      |
-| ClinicalSummaryAgent   | `DIAGNOSIS`      | `CREATE`        | ❌      |
-| ClinicalSummaryAgent   | `MEDICATION`     | `RECOMMEND`     | ❌      |
-
-> Note: the seeder also prints a one-time API key for each agent. API-key auth for agents is planned for a later phase; Phase 1 uses JWT-authenticated endpoints.
-
-
-**Phase 3.8 added a distributed scheduler** — instances coordinating through
-`SELECT ... FOR UPDATE SKIP LOCKED` leases, with no broker anywhere. The claim
-transaction commits *before* a handler dispatches, and exactly-once per
-occurrence is a schema property (a unique index on the due-instant key) rather
-than something detected afterwards.
-
-**Phase 3.9 moved agent execution onto a real worker fleet, and made rolling
-deployment real with it.** Workers are independently-operable processes
-(`python -m app.workers.runner`) that claim executions with the same
-`FOR UPDATE SKIP LOCKED` query Milestone 1 wrote — but the claim now **commits
-before the execution runs**, so a worker holds no database lock across model or
-tool network I/O. That was the one change to the execution path: the
-model→tool→model loop, governance, retry policy, cost accounting and audit are
-all exactly as Milestone 1 built them, and its entire execution suite passes
-unchanged.
-
-Rolling deployment finally has a substrate. A **cohort** is a declared
-partition of the registered fleet, and each rolling step moves traffic to the
-fraction of *real* capacity converted — a fleet holding 8 and 2 slots steps
-80% → 100%, not an invented ladder. The honest limit is stated in the code and
-the docs rather than discovered later: workers are not version-pinned, so what
-rolls is the share of new work routed to the candidate, in units of real
-capacity, with the fleet sizing and gating the rollout. A rolling deployment
-that cannot see its next cohort refuses to advance rather than promoting
-traffic onto machines that are not there.
-
-
-**Phase 3.10 built the Release Operations Center** — twelve views at
-`/operations` through which an operator can see every deployment across every
-environment, watch a canary advance stage by stage with live health, read a
-release gate's findings, promote through environments, roll back with one
-guarded click, watch the worker fleet and scheduler, and reconstruct any
-release from its timeline.
-
-It adds **no deployment logic**. Every action dispatches to an endpoint Phases
-3.1–3.9 already built and already authorize — a "roll back" button *calls* the
-rollback engine, it does not perform one. That is enforced rather than
-promised: the read-model module makes no write call and imports no mutating
-service, both checked against the parsed source, and a test pins twelve engine
-modules byte-identical to the previous release.
-
-The property that makes it trustworthy is honesty about unsafe state. An
-active kill switch, a BLOCK verdict, INSUFFICIENT_DATA health and a paused or
-rolling-back deployment are all surfaced as first-class facts rather than
-inferred from strings — because the UI can only show what the server tells it,
-and a read model that omitted them would *make* the interface present a killed
-release as deployable. Dangerous actions are confirmation-gated in two tiers,
-with the heavier friction reserved for the genuinely irreversible: uniform
-friction is friction people learn to click through.
-
-**With 3.10 merged, Milestone 3 is complete.** The platform executes real
-governed AI, integrates with the enterprise in both directions, and deploys,
-releases, monitors, routes, rolls back and operates agent versions safely at
-production scale.
-
-### Milestone 4 — Runtime Governance & Observability (complete, 10/10)
-
-**Phase 4.1 — Runtime Telemetry & Trace Context Foundation.** The
-instrumentation contract the remaining nine sub-phases build on. Deliberately
-thin: no trace UI, no governance engine, no cost governance, no exporter.
-
-The gap it closed was measured rather than assumed. `correlation_id` had existed
-on `agent_executions` since Milestone 1 and nothing populated it — it was null on
-**74,395 of 74,619** executions, because the service read it only from the
-request body and `POST /executions` took no `Request` object at all. The rails
-were there; nothing ran on them.
-
-Four properties define the result:
-
-- **Telemetry is a derived plane, never a source of truth.** When it and a
-  domain row disagree, the row is right. See
-  [ADR-0008](docs/architecture/adr/0008-telemetry-as-a-derived-plane.md).
-- **Spans are derived, not stored.** A span id is a deterministic function of
-  (trace, kind, row); a trace assembles by walking foreign keys that already
-  exist. The phase added **two nullable columns and no table** — a span table
-  would have been a lossy second copy of `execution_attempts`,
-  `execution_messages` and `tool_calls`.
-- **Telemetry is non-gating** — the one subsystem here that deliberately fails
-  *open*, because it is not the business transaction. Enforced by an exception
-  guard **and** a SAVEPOINT: without the savepoint a failed insert poisons the
-  caller's transaction, so the swallowed exception resurfaces as a corrupted
-  execution three frames up.
-- **Nothing sensitive is captured.** An isolated, dependency-free scrubber
-  removes nine classes of secret on the write path, content is off by default
-  (`METADATA_ONLY`), and private model reasoning is excluded from *every*
-  capture mode structurally rather than switched off in one.
-
-**Phase 4.2 — Unified AI Execution Trace.** Full trace assembly plus an
-explorer: search executions by trace, agent, version, environment, model, tool,
-status, error or time, and reconstruct any one execution's chronology from the
-rows that already exist. ADR-0008 had named this phase in advance as the point
-to revisit the derived-spans decision *with real numbers*, so it was measured —
-assembly runs at **0.74ms p50** over 90,695 executions, and **no projection was
-added**. The measurement did expose something the fragmented development data
-was hiding: `agent_executions` had no `created_at` index at all, so the
-explorer's default listing would have degraded to a sequential scan for any
-tenant with real volume. One index fixed the shape, turning an
-O(rows-the-tenant-owns) bitmap-plus-sort into an O(limit) ordered scan. A trace
-shows **metadata only** — no prompt text, no tool arguments, no model output;
-that boundary is 4.8's to move, and it is enforced upstream of the routes rather
-than in them.
-
-**Phase 4.3 — Runtime Governance Enforcement Engine.** The platform can now
-govern an agent *while it runs*. At six checkpoints inside the
-model→tool→model loop, one engine returns **ALLOW / DENY / CHALLENGE / STOP**
-with an explicit reason and obligation — cost ceilings, restricted models and
-tools, data sensitivity, duration, per-tool limits, approval obligations.
-
-Three properties are worth stating, because each was a decision rather than an
-implementation detail:
-
-- **One enforcement path.** The loop already enforced four termination caps with
-  inline `if` statements. This phase **generalized them into the engine** rather
-  than running a second mechanism beside them — two enforcers can disagree about
-  whether to stop an execution, and the winner would be whichever check the loop
-  reached first. Every cap still produces its original outcome, and the
-  orchestrator no longer contains a cap comparison at all, asserted over the AST.
-- **Governance fails closed — the deliberate inverse of telemetry.** A mandatory
-  checkpoint that cannot be evaluated **stops** the execution, where a telemetry
-  failure is swallowed and the execution continues. Those two rules now live
-  inches apart in one loop, and both directions are tested: a telemetry failure
-  never changes a governance decision, and a broken telemetry plane cannot
-  suppress a governance stop. See
-  [ADR-0009](docs/architecture/adr/0009-runtime-governance-as-a-fail-closed-plane.md).
-- **Policy is enforced *around* the model, never by asking it to comply**, and no
-  checkpoint holds a database lock across model or tool I/O — the M1 deadlock
-  discipline, now inside the loop and proven against a second real connection.
-
-A governance STOP can trigger the **existing** kill switch where a policy asks
-for it; the engine implements no suspension of its own and never clears a kill.
-See [`docs/runtime/runtime-governance.md`](docs/runtime/runtime-governance.md).
-
-**Phase 4.4 — Enterprise AI Cost Governance & FinOps.** What the platform
-actually spent, and budgets that hold when several workers spend at once.
-
-Cost truth first: every figure is aggregated from
-`agent_executions.cost_amount`, the real per-execution cost computed at
-execution time and carrying the `pricing_version` that produced it. **Actual,
-estimated and unpriced are three separate numbers** and are never added — a
-NULL cost means the platform could not meter that call, and treating "we don't
-know" as zero is how a spend figure becomes a lie someone repeats to their
-finance team. A past charge stays reconstructable after prices change, because
-a price change inserts a new row rather than editing the old one.
-
-Then budgets, and the problem they actually have to solve. Twenty workers each
-read *"$9 remaining"* against a $10 budget, each conclude they may spend $9,
-and $180 is spent — every worker having read a true balance and acted on it
-correctly. The defect is the gap between the read and the act, and here that
-gap contains a call to a model provider.
-
-So a budget is **reserved** before an execution runs and **reconciled** to real
-cost afterwards, with the claim serialized by a row lock in the database rather
-than in one process — proven with twelve real Postgres connections racing a
-$1.00 budget. What is guaranteed is stated exactly: total *reserved* never
-exceeds the limit; total *actual* can, because a model call's cost is unknowable
-until it returns. The overshoot is bounded, documented, and has its own test.
-
-A budget never stops an execution. It reports a number, and Phase 4.3's engine
-decides — so there is still exactly one thing on this platform that can halt a
-running agent. See [`docs/runtime/cost-governance.md`](docs/runtime/cost-governance.md),
-[`budgets.md`](docs/runtime/budgets.md) and
-[ADR-0010](docs/architecture/adr/0010-budget-reservation-semantics.md).
-
-**Phase 4.5 — Behavioral Signals & Runtime Anomaly Detection.** Detecting that
-an agent's behavior has *changed* — and deliberately not building the obvious
-thing.
-
-The obvious thing is a model that scores each agent for anomalousness. It is
-also forbidden, for a reason worth stating: **"this agent is 0.87 anomalous" is
-unauditable, unappealable and ungovernable.** A regulated tenant cannot act on
-it, cannot dispute it, and cannot show a regulator why it fired. So every rule
-here is arithmetic over a window, and every finding carries the numbers that
-produced it — the metric, both window bounds with their sample counts, the
-observed value, the threshold or baseline it crossed, and the crossing in words.
-A finding that cannot explain itself is not emitted.
-
-Seven signals: error-rate shift, policy-denial surge, latency drift, cost drift,
-tool-failure spike, tool-pattern shift, and loop-termination anomaly. Two of
-them catch things the error rate cannot see. A p95 latency that *drops* 80%
-overnight is anomalous — the agent probably stopped doing something it used to
-do — even though no health check would blink. And a model that has started
-looping is caught by the tool loop's safety caps working exactly as designed, so
-nothing errors and only the termination mix reveals it.
-
-A thin window is `INSUFFICIENT_DATA`, never anomalous: three catastrophic
-executions are not evidence of a change any more than three perfect ones are
-evidence of health. The evaluation engine is Phase 3.5's, reused rather than
-forked — veto, then sufficiency, then thresholds, then baseline.
-
-One attribution is deliberately absent. The runtime has no record of which
-external system a version depends on, so "which connector caused today's
-failures" cannot be answered without inventing a dependency link. Every finding
-therefore carries `connector: null` *with a reason*, because naming the gap is
-more useful than omitting the field.
-
-And a finding is only ever a signal: nothing here can stop an execution. See
-[`docs/runtime/behavioral-signals.md`](docs/runtime/behavioral-signals.md).
-
-**Phase 4.6 — OpenTelemetry & Metrics Interoperability.** The platform now speaks
-OpenTelemetry at its boundary. An enterprise streams agent execution traces and
-operational metrics to Datadog, Azure Monitor, Grafana, Splunk, Elastic, or any
-OTLP collector by pointing at an endpoint — no runtime change, no vendor lock-in.
-
-The anti-lock-in property is structural, not a promise: the OpenTelemetry SDK is
-imported by exactly one module (`app/telemetry_export/sinks.py`, at function
-scope) and a test walks the AST of every other package to keep it that way.
-There is no vendor name anywhere in the code, so switching collectors is a
-config edit.
-
-And it is safe: a collector outage is an observability event, not an execution
-event. Export is **fail-open** and runs entirely off the hot path — a background
-dispatcher reads executions that have *already finished*, assembles their traces,
-and exports them after the fact, so there is no code path from an execution to an
-export to fail along. The buffer that makes retry possible is **bounded** — a
-hard cap measured in spans with a declared drop policy, never an unbounded queue
-that turns an observability outage into an out-of-memory. A recorded test runs a
-real execution with the collector down and proves the execution row, the
-telemetry events, and the audit rows are all untouched. Metrics are scraped over
-an authenticated, tenant-scoped `GET /metrics` with strictly bounded-cardinality
-labels. See [`docs/observability/opentelemetry.md`](docs/observability/opentelemetry.md)
-and [`metrics.md`](docs/observability/metrics.md), and
-[ADR-0011](docs/architecture/adr/0011-opentelemetry-export-as-a-fail-open-plane.md).
-
-**Phase 4.7 — SLOs, Alert Rules & Incident Signals.** Express runtime reliability
-as objectives — an SLI, a target, an observation window, an error budget — and
-every breach becomes a first-class, durable, auditable alert with a real
-lifecycle (OPEN → ACKNOWLEDGED → RESOLVED → SUPPRESSED), deduplicated so one
-ongoing condition is one alert.
-
-The discipline is the whole point: **build the signal, not the notification
-platform.** This phase creates alerts. It does not send them. `app/slo` imports
-no Slack client, no email service, no PagerDuty, no webhook — two AST tests fail
-the build on any of them. The alert record is a stable contract that a future
-integration (or 4.9's operator center) consumes; nothing here pages anyone.
-
-SLO evaluation reuses the same deterministic, explainable shape as the health
-engine (3.5) and behavioral signals (4.5): veto → sufficiency → objective →
-budget, with `INSUFFICIENT_DATA` first-class — a thin window reports neither met
-nor breached. The six SLIs read the real execution and tool-call rows, not the
-scraped `/metrics` gauges; the two share a source of truth, not a query. And a
-breach stays a *signal*: it never stops an execution (4.3 does that), and a
-`DEGRADED` behavioral finding stays a finding — escalation to an alert is
-explicit and threshold-defined, never automatic. One ongoing condition is one
-alert, enforced by a partial unique index at the database and proven under a
-real eight-thread Postgres race. See
-[`docs/operations/slos.md`](docs/operations/slos.md),
-[`docs/operations/alerts.md`](docs/operations/alerts.md), and
-[ADR-0012](docs/architecture/adr/0012-alerts-as-signal-creation-not-notification.md).
-
-**Phase 4.8 — Telemetry Privacy, Retention & Access Governance.** Observability
-data is the sensitive part of the platform — prompts, model output, tool
-arguments and results, PHI, PII, secrets. This phase makes *what is captured* a
-deliberate, permissioned, audited policy rather than a debugging default.
-
-A **capture policy** resolves, per tenant / environment / agent /
-data-classification, to one of four modes — `METADATA_ONLY` / `REDACTED_CONTENT`
-/ `FULL_CONTENT` / `DISABLED` — with a documented precedence
-(`classification > agent > environment > tenant > platform-default`) and an
-explainable result. The default is the safety spine: a production or
-sensitively-classified scope with no explicit policy resolves to
-`METADATA_ONLY`, **never** `FULL_CONTENT`, and a malformed policy fails toward
-*less* capture, not more.
-
-When a mode permits content, it is written to a **dedicated `trace_content`
-store** — materialised on the first authorised view, never before — and every
-value is run through the pipeline **before persistence**: strip chain-of-thought
-(§7, no mode enables it), scrub secrets (§14, `FULL_CONTENT` included — full
-*business* content, never full secrets), then classification-mask for
-`REDACTED_CONTENT`. The domain rows the loop and the detail page depend on are
-never touched; the `trace_content` copy has its own retention lifetime.
-
-Reading trace content requires **`runtime.trace.content.view` — a distinct
-permission, strictly stronger than the metadata view**, not in the read-only
-bundle, never implied by executing an agent or seeing metadata, and audited on
-every use (`RUNTIME_TRACE_CONTENT_VIEWED`, actor + resource, never the payload).
-A trace absent for the tenant is 404; present but unpermitted is 403 — the
-discipline that never leaks cross-tenant existence.
-
-Retention is **per telemetry class** — content, trace metadata, metrics
-aggregates, alert history each on their own schedule; governance and financial
-evidence are retain-only and outlive every payload — enforced by a safe,
-idempotent, bounded expiration sweep that deletes telemetry and never domain
-truth. See [`docs/observability/privacy.md`](docs/observability/privacy.md),
-[`docs/observability/retention.md`](docs/observability/retention.md), and
-[ADR-0013](docs/architecture/adr/0013-trace-content-capture-and-access-policy.md).
-
-**Phase 4.9 — Enterprise Runtime Governance & Observability Center.** The
-operator control plane where all of Milestone 4 becomes visible. Nine views —
-Runtime Overview, Trace Explorer, Trace Detail, Cost Center, Governance
-Decisions, Behavior & Anomalies, SLO Dashboard, Alert Center, Telemetry Policy —
-assembled **per persona** (Platform Engineer, SRE, Security/CISO, Governance
-Officer, FinOps, Engineering Management, CIO/CTO), each seeing the views their
-role needs.
-
-It is **read + trigger only**, the same discipline as M3's Release Operations
-Center: it adds no domain logic, every action it triggers is an existing 4.1–4.8
-operation the server re-authorizes, and the two new backend endpoints
-(`GET /runtime/overview`, `GET /runtime/governance/decisions`) are read-only
-aggregation, proven so by an AST test that fails on any write call. Dangerous
-actions — suppressing an alert, raising capture to a content mode, running the
-retention sweep — are confirmation-gated. State is shown truthfully: a burned
-error budget reads "spent", `INSUFFICIENT_DATA` is its own state, a degraded
-exporter raises a banner.
-
-The **Trace Detail content pane** inherits Phase 4.8 completely: it renders
-content only to holders of `runtime.trace.content.view` (a metadata-only
-operator sees a truthful gated message, never the content); it fetches content
-**only** through 4.8's audited endpoint, on explicit request, never on page
-load; it shows the capture mode truthfully (`METADATA_ONLY`/`DISABLED` → "no
-content captured, not an error"); and it honours the 404-vs-403 discipline. See
-[`docs/operations/observability-center.md`](docs/operations/observability-center.md).
-
-**Phase 4.10 — Enterprise Hardening & the Milestone 4 Proof.** The finish line
-for Milestone 4, and a **proof phase**: it builds no product capability, it
-*demonstrates* one.
-
-The **§33 end-to-end proof** configures a real execution — a deployed version, a
-real priced model, a tool, a governance cost policy, a `HARD_LIMIT` budget, a
-`REDACTED_CONTENT` capture policy, a planted secret — and runs it. Every
-assertion is a real effect of the run, not a pre-inserted row. The execution
-routes to the deployed version, a worker claims it, the first model call records
-real tokens and real cost, the model requests a tool, governance evaluates
-mid-loop and permits it, a second model call begins — and **as spend approaches
-the bound the governance engine stops the loop with an explicit reason**. The
-budget holds. The trace reconstructs the journey. The planted secret is absent
-from the `trace_content` store *and* from the serialised OTLP wire bytes. The
-metrics show the failed execution. The decision is audited. The telemetry
-round-trips through the OpenTelemetry encoder as valid protobuf.
-
-Alongside it: **tenant privacy** (two orgs, no cross-tenant metadata / content /
-existence leak, including through the observability center's aggregation
-endpoints); **the budget race** (twelve concurrent workers on real separate
-Postgres connections cannot overspend a shared budget); and **both plane
-directions** — telemetry fails open (a real execution completes with the export
-sink down), governance fails closed (a mandatory checkpoint that cannot be
-evaluated stops the execution rather than proceeding ungoverned). All fifteen
-§41 completion gates (A–O) close, each mapped to a named passing proof. See
-[`docs/runtime/milestone-4-proof.md`](docs/runtime/milestone-4-proof.md).
-
-> **Milestone 4 — Enterprise Runtime Governance & Observability — is complete.**
-> The platform executes real governed AI (M1), integrates with the enterprise in
-> both directions (M2), deploys and operates versions safely at production scale
-> (M3), and now **understands, governs, controls, investigates and financially
-> manages what its agents do while they execute** — demonstrated end to end.
-
----
-
-## Demo testing flow
-
-You can do all of this interactively in Swagger (`/docs`) — click **Authorize** and paste the token. Below is the equivalent using `curl`.
-
-### 1. Log in as the admin
-
-```bash
-curl -X POST http://localhost:8000/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"admin@example.com","password":"DemoPass!2026"}'
-# => {"access_token":"<TOKEN>","token_type":"bearer"}
-```
-
-Save the token:
-
-```bash
-TOKEN="<paste access_token here>"
-```
-
-### 2. List agents (to get their IDs)
-
-```bash
-curl http://localhost:8000/agents -H "Authorization: Bearer $TOKEN"
-```
-
-### 3. Run the expected scenarios
-
-```bash
-# Scenario 1 — SchedulingAgent creates an appointment -> ALLOW
-curl -X POST http://localhost:8000/agent-actions -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"agent_id":"<SCHEDULING_AGENT_ID>","resource":"APPOINTMENT","action":"CREATE",
-       "input_payload":{"patient_id":"PAT-2001","slot":"2026-07-01T10:00"}}'
-
-# Scenario 2 — BillingAgent submits a claim -> PENDING_APPROVAL
-curl -X POST http://localhost:8000/agent-actions -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"agent_id":"<BILLING_AGENT_ID>","resource":"CLAIM","action":"SUBMIT_CLAIM",
-       "input_payload":{"claim_id":"CLM-1001","amount":1200,"patient_id":"PAT-2001"}}'
-
-# Scenario 3 — BillingAgent updates a patient record -> BLOCK (permission denied)
-curl -X POST http://localhost:8000/agent-actions -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"agent_id":"<BILLING_AGENT_ID>","resource":"PATIENT_RECORD","action":"UPDATE_RECORD",
-       "input_payload":{"patient_id":"PAT-2001"}}'
-
-# Scenario 4 — ClinicalSummaryAgent recommends medication -> BLOCK (permission denied)
-curl -X POST http://localhost:8000/agent-actions -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"agent_id":"<CLINICAL_AGENT_ID>","resource":"MEDICATION","action":"RECOMMEND",
-       "input_payload":{"patient_id":"PAT-2001","drug":"X"}}'
-
-# Scenario 5 — Unknown action -> BLOCK (risk 85 > 80, or no permission)
-curl -X POST http://localhost:8000/agent-actions -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"agent_id":"<BILLING_AGENT_ID>","resource":"CLAIM","action":"FRobNICATE",
-       "input_payload":{}}'
-```
-
-Scenario 2 produces a response like:
-
-```json
-{
-  "agent_action_id": "…",
-  "decision": "PENDING_APPROVAL",
-  "risk_score": 75,
-  "decision_reason": "Permission exists but action requires human approval due to medium/high risk (risk score: 75).",
-  "status": "CREATED",
-  "approval_id": "…"
-}
-```
-
-### 4. Review the approval queue (as reviewer)
-
-```bash
-# Log in as reviewer, then:
-curl http://localhost:8000/approvals/pending -H "Authorization: Bearer $REVIEWER_TOKEN"
-
-# Approve it:
-curl -X POST http://localhost:8000/approvals/<APPROVAL_ID>/approve \
-  -H "Authorization: Bearer $REVIEWER_TOKEN" -H "Content-Type: application/json" \
-  -d '{"review_comment":"Looks legitimate."}'
-```
-
-### 5. Inspect the audit trail
-
-```bash
-curl http://localhost:8000/audit-logs -H "Authorization: Bearer $TOKEN"
-curl http://localhost:8000/audit-logs/entity/agent_action/<AGENT_ACTION_ID> \
-  -H "Authorization: Bearer $TOKEN"
-```
-
----
-
-## Running tests
-
-The Phase 1 engine logic is pure and needs no database, but **the suite as a
-whole does** — most of it runs against a real local PostgreSQL, deliberately, so
-that concurrency races, index behaviour and migration reversibility are tested
-against the real thing rather than a mock.
+Backend, from the repository root. The suite runs against the local
+PostgreSQL; one live-provider test is deselected by default.
 
 ```bash
 cd backend
 pytest -q
-# 1,575 passed, 1 deselected
 ```
 
-The one deselected test is marked `live_provider` — a genuinely live Ollama
-check, excluded by default via `backend/pytest.ini`. It is a deselection, not a
-failure or a skip; the suite contains no `skip` or `xfail` markers.
+Frontend, from the repository root:
 
 ```bash
 cd frontend
 npm test
-# 297 passed
+```
+
+Backup, restore, and key-material recovery: [RECOVERY.md](RECOVERY.md).
+
+---
+
+## Repository Structure
+
+```
+ai-agent-control-tower/
+├── README.md              this page
+├── REPO_STATE.md          mechanically maintained repository record
+├── ROADMAP.md             milestone status and historical roadmap
+├── CHANGELOG.md           phase-by-phase change record
+├── RECOVERY.md            backup, restore, and key recovery
+├── docker-compose.yml     local full stack: db, api, web
+├── backend/               FastAPI application, Alembic migrations, tests
+├── frontend/              React + TypeScript console
+├── docs/                  per-domain guides, ADRs, milestone proofs
+└── scripts/               backup and verification tooling
 ```
 
 ---
 
-## API reference (summary)
+## Documentation
 
-| Area          | Endpoints                                                                              |
-| ------------- | -------------------------------------------------------------------------------------- |
-| Auth          | `POST /auth/register`, `POST /auth/login`, `GET /auth/me`                               |
-| Auth (v1)     | `POST /api/v1/auth/{login,refresh,logout,mfa/verify}`, `GET /api/v1/auth/{me,sessions}`, `DELETE /api/v1/auth/sessions/{id}` — Phase 4 Part 4.2.2.1: argon2id, rotating refresh tokens, account lockout, login history, silent refresh. See [`docs/identity/human-authentication.md`](docs/identity/human-authentication.md). |
-| Organizations | `POST /organizations`, `GET /organizations/{id}`                                       |
-| Users         | `POST /users`, `GET /users`, `GET /users/{id}`                                          |
-| Agents        | `POST /agents`, `GET /agents`, `GET /agents/{id}`, `PATCH /agents/{id}/status`          |
-| Permissions   | `POST /permissions`, `GET /permissions`, `GET /permissions/agent/{agent_id}`           |
-| Agent actions | `POST /agent-actions`, `GET /agent-actions`, `GET /agent-actions/{id}`                  |
-| Approvals     | `GET /approvals`, `GET /approvals/{id}`, `GET /approvals/statistics`, `GET /approvals/history`, `GET /approvals/escalations`, `POST /approvals/{id}/approve\|reject\|escalate\|assign` |
-| Audit logs    | `GET /audit-logs`, `GET /audit-logs/entity/{entity_type}/{entity_id}`                   |
-| Audit center  | `GET /audit`, `GET /audit/{id}`, `GET /audit/statistics`, `GET /audit/timeline`, `GET /audit/events`, `GET /audit/security`, `GET /audit/compliance`, `GET /audit/export` (Part 3.5; `audit.view` for the table/detail, `audit.export` for security/compliance/export and raw payloads) |
-| Analytics     | `GET /analytics/overview`, `GET /analytics/kpis`, `GET /analytics/activity`, `GET /analytics/fleet-health`, `GET /analytics/risk`, `GET /analytics/performance`, `GET /analytics/policies`, `GET /analytics/review`, `GET /analytics/cost`, `GET /analytics/insights`, `GET /analytics/reports` (Part 3.6; `analytics.view` gates the surfaces, `analytics.executive` / `analytics.operations` gate those dashboards) |
-| Identity (v1) | `GET/POST /api/v1/identity/users` (+ `/{id}/activate\|suspend\|status`), `GET/POST /api/v1/identity/organizations` (+ `/{id}/status`), `GET/POST /api/v1/identity/departments`, `GET /api/v1/identity/roles`, `GET /api/v1/identity/sessions`, and machine identities `GET/POST /api/v1/identity/{agent-identities,service-accounts,external-clients}` (+ `/{id}/status`). Phase 4 Part 4.1/4.1a; versioned, standard error envelope, RBAC-gated. Every identity (human, agent, service account, organization, external client) shares one `IdentityStatus` lifecycle. |
-
-`POST /auth/register` bootstraps a brand-new organization plus its first `SUPER_ADMIN` user and returns a JWT — handy for creating your own tenant outside the demo seed.
-
----
-
-## Phase 2 — production-oriented platform
-
-Phase 2 builds on the Phase 1 MVP. Run the new migration to add its tables:
-
-```bash
-cd backend
-alembic upgrade head      # applies migration 0002 (Phase 2 schema)
-python -m app.seed        # adds API keys, policies and RBAC to the demo org
-```
-
-### What's new
-
-| Module | Summary |
-| ------ | ------- |
-| **Agent API keys** | Each agent gets one-or-more `agt_live_…` keys (only the SHA-256 hash is stored). Agents authenticate directly via `Authorization: Bearer agt_live_…`. |
-| **Policy engine** | Database-driven rules (`policies` table). A policy targets a `resource`/`action` and a JSON `conditions` object (e.g. `{"amount_gt": 10000}`) and yields a decision. Matching policies **override** the raw risk thresholds; highest `priority` wins. |
-| **Advanced RBAC** | `roles`, `rbac_permissions`, `role_permissions`, `user_roles`. Routes are guarded by fine-grained permission codes (e.g. `policy.create`, `approval.review`). Backward-compatible with the Phase 1 role enum. |
-| **Approval queue+** | Approvals now carry a `priority` (LOW/MEDIUM/HIGH/CRITICAL derived from risk), an SLA deadline (`sla_due_at`), and a comment thread. |
-| **Notifications** | Email via SMTP (Mailtrap for dev) sent through FastAPI background tasks on approval requested/decided and agent suspension. Disabled by default (`NOTIFICATIONS_ENABLED=false`) — sends are logged instead. |
-| **Audit++** | Audit logs capture `ip_address`, `user_agent`, `request_id`, `trace_id`, plus `before_state`/`after_state` and a risk breakdown. |
-| **Dashboard APIs** | `/dashboard/summary`, `/dashboard/recent-actions`, `/dashboard/high-risk-actions`, `/dashboard/pending-approvals`. |
-| **Risk engine v2** | `risk = clamp(action_score + resource_score + modifiers)` (e.g. PHI access `+20`, large amount `+10`). |
-| **Docker** | `Dockerfile` + `docker-compose.yml` run `api` + `postgres`; the api container migrates on start. |
-
-### New / changed endpoints
-
-```
-# Agent API keys
-POST   /agents/{id}/generate-api-key      issue a key (shown once)
-GET    /agents/{id}/api-keys              list an agent's keys (no hashes)
-POST   /api-keys/{id}/revoke              revoke a key
-
-# Policies
-POST   /policies                          create a policy
-GET    /policies                          list (filter by ?resource= &action=)
-GET    /policies/{id}                     fetch
-PATCH  /policies/{id}                     update
-DELETE /policies/{id}                     delete
-
-# RBAC
-GET    /rbac/permissions                  permission catalog
-GET    /rbac/roles                        roles + their permission codes
-GET    /rbac/me                           caller's effective permissions
-POST   /rbac/users/{user_id}/roles        assign a role to a user
-
-# Approvals (additions)
-GET    /approvals/{id}/comments           comment thread
-POST   /approvals/{id}/comments           add a comment
-
-# Dashboard
-GET    /dashboard/summary
-GET    /dashboard/recent-actions
-GET    /dashboard/high-risk-actions
-GET    /dashboard/pending-approvals
-
-# Dashboard + system (added in Phase 3 Part 3.1)
-GET    /dashboard/activity            7-day agent-action counts
-GET    /dashboard/risk-trend          30-day average risk score
-GET    /system/health                 subsystem health for the dashboard
-# /dashboard/summary also returns today_actions
-
-# Agent management (added in Phase 3 Part 3.2a)
-GET    /agents                        paginated list: search/status/type/risk/sort
-PUT    /agents/{id}                   update agent metadata + config
-DELETE /agents/{id}                   delete an agent
-GET    /agents/{id}/stats             per-agent operational statistics
-# agents now carry owner, department, version, capabilities, risk config;
-# statuses add ARCHIVED and BLOCKED
-
-# Policy management (added in Phase 3 Part 3.3)
-GET    /policies                      list: search + resource/action/decision/severity/status
-PUT    /policies/{id}                 update a policy (PATCH also accepted)
-PATCH  /policies/{id}/enable          enable a policy
-PATCH  /policies/{id}/disable         disable a policy
-POST   /policies/{id}/test            simulate an action against the policy
-GET    /policies/{id}/audit           policy lifecycle audit events
-GET    /policies/templates            built-in policy templates
-# policies now carry priority, severity, status, trigger_count, last_triggered_at
-
-# Approval queue & review workbench (added in Phase 3 Part 3.4)
-GET    /approvals                      filterable queue: status/priority/risk range/search
-GET    /approvals/statistics          pending / approved today / rejected today / escalated / avg review time
-GET    /approvals/{id}                full detail: agent, policy, risk breakdown, payload, comments
-GET    /approvals/{id}/timeline       audit-derived review timeline
-POST   /approvals/{id}/escalate       escalate to reviewer/manager/compliance/security (reason required)
-POST   /approvals/{id}/assign         assign or reassign the responsible reviewer
-GET    /approvals/history             resolved approvals (approved/rejected/escalated/expired)
-GET    /approvals/escalations         active escalations with SLA countdown
-# approvals now carry assigned_to_user_id, escalation_target, escalated_at;
-# approval_decision adds ESCALATED and EXPIRED; new RBAC codes approval.view/escalate/assign
-```
-
-### Authenticating as an agent (Phase 2)
-
-```bash
-# 1. As an admin, issue a key for an agent:
-curl -X POST http://localhost:8000/agents/<AGENT_ID>/generate-api-key \
-  -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" -d '{}'
-# => {"api_key":"agt_live_xxxxxxxx", ...}   (store it now — shown once)
-
-# 2. The agent calls /agent-actions with its own key (no user JWT needed):
-curl -X POST http://localhost:8000/agent-actions \
-  -H "Authorization: Bearer agt_live_xxxxxxxx" -H "Content-Type: application/json" \
-  -d '{"agent_id":"<AGENT_ID>","resource":"CLAIM","action":"SUBMIT_CLAIM","input_payload":{"amount":50000}}'
-# => decision PENDING_APPROVAL, matched_policy "Large Claim Approval"
-```
-
-`/agent-actions` accepts **either** an agent API key **or** a user JWT (keys carry the `agt_live_` prefix). With a key, the acting agent is taken from the key.
-
-### Policy example
-
-```json
-{
-  "name": "Large Claim Approval",
-  "resource": "CLAIM",
-  "action": "SUBMIT_CLAIM",
-  "conditions": { "amount_gt": 10000 },
-  "decision": "PENDING_APPROVAL",
-  "priority": 100
-}
-```
-
-Supported condition operators (keys are `"<field>_<op>"`): `_gt`, `_gte`, `_lt`, `_lte`, `_eq`, `_ne`, `_in`, `_contains`. A bare `"field": value` is an equality check. Empty `conditions` = always matches. All conditions are AND-ed.
-
-### Policy management UI (Phase 3 Part 3.3)
-
-The dashboard ships a full policy-authoring module at `/policies`
-(`frontend/src/modules/policies/`):
-
-- **Policy list** (`/policies`) — enterprise table with 300ms debounced search
-  (name/resource/action/description/decision), status/decision/severity/resource
-  filters, decision/severity/status badges, trigger counts, row actions
-  (View, Edit, Test, Duplicate, Enable/Disable, Delete) and CSV export.
-  Skeleton, empty and error states included.
-- **Create / Edit** (`/policies/new`, `/policies/:id/edit`) — a six-step builder
-  (Basic → Scope → Trigger → Conditions → Decision → Review) with a JSON
-  condition editor and a live plain-English preview; "Save as Draft" or publish.
-- **Details** (`/policies/:id`) — Overview, Conditions (human-readable + raw
-  JSON), Assigned Agents, Trigger History, Audit timeline and a Settings tab
-  with a danger-zone delete.
-- **Test** (`/policies/:id/test`) — simulate an agent action and inspect
-  matched / decision / risk score / triggered conditions / explanation.
-- **Templates** (`/policies/templates`) — gallery of built-in governance
-  templates; "Use Template" pre-seeds the builder.
-
-Role-based UI: ADMIN / SUPER_ADMIN can create, edit, enable/disable and delete;
-REVIEWER can view and test; everyone else is read-only. Deletes require typing
-`DELETE` to confirm. The backend RBAC layer remains the source of truth.
-
-Decision/severity/status badges degrade gracefully — an unrecognized value
-renders a neutral "Unknown" badge rather than breaking the page, so older or
-partially-migrated policy rows never blank the table. Restart the API after
-applying migration `0004` so `/policies` serves the new `severity`/`status`/
-`trigger_count` fields the UI reads.
-
-> Screenshots (policy list, builder and test page) can be captured from a local
-> `npm run dev` session and dropped into `docs/`.
-
-### Approval queue & review workbench UI (Phase 3 Part 3.4)
-
-The dashboard ships the operational heart of AI governance at `/approvals`
-(`frontend/src/modules/approvals/`) — where humans inspect, approve, reject,
-escalate and audit AI agent decisions:
-
-- **Approval dashboard** (`/approvals`) — five statistics cards (Pending,
-  Approved Today, Rejected Today, Escalated, Avg Review Time), 300ms debounced
-  search (ID/agent/resource/reviewer), status/priority/risk-range filters,
-  colour-coded status/priority/risk badges, row-level Approve/Reject and bulk
-  approve with checkbox selection, plus CSV export. Skeleton, empty and error
-  states included.
-- **Approval details** (`/approvals/:id`) — summary card, agent information,
-  policy explanation (matched rule + conditions), risk assessment with a
-  recharts pie breakdown, a collapsible JSON payload viewer (copy/download),
-  the decision-history timeline and reviewer notes. Export the full payload as
-  JSON.
-- **Review workbench** (`/approvals/:id/review`) — the most important page: a
-  sticky decision panel (Approve, Reject, Escalate, Assign/Reassign) beside the
-  payload, risk analysis, policy explanation and a live comment composer.
-  Approve requires a note; reject requires a ≥20-character reason; escalate
-  routes to Reviewer/Manager/Compliance Officer/Security Team with a reason.
-- **History** (`/approvals/history`) — every resolved decision, searchable and
-  filterable by status, with CSV export.
-- **Escalations** (`/approvals/escalations`) — active escalations as cards with
-  live SLA countdowns (overdue/urgent highlighting) and the responsible reviewer.
-
-Role-based UI: the queue is visible to anyone with `approval.view`; Approve /
-Reject (and commenting) require `approval.review`, Escalate requires
-`approval.escalate`, and Assign requires `approval.assign`. Restricted actions
-are hidden in the UI, and the backend RBAC layer still enforces them. Restart
-the API after applying migration `0005` so `/approvals` serves the new
-`assigned_to_user_id` / `escalation_target` columns and the `ESCALATED` /
-`EXPIRED` decision states the UI reads.
-
-Architecture, data-flow diagrams (Mermaid) and the endpoint→UI map for this
-module live in [`docs/phase-3-part-4.md`](docs/phase-3-part-4.md).
-
-> Screenshots (approval queue, review workbench, details and timeline) can be
-> captured from a local `npm run dev` session and dropped into `docs/`.
-
-### Audit & Compliance Center UI (Phase 3 Part 3.5)
-
-The audit module at `/audit` (`frontend/src/modules/audit/`) gives every
-significant platform event complete traceability — who/what/when/why and what
-happened — over the immutable `audit_logs` trail. Severity, category, decision
-and human status are *derived* on the backend (`audit_view`); no new columns are
-stored.
-
-- **Audit dashboard** (`/audit`) — six statistics cards (Total Events, Security
-  Events, Policy Evaluations, Approval Events, Authentication, Config Changes),
-  an activity timeline (clickable, newest first), a Recent Events list, and —
-  for `audit.export` holders — security and compliance snapshots.
-- **Events explorer** (`/audit/events`) — the full enriched table (Timestamp,
-  Event ID, Actor, Event Type, Resource, Decision, Severity, Status) with 300ms
-  debounced search, filters (event type/category/actor/severity/decision/date
-  range) and server-side pagination. Skeleton, empty and error states included.
-- **Event detail** (`/audit/:id`) — forensic summary (actor, request/correlation/
-  session ids, IP, policy, risk, reason), a Request viewer and a Response &
-  Decision viewer (collapsible JSON with copy/download), and a Related Events
-  flow tracing the shared correlation id (request → policy → approval →
-  execution). Raw payloads and JSON export are gated on `audit.export`.
-- **Security dashboard** (`/audit/security`) — failed logins, blocked agents,
-  disabled API keys, permission violations, suspicious activity and critical
-  alerts, plus a recent security-events table. Requires `audit.export`.
-- **Compliance dashboard** (`/audit/compliance`) — informational HIPAA / SOC 2 /
-  ISO 27001 readiness with policy, approval and audit-completeness coverage bars.
-  Requires `audit.export`.
-- **Export center** (`/audit/export`) — apply filters, preview the selection,
-  then export the full matching set as CSV or JSON (PDF is a placeholder).
-  Requires `audit.export`.
-
-Role-based UI: the dashboard, events table and event detail are visible to
-anyone with `audit.view` (all built-in roles); the export center, security and
-compliance dashboards, and raw request/response payloads require `audit.export`
-(SUPER_ADMIN / ADMIN). Restricted surfaces render an access-denied state and the
-backend RBAC layer still enforces every call.
-
-> Screenshots (audit dashboard, event detail, security and compliance
-> dashboards) can be captured from a local `npm run dev` session and dropped
-> into `docs/`.
-
-### Analytics & AI Operations Center UI (Phase 3 Part 3.6)
-
-The analytics module at `/analytics` (`frontend/src/modules/analytics/`) is the
-"mission control" for enterprise AI — an executive/operations view over the same
-operational tables (agents, agent_actions, approvals, policies, audit_logs).
-Metrics are derived at read time; latency and cost figures the platform does not
-record are deterministic estimates, flagged with a `*` and an explanatory note.
-
-- **Overview** (`/analytics`) — ten animated executive KPI cards (agents, actions,
-  approvals, success/failure rate, avg risk, avg decision time, policies,
-  compliance) with period-over-period trends, AI fleet-health cards, an activity
-  overview chart (daily/weekly/monthly/yearly), a risk-distribution donut and
-  rule-based AI insights. Auto-refreshes every 15s.
-- **Executive** (`/analytics/executive`) — high-level posture (KPIs, 30-day risk
-  trend, key insights) for leadership. Requires `analytics.executive`.
-- **Operations** (`/analytics/operations`) — live agent activity feed (10s),
-  fleet health, review queue stats and reviewer workload. Requires
-  `analytics.operations`.
-- **Risk** (`/analytics/risk`) — distribution, 30-day trend, a colour-intensity
-  heatmap (agent type × band), risk by department/agent-type, and the
-  highest-risk agents.
-- **Performance** (`/analytics/performance`) — latency/processing metrics,
-  failure vs retry, and a sortable/searchable agent performance ranking.
-- **Agents** (`/analytics/agents`) — fleet composition + the agent ranking.
-- **Policies** (`/analytics/policies`) — coverage/effectiveness stats, most
-  triggered / most blocking / most approval-routing / least used policies.
-- **Costs** (`/analytics/costs`) — estimated compute, API, LLM, human-review,
-  policy-evaluation and storage spend with a composition donut.
-- **Reports** (`/analytics/reports`) — generate daily→annual reports and export
-  as CSV or JSON (PDF placeholder).
-
-Role-based UI: general analytics needs `analytics.view` (SUPER_ADMIN / ADMIN /
-REVIEWER); the executive and operations dashboards need `analytics.executive` /
-`analytics.operations`. Restricted surfaces render an access-denied state and the
-backend RBAC layer enforces every call. Restart the API after pulling so the new
-`analytics.*` permissions seed for freshly registered organizations.
-
-Architecture, data-flow diagram and the endpoint→UI map live in
-[`docs/phase-3-part-6.md`](docs/phase-3-part-6.md).
-
-> Screenshots (analytics overview, executive, fleet health, risk, performance,
-> reports) can be captured from a local `npm run dev` session and dropped into
-> `docs/`.
-
-### Email notifications (Mailtrap)
-
-Onboarding emails (invitations, verification links) carry the **only** copy of a
-single-use token — the database stores just its SHA-256. So delivery matters:
-
-- **Off (default, `NOTIFICATIONS_ENABLED=false`)** — nothing is sent. The full
-  message, link included, is appended to a git-ignored dev outbox
-  (`EMAIL_DEV_OUTBOX_PATH`, default `var/dev-outbox.log`) so the link stays
-  recoverable, and the Invitations panel shows a "delivery disabled" warning.
-- **On (`NOTIFICATIONS_ENABLED=true`)** — mail goes to SMTP; the outbox is no
-  longer written (a plaintext token must never hit disk in a sending deploy).
-
-**To send through Mailtrap Sandbox** (safe testing — captures mail, does **not**
-deliver to real inboxes):
-
-1. mailtrap.io → **Email Testing → Sandboxes → your sandbox → SMTP Settings**
-2. Set the code dropdown to **Nodemailer** to reveal the per-inbox credentials
-   (a random username/password — *not* your Mailtrap account login).
-3. Put them in `.env`:
-
-```env
-NOTIFICATIONS_ENABLED=true
-SMTP_HOST=sandbox.smtp.mailtrap.io
-SMTP_PORT=587
-SMTP_USERNAME=<random sandbox username>
-SMTP_PASSWORD=<random sandbox password>
-SMTP_USE_TLS=true
-SMTP_FROM=no-reply@control-tower.local
-```
-
-Restart the backend, then create/resend an invitation — it appears in the Mailtrap
-sandbox inbox. Free plan throttles to a few emails/second (`550 Too many emails
-per second`); `EmailResult` reports that as a failure rather than a false success.
-
-> **Real delivery to actual inboxes** (e.g. real Gmail) is a *different* Mailtrap
-> product — **Email API/SMTP** live sending (`live.smtp.mailtrap.io`, its own
-> credentials, requires domain verification). Sandbox alone never leaves Mailtrap.
-
-### Run with Docker
-
-```bash
-docker compose up -d --build      # builds the api image, starts api + postgres
-# api migrates on start; SEED_ON_START=true (compose default) loads demo data
-# Swagger: http://localhost:8000/docs
-```
-
-### Tests & coverage
-
-```bash
-cd backend
-pytest --cov=app --cov-report=term-missing     # ~83% coverage, 33 tests
-```
-
-Unit tests cover the risk, decision and policy engines; integration tests
-(`tests/test_integration.py`) exercise the full Phase 2 flow against PostgreSQL
-(register → agent → API key → permission → policy → action → approval → revoke).
+| Topic | Document |
+|---|---|
+| Verified repository record | [REPO_STATE.md](REPO_STATE.md) (the Phase 5.10 header is current; some deep sections await regeneration) |
+| Milestone status and historical roadmap | [ROADMAP.md](ROADMAP.md) |
+| Backup, restore, and recovery | [RECOVERY.md](RECOVERY.md) |
+| Milestone 5 summary and proof | [docs/milestone-5/summary.md](docs/milestone-5/summary.md), [docs/milestone-5/proof.md](docs/milestone-5/proof.md) |
+| Control states and the asset model | [docs/runtime/registry/asset-model.md](docs/runtime/registry/asset-model.md) |
+| Enforcement modes | [docs/bridge/enforcement-modes.md](docs/bridge/enforcement-modes.md) |
+| Truthful containment | [docs/threat/truthful-containment.md](docs/threat/truthful-containment.md) |
+| Assurance and evidence | [docs/assurance/overview.md](docs/assurance/overview.md) |
+| Architecture decisions | [docs/architecture/adr/README.md](docs/architecture/adr/README.md) |
+| Milestone 4 proof | [docs/runtime/milestone-4-proof.md](docs/runtime/milestone-4-proof.md) |
+| Key management and integrity | [docs/security/key-management.md](docs/security/key-management.md) |
+| Telemetry privacy | [docs/observability/privacy.md](docs/observability/privacy.md) |
+| Identity federation | [docs/identity/federation.md](docs/identity/federation.md) |
+| Connectors (reference; contains phase-local schema notes, not current repository state) | [docs/integration/connectors.md](docs/integration/connectors.md) |
+| Automated rollback and release safety | [docs/deployment/rollback.md](docs/deployment/rollback.md) |
+| Rules not yet delivered | [docs/posture/rules.md](docs/posture/rules.md), [docs/threat/rules.md](docs/threat/rules.md) |
 
 ---
 
-## What's next
+## Project Context
 
-*This section previously listed the Phase 3+ wish-list. Most of it has since
-shipped — real action execution, the dashboard frontend, policy simulation, key
-lifecycle — so it is replaced here with the actual current queue rather than left
-to read as pending. [`ROADMAP.md`](ROADMAP.md) is the maintained plan and
-[`REPO_STATE.md`](REPO_STATE.md) §9 the honest gap list.*
+AI Agent Control Tower is an independent engineering and startup project. It
+does not contain employer code, employer data, or employer infrastructure. Demo
+data uses a fictional organization and fictional accounts.
 
-**Milestone 3 is complete, and Milestone 4 is under way (7/10).** Phase 4.1
-shipped the instrumentation contract and 4.2 the trace explorer (no materialized
-span store, per ADR-0008); 4.3 added the fail-closed runtime governance engine,
-4.4 cost truth and reservation-enforced budgets, 4.5 deterministic behavioral
-signals, and 4.6 OpenTelemetry interoperability — traces and metrics to any OTLP
-collector, fail-open and off the hot path (ADR-0011). Next: Phase 4.7, SLOs and
-alerting on top of the 4.6 metrics surface.
-
-**Known gaps, stated plainly** (the full list is [`REPO_STATE.md`](REPO_STATE.md)
-§9): CAPTCHA verification is a placeholder; the Phase 3 analytics cost figures are
-deterministic estimates unrelated to the real per-execution cost accounting added
-in Milestone 1; signing keys and the credential-encryption key live on local disk
-rather than in a vault (deferred, documented, and closing at Milestone 13); the
-frontend production bundle is a single ~1.65 MB chunk with no route-level code
-splitting; and vendor-specific connectors (SAP/Salesforce/ServiceNow) are
-deliberately fast-follow work rather than speculative build-ahead.
-
-**Deliberately out of scope entirely**: a visual workflow builder, hyperscale
-event streaming, automated model optimization, reinforcement learning, autonomous
-agent creation, a marketplace, multi-cloud federation, a Kubernetes operator, and
-GPU scheduling — see "What's deliberately not here" in
-[docs/runtime/overview.md](docs/runtime/overview.md).
+This repository does not yet include a license file.
