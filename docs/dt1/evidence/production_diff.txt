@@ -1,0 +1,4 @@
+# git diff ab27fe3 --stat -- backend/app backend/migrations backend/requirements.txt backend/tests frontend .github
+# (empty = no production change)
+# alembic heads
+__pycache__

@@ -1,0 +1,34 @@
+..............................                                           [100%]
+=================================== PASSES ====================================
+=========================== short test summary info ===========================
+PASSED lab/dt1/tests/test_boundaries.py::test_production_act_imports_nothing_from_dt1
+PASSED lab/dt1/tests/test_boundaries.py::test_dt1_generator_and_validator_import_nothing_from_act
+PASSED lab/dt1/tests/test_boundaries.py::test_dt1_tree_has_no_database_access
+PASSED lab/dt1/tests/test_boundaries.py::test_empty_production_diff_against_base_commit
+PASSED lab/dt1/tests/test_boundaries.py::test_no_migration_added
+PASSED lab/dt1/tests/test_boundaries.py::test_nothing_written_into_backend_keys_or_outside_lab
+PASSED lab/dt1/tests/test_boundaries.py::test_no_forbidden_markers_in_dt1
+PASSED lab/dt1/tests/test_negative.py::test_duplicate_canonical_agent
+PASSED lab/dt1/tests/test_negative.py::test_missing_owner_reference
+PASSED lab/dt1/tests/test_negative.py::test_invalid_credential_reference
+PASSED lab/dt1/tests/test_negative.py::test_invalid_mcp_reference
+PASSED lab/dt1/tests/test_negative.py::test_cross_tenant_relationship
+PASSED lab/dt1/tests/test_negative.py::test_control_group_below_ten
+PASSED lab/dt1/tests/test_negative.py::test_control_group_above_fifteen_or_risky
+PASSED lab/dt1/tests/test_negative.py::test_required_adversarial_condition_removed
+PASSED lab/dt1/tests/test_negative.py::test_truthful_refusal_scenario_removed
+PASSED lab/dt1/tests/test_negative.py::test_non_deterministic_artifact
+PASSED lab/dt1/tests/test_negative.py::test_estate_truth_tampered_after_sealing
+PASSED lab/dt1/tests/test_negative.py::test_observability_contract_tampered_after_sealing
+PASSED lab/dt1/tests/test_negative.py::test_real_looking_secret_inserted
+PASSED lab/dt1/tests/test_negative.py::test_expectation_key_inserted_into_truth
+PASSED lab/dt1/tests/test_negative.py::test_forbidden_real_data_shapes
+PASSED lab/dt1/tests/test_negative.py::test_production_diff_violation_is_detected
+PASSED lab/dt1/tests/test_positive_and_determinism.py::test_sealed_artifacts_validate_completely
+PASSED lab/dt1/tests/test_positive_and_determinism.py::test_estate_shape_matches_the_brief
+PASSED lab/dt1/tests/test_positive_and_determinism.py::test_generic_sensitive_resources_not_phi
+PASSED lab/dt1/tests/test_positive_and_determinism.py::test_regeneration_is_byte_identical_three_times
+PASSED lab/dt1/tests/test_positive_and_determinism.py::test_different_seed_changes_every_hash
+PASSED lab/dt1/tests/test_positive_and_determinism.py::test_no_wall_clock_or_random_in_hashed_content
+PASSED lab/dt1/tests/test_positive_and_determinism.py::test_cli_determinism_command
+30 passed in 3.04s

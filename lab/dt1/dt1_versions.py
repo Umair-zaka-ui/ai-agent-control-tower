@@ -1,0 +1,6 @@
+"""Version constants shared by every DT1 module (bare-name importable; mirrored by ``lab/dt1/__init__.py``)."""
+DT1_CANONICAL_SEED = "dt1-canonical-v2-2026"
+GENERATOR_VERSION = "2.0.0"
+ESTATE_TRUTH_SCHEMA_VERSION = "1.0.0"
+OBSERVABILITY_CONTRACT_VERSION = "1.0.0"
+AGENT_PROPERTY_MATRIX_VERSION = "1.0.0"

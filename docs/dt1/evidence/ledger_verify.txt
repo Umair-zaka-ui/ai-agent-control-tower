@@ -1,0 +1,2 @@
+FILE ALTERED after anchor: lab\run\results\v9_recovery.json (anchored c6f1c77baf6d5d26, now 4169474464f8e09a)
+ledger verify rc=1 (1 = the pre-existing V9 v9_recovery.json alteration, documented in docs/validation/v9/RESULTS_LEDGER.md)
