@@ -1,4 +1,6 @@
 # git diff ab27fe3 --stat -- backend/app backend/migrations backend/requirements.txt backend/tests frontend .github
 # (empty = no production change)
-# alembic heads
-__pycache__
+# newest migration file
+backend/migrations/versions/0061_assurance_evidence.py
+# git diff e06a669 ab27fe3 --stat (everything the DT1 commit added)
+ 40 files changed, 4668 insertions(+)

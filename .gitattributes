@@ -5,3 +5,9 @@
 
 # PowerShell recovery tooling is intended for Windows.
 *.ps1 text eol=crlf
+
+# DT1 hash-sealed artifacts, hash-recorded instruction files and evidence copies: the exact bytes must
+# survive any checkout unchanged (a CRLF rewrite would break the seal and the recorded instruction hashes).
+lab/dt1/artifacts/** -text
+backend/instructions/** -text
+docs/dt1/evidence/** -text

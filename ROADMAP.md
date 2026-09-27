@@ -3494,11 +3494,28 @@ V7.5). Full records: `docs/validation/<phase>/`.
 | **V8** real cloud / SaaS / IdP red team | 2026-09-25 | — (no branch) | **FAILED — VALIDATION BLOCKED** at pre-flight §0 | no authorized read-only sandbox, no written authorization, no cloud egress exception existed; nothing run, nothing touched |
 | **V9** recovery / performance / scale | 2026-09-25 | `validation/v9-scale` @ `8ccd73a` | CONDITIONAL | bounded at 100k agents / 1.09 M edges except **V9-1** (reachability CTE enumerates simple paths — exponential; algorithmic, relational fix proven); recovery all pass; O-11 confirmed open |
 | **V10** organization validation | 2026-09-27 | `validation/v10-authorization-template` @ `441177f` | **NOT STARTED** | the written authorization & rules-of-engagement **template** is recorded (unsigned); V10 runs only against a signed instance, OBSERVE_ONLY, non-production |
+| **DT1-S1** Digital Twin — Stage 1 canonical estate (a new programme, not a validation gate) | 2026-09-28 | `dt1/s1-canonical-estate` @ `e06a669` | **PASSED — READY FOR STAGE-2 REVIEW** | 60 canonical agents (56 Northwind + 4 Contoso isolation control; 12 healthy control group), deterministic from seed `dt1-canonical-v2-2026`, hash-sealed (`combined_root e06a0753…`, sealed 2026-09-27T19:09:19Z), observability contract 35 entries grounded in live code, 65 validator checks + 16 negative tests + 7 boundary tests; **ACT was never run against the estate**; empty product diff |
 
 **Nothing from the programme is merged.** `main` is still the Milestone 5 close (`9667707`, 2026-09-16). The
 branches stack in order (each off the previous tip), so `validation/v10-authorization-template` contains every
 phase's artifacts; the only product code in the whole stack is the V7.5 adapter (`backend/app/discovery/adapters/aws_bedrock_agents.py`
 + one import line + one docstring). Every phase report ends with exactly one verdict line and is under `docs/validation/<phase>/`.
+
+**DT1 — the Digital Twin programme (started after the validation programme; Stage 1 complete 2026-09-28, branch
+`dt1/s1-canonical-estate` off `ab27fe3`, not merged).** Stage 1 built the *canonical estate*: a synthetic, deterministic,
+hash-sealed enterprise agent estate whose objective truth (`lab/dt1/artifacts/estate_truth.json`), observability contract
+(what ACT can OBSERVE / PARTIALLY_OBSERVE / NOT_OBSERVE / ENFORCE / REFUSE, every non-OBSERVE entry tied to a live code
+reference — F6-1, I-1, I-2, F-2 and V9-1 re-verified PRESENT at grounding) and per-agent property matrix are sealed in
+`anchor.json` before ACT ever sees them. 60 canonical agents carrying overlapping properties (the "Finance Research
+Assistant" shadow alone carries 15 conditions), 12-agent healthy control group, 244 dependency edges, 78 sensitive-reach
+paths, 6 real A2A handoffs, 1 identifier collision, 13 truthful-refusal subjects; reality classes tell Stage 2 which 15
+agents must run as genuine processes and which 9 exist only through a real registry/cloud-inventory service. **Stage 1
+ran nothing against ACT, produced no findings, instantiated no process, changed no product code** (`lab/dt1/` + `docs/dt1/`
++ `backend/instructions/` only; the validator's `boundary.empty_production_diff` and the boundary tests prove it). Stage 2
+(real processes, real services, the derived evaluator, effect-verified containment) and the buyer demo are **not started**
+and need their own approval; DT1 does not lift any pre-V10 prerequisite below. Records: `docs/dt1/DT1_S1_REPORT.md`,
+`ESTATE_DESIGN.md`, `OBSERVABILITY_CONTRACT.md`, `AGENT_PROPERTY_MATRIX.md`, `DETERMINISM_AND_SEAL.md`, `VALIDATOR.md`,
+`STAGE2_READINESS.md`, `LIMITATIONS.md`, `SCHEMA_GROUNDING.md`.
 
 **Before V10 can run (in this order):** (1) a signed instance of the authorization template, kept **outside** the
 repository (it carries names, contacts and system identifiers) and referenced by SHA-256 in pre-flight;
