@@ -1,6 +1,21 @@
 # Backup and system-migration guide
 
-**Last verified 2026-09-17** after Validation Gate V0 (baseline integrity). **No migration, no schema change, no new backup or restore step.** The only database change was the deletion of 17 test-residue `agents` rows (fixture-attributable, unreferenced by any table) from the shared dev database; no product or user data was touched, and cryptographic identity (signing keys, bootstrap marker, canary behaviour) was re-verified unchanged by the M4.11/M4.11a suites. The paragraph below is the M5-close record and is preserved as written.
+**Last verified 2026-09-25** after Validation Gate **V9** (Recovery / Performance / Scale — `docs/validation/v9/RECOVERY_RESULTS.md`). **No migration, no schema change, no new backup or restore step**; migration head unchanged at **`0061_assurance_evidence`** (**152 tables**). V9 is the first phase to exercise this guide's procedures under a **real `pg_dump -Fc` / `pg_restore`** on lab keys and lab databases, at small scale and at 100k agents:
+
+- **M4.11 key continuity, end to end.** A fresh install bootstrapped through `bootstrap_key_material`, seeded with ciphertext (a provider credential, a tool credential, a discovery-source secret) and a published, signed version; archived with `create_key_material_archive` (manifest and checksums verified); dumped; restored into a fresh database with the key restored from the archive → `verify_key_material` reports `OK / CANARY_MATCH`, install `EXISTING`, **all three ciphertexts decrypt**, the **historical signature verifies**, and a **new version publishes and signs**.
+- **Fail-loud, six ways, no silent identity reset.** The same dump restored **without** the key → `ENCRYPTION_KEY_MISSING_ESTABLISHED_INSTALL` (also with `allow_bootstrap`), `bootstrap` refused (`BOOTSTRAP_REFUSED_MARKER_PRESENT`), decrypt refused (`ENCRYPTION_KEY_MISSING`), **no key file written, marker and canary rows byte-identical**. Wrong key → `ENCRYPTION_KEY_CANNOT_DECRYPT`; malformed → `ENCRYPTION_KEY_MALFORMED`; key path a directory → `ENCRYPTION_KEY_PROVIDER_UNAVAILABLE`; unknown provider → `ENCRYPTION_KEY_PROVIDER_UNKNOWN`. A **marker-only** database (zero ciphertext, zero signed state) classifies `EXISTING_INSTALL` and refuses to adopt a key (`ENCRYPTION_KEY_UNVERIFIED_ESTABLISHED_INSTALL`) — the M4.11a property, re-proven.
+- **M5 durable state survives restore byte-for-byte.** The worst-case 100k database (1.11 GB; 1,093,009 control-graph edges, 176,300 agents, findings, policies, grants, assurance evidence, discovery-source config, budgets, alerts) dumped in **11.8 s** (139.6 MB) and restored in **18.8 s**; **31 tables identical by count and md5**, the hub blast-radius answer identical (40,148 agents), budgets' limit sum and the 100 OPEN alerts preserved. `discovery_observations` (120,500 rows) restore as-is — append-only evidence, re-derivable; nothing in the platform prunes them today.
+- **No phantom live workers.** Three `RUNNING` `worker_registrations` seeded before the dump are, after restore, stale (`WORKER_STALE_AFTER_SECONDS = 90`), reaped by `WorkerFleetService.reap_stale_workers`, and absent from `list_workers()`; the expired `execution_locks` were cleared by `reap_expired_locks`. Recovery is not only a small-database property.
+
+**Three recovery-relevant hygiene findings from V9 (not fixed by V9 — a validation phase changes no product code):**
+
+1. **`python -m app.security.keys backup` copies every `*.pem` in `backend/.keys/`**, and the dev checkout's key directory holds **92,694 `test-*.pem` files (~126 MB) of test-suite residue** beside the 11 real files. A recovery archive taken from such a checkout is dominated by irrelevant private keys. Until the suite's signing fixtures use a per-session key directory, clean the residue (it is gitignored, test-generated, referenced by nothing) before archiving, or archive only the configured key id.
+2. **O-11 still stands**: `backend/.dockerignore` has no `.keys/` entry and `backend/Dockerfile` does `COPY . .`, so an image built from a checkout with live keys **embeds them**. Never build or ship an image from a checkout that holds real key material until this closes (a mandatory pilot blocker before V10).
+3. **A database-server disk-full is a recovery event, and one ACT query can cause it (V9-1).** The 5.3 reachability CTE enumerates simple paths; on a tenant whose agents trust/delegate to two peers it filled a 12 GB disk at depth 32 and aborts at the API default depth 16. Until the query shape is changed, set `statement_timeout` and `temp_file_limit` on the application role in every deployment (the lab used 60 s / 3 GB) so the failure is a loud error rather than a full disk.
+
+The M5 restore guidance below is unchanged and now verified live: restore key material first (M4.11), then re-check `external_capability_grants` for post-snapshot revocations (5.7), and treat `assurance_evaluations` exceptions and `assurance_evidence_bundles` as the two non-recomputable M5 artefacts (5.9).
+
+**Previously verified 2026-09-17** after Validation Gate V0 (baseline integrity). **No migration, no schema change, no new backup or restore step.** The only database change was the deletion of 17 test-residue `agents` rows (fixture-attributable, unreferenced by any table) from the shared dev database; no product or user data was touched, and cryptographic identity (signing keys, bootstrap marker, canary behaviour) was re-verified unchanged by the M4.11/M4.11a suites. The paragraph below is the M5-close record and is preserved as written.
 
 **Last verified 2026-09-16** after Phase 5.10 / M5.10 (Milestone Hardening +
 Enterprise End-to-End Proof — **Milestone 5 COMPLETE**). **No migration, no new
@@ -618,7 +633,9 @@ decrypted normally while every pre-existing ciphertext became permanently
 undecryptable, with nothing failing loudly. That silent data-loss is now a
 loud, deterministic, recoverable failure. The full procedure is
 [`docs/security/key-management.md`](docs/security/key-management.md); this
-section is the recovery-context summary.
+section is the recovery-context summary. **Re-verified end to end on 2026-09-25 by
+Validation Gate V9 under a real dump/restore — see the note at the top of this
+file and `docs/validation/v9/RECOVERY_RESULTS.md`.**
 
 **Phase M4.11a closed the one residual edge case:** M4.11 inferred "NEW
 installation" from the *absence of encrypted state*, so an established install

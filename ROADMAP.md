@@ -14,6 +14,7 @@
 > | **Phase M4.11** | `M4.11-FR-xxx` | Production Integrity Closure | Key-material recovery & fail-loud integrity — the M5 prerequisite | **Complete** |
 > | **Phase M4.11a** | `M4.11a-FR-xxx` | Install-Mode Classification Hardening | The durable bootstrap marker + five-state key taxonomy — corrects M4.11's absence-inference | **Complete** |
 > | **Milestone 5 (ACT-SRS-M5)** | `M5.x-FR-xxx` / `ACT-*` | Universal Agent Control & Security Fabric | One canonical registry describing native + external + discovered agents; provenance; control state; discovery; graph; MCP; posture; threat/containment; external gateway; command center | **✅ COMPLETE (2026-09-16) — 5.1–5.10 shipped; §44 gates A–R all closed by a named proof** |
+> | **Post-M5 Validation Programme** | `V0`–`V10` (`docs/validation/`) | Enterprise Validation Lab & Red-Team Gate | Release-candidate validation of ACT against a real isolated lab: baseline, threat intel, egress-denying wrapper, five red teams of ACT's own model, real independent agents, one build exception (cloud adapter), scale & recovery, then a real organization | **V0 passed; V1–V7, V7.5, V9 executed (2026-09-17 → 09-25, all CONDITIONAL — REVIEW REQUIRED); V8 stopped at pre-flight (no authorized cloud sandbox); V10 gated on a signed authorization. Nothing merged — see the status board below** |
 >
 > **How to tell them apart at a glance.** The historical family always appears
 > under a `## Phase 4 —` or `## Phase 4.3 —` heading and is written as
@@ -3471,6 +3472,63 @@ release-candidate validation against real infrastructure, which this milestone
 was designed to make possible without architectural rework. No new milestone
 begun. See [`docs/milestone-5/proof.md`](docs/milestone-5/proof.md) and
 [`docs/milestone-5/summary.md`](docs/milestone-5/summary.md).
+
+## Post-M5 Validation Programme — status board (2026-09-27)
+
+The Enterprise Validation Lab & Red-Team Gate that Milestone 5 was designed to make possible. Every phase arrived as
+a build prompt with expected behaviour fixed before execution, evidence hash-anchored in a lab ledger, and the standing
+rules: **a truthful refusal is a pass; fix the gap, never the proof; no product code change** (one deliberate exception,
+V7.5). Full records: `docs/validation/<phase>/`.
+
+| Phase | Date | Branch @ tip | Verdict | Headline |
+|---|---|---|---|---|
+| **V0** baseline integrity, fixture cleanup, reproducibility (+V0.1, V0.2) | 2026-09-17 | `validation/v0-baseline` @ `2b4f57b` | **PASSED** (after V0.2: ADR-0023 `GOVERNED` ⇔ `NATIVE`) | clean baseline 2,648 / 0 / 1; posture-seed flake root-caused and fixed; W-2 resolved centrally |
+| **V1** threat-intel register & coverage | 2026-09-18 | `validation/v1-threat-intel` @ `d398748` | CONDITIONAL | 72-source register, ACT coverage matrix, competitor reality check, gap report (G-1 injection signal, G-3 MCP rug-pull…) |
+| **V2** lab build + **V2.1** isolation wrapper | 2026-09-19 | `validation/v2-lab` @ `418ab8c` | CONDITIONAL | egress-deny wrapper (internal Docker network, metadata-deny, read-only ACT mount, `.keys` tmpfs), boundary proof, canary register, MCP observability baseline |
+| **V3** prompt / tool / MCP / memory red team | 2026-09-21 | `validation/v3-redteam` @ `ecbcffa` | CONDITIONAL | 11/11 injected actions **contained**, 0/18 **detected** (G-1); MCP rug-pull G-3 confirmed; 0 canary escapes |
+| **V4** identity / delegation / multi-agent | 2026-09-22 | `validation/v4-identity` @ `f47439f` | CONDITIONAL | no external→internal escalation, no gateway bypass, chain not forgeable/truncatable; 14 A2A handoffs → 0 observed, **0 inferred** (I-2); F-1 duplicate mirrored delegation edges; F-2 no chain surface for external agents |
+| **V5** discovery / reconciliation / control graph | 2026-09-23 | `validation/v5-discovery-graph` @ `2dbc169` | CONDITIONAL | 21/21, zero of seven blockers; false-merge/split 0; cross-tenant traversal refused; F5-1..3 |
+| **V6** runtime threat detection & containment | 2026-09-23 | `validation/v6-containment` @ `e810113` | CONDITIONAL | 18/20, all five P0 flags false, no false containment claim, kill dominance 100 %, one enforcement path, fail-closed/fail-open proven; **F6-1**: detection blind to gateway-enforced agents |
+| **V7** independent powerful-agent interoperability | 2026-09-23 | `validation/v7-interop` @ `d7d0369` | CONDITIONAL | 7 agents / 5 stacks all at Tier 7, governance uniform; **F6-1 felt** (39 denials → 0 findings); 22 handoffs → 0 inferred; F7-1 (CrewAI/openai-agents cannot share an environment) |
+| **V7.5** cloud discovery adapter (the one product-change exception) | 2026-09-24 | `validation/v7.5-cloud-adapter` @ `224aea8` | CONDITIONAL | `AWS_BEDROCK_AGENTS`, discovery-plane-only, `GovernedHttpClient`-only, read-only, stdlib SigV4; 33 tests; **no live cloud call** (no sandbox) — ADR-0024 Proposed |
+| **V8** real cloud / SaaS / IdP red team | 2026-09-25 | — (no branch) | **FAILED — VALIDATION BLOCKED** at pre-flight §0 | no authorized read-only sandbox, no written authorization, no cloud egress exception existed; nothing run, nothing touched |
+| **V9** recovery / performance / scale | 2026-09-25 | `validation/v9-scale` @ `8ccd73a` | CONDITIONAL | bounded at 100k agents / 1.09 M edges except **V9-1** (reachability CTE enumerates simple paths — exponential; algorithmic, relational fix proven); recovery all pass; O-11 confirmed open |
+| **V10** organization validation | 2026-09-27 | `validation/v10-authorization-template` @ `441177f` | **NOT STARTED** | the written authorization & rules-of-engagement **template** is recorded (unsigned); V10 runs only against a signed instance, OBSERVE_ONLY, non-production |
+
+**Nothing from the programme is merged.** `main` is still the Milestone 5 close (`9667707`, 2026-09-16). The
+branches stack in order (each off the previous tip), so `validation/v10-authorization-template` contains every
+phase's artifacts; the only product code in the whole stack is the V7.5 adapter (`backend/app/discovery/adapters/aws_bedrock_agents.py`
++ one import line + one docstring). Every phase report ends with exactly one verdict line and is under `docs/validation/<phase>/`.
+
+**Before V10 can run (in this order):** (1) a signed instance of the authorization template, kept **outside** the
+repository (it carries names, contacts and system identifiers) and referenced by SHA-256 in pre-flight;
+(2) **O-11 closed** — `backend/.dockerignore` lacks `.keys/` while `backend/Dockerfile` does `COPY . .`, so a built
+image embeds the live encryption key and every private signing key, plus 92,694 test-residue PEMs (~126 MB) the
+suite left in `backend/.keys/` (V9-4); (3) an architecture-gate decision on **V9-1/V9-2** (the reachability CTE),
+or at minimum `statement_timeout` + `temp_file_limit` on the application role wherever ACT runs; (4) a
+**verifiable observe-only method** — ACT has no platform-level `OBSERVE_ONLY` switch; observe-only today is a
+configuration discipline (every external agent at `external_enforcement_mode` NULL/OBSERVED, zero external
+grants, no confirmed containment, kill-switch inactive, scheduler limited to the recommend-only evaluators) that a
+pre-flight can check structurally, or a product-level switch (an M6 item); (5) review decisions on the unmerged
+stack (V7.5's ADR-0024, V9's findings). V8 additionally needs a disposable sandbox account with a
+`bedrock:ListAgents`-only credential, a written authorization with spend cap and stop conditions, one logged
+egress exception in the wrapper, and a hash-anchored cloud ground-truth manifest.
+
+**What the programme hands to Milestone 6 (by felt impact, not by existence):** **F6-1** (all six threat rules
+key off `agent_executions`; gateway-enforced agents' denials live in `external_gateway_calls`, which detection
+never reads — enforcement perfect, detection silent; a wiring gap, not architectural) · **V9-1 + V9-2**
+(`app/graph/traversal.py`: path-array cycle guard ⇒ exponential path enumeration, P1 availability — a frontier-dedup
+`UNION` CTE was shown to return identical node sets and the full 66,996-node closure in 8 s at depth 32; plus
+N+1 label hydration, 14,866 statements for an 8k-node answer) · **O-11** · **I-2** (no A2A edge producer;
+ingest framework-declared relationships, never infer) · **V9-5** (a resumed bounded sweep raises 19,800 spurious
+`STALE_AGENT` findings — checkpoint at page start, staleness on a partial set) · **V9-3** (posture sweep
+~30–40 ms/agent, ~53 min per 80k tenant) · **V9-6** (busy-tenant `created_at` sequential scans) · **G-1** (no
+injection signal) · **F-2** (no authority chain for external agents, attributed by grant instead). I-1 (memory)
+and F5-2 (cross-identifier correlation) exist but were **not felt** under real workloads — keep them on the roadmap,
+do not front-load them.
+
+The three detailed gate records below (V0, V7.5, V9) are kept as written; V1–V7's are in their own directories.
+
 
 **Post-M5 Validation Gate — V0 (Baseline Integrity, Fixture Cleanup & Reproducibility): COMPLETE 2026-09-17, verdict CONDITIONAL — REVIEW REQUIRED.** Live truth re-derived (head `0061`, 152 tables, 676 routes, 2,641 collected). Pre-fix frozen baseline **2,640 passed / 0 failed / 1 deselected**; the posture-seed flake characterized at **3/50 (6%)** on the frozen state and its root cause independently verified (all 17 invalid rows fixture residue; no production path can create `NATIVE`+`DISCOVERED`). Fixture corrected to the truthful `UNKNOWN`, residue deleted, **50 consecutive** posture+guard runs with **0 failures**. Full post-fix backend **2,639 / 1 / 1** — the one failure a *different*, newly found ~5% test-naming flake in `test_idempotency_is_scoped_per_agent_not_shared` (proposal recorded, not applied). Frontend 384, `tsc -b` clean, build green, build guard proven live. Awaiting review of: the W-7 flake fix, the W-2 native-agent demotion gap, the deterministic-guard proposal, the minimal-CI proposal. **V1 not begun.** See `docs/validation/v0/`. **V0.1 closure (2026-09-17):** W-7 fixed (deterministic test data, 30/30, negative control), 5.1 guard made a full-population invariant query; W-2 stopped at the §2A condition with the derived matrix and three options for review; final backend run **2,640 passed / 0 failed / 1 deselected**; frontend 384 / `tsc -b` clean / build green. Still **CONDITIONAL — W-2 decision required.** **V0.2 closure (2026-09-17):** W-2 resolved — `GOVERNED` ⇔ `NATIVE` enforced centrally (ADR-0023), M5.1 proof step 6 corrected, 103 residue rows removed; final clean baseline **2,648 passed / 0 failed / 1 deselected**; frontend 384 passed / `tsc -b` clean / build green. **Verdict: V0 PASSED — READY FOR V1 AUTHORIZATION.**
 
